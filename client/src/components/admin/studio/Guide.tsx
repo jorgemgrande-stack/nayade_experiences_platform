@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Check, ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 export type GuideStep = "start" | "customize" | "mobile" | "publish";
 type GuideState = { dismissed?: boolean; collapsed?: boolean; done?: Partial<Record<GuideStep, boolean>> };
@@ -50,6 +51,7 @@ const STEPS: ReadonlyArray<{ key: GuideStep; title: string; text: string }> = [
 ];
 
 export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemplates: () => void; onBlank: () => void; onColors: () => void; onMobile: () => void }) {
+  const tx = useStudioText();
   const [state, setState] = useState(read);
   useEffect(() => {
     const sync = () => setState(read());
@@ -62,27 +64,19 @@ export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemp
   const actions: Partial<Record<GuideStep, React.ReactNode>> = {
     start: (
       <>
-        <Button size="sm" className="h-7 bg-[#5b5bf6] px-2.5 text-xs text-white hover:bg-[#4a4ae0]" onClick={onTemplates}>
-          Ver plantillas
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={onBlank}>
-          Añadir un bloque
-        </Button>
+        <Button size="sm" className="h-7 bg-[#5b5bf6] px-2.5 text-xs text-white hover:bg-[#4a4ae0]" onClick={onTemplates}>{tx("Ver plantillas")}</Button>
+        <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={onBlank}>{tx("Añadir un bloque")}</Button>
       </>
     ),
     customize: (
-      <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={onColors}>
-        Colores y letra
-      </Button>
+      <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={onColors}>{tx("Colores y letra")}</Button>
     ),
     mobile: (
-      <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={onMobile}>
-        Ver en el móvil
-      </Button>
+      <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={onMobile}>{tx("Ver en el móvil")}</Button>
     ),
   };
   return (
-    <section className="mx-3 mt-3 rounded-xl border border-[#5b5bf6]/40 bg-[#5b5bf6]/[0.06]" aria-label="Primeros pasos">
+    <section className="mx-3 mt-3 rounded-xl border border-[#5b5bf6]/40 bg-[#5b5bf6]/[0.06]" aria-label={tx("Primeros pasos")}>
       <div className="flex items-center gap-1 px-3 py-2">
         <button
           type="button"
@@ -90,17 +84,15 @@ export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemp
           aria-expanded={!state.collapsed}
           onClick={() => write({ ...state, collapsed: !state.collapsed })}
         >
-          <span className="whitespace-nowrap text-sm font-semibold">Primeros pasos</span>
-          <span className="whitespace-nowrap rounded-full bg-[#5b5bf6]/15 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-[#7c7cff]">
-            {done} de {STEPS.length}
-          </span>
+          <span className="whitespace-nowrap text-sm font-semibold">{tx("Primeros pasos")}</span>
+          <span className="whitespace-nowrap rounded-full bg-[#5b5bf6]/15 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-[#7c7cff]">{tx("{done} de {STEPSN}", { done: done, STEPSN: STEPS.length })}</span>
           <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform", state.collapsed && "-rotate-90")} aria-hidden />
         </button>
         <button
           type="button"
           className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]"
-          aria-label="Omitir la guía (puedes recuperarla desde Ayuda)"
-          title="Omitir la guía (puedes recuperarla desde Ayuda)"
+          aria-label={tx("Omitir la guía (puedes recuperarla desde Ayuda)")}
+          title={tx("Omitir la guía (puedes recuperarla desde Ayuda)")}
           onClick={() => write({ ...state, dismissed: true })}
         >
           <X className="h-3.5 w-3.5" />
@@ -125,10 +117,10 @@ export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemp
                   </span>
                   <span className="min-w-0">
                     <span className={cn("block text-xs font-medium leading-snug", ok && "text-muted-foreground line-through")}>
-                      {s.title}
-                      <span className="sr-only">{ok ? " (hecho)" : ""}</span>
+                      {tx(s.title)}
+                      <span className="sr-only">{ok ? tx(" (hecho)") : ""}</span>
                     </span>
-                    {current && <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{s.text}</span>}
+                    {current && <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{tx(s.text)}</span>}
                   </span>
                 </div>
                 {current && actions[s.key] && <div className="ml-6 mt-1.5 flex flex-wrap gap-1.5">{actions[s.key]}</div>}

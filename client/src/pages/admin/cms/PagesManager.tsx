@@ -24,6 +24,7 @@ import { PanelEmpty } from "@/components/admin/PanelStates";
 import type { SitePage } from "@/components/admin/studio/PageSettings";
 import { cn } from "@/lib/utils";
 import { PAGE_TEMPLATES, SEO_LIMITS, pageSlugProblem, slugFromTitle, type PageTemplateKey } from "@shared/pageBlocks";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 function readParam(name: string): string | null {
   if (typeof window === "undefined") return null;
@@ -31,6 +32,7 @@ function readParam(name: string): string | null {
 }
 
 export default function PagesManager() {
+  const tx = useStudioText();
   const utils = trpc.useUtils();
   const [, navigate] = useLocation();
   const list = trpc.cms.sitePages.useQuery();
@@ -48,14 +50,14 @@ export default function PagesManager() {
 
   const duplicate = trpc.cms.duplicateSitePage.useMutation({
     onSuccess: (r) => {
-      toast.success(`Copia creada: «${r.title}». Está sin publicar.`);
+      toast.success(tx("Copia creada: «{title}». Está sin publicar.", { title: r.title }));
       void utils.cms.sitePages.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
   const home = trpc.cms.setHomePage.useMutation({
     onSuccess: () => {
-      toast.success("Es la nueva portada de tu web");
+      toast.success(tx("Es la nueva portada de tu web"));
       void utils.cms.sitePages.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -66,43 +68,37 @@ export default function PagesManager() {
       <div className="mx-auto max-w-5xl p-4 md:p-6">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">Páginas de tu web</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Crea tus páginas y edítalas visualmente en Elephant Studio. Los cambios se ven en tu web cuando los publicas.</p>
+            <h1 className="text-2xl font-bold">{tx("Páginas de tu web")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{tx("Crea tus páginas y edítalas visualmente en Elephant Studio. Los cambios se ven en tu web cuando los publicas.")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
               <Link href="/admin/cms/menus">
-                <ListTree className="mr-1.5 h-4 w-4" /> Ordenar el menú
-              </Link>
+                <ListTree className="mr-1.5 h-4 w-4" />{" "}{tx("Ordenar el menú")}</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/admin/cms/idiomas">
-                <Globe className="mr-1.5 h-4 w-4" /> Idiomas
-              </Link>
+                <Globe className="mr-1.5 h-4 w-4" />{" "}{tx("Idiomas")}</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/admin/cms/redirecciones">
-                <CornerDownRight className="mr-1.5 h-4 w-4" /> Redirecciones
-              </Link>
+                <CornerDownRight className="mr-1.5 h-4 w-4" />{" "}{tx("Redirecciones")}</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/admin/studio">
-                <Sparkles className="mr-1.5 h-4 w-4" /> Abrir Elephant Studio
-              </Link>
+                <Sparkles className="mr-1.5 h-4 w-4" />{" "}{tx("Abrir Elephant Studio")}</Link>
             </Button>
             <Button onClick={() => setCreating(true)}>
-              <Plus className="mr-1.5 h-4 w-4" /> Nueva página
-            </Button>
+              <Plus className="mr-1.5 h-4 w-4" />{" "}{tx("Nueva página")}</Button>
           </div>
         </div>
 
         {list.isLoading ? (
-          <div className="py-12 text-center text-muted-foreground">Cargando páginas…</div>
+          <div className="py-12 text-center text-muted-foreground">{tx("Cargando páginas…")}</div>
         ) : !pages.length ? (
-          <PanelEmpty icon={<FileText className="h-6 w-6" />} title="Todavía no tienes páginas" description="Crea la portada de tu web y las páginas que necesites: servicios, quiénes somos, contacto…">
+          <PanelEmpty icon={<FileText className="h-6 w-6" />} title={tx("Todavía no tienes páginas")} description={tx("Crea la portada de tu web y las páginas que necesites: servicios, quiénes somos, contacto…")}>
             <Button onClick={() => setCreating(true)}>
-              <Plus className="mr-1.5 h-4 w-4" /> Crear la primera página
-            </Button>
+              <Plus className="mr-1.5 h-4 w-4" />{" "}{tx("Crear la primera página")}</Button>
           </PanelEmpty>
         ) : (
           <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
@@ -116,42 +112,38 @@ export default function PagesManager() {
                     </button>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    <span>{p.isHome ? "Portada" : `/${p.slug}`}</span>
+                    <span>{p.isHome ? tx("Portada") : `/${p.slug}`}</span>
                     <Badge variant={p.isPublished ? "default" : "secondary"} className="text-[11px]">
-                      {p.isPublished ? "Publicada" : "Sin publicar"}
+                      {p.isPublished ? tx("Publicada") : tx("Sin publicar")}
                     </Badge>
-                    {p.hasDraft && p.isPublished && <Badge variant="outline" className="text-[11px] border-warning/40 bg-warning/10 text-warning">Cambios sin publicar</Badge>}
-                    {p.isLegal && <Badge variant="outline" className="text-[11px]">Texto legal</Badge>}
-                    {(p.inHeader || p.inFooter) && <Badge variant="outline" className="text-[11px]">{p.inHeader ? "En el menú" : "En el pie"}</Badge>}
+                    {p.hasDraft && p.isPublished && <Badge variant="outline" className="text-[11px] border-warning/40 bg-warning/10 text-warning">{tx("Cambios sin publicar")}</Badge>}
+                    {p.isLegal && <Badge variant="outline" className="text-[11px]">{tx("Texto legal")}</Badge>}
+                    {(p.inHeader || p.inFooter) && <Badge variant="outline" className="text-[11px]">{p.inHeader ? tx("En el menú") : tx("En el pie")}</Badge>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button size="sm" variant="outline" onClick={() => edit(p.slug)}>
-                    <Pencil className="mr-1.5 h-4 w-4" /> Editar
-                  </Button>
+                    <Pencil className="mr-1.5 h-4 w-4" />{" "}{tx("Editar")}</Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={`Más opciones de ${p.title}`}>
+                      <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={tx("Más opciones de {title}", { title: p.title })}>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {p.isPublished && (
                         <DropdownMenuItem onSelect={() => window.open(p.isHome ? "/" : `/${p.slug}`, "_blank", "noopener")}>
-                          <Globe className="mr-2 h-4 w-4" /> Ver en la web
-                        </DropdownMenuItem>
+                          <Globe className="mr-2 h-4 w-4" />{" "}{tx("Ver en la web")}</DropdownMenuItem>
                       )}
                       <DropdownMenuItem onSelect={() => duplicate.mutate({ slug: p.slug })}>
-                        <Copy className="mr-2 h-4 w-4" /> Duplicar
-                      </DropdownMenuItem>
+                        <Copy className="mr-2 h-4 w-4" />{" "}{tx("Duplicar")}</DropdownMenuItem>
                       {!p.isHome && p.isPublished && (
                         <DropdownMenuItem onSelect={() => home.mutate({ slug: p.slug })}>
-                          <Home className="mr-2 h-4 w-4" /> Usar como portada
-                        </DropdownMenuItem>
+                          <Home className="mr-2 h-4 w-4" />{" "}{tx("Usar como portada")}</DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem className="text-destructive focus:text-destructive" disabled={p.isHome} onSelect={() => setToDelete(p)}>
-                        <Trash2 className="mr-2 h-4 w-4" /> {p.isHome ? "Eliminar (es la portada)" : "Eliminar"}
+                        <Trash2 className="mr-2 h-4 w-4" /> {p.isHome ? tx("Eliminar (es la portada)") : tx("Eliminar")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -178,6 +170,7 @@ export default function PagesManager() {
 }
 
 function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; pages: SitePage[]; onClose: () => void; onCreated: (slug: string) => void }) {
+  const tx = useStudioText();
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
@@ -195,10 +188,10 @@ function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; 
   }, [open]);
 
   const taken = useMemo(() => pages.some((p) => p.slug === slug), [pages, slug]);
-  const slugError = !slug ? null : taken ? "Ya tienes una página con esa dirección. Elige otra." : pageSlugProblem(slug);
+  const slugError = !slug ? null : taken ? tx("Ya tienes una página con esa dirección. Elige otra.") : pageSlugProblem(slug);
   const create = trpc.cms.createSitePage.useMutation({
     onSuccess: (r) => {
-      toast.success("Página creada. Edítala y pulsa «Publicar» cuando esté lista.");
+      toast.success(tx("Página creada. Edítala y pulsa «Publicar» cuando esté lista."));
       onCreated(r.slug);
     },
     onError: (e) => toast.error(e.message),
@@ -209,17 +202,17 @@ function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; 
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nueva página</DialogTitle>
-          <DialogDescription>Ponle un título y elige cómo empezar. Se crea sin publicar: nadie la verá hasta que la publiques.</DialogDescription>
+          <DialogTitle>{tx("Nueva página")}</DialogTitle>
+          <DialogDescription>{tx("Ponle un título y elige cómo empezar. Se crea sin publicar: nadie la verá hasta que la publiques.")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
           <div className="space-y-1.5">
-            <Label htmlFor="np-title">Título</Label>
+            <Label htmlFor="np-title">{tx("Título")}</Label>
             <Input
               id="np-title"
               value={title}
               maxLength={200}
-              placeholder="Por ejemplo: Servicios"
+              placeholder={tx("Por ejemplo: Servicios")}
               onChange={(e) => {
                 setTitle(e.target.value);
                 if (!slugTouched) setSlug(slugFromTitle(e.target.value));
@@ -227,7 +220,7 @@ function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; 
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="np-slug">Dirección de la página</Label>
+            <Label htmlFor="np-slug">{tx("Dirección de la página")}</Label>
             <div className="flex items-center gap-1.5">
               <span className="hidden shrink-0 text-sm text-muted-foreground sm:inline">{origin}/</span>
               <Input
@@ -242,12 +235,12 @@ function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; 
               />
             </div>
             <p id="np-slug-hint" className={cn("text-xs", slugError ? "text-destructive" : "text-muted-foreground")}>
-              {slugError ?? "Se crea sola a partir del título. Puedes cambiarla."}
+              {slugError ?? tx("Se crea sola a partir del título. Puedes cambiarla.")}
             </p>
           </div>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Cómo empezar</legend>
-            <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Plantilla">
+            <legend className="text-sm font-medium">{tx("Cómo empezar")}</legend>
+            <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label={tx("Plantilla")}>
               {PAGE_TEMPLATES.map((t) => (
                 <button
                   key={t.key}
@@ -264,29 +257,23 @@ function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; 
             </div>
           </fieldset>
           <div className="space-y-1.5">
-            <Label htmlFor="np-meta">Descripción para buscadores (opcional)</Label>
+            <Label htmlFor="np-meta">{tx("Descripción para buscadores (opcional)")}</Label>
             <Textarea id="np-meta" rows={2} value={metaDescription} maxLength={300} onChange={(e) => setMetaDescription(e.target.value)} />
-            <span className={cn("text-xs", metaDescription.length > SEO_LIMITS.description ? "text-warning" : "text-muted-foreground")}>
-              {metaDescription.length} de {SEO_LIMITS.description} caracteres
-            </span>
+            <span className={cn("text-xs", metaDescription.length > SEO_LIMITS.description ? "text-warning" : "text-muted-foreground")}>{tx("{metaDescriptionN} de {description} caracteres", { metaDescriptionN: metaDescription.length, description: SEO_LIMITS.description })}</span>
           </div>
           <div className="flex items-start gap-2">
             <Checkbox id="np-menu" checked={addToMenu} onCheckedChange={(v) => setAddToMenu(v === true)} className="mt-0.5" />
-            <Label htmlFor="np-menu" className="font-normal leading-snug">
-              Añadir al menú de la web
-              <span className="block text-xs text-muted-foreground">El enlace aparecerá en el menú de arriba cuando publiques la página.</span>
+            <Label htmlFor="np-menu" className="font-normal leading-snug">{tx("Añadir al menú de la web")}<span className="block text-xs text-muted-foreground">{tx("El enlace aparecerá en el menú de arriba cuando publiques la página.")}</span>
             </Label>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
+          <Button variant="outline" onClick={onClose}>{tx("Cancelar")}</Button>
           <Button
             disabled={!title.trim() || !slug || !!slugError || create.isPending}
             onClick={() => create.mutate({ title: title.trim(), slug, template, addToMenu, metaDescription: metaDescription.trim() || undefined })}
           >
-            {create.isPending ? "Creando…" : "Crear página"}
+            {create.isPending ? tx("Creando…") : tx("Crear página")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -295,10 +282,11 @@ function CreatePageDialog({ open, pages, onClose, onCreated }: { open: boolean; 
 }
 
 function DeletePageDialog({ page, onClose }: { page: SitePage | null; onClose: () => void }) {
+  const tx = useStudioText();
   const utils = trpc.useUtils();
   const del = trpc.cms.deleteSitePage.useMutation({
     onSuccess: () => {
-      toast.success("Página eliminada");
+      toast.success(tx("Página eliminada"));
       void utils.cms.sitePages.invalidate();
       onClose();
     },
@@ -308,21 +296,18 @@ function DeletePageDialog({ page, onClose }: { page: SitePage | null; onClose: (
     <AlertDialog open={!!page} onOpenChange={(v) => !v && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>¿Eliminar «{page?.title}»?</AlertDialogTitle>
+          <AlertDialogTitle>{tx("¿Eliminar «{title}»?", { title: page?.title })}</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
-              <p>Se borrará la página con todo su contenido y su enlace en el menú. No se puede deshacer.</p>
+              <p>{tx("Se borrará la página con todo su contenido y su enlace en el menú. No se puede deshacer.")}</p>
               {page?.isLegal && (
-                <p className="rounded-md border px-3 py-2 border-warning/40 bg-warning/10 text-warning">
-                  Es un texto legal. Tu web debe informar a sus visitantes y el pie de página lo enlaza: si lo eliminas, ese enlace dejará de funcionar. Si solo
-                  quieres cambiarlo, edítalo en lugar de eliminarlo.
-                </p>
+                <p className="rounded-md border px-3 py-2 border-warning/40 bg-warning/10 text-warning">{tx("Es un texto legal. Tu web debe informar a sus visitantes y el pie de página lo enlaza: si lo eliminas, ese enlace dejará de funcionar. Si solo quieres cambiarlo, edítalo en lugar de eliminarlo.")}</p>
               )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel>{tx("Cancelar")}</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-white hover:bg-destructive/90"
             onClick={(e) => {
@@ -330,7 +315,7 @@ function DeletePageDialog({ page, onClose }: { page: SitePage | null; onClose: (
               if (page) del.mutate({ slug: page.slug, confirmLegal: page.isLegal || undefined });
             }}
           >
-            {del.isPending ? "Eliminando…" : page?.isLegal ? "Eliminar el texto legal" : "Eliminar página"}
+            {del.isPending ? tx("Eliminando…") : page?.isLegal ? tx("Eliminar el texto legal") : tx("Eliminar página")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -11,6 +11,8 @@ import { useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Building2, Check, ChevronDown, HardDrive, Layers, MapPin, Receipt, Rocket, ShoppingBag, Sparkles, TrendingUp, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { Translate } from "@shared/i18n/core";
 import { formatMoney } from "@shared/connectCard";
 import type { PanelPlanInfo, PlanCardModel, PlanRequestView, SelfServicePlanKey } from "@shared/subscriptionPlans";
 import { cardBenefits, cardLimits, groupedComparisonRows, isGrowthOption, planMoney, planPresentation, taxLabel, type PlanIconKey } from "@shared/planPresentation";
@@ -26,11 +28,12 @@ const scrollToComparison = () => document.getElementById(COMPARISON_ID)?.scrollI
 
 /** Precio mensual y anual del catálogo (sin recalcular el anual) con la periodicidad y el IVA siempre a la vista. */
 function PriceBox({ plan }: { plan: PanelPlanInfo }) {
+  const { t } = useI18n();
   const cells = [
-    plan.monthly ? { key: "m", price: plan.monthly, per: "/mes", label: "Mensual" } : null,
-    plan.yearly ? { key: "y", price: plan.yearly, per: "/año", label: "Anual" } : null,
+    plan.monthly ? { key: "m", price: plan.monthly, per: t("subscription.plans.perMonth"), label: t("subscription.plans.monthly") } : null,
+    plan.yearly ? { key: "y", price: plan.yearly, per: t("subscription.plans.perYear"), label: t("subscription.plans.yearly") } : null,
   ].filter((c): c is NonNullable<typeof c> => !!c);
-  if (cells.length === 0) return <p className="sx-price rounded-2xl px-4 py-3 text-sm text-muted-foreground">Precio a consultar</p>;
+  if (cells.length === 0) return <p className="sx-price rounded-2xl px-4 py-3 text-sm text-muted-foreground">{t("subscription.plans.priceOnRequest")}</p>;
   return (
     <dl className={cn("sx-price grid rounded-2xl", cells.length === 2 ? "grid-cols-2 divide-x divide-border" : "grid-cols-1")}>
       {cells.map((c) => (
@@ -61,6 +64,7 @@ function PlanCard({
   onConvert: (plan: SelfServicePlanKey) => void;
   onChange: (option: PlanOption) => void;
 }) {
+  const { t } = useI18n();
   const { plan } = card;
   const titleId = `plan-${plan.key}`;
   const pr = planPresentation(plan);
@@ -77,7 +81,7 @@ function PlanCard({
     >
       {growth && (
         <span className="sx-tone-cta absolute -top-3 right-5 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold shadow-lg">
-          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Para crecer
+          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {t("subscription.plans.forGrowth")}
         </span>
       )}
       <div className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
@@ -104,7 +108,7 @@ function PlanCard({
         {pr.headline && <p className="text-sm font-medium leading-snug text-foreground sm:text-base">{pr.headline}</p>}
 
         {benefits.length > 0 && (
-          <ul className="space-y-2" aria-label={`Ventajas de ${plan.name}`}>
+          <ul className="space-y-2" aria-label={t("subscription.plans.benefitsOf", { name: plan.name })}>
             {benefits.map((b) => (
               <li key={b} className="flex items-start gap-2.5 text-sm text-foreground">
                 <span aria-hidden="true" className="cx-tone-chip mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full">
@@ -117,7 +121,7 @@ function PlanCard({
         )}
 
         {limits.length > 0 && (
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border pt-3" aria-label={`Límites de ${plan.name}`}>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border pt-3" aria-label={t("subscription.plans.limitsOf", { name: plan.name })}>
             {limits.map((l) => {
               const LIcon = (l.metric && LIMIT_ICONS[l.metric]) || Layers;
               return (
@@ -133,7 +137,7 @@ function PlanCard({
           </dl>
         )}
 
-        {card.isCurrent && card.currentLabel === "Prueba gratuita" && <p className="text-xs text-muted-foreground">Lo estás probando gratis: no se te ha cobrado nada.</p>}
+        {card.isCurrent && card.currentLabel === "Prueba gratuita" && <p className="text-xs text-muted-foreground">{t("subscription.plans.tryingFree")}</p>}
 
         {/* Pie de altura fija (precio, acción, detalle) para que precios y botones queden alineados entre tarjetas */}
         <div className="mt-auto space-y-3 pt-1">
@@ -146,7 +150,7 @@ function PlanCard({
             onClick={scrollToComparison}
             className="mx-auto flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Ver detalles del plan <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("subscription.plans.seeDetails")} <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="sr-only"> {plan.name}</span>
           </button>
         </div>
@@ -156,15 +160,16 @@ function PlanCard({
 }
 
 function PlanAction({ card, requests, onConvert, onChange }: { card: PlanCardModel; requests: PlanRequestView[] | undefined; onConvert: (plan: SelfServicePlanKey) => void; onChange: (option: PlanOption) => void }) {
+  const { t } = useI18n();
   const { plan, cta } = card;
   const big = "h-12 w-full rounded-xl text-base font-semibold";
   switch (cta.kind) {
     case "current":
-      return <p className="rounded-xl border border-border px-3 py-3 text-center text-sm font-semibold text-foreground">Es tu plan actual</p>;
+      return <p className="rounded-xl border border-border px-3 py-3 text-center text-sm font-semibold text-foreground">{t("subscription.plans.currentPlan")}</p>;
     case "convert":
       return (
         <Button type="button" className={cn("sx-tone-cta hover:bg-transparent", big)} onClick={() => onConvert(cta.plan)}>
-          Contratar {plan.name}
+          {t("subscription.plans.hire", { name: plan.name })}
         </Button>
       );
     case "change":
@@ -176,17 +181,17 @@ function PlanAction({ card, requests, onConvert, onChange }: { card: PlanCardMod
             className={cn(big, cta.direction === "upgrade" && "sx-tone-cta hover:bg-transparent")}
             onClick={() => onChange({ plan: cta.plan, interval: cta.interval, direction: cta.direction, recurringCents: cta.recurringCents, currency: cta.currency })}
           >
-            {cta.direction === "upgrade" ? `Cambiar a ${plan.name}` : `Solicitar el cambio a ${plan.name}`}
+            {cta.direction === "upgrade" ? t("subscription.plans.changeTo", { name: plan.name }) : t("subscription.plans.requestChangeTo", { name: plan.name })}
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            {formatMoney(cta.recurringCents, cta.currency)} /{cta.interval === "year" ? "año" : "mes"} + IVA · {cta.direction === "upgrade" ? "se aplica desde hoy, con prorrateo" : "se aplica al final del periodo pagado"}
+            {t("subscription.plans.changePrice", { amount: formatMoney(cta.recurringCents, cta.currency), interval: cta.interval === "year" ? t("subscription.plans.intervalYear") : t("subscription.plans.intervalMonth"), when: cta.direction === "upgrade" ? t("subscription.plans.appliesNow") : t("subscription.plans.appliesAtEnd") })}
           </p>
         </>
       );
     case "contact":
       return <PlanRequestCta plan={plan} kind={cta.request} open={openRequestFor(requests, plan.key)} />;
     case "admin_only":
-      return <p className="rounded-xl bg-muted px-3 py-2.5 text-center text-sm text-muted-foreground">Solo la administración de tu empresa puede contratar o cambiar de plan.</p>;
+      return <p className="rounded-xl bg-muted px-3 py-2.5 text-center text-sm text-muted-foreground">{t("subscription.plans.adminOnly")}</p>;
     default:
       return null;
   }
@@ -194,19 +199,20 @@ function PlanAction({ card, requests, onConvert, onChange }: { card: PlanCardMod
 
 /** Celda de la comparativa: valor publicado o «Sin dato publicado» (nunca se presenta como incluido). */
 function Value({ value, differs }: { value: string | null; differs?: boolean }) {
+  const { t } = useI18n();
   if (value === null)
     return (
       <span className="text-muted-foreground">
-        —<span className="sr-only">Sin dato publicado</span>
+        —<span className="sr-only">{t("subscription.plans.noData")}</span>
       </span>
     );
   return (
     <span className={cn("inline-flex flex-wrap items-center gap-1.5", differs && "font-semibold")}>
       {value}
       {differs && (
-        <span className="cx-red-text inline-flex items-center" title="Cambia frente a tu plan">
+        <span className="cx-red-text inline-flex items-center" title={t("subscription.plans.changesVsYours")}>
           <ArrowUp className="h-3.5 w-3.5 rotate-45" aria-hidden="true" />
-          <span className="sr-only">(cambia frente a tu plan)</span>
+          <span className="sr-only">{t("subscription.plans.changesVsYoursSr")}</span>
         </span>
       )}
     </span>
@@ -238,16 +244,16 @@ interface CompareGroup {
 }
 
 /** Todas las filas de la comparativa (precios, límites agrupados y lo que incluye): nada de lo publicado se oculta. */
-function comparisonModel(cards: PlanCardModel[]): CompareGroup[] {
+function comparisonModel(cards: PlanCardModel[], t: Translate): CompareGroup[] {
   const price = (p: PanelPlanInfo["monthly"], per: string) => (p ? `${planMoney(p.amountCents, p.currency)} ${per} · ${taxLabel(p)}` : null);
   const groups: CompareGroup[] = [
     {
       id: "price",
-      label: "Precio y contratación",
+      label: t("subscription.plans.groupPrice"),
       rows: [
-        { label: "Mensual", cells: cards.map((c) => ({ text: price(c.plan.monthly, "/mes"), node: <Value value={price(c.plan.monthly, "/mes")} /> })) },
-        { label: "Anual", cells: cards.map((c) => ({ text: price(c.plan.yearly, "/año"), node: <Value value={price(c.plan.yearly, "/año")} /> })) },
-        { label: "Contratación", cells: cards.map((c) => ({ text: c.commercialLabel, node: <Value value={c.commercialLabel} /> })) },
+        { label: t("subscription.plans.monthly"), cells: cards.map((c) => ({ text: price(c.plan.monthly, t("subscription.plans.perMonth")), node: <Value value={price(c.plan.monthly, t("subscription.plans.perMonth"))} /> })) },
+        { label: t("subscription.plans.yearly"), cells: cards.map((c) => ({ text: price(c.plan.yearly, t("subscription.plans.perYear")), node: <Value value={price(c.plan.yearly, t("subscription.plans.perYear"))} /> })) },
+        { label: t("subscription.plans.rowHiring"), cells: cards.map((c) => ({ text: c.commercialLabel, node: <Value value={c.commercialLabel} /> })) },
       ],
     },
     ...groupedComparisonRows(cards).map((g) => ({
@@ -257,17 +263,18 @@ function comparisonModel(cards: PlanCardModel[]): CompareGroup[] {
     })),
   ];
   const info: CompareRow[] = [];
-  if (cards.some((c) => c.plan.tagline)) info.push({ label: "En resumen", cells: cards.map((c) => ({ text: c.plan.tagline, node: <Value value={c.plan.tagline} /> })) });
-  if (cards.some((c) => c.plan.forWho)) info.push({ label: "Para quién", cells: cards.map((c) => ({ text: c.plan.forWho, node: <Value value={c.plan.forWho} /> })) });
-  if (cards.some((c) => c.plan.description)) info.push({ label: "Qué incluye", cells: cards.map((c) => ({ text: c.plan.description, node: <Value value={c.plan.description} /> })) });
-  if (cards.some((c) => c.plan.benefits.length > 0)) info.push({ label: "Ventajas", cells: cards.map((c) => ({ text: c.plan.benefits.join(", ") || null, node: <Benefits items={c.plan.benefits} /> })) });
-  if (info.length > 0) groups.push({ id: "info", label: "Qué incluye cada plan", rows: info });
+  if (cards.some((c) => c.plan.tagline)) info.push({ label: t("subscription.plans.rowSummary"), cells: cards.map((c) => ({ text: c.plan.tagline, node: <Value value={c.plan.tagline} /> })) });
+  if (cards.some((c) => c.plan.forWho)) info.push({ label: t("subscription.plans.rowForWho"), cells: cards.map((c) => ({ text: c.plan.forWho, node: <Value value={c.plan.forWho} /> })) });
+  if (cards.some((c) => c.plan.description)) info.push({ label: t("subscription.plans.rowIncludes"), cells: cards.map((c) => ({ text: c.plan.description, node: <Value value={c.plan.description} /> })) });
+  if (cards.some((c) => c.plan.benefits.length > 0)) info.push({ label: t("subscription.plans.rowBenefits"), cells: cards.map((c) => ({ text: c.plan.benefits.join(", ") || null, node: <Benefits items={c.plan.benefits} /> })) });
+  if (info.length > 0) groups.push({ id: "info", label: t("subscription.plans.groupInfo"), rows: info });
   return groups;
 }
 
 /** Comparativa completa: tabla con columnas por plan en escritorio y grupos desplegables en el móvil. */
 function PlanComparisonTable({ cards }: { cards: PlanCardModel[] }) {
-  const groups = comparisonModel(cards);
+  const { t } = useI18n();
+  const groups = comparisonModel(cards, t);
   const hasCurrent = cards.some((c) => c.isCurrent);
   const th = "px-4 py-3 text-left align-top";
   const td = "px-4 py-3 align-top text-sm text-foreground";
@@ -279,11 +286,11 @@ function PlanComparisonTable({ cards }: { cards: PlanCardModel[] }) {
         </span>
         <div className="min-w-0 flex-1">
           <h3 id="plans-compare-title" className="text-lg font-extrabold tracking-tight text-foreground sm:text-xl">
-            Comparativa completa de planes
+            {t("subscription.plans.compareTitle")}
           </h3>
           <p className="text-sm text-muted-foreground">
-            Precios, límites y ventajas de cada plan tal como los publica el catálogo oficial.
-            {hasCurrent && " La flecha marca lo que cambia frente a tu plan."}
+            {t("subscription.plans.compareText")}
+            {hasCurrent && t("subscription.plans.compareArrow")}
           </p>
         </div>
       </div>
@@ -291,11 +298,11 @@ function PlanComparisonTable({ cards }: { cards: PlanCardModel[] }) {
       {/* Escritorio y tableta: tabla */}
       <div className="hidden md:block">
         <table className="w-full table-fixed border-collapse">
-          <caption className="sr-only">Comparativa de los planes de Elephant Core</caption>
+          <caption className="sr-only">{t("subscription.plans.compareCaption")}</caption>
           <thead>
             <tr className="border-b border-border">
               <th scope="col" className={cn(th, "w-[24%] text-xs font-semibold uppercase tracking-wider text-muted-foreground")}>
-                Característica
+                {t("subscription.plans.feature")}
               </th>
               {cards.map((c) => {
                 const pr = planPresentation(c.plan);
@@ -402,7 +409,8 @@ export function PlanComparison({
 
 /** Garantías que acompañan al comparador (las mismas que ya dice la página, visibles de un vistazo). */
 export function PlanAssurances({ trial }: { trial: boolean }) {
-  const items = [trial ? "Todo lo que has preparado en la prueba se conserva" : "Tus datos y tu configuración se conservan", "Ves el importe antes de pagar"];
+  const { t: tr } = useI18n();
+  const items = [trial ? tr("subscription.plans.assureKeptTrial") : tr("subscription.plans.assureKept"), tr("subscription.plans.assureAmount")];
   return (
     <ul className="flex flex-wrap gap-2">
       {items.map((t) => (

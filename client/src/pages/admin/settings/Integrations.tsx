@@ -3,6 +3,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Circle, CircleDashed, Loader2, ShieldCheck } from "lucide-react";
+import { useI18n } from "@/i18n/I18nProvider";
 import { fieldFormatProblem, groupIntegrations, type PanelField, type PanelIntegration } from "@shared/integrationsPanel";
 
 const STATE_STYLE: Record<PanelIntegration["state"], { icon: typeof Circle; className: string }> = {
@@ -14,6 +15,7 @@ const STATE_STYLE: Record<PanelIntegration["state"], { icon: typeof Circle; clas
 };
 
 export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegration; f: PanelField; value: string | undefined; onChange: (v: string) => void; error: string | null }) {
+  const { t } = useI18n();
   const id = `${p.id}-${f.key}`;
   const describedBy = [f.help ? `${id}-help` : null, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   const current = value ?? (f.secret ? "" : f.display ?? "");
@@ -21,8 +23,8 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
     <div className="space-y-1">
       <label htmlFor={f.control === "yesno" ? undefined : id} id={`${id}-label`} className="text-sm font-medium flex flex-wrap items-center gap-2">
         {f.label}
-        {f.required && <span className="text-xs font-normal text-muted-foreground">(obligatorio)</span>}
-        {f.secret && <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" aria-label="Se guarda cifrado" />}
+        {f.required && <span className="text-xs font-normal text-muted-foreground">{t("settingsPayments.integrations.required")}</span>}
+        {f.secret && <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" aria-label={t("settingsPayments.integrations.storedEncrypted")} />}
       </label>
       {f.control === "yesno" ? (
         <div role="radiogroup" aria-labelledby={`${id}-label`} aria-describedby={describedBy} className="inline-flex rounded-lg border border-border/60 p-0.5">
@@ -47,7 +49,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
           aria-describedby={describedBy}
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="">Elige una opción</option>
+          <option value="">{t("settingsPayments.integrations.choose")}</option>
           {f.options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -63,7 +65,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
           spellCheck={false}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
-          placeholder={f.set && f.secret ? `Guardada (${f.display}). Déjala en blanco para conservarla` : !f.set && f.example ? `Por ejemplo: ${f.example}` : ""}
+          placeholder={f.set && f.secret ? t("settingsPayments.integrations.savedPlaceholder", { display: f.display }) : !f.set && f.example ? t("settingsPayments.integrations.examplePlaceholder", { example: f.example }) : ""}
           value={current}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -83,6 +85,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
 }
 
 function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => void }) {
+  const { t } = useI18n();
   const [vals, setVals] = useState<Record<string, string>>({});
   const save = trpc.integrations.save.useMutation();
   const clear = trpc.integrations.clear.useMutation();
@@ -124,17 +127,17 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
         onSubmit={async (e) => {
           e.preventDefault();
           if (hasErrors) {
-            toast.error("Revisa los datos marcados en rojo");
+            toast.error(t("settingsPayments.integrations.fixErrors"));
             return;
           }
           try {
             await save.mutateAsync({ provider: p.id, values: changed });
             setVals({});
             setResult(null);
-            toast.success(`${p.title}: guardado`);
+            toast.success(t("settingsPayments.integrations.savedToast", { title: p.title }));
             onChanged();
           } catch (err) {
-            toast.error(err instanceof Error ? err.message : "No se pudo guardar");
+            toast.error(err instanceof Error ? err.message : t("settingsPayments.integrations.saveFailed"));
           }
         }}
       >
@@ -149,7 +152,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
             disabled={!dirty || hasErrors || save.isPending}
             className="h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
           >
-            {save.isPending ? "Guardando…" : "Guardar"}
+            {save.isPending ? t("settingsPayments.integrations.saving") : t("settingsPayments.integrations.save")}
           </button>
           {p.canTest && (
             <button
@@ -161,11 +164,11 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
                   setResult(await test.mutateAsync({ provider: p.id }));
                   onChanged();
                 } catch (err) {
-                  setResult({ ok: false, message: err instanceof Error ? err.message : "No se pudo comprobar" });
+                  setResult({ ok: false, message: err instanceof Error ? err.message : t("settingsPayments.integrations.testFailed") });
                 }
               }}
             >
-              {test.isPending ? "Comprobando…" : "Probar conexión"}
+              {test.isPending ? t("settingsPayments.integrations.testing") : t("settingsPayments.integrations.test")}
             </button>
           )}
           {p.configured && (
@@ -173,14 +176,14 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
               type="button"
               className="h-10 px-4 rounded-lg text-sm text-red-600 dark:text-red-400"
               onClick={async () => {
-                if (!window.confirm(`¿Quitar los datos de «${p.title}»? Quedará desactivada.`)) return;
+                if (!window.confirm(t("settingsPayments.integrations.confirmClear", { title: p.title }))) return;
                 await clear.mutateAsync({ provider: p.id });
                 setResult(null);
-                toast.success(`${p.title}: desactivada`);
+                toast.success(t("settingsPayments.integrations.clearedToast", { title: p.title }));
                 onChanged();
               }}
             >
-              Quitar datos
+              {t("settingsPayments.integrations.clear")}
             </button>
           )}
         </div>
@@ -195,6 +198,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
 }
 
 export default function Integrations() {
+  const { t } = useI18n();
   const avail = trpc.integrations.available.useQuery();
   const list = trpc.integrations.list.useQuery(undefined, { enabled: avail.data?.available === true });
   const groups = groupIntegrations((list.data ?? []) as PanelIntegration[]);
@@ -203,10 +207,9 @@ export default function Integrations() {
     <AdminLayout>
       <div className="max-w-3xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Integraciones y pagos</h1>
+          <h1 className="text-2xl font-bold">{t("settingsPayments.integrations.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Conecta tus propias cuentas para cobrar con tarjeta, enviar correos y más. Los datos son de tu empresa y lo que no
-            configures queda desactivado. Las claves se guardan cifradas y no se vuelven a mostrar.
+            {t("settingsPayments.integrations.intro")}
           </p>
         </div>
 
@@ -216,15 +219,15 @@ export default function Integrations() {
           </div>
         ) : !avail.data?.available ? (
           <div className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-muted-foreground">
-            En esta instalación las integraciones las configura el equipo técnico. Si necesitas cambiar alguna, contacta con soporte.
+            {t("settingsPayments.integrations.technicalTeam")}
           </div>
         ) : list.isError ? (
           <div role="alert" className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-red-600 dark:text-red-400">
-            No se pudieron cargar las integraciones. Recarga la página para intentarlo de nuevo.
+            {t("settingsPayments.integrations.loadError")}
           </div>
         ) : groups.length === 0 ? (
           <div className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-muted-foreground">
-            Con lo que tienes contratado no hay integraciones que configurar.
+            {t("settingsPayments.integrations.none")}
           </div>
         ) : (
           groups.map((g) => (

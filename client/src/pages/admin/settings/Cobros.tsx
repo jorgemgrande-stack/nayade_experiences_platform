@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, CircleDashed, Loader2, Lock, ShieldCheck, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface Mode {
   mode: "test" | "live";
@@ -23,16 +24,16 @@ interface Mode {
   lastEventType: string | null;
 }
 
-const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: string; help: string }> = {
-  no_conectada: { icon: CircleDashed, className: "text-muted-foreground", help: "Todavía no has vinculado una cuenta de Stripe." },
-  pendiente: { icon: CircleDashed, className: "text-amber-600 dark:text-amber-400", help: "Stripe aún necesita datos tuyos o está revisándolos. Continúa el alta para terminar la verificación." },
-  verificada: { icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-400", help: "Tu cuenta puede cobrar y recibir los pagos." },
-  restringida: { icon: AlertTriangle, className: "text-red-600 dark:text-red-400", help: "Stripe ha limitado la cuenta. Entra en tu panel de Stripe para ver qué piden." },
+const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: string }> = {
+  no_conectada: { icon: CircleDashed, className: "text-muted-foreground" },
+  pendiente: { icon: CircleDashed, className: "text-amber-600 dark:text-amber-400" },
+  verificada: { icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-400" },
+  restringida: { icon: AlertTriangle, className: "text-red-600 dark:text-red-400" },
 };
 
-const fmt = (ms: number | null) => (ms ? new Date(ms).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" }) : "—");
-
 function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boolean; onChanged: () => void }) {
+  const { t, format } = useI18n();
+  const fmt = (ms: number | null) => (ms ? format.dateTime(ms, { dateStyle: "medium", timeStyle: "short" }) : "—");
   const isLive = m.mode === "live";
   const connect = trpc.cobros.connect.useMutation({
     onSuccess: (r) => {
@@ -49,7 +50,7 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
   });
   const refresh = trpc.cobros.refresh.useMutation({
     onSuccess: () => {
-      toast.success("Estado actualizado desde Stripe");
+      toast.success(t("settingsPayments.refreshed"));
       onChanged();
     },
     onError: (e) => toast.error(e.message),
@@ -69,7 +70,7 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
             {m.label}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {isLive ? "Cobros con dinero real." : "Para probar el circuito completo sin mover dinero real."}
+            {isLive ? t("settingsPayments.liveHint") : t("settingsPayments.testHint")}
           </p>
         </div>
         <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${s.className}`}>
@@ -80,40 +81,38 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
       {isLive && !m.connectable ? (
         <div className="flex items-start gap-2 text-sm text-muted-foreground">
           <Lock className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
-          <span>Desactivado. Los cobros reales no están activados para esta empresa; se activan de forma explícita.</span>
+          <span>{t("settingsPayments.liveOff")}</span>
         </div>
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">{s.help}</p>
+          <p className="text-sm text-muted-foreground">{t(`settingsPayments.status.${STATUS_STYLE[m.status] ? m.status : "no_conectada"}`)}</p>
           {isLive && !m.accountHint && (
             <p className="text-sm text-muted-foreground">
-              Se vincula la cuenta de Stripe que ya tienes: inicia sesión en Stripe, elígela y autoriza la conexión. No se crea ninguna cuenta nueva
-              y tus datos bancarios no pasan por Big Elephant.
+              {t("settingsPayments.liveLinkInfo")}
             </p>
           )}
           {m.accountHint && (
             <dl className="grid grid-cols-2 gap-2 text-sm">
-              <dt className="text-muted-foreground">Cuenta vinculada</dt>
+              <dt className="text-muted-foreground">{t("settingsPayments.linkedAccount")}</dt>
               <dd className="font-mono">{m.accountHint}</dd>
-              <dt className="text-muted-foreground">Vinculada el</dt>
+              <dt className="text-muted-foreground">{t("settingsPayments.linkedOn")}</dt>
               <dd>{fmt(m.connectedAt)}</dd>
-              <dt className="text-muted-foreground">Puede cobrar</dt>
-              <dd>{m.chargesEnabled ? "Sí" : "No"}</dd>
-              <dt className="text-muted-foreground">Puede recibir pagos</dt>
-              <dd>{m.payoutsEnabled ? "Sí" : "No"}</dd>
-              <dt className="text-muted-foreground">Último aviso válido de Stripe</dt>
-              <dd>{m.lastEventAt ? `${fmt(m.lastEventAt)} (${m.lastEventType})` : "Aún no ha llegado ninguno"}</dd>
+              <dt className="text-muted-foreground">{t("settingsPayments.canCharge")}</dt>
+              <dd>{m.chargesEnabled ? t("settingsPayments.yes") : t("settingsPayments.no")}</dd>
+              <dt className="text-muted-foreground">{t("settingsPayments.canPayout")}</dt>
+              <dd>{m.payoutsEnabled ? t("settingsPayments.yes") : t("settingsPayments.no")}</dd>
+              <dt className="text-muted-foreground">{t("settingsPayments.lastEvent")}</dt>
+              <dd>{m.lastEventAt ? `${fmt(m.lastEventAt)} (${m.lastEventType})` : t("settingsPayments.noEventYet")}</dd>
             </dl>
           )}
           {m.requirementsDue.length > 0 && (
             <div role="alert" className="text-sm rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
-              Stripe todavía pide {m.requirementsDue.length} dato{m.requirementsDue.length === 1 ? "" : "s"} para completar la verificación.
-              Continúa el alta para enviarlos.
+              {t("settingsPayments.requirementsDue", { n: m.requirementsDue.length })}
             </div>
           )}
           {m.disabledReason && (
             <div role="alert" className="text-sm rounded-xl border border-red-500/40 bg-red-500/10 p-3">
-              Motivo indicado por Stripe: {m.disabledReason}
+              {t("settingsPayments.disabledReason", { reason: m.disabledReason })}
             </div>
           )}
 
@@ -121,18 +120,18 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
             {isLive ? (
               <Button onClick={() => connectLive.mutate()} disabled={connectLive.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
                 {connectLive.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {m.accountHint ? "Volver a autorizar en Stripe" : "Vincular mi cuenta de Stripe"}
+                {m.accountHint ? t("settingsPayments.reauthorize") : t("settingsPayments.linkAccount")}
               </Button>
             ) : (
               <Button onClick={() => connect.mutate()} disabled={!platformReady || connect.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
                 {connect.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {m.accountHint ? "Continuar o revisar en Stripe" : "Conectar mi cuenta de Stripe"}
+                {m.accountHint ? t("settingsPayments.continueReview") : t("settingsPayments.connectAccount")}
               </Button>
             )}
             {m.accountHint && (
               <Button variant="outline" onClick={() => refresh.mutate({ mode: m.mode })} disabled={refresh.isPending}>
                 {refresh.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Comprobar estado
+                {t("settingsPayments.checkStatus")}
               </Button>
             )}
           </div>
@@ -147,14 +146,14 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
                 onChange={(e) => setOnline.mutate({ mode: m.mode, enabled: e.target.checked })}
               />
               <span>
-                <strong>Cobrar en línea con esta cuenta ({m.label})</strong>
+                <strong>{t("settingsPayments.chargeOnline", { label: m.label })}</strong>
                 <br />
                 <span className="text-muted-foreground">
                   {m.status === "verificada"
                     ? isLive
-                      ? "Los presupuestos de pago único y la compra de la tienda cobrarán con tarjeta, con dinero real, en tu cuenta de Stripe."
-                      : "Los presupuestos de pago único mostrarán el pago con tarjeta en Stripe, sin mover dinero real."
-                    : "Se podrá activar cuando la cuenta esté verificada."}
+                      ? t("settingsPayments.onlineLive")
+                      : t("settingsPayments.onlineTest")
+                    : t("settingsPayments.onlineLater")}
                 </span>
               </span>
             </label>
@@ -166,6 +165,7 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
 }
 
 export default function Cobros() {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const status = trpc.cobros.status.useQuery();
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
@@ -175,7 +175,7 @@ export default function Cobros() {
   const oauthState = params?.get("state") ?? null;
   const oauthError = params?.get("error") ?? null;
   const completeLive = trpc.cobros.completeLive.useMutation({
-    onSuccess: () => toast.success("Cuenta de Stripe vinculada"),
+    onSuccess: () => toast.success(t("settingsPayments.linked")),
     onError: (e) => toast.error(e.message),
     onSettled: () => {
       window.history.replaceState(null, "", window.location.pathname);
@@ -192,7 +192,7 @@ export default function Cobros() {
   // Vuelta de la autorización de Stripe (modo Real): el código es de un solo uso y el servidor comprueba el state firmado
   useEffect(() => {
     if (oauthError) {
-      toast.error("Stripe no ha completado la autorización. Puedes volver a intentarlo.");
+      toast.error(t("settingsPayments.authFailed"));
       window.history.replaceState(null, "", window.location.pathname);
     } else if (code && oauthState && !completeLive.isPending && !completeLive.isSuccess && !completeLive.isError) {
       completeLive.mutate({ code, state: oauthState });
@@ -204,10 +204,9 @@ export default function Cobros() {
     <AdminLayout>
       <div className="max-w-3xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Cobros con Stripe</h1>
+          <h1 className="text-2xl font-bold">{t("settingsPayments.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Conecta la cuenta de Stripe de tu empresa para cobrar tus ventas directamente en ella. El dinero va a tu cuenta; no pasa por
-            la de Big Elephant, que solo cobra tu suscripción. Prueba y Real son conexiones distintas.
+            {t("settingsPayments.intro")}
           </p>
         </div>
 
@@ -224,7 +223,7 @@ export default function Cobros() {
             <>
               {!status.data.platformReady && (
                 <div role="alert" className="text-sm rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
-                  Los cobros con Stripe aún no están preparados en la plataforma. {status.data.platformProblem}
+                  {t("settingsPayments.platformNotReady", { problem: status.data.platformProblem })}
                 </div>
               )}
               {status.data.modes.map((m) => (
@@ -232,8 +231,7 @@ export default function Cobros() {
               ))}
               <p className="flex items-start gap-2 text-xs text-muted-foreground">
                 <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden />
-                Autorizas la conexión en la página de Stripe, con tus propios datos fiscales y bancarios: Big Elephant no los ve ni los
-                guarda. Los avisos de Stripe se reciben y verifican de forma automática; no tienes que configurar ninguna dirección ni secreto.
+                {t("settingsPayments.footer")}
               </p>
             </>
           )

@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/admin/studio/Inspector";
 import { localeAutonym } from "@/hooks/useSiteLocale";
 import { WHATSAPP_MESSAGE_MAX, type WhatsappPosition } from "@shared/whatsappButton";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 interface Form {
   enabled: boolean;
@@ -23,6 +24,7 @@ interface Form {
 }
 
 export function WhatsAppButtonEditor() {
+  const tx = useStudioText();
   const utils = trpc.useUtils();
   const q = trpc.whatsappButton.get.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
   const locales = trpc.public.getSiteLocales.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
@@ -35,47 +37,43 @@ export function WhatsAppButtonEditor() {
       setV({ enabled: d.enabled, whatsapp: d.whatsapp, position: d.position, messages: { ...d.messages } });
       void utils.whatsappButton.get.invalidate();
       void utils.public.getTheme.invalidate();
-      toast.success("Botón de WhatsApp guardado");
+      toast.success(tx("Botón de WhatsApp guardado"));
     },
     onError: (e) => toast.error(e.message),
   });
-  if (q.isLoading || !v) return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Cargando" />;
+  if (q.isLoading || !v) return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label={tx("Cargando")} />;
   const langs = locales.data?.multilingual ? locales.data.locales : [locales.data?.defaultLocale ?? "es"];
   return (
     <section aria-labelledby="wa-button-title" className="space-y-4 border-t border-border pt-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 id="wa-button-title" className="text-sm font-semibold text-foreground">
-            Botón de WhatsApp
-          </h3>
-          <p className="text-xs text-muted-foreground">Fijo en una esquina de todas las páginas públicas. Abre WhatsApp con un mensaje inicial que el visitante decide si envía.</p>
+          <h3 id="wa-button-title" className="text-sm font-semibold text-foreground">{tx("Botón de WhatsApp")}</h3>
+          <p className="text-xs text-muted-foreground">{tx("Fijo en una esquina de todas las páginas públicas. Abre WhatsApp con un mensaje inicial que el visitante decide si envía.")}</p>
         </div>
-        <Switch id="wa-enabled" checked={v.enabled} onCheckedChange={(x) => setV({ ...v, enabled: x })} aria-label="Mostrar el botón de WhatsApp" />
+        <Switch id="wa-enabled" checked={v.enabled} onCheckedChange={(x) => setV({ ...v, enabled: x })} aria-label={tx("Mostrar el botón de WhatsApp")} />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="wa-number">Número de WhatsApp</Label>
+        <Label htmlFor="wa-number">{tx("Número de WhatsApp")}</Label>
         <Input id="wa-number" inputMode="tel" value={v.whatsapp} maxLength={25} placeholder="+49 174 2013503" onChange={(e) => setV({ ...v, whatsapp: e.target.value })} />
-        <p className="text-xs text-muted-foreground">Un móvil con WhatsApp. Con prefijo internacional si no es de España.</p>
+        <p className="text-xs text-muted-foreground">{tx("Un móvil con WhatsApp. Con prefijo internacional si no es de España.")}</p>
       </div>
       <Segmented
-          label="Posición"
+          label={tx("Posición")}
           value={v.position}
           options={[
-            { value: "right", label: "Abajo a la derecha" },
-            { value: "left", label: "Abajo a la izquierda" },
+            { value: "right", label: tx("Abajo a la derecha") },
+            { value: "left", label: tx("Abajo a la izquierda") },
           ]}
           onChange={(x) => setV({ ...v, position: x as WhatsappPosition })}
         />
       {langs.map((l) => (
         <div key={l} className="space-y-1">
-          <Label htmlFor={`wa-msg-${l}`}>Mensaje inicial · {localeAutonym(l)}</Label>
+          <Label htmlFor={`wa-msg-${l}`}>{tx("Mensaje inicial · {l}", { l: localeAutonym(l) })}</Label>
           <Textarea id={`wa-msg-${l}`} rows={2} maxLength={WHATSAPP_MESSAGE_MAX} value={v.messages[l] ?? ""} onChange={(e) => setV({ ...v, messages: { ...v.messages, [l]: e.target.value } })} />
         </div>
       ))}
       <Button type="button" size="sm" disabled={save.isPending} onClick={() => save.mutate(v)}>
-        {save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
-        Guardar botón de WhatsApp
-      </Button>
+        {save.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}{tx("Guardar botón de WhatsApp")}</Button>
     </section>
   );
 }

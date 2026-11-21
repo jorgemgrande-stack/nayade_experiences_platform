@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/i18n/I18nProvider";
 
 /**
  * Modo mantenimiento de la web pública de la empresa.
@@ -24,32 +25,6 @@ export function maintenanceControlMode(o: { role: string; install: "single" | "m
   return null;
 }
 
-const TEXTS = {
-  technical: {
-    on: "Mantenimiento ACTIVO",
-    off: "Modo mantenimiento",
-    title: "Modo mantenimiento — Web pública",
-    description:
-      "Cuando está activo, la web pública muestra este aviso y bloquea todas las rutas excepto el panel de administración. El acceso a /admin sigue funcionando con normalidad.",
-    switchLabel: "Desactivar web pública",
-    switchHint: "Ningún usuario podrá reservar ni navegar la web mientras esté activo.",
-    savedOn: "Web pública desactivada",
-    savedOff: "Web pública reactivada",
-    saveOn: "Desactivar web y guardar",
-  },
-  web: {
-    on: "Web en mantenimiento",
-    off: "Mantenimiento de la web",
-    title: "Web en mantenimiento",
-    description: "Mientras esté activo, tu web pública muestra este aviso en lugar de su contenido. El panel sigue funcionando con normalidad.",
-    switchLabel: "Poner la web en mantenimiento",
-    switchHint: "Nadie podrá navegar por tu web mientras esté activo.",
-    savedOn: "Tu web está en mantenimiento",
-    savedOff: "Tu web vuelve a estar disponible",
-    saveOn: "Poner en mantenimiento y guardar",
-  },
-} as const;
-
 const WEB_DEFAULT_MESSAGE =
   "Web en mantenimiento\n\n" +
   "Estamos haciendo mejoras en nuestra web y volveremos a estar disponibles muy pronto.\n\n" +
@@ -64,7 +39,18 @@ const DEFAULT_MESSAGE =
   "Gracias por vuestra comprensión";
 
 export default function MaintenanceModeControl({ mode = "technical" }: { mode?: Exclude<MaintenanceControlMode, null> }) {
-  const t = TEXTS[mode];
+  const { t: tr } = useI18n();
+  const t = mode === "web"
+    ? {
+        on: tr("maintenance.web.on"), off: tr("maintenance.web.off"), title: tr("maintenance.web.title"), description: tr("maintenance.web.description"),
+        switchLabel: tr("maintenance.web.switchLabel"), switchHint: tr("maintenance.web.switchHint"), savedOn: tr("maintenance.web.savedOn"),
+        savedOff: tr("maintenance.web.savedOff"), saveOn: tr("maintenance.web.saveOn"),
+      }
+    : {
+        on: tr("maintenance.technical.on"), off: tr("maintenance.technical.off"), title: tr("maintenance.technical.title"), description: tr("maintenance.technical.description"),
+        switchLabel: tr("maintenance.technical.switchLabel"), switchHint: tr("maintenance.technical.switchHint"), savedOn: tr("maintenance.technical.savedOn"),
+        savedOff: tr("maintenance.technical.savedOff"), saveOn: tr("maintenance.technical.saveOn"),
+      };
   const defaultMessage = mode === "web" ? WEB_DEFAULT_MESSAGE : DEFAULT_MESSAGE;
   const [open, setOpen] = useState(false);
   const [enabledDraft, setEnabledDraft] = useState(false);
@@ -90,7 +76,7 @@ export default function MaintenanceModeControl({ mode = "technical" }: { mode?: 
       toast.success(enabledDraft ? t.savedOn : t.savedOff);
       setOpen(false);
     } catch (e: any) {
-      toast.error("Error: " + e.message);
+      toast.error(tr("maintenance.errorPrefix", { message: e.message }));
     }
   }
 
@@ -124,12 +110,12 @@ export default function MaintenanceModeControl({ mode = "technical" }: { mode?: 
           {enabledDraft && !isEnabled && (
             <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-300">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <p>Al guardar, la web dejará de estar accesible al público inmediatamente.</p>
+              <p>{tr("maintenance.warning")}</p>
             </div>
           )}
 
           <div>
-            <p className="text-sm font-medium text-foreground mb-1.5">Mensaje mostrado</p>
+            <p className="text-sm font-medium text-foreground mb-1.5">{tr("maintenance.messageShown")}</p>
             <Textarea
               value={messageDraft}
               onChange={(e) => setMessageDraft(e.target.value)}
@@ -139,7 +125,7 @@ export default function MaintenanceModeControl({ mode = "technical" }: { mode?: 
           </div>
 
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setOpen(false)}>{tr("maintenance.cancel")}</Button>
             <Button
               size="sm"
               variant={enabledDraft ? "destructive" : "default"}
@@ -148,7 +134,7 @@ export default function MaintenanceModeControl({ mode = "technical" }: { mode?: 
             >
               {updateMut.isPending
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : enabledDraft ? t.saveOn : "Guardar"}
+                : enabledDraft ? t.saveOn : tr("maintenance.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -5,6 +5,7 @@ import { useVocabulary } from "@/lib/vocabulary";
 import { COMPANY_DATA_HREF } from "./configSections";
 import { SetupStatusCard } from "@/components/onboarding/SetupStatusCard";
 import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   CheckCircle2, Circle, AlertTriangle, Loader2,
   Building2, Receipt, Mail, Palette, Settings2, Plug,
@@ -27,6 +28,7 @@ interface SectionCardProps {
 }
 
 function SectionCard({ icon: Icon, title, items, editHref }: SectionCardProps) {
+  const { t } = useI18n();
   const allOk = items.every(i => i.ok);
   const anyOk = items.some(i => i.ok);
 
@@ -45,14 +47,14 @@ function SectionCard({ icon: Icon, title, items, editHref }: SectionCardProps) {
                 ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400"
                 : "bg-muted text-muted-foreground"
           }`}>
-            {allOk ? "Configurado" : anyOk ? "Parcial" : "Pendiente"}
+            {allOk ? t("settingsStatus.card.configured") : anyOk ? t("settingsStatus.card.partial") : t("settingsStatus.card.pending")}
           </span>
           {editHref && (
             <a
               href={editHref}
               className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
             >
-              Editar <ExternalLink className="w-3 h-3" />
+              {t("settingsStatus.card.edit")} <ExternalLink className="w-3 h-3" />
             </a>
           )}
         </div>
@@ -73,6 +75,7 @@ function SectionCard({ icon: Icon, title, items, editHref }: SectionCardProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ConfigStatus() {
+  const { t } = useI18n();
   // Empresa con licencias por capacidad: sin variables del servidor ni feature flags, y los datos de empresa se
   // editan en «Datos de la empresa». En single, como siempre.
   const sub = usePanelSubscription();
@@ -118,9 +121,9 @@ export default function ConfigStatus() {
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">Estado del sistema</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsStatus.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Resumen de la configuración del negocio y estado de integraciones.
+            {t("settingsStatus.intro")}
           </p>
         </div>
 
@@ -131,24 +134,24 @@ export default function ConfigStatus() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <SectionCard
             icon={Building2}
-            title={technical ? "Información del negocio" : "Datos de la empresa"}
+            title={technical ? t("settingsStatus.business.titleTech") : t("settingsStatus.business.titleCompany")}
             editHref={companyHref}
             items={[
-              { label: "Nombre comercial",  ok: hasValue("brand_name"),          note: getSetting("brand_name") || undefined },
-              { label: "Teléfono",          ok: hasValue("brand_phone") || hasValue("brand_support_phone") },
-              { label: "Dominio web",       ok: hasValue("brand_domain"),         note: getSetting("brand_domain") || undefined },
-              { label: "Localización",      ok: hasValue("brand_location") },
+              { label: t("settingsStatus.business.name"),  ok: hasValue("brand_name"),          note: getSetting("brand_name") || undefined },
+              { label: t("settingsStatus.business.phone"),          ok: hasValue("brand_phone") || hasValue("brand_support_phone") },
+              { label: t("settingsStatus.business.domain"),       ok: hasValue("brand_domain"),         note: getSetting("brand_domain") || undefined },
+              { label: t("settingsStatus.business.location"),      ok: hasValue("brand_location") },
             ]}
           />
           <SectionCard
             icon={Receipt}
-            title="Datos fiscales"
+            title={t("settingsStatus.fiscal.title")}
             editHref={companyHref}
             items={[
-              { label: "NIF / CIF",         ok: hasValue("brand_nif"),     note: getSetting("brand_nif") || undefined },
-              { label: "Domicilio fiscal",   ok: hasValue("brand_address") },
-              { label: "IVA general",        ok: hasValue("tax_rate_general"), note: getSetting("tax_rate_general") ? `${getSetting("tax_rate_general")}%` : undefined },
-              { label: "IVA reducido",       ok: hasValue("tax_rate_reduced"), note: getSetting("tax_rate_reduced") ? `${getSetting("tax_rate_reduced")}%` : undefined },
+              { label: t("settingsStatus.fiscal.taxId"),         ok: hasValue("brand_nif"),     note: getSetting("brand_nif") || undefined },
+              { label: t("settingsStatus.fiscal.address"),   ok: hasValue("brand_address") },
+              { label: t("settingsStatus.fiscal.vatGeneral"),        ok: hasValue("tax_rate_general"), note: getSetting("tax_rate_general") ? `${getSetting("tax_rate_general")}%` : undefined },
+              { label: t("settingsStatus.fiscal.vatReduced"),       ok: hasValue("tax_rate_reduced"), note: getSetting("tax_rate_reduced") ? `${getSetting("tax_rate_reduced")}%` : undefined },
             ]}
           />
         </div>
@@ -156,27 +159,27 @@ export default function ConfigStatus() {
         {/* Emails */}
         <SectionCard
           icon={Mail}
-          title="Emails y notificaciones"
+          title={t("settingsStatus.emails.title")}
           editHref={settingsHref}
           items={[
-            { label: `Email de ${voc.ordersLower}`, ok: hasValue("email_reservations"),   note: getSetting("email_reservations") || "(usando valor por defecto)" },
-            { label: "Email alertas admin",  ok: hasValue("email_admin_alerts"),   note: getSetting("email_admin_alerts") || "(usando valor por defecto)" },
-            { label: "Email contabilidad",   ok: hasValue("email_accounting"),     note: getSetting("email_accounting") || "(usando valor por defecto)" },
-            { label: "Email cancelaciones",  ok: hasValue("email_cancellations"),  note: getSetting("email_cancellations") || "(usando valor por defecto)" },
-            { label: "Remitente noreply",    ok: hasValue("email_noreply_sender"), note: getSetting("email_noreply_sender") || "(usando valor por defecto)" },
+            { label: t("settingsStatus.emails.orders", { what: voc.ordersLower }), ok: hasValue("email_reservations"),   note: getSetting("email_reservations") || t("settingsStatus.emails.usingDefault") },
+            { label: t("settingsStatus.emails.admin"),  ok: hasValue("email_admin_alerts"),   note: getSetting("email_admin_alerts") || t("settingsStatus.emails.usingDefault") },
+            { label: t("settingsStatus.emails.accounting"),   ok: hasValue("email_accounting"),     note: getSetting("email_accounting") || t("settingsStatus.emails.usingDefault") },
+            { label: t("settingsStatus.emails.cancellations"),  ok: hasValue("email_cancellations"),  note: getSetting("email_cancellations") || t("settingsStatus.emails.usingDefault") },
+            { label: t("settingsStatus.emails.noreply"),    ok: hasValue("email_noreply_sender"), note: getSetting("email_noreply_sender") || t("settingsStatus.emails.usingDefault") },
           ]}
         />
 
         {/* Branding */}
         <SectionCard
           icon={Palette}
-          title={technical ? "Branding" : "Marca"}
+          title={technical ? t("settingsStatus.branding.titleTech") : t("settingsStatus.branding.titleBrand")}
           editHref={settingsHref}
           items={[
-            { label: "Logotipo",        ok: hasValue("brand_logo_url") },
-            { label: "Color principal", ok: hasValue("brand_primary_color"), note: getSetting("brand_primary_color") || undefined },
-            { label: "Color acento",    ok: hasValue("brand_accent_color"),  note: getSetting("brand_accent_color") || undefined },
-            { label: "Instagram",       ok: hasValue("brand_instagram") },
+            { label: t("settingsStatus.branding.logo"),        ok: hasValue("brand_logo_url") },
+            { label: t("settingsStatus.branding.primary"), ok: hasValue("brand_primary_color"), note: getSetting("brand_primary_color") || undefined },
+            { label: t("settingsStatus.branding.accent"),    ok: hasValue("brand_accent_color"),  note: getSetting("brand_accent_color") || undefined },
+            { label: t("settingsStatus.branding.instagram"),       ok: hasValue("brand_instagram") },
           ]}
         />
 
@@ -185,15 +188,15 @@ export default function ConfigStatus() {
           <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border/50">
             <div className="flex items-center gap-2">
               <Settings2 className="w-4 h-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">Módulos activos</h3>
+              <h3 className="text-sm font-semibold text-foreground">{t("settingsStatus.modules.title")}</h3>
             </div>
             <a href={SETUP_WIZARD_PATH} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors">
-              Editar <ExternalLink className="w-3 h-3" />
+              {t("settingsStatus.card.edit")} <ExternalLink className="w-3 h-3" />
             </a>
           </div>
           <div className="p-5">
             {moduleGroups.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No hay módulos activos.</p>
+              <p className="text-sm text-muted-foreground text-center py-4">{t("settingsStatus.modules.none")}</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {moduleGroups.map(group => {
@@ -215,10 +218,10 @@ export default function ConfigStatus() {
           <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border/50">
             <div className="flex items-center gap-2">
               <Plug className="w-4 h-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">Variables de entorno (Railway)</h3>
+              <h3 className="text-sm font-semibold text-foreground">{t("settingsStatus.env.title")}</h3>
             </div>
             <span className="text-xs text-muted-foreground">
-              {env.filter(e => e.isSet).length}/{env.length} configuradas
+              {t("settingsStatus.env.configured", { set: env.filter(e => e.isSet).length, total: env.length })}
             </span>
           </div>
           <div className="divide-y divide-border/30">
@@ -234,7 +237,7 @@ export default function ConfigStatus() {
                       <span className="text-sm text-foreground flex-1">{e.label}</span>
                       <code className="text-xs font-mono text-muted-foreground/60">{e.key}</code>
                       {!e.isSet && (
-                        <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Pendiente</span>
+                        <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">{t("settingsStatus.card.pending")}</span>
                       )}
                     </div>
                   ))}

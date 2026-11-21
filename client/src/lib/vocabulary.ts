@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { buildVocabulary, type Vocabulary } from "@shared/vocabulary";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export type { Vocabulary } from "@shared/vocabulary";
 export { buildVocabulary, visibleCrmTabs } from "@shared/vocabulary";
@@ -11,10 +12,11 @@ export { buildVocabulary, visibleCrmTabs } from "@shared/vocabulary";
  */
 export function useVocabulary(): Vocabulary {
   const sub = usePanelSubscription();
+  const { locale } = useI18n();
   const { isLicensed, can, data } = sub;
   // `can` cambia en cada render; el vocabulario solo depende del modo y de las licencias visibles
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => buildVocabulary({ licensed: isLicensed, can }), [isLicensed, data]);
+  return useMemo(() => buildVocabulary({ licensed: isLicensed, can, locale }), [isLicensed, data, locale]);
 }
 
 /**

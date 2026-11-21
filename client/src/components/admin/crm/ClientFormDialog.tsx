@@ -15,21 +15,20 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { errorMessage } from "@/components/admin/PanelStates";
+import { useI18n } from "@/i18n/I18nProvider";
 import { selectClass } from "@/components/admin/crm/CrmParts";
 import {
-  CLIENT_KIND_LABELS, CLIENT_KINDS, clientDisplayName, clientFormPayload, clientFormValues, duplicateMessage, validateClientForm,
+  CLIENT_KINDS, clientDisplayName, clientFormPayload, clientFormValues, duplicateMessage, validateClientForm,
   type ClientFormField, type ClientFormValues, type ClientKind, type DuplicateMatch,
 } from "@shared/clientProfile";
 
 /** Países más habituales; si el cliente tiene otro guardado, se conserva como opción. */
-const COUNTRIES: Array<[string, string]> = [
-  ["ES", "España"], ["PT", "Portugal"], ["FR", "Francia"], ["IT", "Italia"], ["DE", "Alemania"], ["GB", "Reino Unido"],
-  ["IE", "Irlanda"], ["NL", "Países Bajos"], ["BE", "Bélgica"], ["AD", "Andorra"], ["US", "Estados Unidos"], ["MX", "México"],
-];
+const COUNTRY_CODES = ["ES", "PT", "FR", "IT", "DE", "GB", "IE", "NL", "BE", "AD", "US", "MX"] as const;
 
 export type ClientFormSource = Partial<Record<string, unknown>> & { id: number };
 
 export function ClientFormDialog({ client, onClose, onSaved }: { client?: ClientFormSource | null; onClose: () => void; onSaved?: (id: number) => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const isEdit = !!client;
   const initial = clientFormValues(client);
@@ -57,12 +56,12 @@ export function ClientFormDialog({ client, onClose, onSaved }: { client?: Client
     utils.crm.clients.getHistory.invalidate();
   };
   const create = trpc.crm.clients.create.useMutation({
-    onSuccess: (r) => { toast.success("Cliente creado"); invalidate(); onSaved?.(Number(r.id)); onClose(); },
-    onError: (e) => setServerError(errorMessage(e, "No se ha podido crear el cliente.")),
+    onSuccess: (r) => { toast.success(t("crmForm.form.created")); invalidate(); onSaved?.(Number(r.id)); onClose(); },
+    onError: (e) => setServerError(errorMessage(e, t("crmForm.form.createError"))),
   });
   const update = trpc.crm.clients.update.useMutation({
-    onSuccess: () => { toast.success("Cambios guardados"); invalidate(); onSaved?.(client!.id); onClose(); },
-    onError: (e) => setServerError(errorMessage(e, "No se han podido guardar los cambios.")),
+    onSuccess: () => { toast.success(t("crmForm.form.saved")); invalidate(); onSaved?.(client!.id); onClose(); },
+    onError: (e) => setServerError(errorMessage(e, t("crmForm.form.saveError"))),
   });
   const pending = create.isPending || update.isPending || checking;
 
@@ -87,7 +86,7 @@ export function ClientFormDialog({ client, onClose, onSaved }: { client?: Client
         const blocking = found.some((d) => d.by.includes("email"));
         if (blocking || (found.length > 0 && !acceptNifDuplicate)) return;
       } catch (e) {
-        setServerError(errorMessage(e, "No se ha podido comprobar si el cliente ya existe."));
+        setServerError(errorMessage(e, t("crmForm.form.checkError")));
         return;
       } finally {
         setChecking(false);
@@ -125,88 +124,89 @@ export function ClientFormDialog({ client, onClose, onSaved }: { client?: Client
   };
 
   const isCompany = form.kind === "empresa";
+  const COUNTRIES: Array<[string, string]> = COUNTRY_CODES.map((c) => [c, t(`crmForm.countries.${c}`)]);
   const blockingDuplicate = duplicates.find((d) => d.by.includes("email"));
   const countryOptions = COUNTRIES.some(([c]) => c === form.country) || !form.country ? COUNTRIES : [...COUNTRIES, [form.country, form.country] as [string, string]];
 
   return (
     <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>{isEdit ? `Editar ${clientDisplayName({ name: initial.name, company: initial.company }) || "cliente"}` : "Nuevo cliente"}</DialogTitle>
-        <DialogDescription>Los campos marcados con * son obligatorios.</DialogDescription>
+        <DialogTitle>{isEdit ? t("crmForm.form.editTitle", { name: clientDisplayName({ name: initial.name, company: initial.company }) || t("crmForm.form.fallbackName") }) : t("crmForm.form.newTitle")}</DialogTitle>
+        <DialogDescription>{t("crmForm.form.requiredNote")}</DialogDescription>
       </DialogHeader>
 
       <form id={`${uid}-form`} noValidate className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         {serverError && (
           <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {serverError} Tus datos siguen en el formulario.
+            {serverError} {t("crmForm.form.dataKept")}
           </div>
         )}
-        {submitted && hasErrors && <p role="alert" className="text-sm text-destructive">Revisa los campos marcados antes de guardar.</p>}
+        {submitted && hasErrors && <p role="alert" className="text-sm text-destructive">{t("crmForm.form.reviewFields")}</p>}
         {duplicates.length > 0 && (
           <div role="alert" className="space-y-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm text-foreground">
             {duplicates.map((d) => (
               <p key={d.id}>
                 {duplicateMessage(d)}{" "}
-                <Link href={`/admin/crm/clientes/${d.id}`} onClick={onClose} className="font-medium text-primary underline underline-offset-4">Abrir su ficha</Link>
+                <Link href={`/admin/crm/clientes/${d.id}`} onClick={onClose} className="font-medium text-primary underline underline-offset-4">{t("crmForm.form.openCard")}</Link>
               </p>
             ))}
             {blockingDuplicate ? (
-              <p className="text-muted-foreground">Cada cliente necesita un correo distinto. Usa otro correo o abre la ficha que ya existe.</p>
+              <p className="text-muted-foreground">{t("crmForm.form.needsOtherEmail")}</p>
             ) : (
               <label className="flex items-center gap-2">
                 <input type="checkbox" className="h-4 w-4 accent-primary" checked={acceptNifDuplicate} onChange={(e) => setAcceptNifDuplicate(e.target.checked)} />
-                Es otro contacto: guardar igualmente
+                {t("crmForm.form.saveAnyway")}
               </label>
             )}
           </div>
         )}
 
         <fieldset>
-          <legend className="text-sm font-medium text-foreground">Tipo de cliente</legend>
-          <div className="mt-2 inline-flex rounded-md border border-border p-0.5" role="radiogroup" aria-label="Tipo de cliente">
+          <legend className="text-sm font-medium text-foreground">{t("crmForm.form.clientType")}</legend>
+          <div className="mt-2 inline-flex rounded-md border border-border p-0.5" role="radiogroup" aria-label={t("crmForm.form.clientType")}>
             {CLIENT_KINDS.map((k: ClientKind) => (
               <label key={k} className={`cursor-pointer rounded px-3 py-1.5 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${form.kind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                 <input type="radio" name={`${uid}-kind`} value={k} checked={form.kind === k} onChange={() => set("kind", k)} className="sr-only" />
-                {CLIENT_KIND_LABELS[k]}
+                {t(`crmForm.kind.${k}`)}
               </label>
             ))}
           </div>
         </fieldset>
 
         <section aria-labelledby={`${uid}-contact`} className="space-y-3">
-          <h3 id={`${uid}-contact`} className="text-sm font-semibold text-foreground">Datos de contacto</h3>
+          <h3 id={`${uid}-contact`} className="text-sm font-semibold text-foreground">{t("crmForm.form.contactData")}</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {isCompany && field("company", "Razón social", { required: true, wide: true, autoComplete: "organization", placeholder: "Nombre legal de la empresa" })}
-            {field("name", isCompany ? "Persona de contacto" : "Nombre y apellidos", { required: !isCompany, wide: true, autoComplete: "name" })}
-            {field("email", "Correo electrónico", { type: "email", required: true, autoComplete: "email", inputMode: "email", placeholder: "nombre@empresa.com" })}
-            {field("phone", "Teléfono", { type: "tel", autoComplete: "tel", inputMode: "tel", placeholder: "+34 600 000 000" })}
+            {isCompany && field("company", t("crmForm.form.company"), { required: true, wide: true, autoComplete: "organization", placeholder: t("crmForm.form.companyPlaceholder") })}
+            {field("name", isCompany ? t("crmForm.form.contactPerson") : t("crmForm.form.fullName"), { required: !isCompany, wide: true, autoComplete: "name" })}
+            {field("email", t("crmForm.form.email"), { type: "email", required: true, autoComplete: "email", inputMode: "email", placeholder: "nombre@empresa.com" })}
+            {field("phone", t("crmForm.form.phone"), { type: "tel", autoComplete: "tel", inputMode: "tel", placeholder: "+34 600 000 000" })}
           </div>
         </section>
 
         <section aria-labelledby={`${uid}-tax`} className="space-y-3">
-          <h3 id={`${uid}-tax`} className="text-sm font-semibold text-foreground">Datos fiscales y dirección</h3>
+          <h3 id={`${uid}-tax`} className="text-sm font-semibold text-foreground">{t("crmForm.form.taxAddress")}</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {field("nif", isCompany ? "CIF / NIF" : "NIF / NIE", { placeholder: isCompany ? "B12345674" : "12345678Z", hint: "Necesario para emitir facturas completas." })}
+            {field("nif", isCompany ? t("crmForm.form.nifCompany") : t("crmForm.form.nifPerson"), { placeholder: isCompany ? "B12345674" : "12345678Z", hint: t("crmForm.form.nifHint") })}
             <div>
-              <label htmlFor={`${uid}-country`} className="block text-sm font-medium text-foreground">País</label>
+              <label htmlFor={`${uid}-country`} className="block text-sm font-medium text-foreground">{t("crmForm.form.country")}</label>
               <select id={`${uid}-country`} className={`${selectClass} mt-1`} value={form.country} onChange={(e) => set("country", e.target.value)}>
                 {countryOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
               </select>
             </div>
-            {field("address", "Dirección", { wide: true, autoComplete: "street-address", placeholder: "Calle, número, piso" })}
-            {field("city", "Población", { autoComplete: "address-level2" })}
-            {field("postalCode", "Código postal", { inputMode: "numeric", autoComplete: "postal-code", placeholder: "28001" })}
+            {field("address", t("crmForm.form.address"), { wide: true, autoComplete: "street-address", placeholder: t("crmForm.form.addressPlaceholder") })}
+            {field("city", t("crmForm.form.city"), { autoComplete: "address-level2" })}
+            {field("postalCode", t("crmForm.form.postalCode"), { inputMode: "numeric", autoComplete: "postal-code", placeholder: "28001" })}
           </div>
         </section>
 
         <div>
-          <label htmlFor={`${uid}-notes`} className="block text-sm font-medium text-foreground">Observaciones</label>
+          <label htmlFor={`${uid}-notes`} className="block text-sm font-medium text-foreground">{t("crmForm.form.notes")}</label>
           <Textarea
             id={`${uid}-notes`}
             rows={2}
             value={form.notes}
             onChange={(e) => set("notes", e.target.value)}
-            placeholder="Preferencias, condiciones acordadas…"
+            placeholder={t("crmForm.form.notesPlaceholder")}
             aria-invalid={shown("notes") ? true : undefined}
             className="mt-1"
           />
@@ -215,10 +215,10 @@ export function ClientFormDialog({ client, onClose, onSaved }: { client?: Client
       </form>
 
       <DialogFooter className="gap-2">
-        <Button variant="outline" onClick={onClose}>Cancelar</Button>
+        <Button variant="outline" onClick={onClose}>{t("crmForm.form.cancel")}</Button>
         <Button type="submit" form={`${uid}-form`} disabled={pending || !!blockingDuplicate}>
           {pending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
-          {pending ? "Guardando…" : isEdit ? "Guardar cambios" : "Crear cliente"}
+          {pending ? t("crmForm.form.saving") : isEdit ? t("crmForm.form.saveChanges") : t("crmForm.form.create")}
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -22,29 +22,31 @@ import { trpc } from "@/lib/trpc";
 import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 
 // ─── Image Upload Zone ─────────────────────────────────────────────────────────
 function ImageUploadZone({ label, value, onChange, index }: {
   label: string; value: string; onChange: (url: string) => void; index: number;
 }) {
+  const { t } = useI18n();
   const imageMax = useImageUploadLimit();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     if (!file) return;
-    if (file.size > imageMax.bytes) { toast.error(`La imagen no puede superar ${imageMax.mb} MB`); return; }
+    if (file.size > imageMax.bytes) { toast.error(t("productsPacks.image.tooBig", { mb: imageMax.mb })); return; }
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("image", file);
       const res = await fetch("/api/upload/image", { method: "POST", body: fd, credentials: "include" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al subir");
+      if (!res.ok) throw new Error(data.error || t("productsPacks.image.uploadFailed"));
       onChange(data.url);
-      toast.success(`Imagen ${index} subida correctamente`);
+      toast.success(t("productsPacks.image.uploaded", { n: index }));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Error al subir imagen");
+      toast.error(e instanceof Error ? e.message : t("productsPacks.image.uploadError"));
     } finally {
       setUploading(false);
     }
@@ -82,7 +84,7 @@ function ImageUploadZone({ label, value, onChange, index }: {
             ) : (
               <>
                 <ImageIcon className="w-6 h-6 opacity-40" />
-                <span className="text-xs">Haz clic o arrastra</span>
+                <span className="text-xs">{t("productsPacks.image.dropHint")}</span>
               </>
             )}
           </div>
@@ -140,6 +142,7 @@ const emptyLineForm: LineForm = {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function LegoPacksManager() {
+  const { t, format: f } = useI18n();
   const imageMax = useImageUploadLimit();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"todos" | "dia" | "escolar" | "empresa" | "estancia">("todos");
@@ -173,7 +176,7 @@ export default function LegoPacksManager() {
   // Mutations
   const createMutation = trpc.legoPacks.create.useMutation({
     onSuccess: (created) => {
-      toast.success("Lego Pack creado. Ahora puedes añadir líneas en la pestaña «Líneas».");
+      toast.success(t("productsPacks.toast.created"));
       refetch();
       // After creating, switch to edit mode so lines tab works
       setEditId(created.id);
@@ -182,11 +185,11 @@ export default function LegoPacksManager() {
     onError: (e) => toast.error(e.message),
   });
   const updateMutation = trpc.legoPacks.update.useMutation({
-    onSuccess: () => { toast.success("Lego Pack actualizado"); refetch(); },
+    onSuccess: () => { toast.success(t("productsPacks.toast.updated")); refetch(); },
     onError: (e) => toast.error(e.message),
   });
   const deleteMutation = trpc.legoPacks.delete.useMutation({
-    onSuccess: () => { toast.success("Lego Pack eliminado"); refetch(); setShowForm(false); setEditId(null); },
+    onSuccess: () => { toast.success(t("productsPacks.toast.deleted")); refetch(); setShowForm(false); setEditId(null); },
     onError: (e) => toast.error(e.message),
   });
   const togglePublishedMutation = trpc.legoPacks.togglePublished.useMutation({
@@ -195,7 +198,7 @@ export default function LegoPacksManager() {
   });
   const addLineMutation = trpc.legoPacks.addLine.useMutation({
     onSuccess: () => {
-      toast.success("Línea añadida");
+      toast.success(t("productsPacks.toast.lineAdded"));
       refetchEditingPack(); refetchPricing();
       setShowLineForm(false); setLineForm(emptyLineForm); setProductSearch("");
     },
@@ -203,7 +206,7 @@ export default function LegoPacksManager() {
   });
   const updateLineMutation = trpc.legoPacks.updateLine.useMutation({
     onSuccess: () => {
-      toast.success("Línea actualizada");
+      toast.success(t("productsPacks.toast.lineUpdated"));
       refetchEditingPack(); refetchPricing();
       setShowLineForm(false); setEditLineId(null); setProductSearch("");
     },
@@ -357,13 +360,13 @@ export default function LegoPacksManager() {
   const lines = editingPack?.lines ?? [];
 
   return (
-    <AdminLayout title="Lego Packs">
+    <AdminLayout title={t("productsPacks.pageTitle")}>
       {/* ── Pack list ── */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Buscar Lego Pack..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+            <Input placeholder={t("productsPacks.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
           <div className="flex gap-1">
             {(["todos", "dia", "escolar", "empresa", "estancia"] as const).map((cat) => (
@@ -378,20 +381,20 @@ export default function LegoPacksManager() {
                     : "bg-muted/40 text-muted-foreground border-border hover:border-primary/40"
                 )}
               >
-                {cat === "todos" ? "Todos" : cat === "dia" ? "☀️ Día" : cat === "escolar" ? "🏫 Escolar" : cat === "empresa" ? "🏢 Empresa" : "🏨 Hotel"}
+                {cat === "todos" ? t("productsPacks.filter.all") : cat === "dia" ? `☀️ ${t("productsPacks.filter.day")}` : cat === "escolar" ? `🏫 ${t("productsPacks.filter.school")}` : cat === "empresa" ? `🏢 ${t("productsPacks.filter.company")}` : `🏨 ${t("productsPacks.filter.hotel")}`}
               </button>
             ))}
           </div>
           <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" /> Nuevo Lego Pack
+            <Plus className="w-4 h-4 mr-2" /> {t("productsPacks.new")}
           </Button>
         </div>
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
             <Layers className="w-16 h-16 opacity-20" />
-            <p className="text-lg font-medium">No hay Lego Packs creados</p>
-            <p className="text-sm">Crea tu primer Lego Pack para componer experiencias personalizadas.</p>
+            <p className="text-lg font-medium">{t("productsPacks.empty.title")}</p>
+            <p className="text-sm">{t("productsPacks.empty.text")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -408,13 +411,13 @@ export default function LegoPacksManager() {
                     <div className="text-xs text-muted-foreground truncate">{p.slug}</div>
                   </div>
                   <Badge variant={p.isPublished ? "default" : "secondary"} className="text-xs flex-shrink-0">
-                    {p.isPublished ? "Publicado" : "Borrador"}
+                    {p.isPublished ? t("productsPacks.published") : t("productsPacks.draft")}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-1 flex-wrap">
                   <Badge variant="outline" className="text-xs">
                     <ListChecks className="w-3 h-3 mr-1" />
-                    {(p as any).lineCount ?? 0} líneas
+                    {t("productsPacks.lineCount", { n: (p as any).lineCount ?? 0 })}
                   </Badge>
                   <Badge variant="outline" className={cn("text-xs",
                     p.category === "dia" ? "border-blue-300 bg-blue-50 text-blue-700" :
@@ -422,7 +425,7 @@ export default function LegoPacksManager() {
                     p.category === "estancia" ? "border-amber-300 bg-amber-50 text-amber-700" :
                     "border-purple-300 bg-purple-50 text-purple-700"
                   )}>
-                    {p.category === "dia" ? "☀️ Día" : p.category === "escolar" ? "🏫 Escolar" : p.category === "estancia" ? "🏨 Hotel" : "🏢 Empresa"}
+                    {p.category === "dia" ? `☀️ ${t("productsPacks.filter.day")}` : p.category === "escolar" ? `🏫 ${t("productsPacks.filter.school")}` : p.category === "estancia" ? `🏨 ${t("productsPacks.filter.hotel")}` : `🏢 ${t("productsPacks.filter.company")}`}
                   </Badge>
                   {(p as any).discountPercent && (
                     <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
@@ -432,21 +435,21 @@ export default function LegoPacksManager() {
                 </div>
                 <div className="flex gap-1 mt-auto">
                   <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => openEdit(p, "general")}>
-                    <Pencil className="w-3 h-3 mr-1" /> Editar
+                    <Pencil className="w-3 h-3 mr-1" /> {t("productsPacks.edit")}
                   </Button>
                   <Button size="sm" variant="outline" className="flex-1 h-8 text-xs" onClick={() => openEdit(p, "lines")}>
-                    <ListChecks className="w-3 h-3 mr-1" /> Líneas
+                    <ListChecks className="w-3 h-3 mr-1" /> {t("productsPacks.tab.lines")}
                   </Button>
                   <Button
                     size="sm" variant="ghost" className="h-8 w-8 p-0 text-xs"
-                    title={p.isPublished ? "Ocultar" : "Publicar"}
+                    title={p.isPublished ? t("productsPacks.hide") : t("productsPacks.publish")}
                     onClick={() => togglePublishedMutation.mutate({ id: p.id, isPublished: !p.isPublished })}
                   >
                     {p.isPublished ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </Button>
                   <Button
                     size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                    onClick={() => { if (confirm("¿Eliminar este Lego Pack?")) deleteMutation.mutate({ id: p.id }); }}
+                    onClick={() => { if (confirm(t("productsPacks.confirmDelete"))) deleteMutation.mutate({ id: p.id }); }}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
@@ -461,24 +464,24 @@ export default function LegoPacksManager() {
       <Dialog open={showForm} onOpenChange={(v) => { if (!v) { setShowForm(false); setEditId(null); } }}>
         <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editId ? `Editar: ${form.title || "Lego Pack"}` : "Nuevo Lego Pack"}</DialogTitle>
+            <DialogTitle>{editId ? t("productsPacks.editTitle", { title: form.title || "Lego Pack" }) : t("productsPacks.new")}</DialogTitle>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="media">Imágenes</TabsTrigger>
+              <TabsTrigger value="general">{t("productsPacks.tab.general")}</TabsTrigger>
+              <TabsTrigger value="media">{t("productsPacks.tab.images")}</TabsTrigger>
               <TabsTrigger value="lines" disabled={!editId}>
-                Líneas {editId && lines.length > 0 && <Badge className="ml-1.5 text-xs h-4 px-1">{lines.length}</Badge>}
+                {t("productsPacks.tab.lines")} {editId && lines.length > 0 && <Badge className="ml-1.5 text-xs h-4 px-1">{lines.length}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="config">Configuración</TabsTrigger>
+              <TabsTrigger value="config">{t("productsPacks.tab.config")}</TabsTrigger>
             </TabsList>
 
             {/* ── General ── */}
             <TabsContent value="general" className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Título *</Label>
+                  <Label>{t("productsPacks.g.title")}</Label>
                   <Input
                     value={form.title}
                     onChange={(e) => {
@@ -494,44 +497,44 @@ export default function LegoPacksManager() {
                 <div>
                   <Label>Slug *</Label>
                   <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="day-pass" />
-                  <p className="text-xs text-muted-foreground mt-1">Auto-generado desde el título</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("productsPacks.g.slugHelp")}</p>
                 </div>
               </div>
               <div>
-                <Label>Subtítulo</Label>
+                <Label>{t("productsPacks.g.subtitle")}</Label>
                 <Input value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} />
               </div>
               <div>
-                <Label>Descripción corta</Label>
+                <Label>{t("productsPacks.g.shortDescription")}</Label>
                 <Textarea rows={2} value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} />
               </div>
               <div>
-                <Label>Descripción completa</Label>
+                <Label>{t("productsPacks.g.description")}</Label>
                 <Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Badge / Etiqueta</Label>
+                  <Label>{t("productsPacks.g.badge")}</Label>
                   <Input value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })} placeholder="¡Más vendido!" />
                 </div>
                 <div>
-                  <Label>Etiqueta de precio</Label>
+                  <Label>{t("productsPacks.g.priceLabel")}</Label>
                   <Input value={form.priceLabel} onChange={(e) => setForm({ ...form, priceLabel: e.target.value })} placeholder="desde 45€/persona" />
                 </div>
               </div>
                <div>
-                <Label>Público objetivo</Label>
+                <Label>{t("productsPacks.g.audience")}</Label>
                 <Input value={form.targetAudience} onChange={(e) => setForm({ ...form, targetAudience: e.target.value })} placeholder="Familias y amigos" />
               </div>
               {/* Categoría */}
               <div>
-                <Label className="text-sm font-semibold">Categoría *</Label>
-                <p className="text-xs text-muted-foreground mb-2">Determina en qué sección pública aparece este Lego Pack</p>
+                <Label className="text-sm font-semibold">{t("productsPacks.g.category")}</Label>
+                <p className="text-xs text-muted-foreground mb-2">{t("productsPacks.g.categoryHelp")}</p>
                 <div className="grid grid-cols-3 gap-3">                  {([
-                    { value: "dia", label: "Día Completo", icon: "☀️", desc: "Packs para un día en el lago", color: "border-blue-400 bg-blue-50 text-blue-700" },
-                    { value: "escolar", label: "Escolar", icon: "🏫", desc: "Packs para grupos escolares", color: "border-green-400 bg-green-50 text-green-700" },
-                    { value: "empresa", label: "Empresa", icon: "🏢", desc: "Packs para equipos y empresas", color: "border-purple-400 bg-purple-50 text-purple-700" },
-                    { value: "estancia", label: "Hotel + Actividades", icon: "🏨", desc: "Packs con alojamiento incluido", color: "border-amber-400 bg-amber-50 text-amber-700" },
+                    { value: "dia", label: t("productsPacks.cat.dia.label"), icon: "☀️", desc: t("productsPacks.cat.dia.desc"), color: "border-blue-400 bg-blue-50 text-blue-700" },
+                    { value: "escolar", label: t("productsPacks.cat.escolar.label"), icon: "🏫", desc: t("productsPacks.cat.escolar.desc"), color: "border-green-400 bg-green-50 text-green-700" },
+                    { value: "empresa", label: t("productsPacks.cat.empresa.label"), icon: "🏢", desc: t("productsPacks.cat.empresa.desc"), color: "border-purple-400 bg-purple-50 text-purple-700" },
+                    { value: "estancia", label: t("productsPacks.cat.estancia.label"), icon: "🏨", desc: t("productsPacks.cat.estancia.desc"), color: "border-amber-400 bg-amber-50 text-amber-700" },
                   ] as const).map((cat) => (
                     <button
                       key={cat.value}
@@ -555,24 +558,24 @@ export default function LegoPacksManager() {
               <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
                 <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">
                   <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">%</span>
-                  Descuento promocional
+                  {t("productsPacks.g.promo")}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">Descuento (%)</label>
+                    <label className="text-xs text-muted-foreground">{t("productsPacks.g.discountPct")}</label>
                     <div className="relative mt-1">
                       <input
                         type="number" min="0" max="100" step="0.5"
                         value={form.discountPercent}
                         onChange={(e) => setForm({ ...form, discountPercent: e.target.value })}
-                        placeholder="Ej: 10"
+                        placeholder={t("productsPacks.g.discountPlaceholder")}
                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm pr-8"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Válido hasta</label>
+                    <label className="text-xs text-muted-foreground">{t("productsPacks.g.validUntil")}</label>
                     <input
                       type="date"
                       value={form.discountExpiresAt}
@@ -583,41 +586,41 @@ export default function LegoPacksManager() {
                 </div>
                 {form.discountPercent && (
                   <p className="text-xs text-amber-600 mt-2">
-                    El precio con descuento se calculará automáticamente.
-                    {!form.discountExpiresAt && " Sin fecha de caducidad: activo indefinidamente."}
+                    {t("productsPacks.g.discountNote")}
+                    {!form.discountExpiresAt && ` ${t("productsPacks.g.noExpiry")}`}
                   </p>
                 )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t">
-                <Button variant="outline" onClick={() => { setShowForm(false); setEditId(null); }}>Cancelar</Button>
+                <Button variant="outline" onClick={() => { setShowForm(false); setEditId(null); }}>{t("productsPacks.cancel")}</Button>
                 <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
                   <Save className="w-4 h-4 mr-2" />
-                  {editId ? "Guardar cambios" : "Crear Lego Pack"}
+                  {editId ? t("productsPacks.saveChanges") : t("productsPacks.create")}
                 </Button>
               </div>
             </TabsContent>
 
             {/* ── Imágenes ── */}
             <TabsContent value="media" className="space-y-4 mt-4">
-              <p className="text-xs text-muted-foreground">Haz clic en cada zona para subir una imagen, o arrástrala directamente. Formatos: JPG, PNG, WEBP. Máx. {imageMax.mb} MB.</p>
+              <p className="text-xs text-muted-foreground">{t("productsPacks.media.help", { mb: imageMax.mb })}</p>
               <div>
-                <p className="text-sm font-medium mb-2">Imagen de portada</p>
-                <ImageUploadZone label="Portada" value={form.coverImageUrl} onChange={(url) => setForm(f => ({ ...f, coverImageUrl: url }))} index={0} />
+                <p className="text-sm font-medium mb-2">{t("productsPacks.media.cover")}</p>
+                <ImageUploadZone label={t("productsPacks.media.coverLabel")} value={form.coverImageUrl} onChange={(url) => setForm(f => ({ ...f, coverImageUrl: url }))} index={0} />
               </div>
               <div>
-                <p className="text-sm font-medium mb-2">Galería de imágenes</p>
+                <p className="text-sm font-medium mb-2">{t("productsPacks.media.gallery")}</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <ImageUploadZone label="Imagen 1" value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
-                  <ImageUploadZone label="Imagen 2" value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
-                  <ImageUploadZone label="Imagen 3" value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
-                  <ImageUploadZone label="Imagen 4" value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
+                  <ImageUploadZone label={t("productsPacks.media.imageN", { n: 1 })} value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
+                  <ImageUploadZone label={t("productsPacks.media.imageN", { n: 2 })} value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
+                  <ImageUploadZone label={t("productsPacks.media.imageN", { n: 3 })} value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
+                  <ImageUploadZone label={t("productsPacks.media.imageN", { n: 4 })} value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t">
-                <Button variant="outline" onClick={() => { setShowForm(false); setEditId(null); }}>Cerrar</Button>
+                <Button variant="outline" onClick={() => { setShowForm(false); setEditId(null); }}>{t("productsPacks.close")}</Button>
                 <Button onClick={handleSave} disabled={updateMutation.isPending}>
-                  <Save className="w-4 h-4 mr-2" /> Guardar cambios
+                  <Save className="w-4 h-4 mr-2" /> {t("productsPacks.saveChanges")}
                 </Button>
               </div>
             </TabsContent>
@@ -626,7 +629,7 @@ export default function LegoPacksManager() {
             <TabsContent value="lines" className="mt-4">
               {!editId ? (
                 <div className="text-center py-12 text-muted-foreground text-sm">
-                  Guarda el pack primero para poder añadir líneas.
+                  {t("productsPacks.lines.saveFirst")}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -634,24 +637,24 @@ export default function LegoPacksManager() {
                   {pricing && (
                     <div className="grid grid-cols-3 gap-3">
                       <div className="rounded-lg border bg-card p-3">
-                        <div className="text-xs text-muted-foreground">Precio base total</div>
-                        <div className="text-lg font-bold">{(pricing as any).totalOriginal?.toFixed(2)} €</div>
+                        <div className="text-xs text-muted-foreground">{t("productsPacks.lines.totalBase")}</div>
+                        <div className="text-lg font-bold">{f.currency((pricing as any).totalOriginal)}</div>
                       </div>
                       <div className="rounded-lg border bg-card p-3">
-                        <div className="text-xs text-muted-foreground">Descuento total</div>
-                        <div className="text-lg font-bold text-orange-500">-{(pricing as any).totalDiscount?.toFixed(2)} €</div>
+                        <div className="text-xs text-muted-foreground">{t("productsPacks.lines.totalDiscount")}</div>
+                        <div className="text-lg font-bold text-orange-500">-{f.currency((pricing as any).totalDiscount)}</div>
                       </div>
                       <div className="rounded-lg border bg-accent/10 border-accent/30 p-3">
-                        <div className="text-xs text-muted-foreground">Precio final pack</div>
-                        <div className="text-lg font-bold text-accent">{(pricing as any).totalFinal?.toFixed(2)} €</div>
+                        <div className="text-xs text-muted-foreground">{t("productsPacks.lines.totalFinal")}</div>
+                        <div className="text-lg font-bold text-accent">{f.currency((pricing as any).totalFinal)}</div>
                       </div>
                     </div>
                   )}
 
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">{lines.length} líneas configuradas</p>
+                    <p className="text-sm text-muted-foreground">{t("productsPacks.lines.configured", { n: lines.length })}</p>
                     <Button size="sm" onClick={openAddLine}>
-                      <Plus className="w-4 h-4 mr-1" /> Añadir línea
+                      <Plus className="w-4 h-4 mr-1" /> {t("productsPacks.lines.add")}
                     </Button>
                   </div>
 
@@ -660,13 +663,13 @@ export default function LegoPacksManager() {
                     <table className="w-full text-sm min-w-[600px]">
                       <thead className="bg-muted/50">
                         <tr>
-                          <th className="text-left px-3 py-2 font-medium w-8">Act.</th>
-                          <th className="text-left px-3 py-2 font-medium max-w-[180px]">Producto</th>
-                          <th className="text-left px-3 py-2 font-medium">Grupo</th>
-                          <th className="text-left px-3 py-2 font-medium w-10">Qty</th>
-                          <th className="text-left px-3 py-2 font-medium w-16">Dto.</th>
-                          <th className="text-left px-3 py-2 font-medium w-20">Precio</th>
-                          <th className="text-left px-3 py-2 font-medium w-20">Flags</th>
+                          <th className="text-left px-3 py-2 font-medium w-8">{t("productsPacks.lines.col.active")}</th>
+                          <th className="text-left px-3 py-2 font-medium max-w-[180px]">{t("productsPacks.lines.col.product")}</th>
+                          <th className="text-left px-3 py-2 font-medium">{t("productsPacks.lines.col.group")}</th>
+                          <th className="text-left px-3 py-2 font-medium w-10">{t("productsPacks.lines.col.qty")}</th>
+                          <th className="text-left px-3 py-2 font-medium w-16">{t("productsPacks.lines.col.discount")}</th>
+                          <th className="text-left px-3 py-2 font-medium w-20">{t("productsPacks.lines.col.price")}</th>
+                          <th className="text-left px-3 py-2 font-medium w-20">{t("productsPacks.lines.col.flags")}</th>
                           <th className="sticky right-0 bg-muted/50 px-3 py-2 w-20"></th>
                         </tr>
                       </thead>
@@ -674,7 +677,7 @@ export default function LegoPacksManager() {
                         {lines.length === 0 && (
                           <tr>
                             <td colSpan={8} className="text-center py-10 text-muted-foreground">
-                              Sin líneas. Pulsa «Añadir línea» para componer este pack.
+                              {t("productsPacks.lines.empty")}
                             </td>
                           </tr>
                         )}
@@ -687,7 +690,7 @@ export default function LegoPacksManager() {
                                   type="button"
                                   onClick={() => toggleLineActive(line)}
                                   className="text-muted-foreground hover:text-foreground transition-colors"
-                                  title={line.isActive ? "Desactivar línea" : "Activar línea"}
+                                  title={line.isActive ? t("productsPacks.lines.deactivate") : t("productsPacks.lines.activate")}
                                 >
                                   {line.isActive
                                     ? <CheckSquare className="w-4 h-4 text-green-600" />
@@ -707,27 +710,27 @@ export default function LegoPacksManager() {
                               <td className="px-3 py-2">{line.defaultQuantity}</td>
                               <td className="px-3 py-2">
                                 {parseFloat(String(line.discountValue)) > 0
-                                  ? <span className="text-orange-500 font-medium">{line.discountType === "percent" ? `${line.discountValue}%` : `${line.discountValue}€`}</span>
+                                  ? <span className="text-orange-500 font-medium">{line.discountType === "percent" ? `${line.discountValue}%` : f.currency(Number(line.discountValue))}</span>
                                   : "—"}
                               </td>
                               <td className="px-3 py-2 font-medium">
-                                {pricingLine ? `${pricingLine.finalPrice.toFixed(2)} €` : "—"}
+                                {pricingLine ? f.currency(pricingLine.finalPrice) : "—"}
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex gap-1 flex-wrap">
-                                  {line.isRequired && <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">Req</Badge>}
-                                  {line.isOptional && <Badge variant="outline" className="text-xs bg-blue-50 text-blue-600 border-blue-200">Opt</Badge>}
-                                  {!line.isClientVisible && <Badge variant="outline" className="text-xs bg-gray-50 text-gray-500 border-gray-200">Oculto</Badge>}
+                                  {line.isRequired && <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">{t("productsPacks.lines.req")}</Badge>}
+                                  {line.isOptional && <Badge variant="outline" className="text-xs bg-blue-50 text-blue-600 border-blue-200">{t("productsPacks.lines.opt")}</Badge>}
+                                  {!line.isClientVisible && <Badge variant="outline" className="text-xs bg-gray-50 text-gray-500 border-gray-200">{t("productsPacks.lines.hidden")}</Badge>}
                                 </div>
                               </td>
                               <td className="sticky right-0 bg-card px-3 py-2 border-l border-border/30">
                                 <div className="flex gap-1">
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar línea" onClick={() => openEditLine(line)}>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={t("productsPacks.lines.edit")} onClick={() => openEditLine(line)}>
                                     <Pencil className="w-3 h-3" />
                                   </Button>
                                   <Button
-                                    size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Eliminar línea"
-                                    onClick={() => { if (confirm("¿Eliminar esta línea?")) deleteLineMutation.mutate({ id: line.id }); }}
+                                    size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title={t("productsPacks.lines.delete")}
+                                    onClick={() => { if (confirm(t("productsPacks.lines.confirmDelete"))) deleteLineMutation.mutate({ id: line.id }); }}
                                   >
                                     <Trash2 className="w-3 h-3" />
                                   </Button>
@@ -743,20 +746,20 @@ export default function LegoPacksManager() {
                   {/* Pricing detail */}
                   {pricing && (pricing as any).lines?.length > 0 && (
                     <div className="rounded-lg border bg-card p-4">
-                      <h3 className="font-semibold mb-3 text-sm">Desglose de precios por línea</h3>
+                      <h3 className="font-semibold mb-3 text-sm">{t("productsPacks.lines.breakdown")}</h3>
                       <div className="space-y-2">
                         {(pricing as any).lines.map((l: any) => (
                           <div key={l.lineId} className="flex items-center justify-between text-sm">
                             <div className="flex items-center gap-2">
                               <span className="text-muted-foreground">{l.groupLabel ? `[${l.groupLabel}]` : ""}</span>
                               <span>{l.sourceName}</span>
-                              {l.isOptional && <Badge variant="outline" className="text-xs">opcional</Badge>}
+                              {l.isOptional && <Badge variant="outline" className="text-xs">{t("productsPacks.lines.optional")}</Badge>}
                             </div>
                             <div className="flex items-center gap-3 text-right">
                               {l.discountAmount > 0 && (
-                                <span className="text-muted-foreground line-through text-xs">{l.basePrice.toFixed(2)} €</span>
+                                <span className="text-muted-foreground line-through text-xs">{f.currency(l.basePrice)}</span>
                               )}
-                              <span className="font-medium">{l.finalPrice.toFixed(2)} €</span>
+                              <span className="font-medium">{f.currency(l.finalPrice)}</span>
                             </div>
                           </div>
                         ))}
@@ -771,54 +774,54 @@ export default function LegoPacksManager() {
             <TabsContent value="config" className="space-y-4 mt-4">
               <div className="space-y-3">
                 <div>
-                  <Label className="mb-1.5 block">Modo disponibilidad</Label>
+                  <Label className="mb-1.5 block">{t("productsPacks.cfg.availability")}</Label>
                   <Select value={form.availabilityMode} onValueChange={(v) => setForm({ ...form, availabilityMode: v as "strict" | "flexible" })}>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecciona modo..." />
+                      <SelectValue placeholder={t("productsPacks.cfg.selectMode")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="strict">Estricto — todas las líneas deben estar disponibles</SelectItem>
-                      <SelectItem value="flexible">Flexible — permite líneas no disponibles</SelectItem>
+                      <SelectItem value="strict">{t("productsPacks.cfg.strict")}</SelectItem>
+                      <SelectItem value="flexible">{t("productsPacks.cfg.flexible")}</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
                     {form.availabilityMode === "strict"
-                      ? "El pack solo se ofrece si todas sus líneas están activas."
-                      : "El pack se ofrece aunque alguna línea no esté disponible."}
+                      ? t("productsPacks.cfg.strictHelp")
+                      : t("productsPacks.cfg.flexibleHelp")}
                   </p>
                 </div>
                 <div>
-                  <Label className="mb-1.5 block">Orden de aparición</Label>
+                  <Label className="mb-1.5 block">{t("productsPacks.cfg.order")}</Label>
                   <Input type="number" min={0} value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} className="w-32" />
-                  <p className="text-xs text-muted-foreground mt-1">Número menor = aparece antes en el listado público.</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("productsPacks.cfg.orderHelp")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {(["isActive", "isPublished", "isFeatured", "isPresentialSale", "isOnlineSale"] as const).map((key) => (
                   <div key={key} className="flex items-center justify-between rounded-lg border p-3">
                     <Label className="cursor-pointer">{
-                      key === "isActive" ? "Activo" :
-                      key === "isPublished" ? "Publicado" :
-                      key === "isFeatured" ? "Destacado" :
-                      key === "isPresentialSale" ? "Venta presencial (TPV)" :
-                      "Venta online"
+                      key === "isActive" ? t("productsPacks.cfg.active") :
+                      key === "isPublished" ? t("productsPacks.published") :
+                      key === "isFeatured" ? t("productsPacks.cfg.featured") :
+                      key === "isPresentialSale" ? t("productsPacks.cfg.presential") :
+                      t("productsPacks.cfg.online")
                     }</Label>
                     <Switch checked={form[key]} onCheckedChange={(v) => setForm({ ...form, [key]: v })} />
                   </div>
                 ))}
               </div>
               <div>
-                <Label>Meta título (SEO)</Label>
+                <Label>{t("productsPacks.cfg.metaTitle")}</Label>
                 <Input value={form.metaTitle} onChange={(e) => setForm({ ...form, metaTitle: e.target.value })} />
               </div>
               <div>
-                <Label>Meta descripción (SEO)</Label>
+                <Label>{t("productsPacks.cfg.metaDescription")}</Label>
                 <Textarea rows={2} value={form.metaDescription} onChange={(e) => setForm({ ...form, metaDescription: e.target.value })} />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t">
-                <Button variant="outline" onClick={() => { setShowForm(false); setEditId(null); }}>Cancelar</Button>
+                <Button variant="outline" onClick={() => { setShowForm(false); setEditId(null); }}>{t("productsPacks.cancel")}</Button>
                 <Button onClick={handleSave} disabled={updateMutation.isPending}>
-                  <Save className="w-4 h-4 mr-2" /> Guardar cambios
+                  <Save className="w-4 h-4 mr-2" /> {t("productsPacks.saveChanges")}
                 </Button>
               </div>
             </TabsContent>
@@ -830,12 +833,12 @@ export default function LegoPacksManager() {
       <Dialog open={showLineForm} onOpenChange={(v) => { if (!v) { setShowLineForm(false); setEditLineId(null); setProductSearch(""); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editLineId ? "Editar línea" : "Añadir línea al pack"}</DialogTitle>
+            <DialogTitle>{editLineId ? t("productsPacks.lines.edit") : t("productsPacks.line.addTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             {/* Tipo de producto */}
             <div>
-              <Label>Tipo de producto</Label>
+              <Label>{t("productsPacks.line.type")}</Label>
               <div className="flex gap-2 mt-1">
                 {(["experience", "pack"] as const).map((type) => (
                   <button
@@ -849,7 +852,7 @@ export default function LegoPacksManager() {
                         : "border-border hover:border-accent/50"
                     )}
                   >
-                    {type === "experience" ? "🌊 Experiencia" : "⭐ Pack simple"}
+                    {type === "experience" ? `🌊 ${t("productsPacks.line.experience")}` : `⭐ ${t("productsPacks.line.simplePack")}`}
                   </button>
                 ))}
               </div>
@@ -857,20 +860,20 @@ export default function LegoPacksManager() {
 
             {/* Buscador de productos del catálogo */}
             <div>
-              <Label>Buscar producto del catálogo *</Label>
+              <Label>{t("productsPacks.line.search")}</Label>
               <div className="relative mt-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder={`Buscar ${lineForm.sourceType === "experience" ? "experiencia" : "pack"}...`}
+                  placeholder={lineForm.sourceType === "experience" ? t("productsPacks.line.searchExperience") : t("productsPacks.line.searchPack")}
                   className="pl-9"
                 />
               </div>
               <div className="mt-2 max-h-48 overflow-y-auto border rounded-lg divide-y bg-background">
                 {catalogOptions.length === 0 && (
                   <div className="text-center text-muted-foreground py-4 text-sm">
-                    {productSearch ? "Sin resultados" : `Escribe para buscar ${lineForm.sourceType === "experience" ? "experiencias" : "packs"}...`}
+                    {productSearch ? t("productsPacks.line.noResults") : lineForm.sourceType === "experience" ? t("productsPacks.line.typeExperiences") : t("productsPacks.line.typePacks")}
                   </div>
                 )}
                 {catalogOptions.map((opt) => (
@@ -888,7 +891,7 @@ export default function LegoPacksManager() {
                   >
                     <span>{opt.title}</span>
                     <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
-                      {opt.price ? `${parseFloat(opt.price as string).toFixed(2)} €` : ""}
+                      {opt.price ? f.currency(parseFloat(opt.price as string)) : ""}
                     </span>
                   </button>
                 ))}
@@ -896,70 +899,70 @@ export default function LegoPacksManager() {
               {lineForm.sourceId && (
                 <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
                   <CheckSquare className="w-3 h-3" />
-                  Producto seleccionado (ID {lineForm.sourceId})
+                  {t("productsPacks.line.selected", { id: lineForm.sourceId })}
                 </p>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Nombre interno</Label>
-                <Input value={lineForm.internalName} onChange={(e) => setLineForm({ ...lineForm, internalName: e.target.value })} placeholder="ej: Alojamiento 2 noches" />
+                <Label>{t("productsPacks.line.internalName")}</Label>
+                <Input value={lineForm.internalName} onChange={(e) => setLineForm({ ...lineForm, internalName: e.target.value })} placeholder={t("productsPacks.line.internalNamePh")} />
               </div>
               <div>
-                <Label>Etiqueta de grupo</Label>
-                <Input value={lineForm.groupLabel} onChange={(e) => setLineForm({ ...lineForm, groupLabel: e.target.value })} placeholder="ej: alojamiento, actividad, spa" />
+                <Label>{t("productsPacks.line.group")}</Label>
+                <Input value={lineForm.groupLabel} onChange={(e) => setLineForm({ ...lineForm, groupLabel: e.target.value })} placeholder={t("productsPacks.line.groupPh")} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Cantidad por defecto</Label>
+                <Label>{t("productsPacks.line.defaultQty")}</Label>
                 <Input type="number" min={1} value={lineForm.defaultQuantity} onChange={(e) => setLineForm({ ...lineForm, defaultQuantity: e.target.value })} />
               </div>
               <div>
-                <Label>Tipo de descuento</Label>
+                <Label>{t("productsPacks.line.discountType")}</Label>
                 <Select value={lineForm.discountType} onValueChange={(v) => setLineForm({ ...lineForm, discountType: v as "percent" | "fixed" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="percent">Porcentaje (%)</SelectItem>
-                    <SelectItem value="fixed">Importe fijo (€)</SelectItem>
+                    <SelectItem value="percent">{t("productsPacks.line.percent")}</SelectItem>
+                    <SelectItem value="fixed">{t("productsPacks.line.fixed")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div>
-              <Label>Valor de descuento</Label>
+              <Label>{t("productsPacks.line.discountValue")}</Label>
               <Input type="number" min={0} step="0.01" value={lineForm.discountValue} onChange={(e) => setLineForm({ ...lineForm, discountValue: e.target.value })} />
             </div>
             <div>
-              <Label>Nota para el cliente (frontend)</Label>
-              <Textarea rows={2} value={lineForm.frontendNote} onChange={(e) => setLineForm({ ...lineForm, frontendNote: e.target.value })} placeholder="Texto informativo visible al cliente..." />
+              <Label>{t("productsPacks.line.note")}</Label>
+              <Textarea rows={2} value={lineForm.frontendNote} onChange={(e) => setLineForm({ ...lineForm, frontendNote: e.target.value })} placeholder={t("productsPacks.line.notePh")} />
             </div>
             {/* Override price for accommodation/external lines */}
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-xs font-semibold text-amber-700 mb-2">Precio de referencia visual (solo para alojamiento u otros sin precio estático)</p>
+              <p className="text-xs font-semibold text-amber-700 mb-2">{t("productsPacks.line.refPrice")}</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Precio override (€)</Label>
-                  <Input type="number" min={0} step="0.01" value={lineForm.overridePrice} onChange={(e) => setLineForm({ ...lineForm, overridePrice: e.target.value })} placeholder="Ej: 99" />
+                  <Label>{t("productsPacks.line.override")}</Label>
+                  <Input type="number" min={0} step="0.01" value={lineForm.overridePrice} onChange={(e) => setLineForm({ ...lineForm, overridePrice: e.target.value })} placeholder={t("productsPacks.line.overridePh")} />
                 </div>
                 <div>
-                  <Label>Etiqueta del precio</Label>
-                  <Input value={lineForm.overridePriceLabel} onChange={(e) => setLineForm({ ...lineForm, overridePriceLabel: e.target.value })} placeholder="Ej: / noche" />
+                  <Label>{t("productsPacks.line.overrideLabel")}</Label>
+                  <Input value={lineForm.overridePriceLabel} onChange={(e) => setLineForm({ ...lineForm, overridePriceLabel: e.target.value })} placeholder={t("productsPacks.line.overrideLabelPh")} />
                 </div>
               </div>
-              <p className="text-xs text-amber-600 mt-1">Este precio se usa como precio base cuando el producto no tiene precio configurado (ej: habitación de hotel). Sí afecta al total del carrito y a las reservas.</p>
+              <p className="text-xs text-amber-600 mt-1">{t("productsPacks.line.overrideHelp")}</p>
             </div>
 
             {/* Flags */}
             <div className="grid grid-cols-2 gap-3">
               {([
-                { key: "isActive" as const, label: "Línea activa" },
-                { key: "isRequired" as const, label: "Obligatoria (no se puede quitar)" },
-                { key: "isOptional" as const, label: "Opcional (cliente puede quitar)" },
-                { key: "isClientEditable" as const, label: "Cliente puede editar" },
-                { key: "isClientVisible" as const, label: "Visible para el cliente" },
-                { key: "isQuantityEditable" as const, label: "Cantidad editable" },
+                { key: "isActive" as const, label: t("productsPacks.line.flag.active") },
+                { key: "isRequired" as const, label: t("productsPacks.line.flag.required") },
+                { key: "isOptional" as const, label: t("productsPacks.line.flag.optional") },
+                { key: "isClientEditable" as const, label: t("productsPacks.line.flag.clientEditable") },
+                { key: "isClientVisible" as const, label: t("productsPacks.line.flag.clientVisible") },
+                { key: "isQuantityEditable" as const, label: t("productsPacks.line.flag.qtyEditable") },
               ]).map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between rounded-lg border p-2">
                   <Label className="text-xs cursor-pointer">{label}</Label>
@@ -969,10 +972,10 @@ export default function LegoPacksManager() {
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-            <Button variant="outline" onClick={() => { setShowLineForm(false); setEditLineId(null); setProductSearch(""); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setShowLineForm(false); setEditLineId(null); setProductSearch(""); }}>{t("productsPacks.cancel")}</Button>
             <Button onClick={handleSaveLine} disabled={addLineMutation.isPending || updateLineMutation.isPending || !lineForm.sourceId}>
               <Save className="w-4 h-4 mr-2" />
-              {editLineId ? "Guardar cambios" : "Añadir línea"}
+              {editLineId ? t("productsPacks.saveChanges") : t("productsPacks.lines.add")}
             </Button>
           </div>
         </DialogContent>

@@ -12,6 +12,7 @@ import { buildGestoriaInvoiceZip } from "./gestoriaInvoiceExport";
 import { resolveExportPeriod } from "../shared/gestoriaExportPeriod";
 import type { FiscalDocument } from "./fiscalDocuments";
 
+import { srcShows, esDictText } from "./i18nSource";
 const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
 
 function lum(hex: string) {
@@ -23,7 +24,8 @@ const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((
 
 describe("textos", () => {
   it("variantes de precio en minúscula salvo la inicial", () => {
-    const src = read("client/src/pages/admin/products/VariantsManager.tsx");
+    // El texto vive en el diccionario español de la pantalla (i18n del panel)
+    const src = read("client/src/pages/admin/products/VariantsManager.tsx") + read("shared/i18n/locales/es/productsVariants.ts");
     expect(src).toContain('"Nueva variante de precio"');
     expect(src).toContain('"Crear variante"');
     expect(src).not.toMatch(/Nueva Variante de Precio|Crear Variante/);
@@ -67,11 +69,10 @@ describe("contraste AA", () => {
   });
 
   it("textos marcados por la prueba integral con tokens del panel", () => {
-    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('<span className="text-info">Env. ');
-    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toContain('<span className="text-info">Env. ');
-    for (const f of ["client/src/pages/admin/crm/CRMDashboard.tsx", "client/src/pages/admin/crm/ProposalsManager.tsx"]) {
-      expect(read(f)).toMatch(/aceptado: +\{ label: "Aceptado", +className: TONE_BADGE\.success \}/);
-    }
+    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('<span className="text-info">{t("crmQuotes.env")}');
+    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toContain('<span className="text-info">{t("crmProposals.list.sentOn"');
+    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toMatch(/aceptado: +\{ label: (?:"Aceptado"|t\("crmQuotes\.aceptado"\)), +className: TONE_BADGE\.success \}/);
+    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toMatch(/aceptado: +\{ className: TONE_BADGE\.success \}/);
     const reports = read("client/src/pages/admin/accounting/AccountingReports.tsx");
     expect(reports).toContain('className="gap-2 text-foreground">');
     expect(reports).toContain("font-semibold text-success\">{fmtEurLocal(r.amount)}");

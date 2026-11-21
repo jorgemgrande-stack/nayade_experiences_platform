@@ -54,6 +54,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { moduleIcon } from "@/components/admin/studio/icons";
 import { STUDIO_CANVAS_PATH, isFromCanvas, parseDragPayload, type FromCanvas, type ToCanvas } from "@/components/admin/studio/protocol";
 import { useStudioDocument } from "@/components/admin/studio/useStudioDocument";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
+import { useI18n } from "@/i18n/I18nProvider";
 
 const DEVICES: ReadonlyArray<{ key: Device; label: string; width: number; icon: typeof Monitor }> = [
   { key: "desktop", label: "Ordenador", width: 1280, icon: Monitor },
@@ -83,6 +85,8 @@ export default function StudioPage({ slug }: { slug?: string }) {
 }
 
 function Studio({ routeSlug }: { routeSlug: string | null }) {
+  const tx = useStudioText();
+  const { format } = useI18n();
   const utils = trpc.useUtils();
   const [, navigate] = useLocation();
   const pagesQ = trpc.cms.sitePages.useQuery(undefined, { refetchOnWindowFocus: false });
@@ -125,7 +129,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     onSuccess: (b) => {
       void utils.cms.savedBlocks.invalidate();
       setSaveName(null);
-      toast.success(`«${b.name}» guardado en Mis diseños.`);
+      toast.success(tx("«{name}» guardado en Mis diseños.", { name: b.name }));
     },
     onError: (e) => toast.error(e.message),
   });
@@ -165,11 +169,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   }, [blocks, selectedId]);
 
   const targets: LinkTarget[] = useMemo(() => {
-    const list = pages.map((p) => ({ label: p.isHome ? `${p.title} (portada)` : p.title, url: p.isHome ? "/" : `/${p.slug}` }));
-    if (!pages.some((p) => p.slug === "contacto")) list.push({ label: "Formulario de contacto", url: "/contacto" });
-    if (modules.some((m) => m.type === "products")) list.push({ label: "Tienda", url: "/tienda" });
+    const list = pages.map((p) => ({ label: p.isHome ? tx("{title} (portada)", { title: p.title }) : p.title, url: p.isHome ? "/" : `/${p.slug}` }));
+    if (!pages.some((p) => p.slug === "contacto")) list.push({ label: tx("Formulario de contacto"), url: "/contacto" });
+    if (modules.some((m) => m.type === "products")) list.push({ label: tx("Tienda"), url: "/tienda" });
     // Las ventanas emergentes de esta página, para abrirlas desde cualquier botón, tarjeta o enlace eligiéndolas por su nombre
-    for (const m of pageModals(blocks)) list.push({ label: modalTargetLabel(m.title, m.slug), url: modalHref(m.slug) });
+    for (const m of pageModals(blocks)) list.push({ label: tx("Abrir la ventana «{title}»", { title: m.title.trim() || m.slug }), url: modalHref(m.slug) });
     return list;
   }, [pages, modules, blocks]);
 
@@ -198,7 +202,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
 
   const tooMany = (adding: number) => {
     if (countBlocks(blocks) + adding <= PAGE_LIMITS.blocks) return false;
-    toast.error(`Una página admite hasta ${PAGE_LIMITS.blocks} bloques (también cuentan los de dentro de las columnas).`);
+    toast.error(tx("Una página admite hasta {blocks} bloques (también cuentan los de dentro de las columnas).", { blocks: PAGE_LIMITS.blocks }));
     return true;
   };
 
@@ -232,7 +236,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     if (!p || viewing || !doc.loaded) return;
     let added: PageBlock[] = [];
     if (p.what === "module") {
-      if (!modules.some((m) => m.type === p.value)) return toast.error("Ese módulo no está disponible en tu plan.");
+      if (!modules.some((m) => m.type === p.value)) return toast.error(tx("Ese módulo no está disponible en tu plan."));
       added = [p.value === "section" ? createSection() : createBlock(p.value as BlockType)];
     } else if (p.what === "preset") {
       const preset = presets.find((x) => x.key === p.value);
@@ -244,7 +248,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       // Todo lo que lleva dentro tiene que estar disponible en el plan (p. ej. productos sin tienda)
       const types = new Set<string>();
       walk([s.block], (f) => types.add(f.block.type));
-      if (Array.from(types).some((t) => !modules.some((m) => m.type === t))) return toast.error("Ese bloque usa un módulo que no está disponible en tu plan.");
+      if (Array.from(types).some((t) => !modules.some((m) => m.type === t))) return toast.error(tx("Ese bloque usa un módulo que no está disponible en tu plan."));
       added = [duplicateBlock(s.block)];
     } else return;
     added = withUniqueModalSlugs(added, blocks);
@@ -266,7 +270,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     doc.change(mode === "append" ? [...blocks, ...added] : added);
     select(added[0]?.id ?? null);
     markGuide("start");
-    toast(`Plantilla «${PAGE_TEMPLATES.find((t) => t.key === key)?.label}» ${mode === "append" ? "añadida al final" : "aplicada"}.`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
+    toast(mode === "append" ? tx("Plantilla «{label}» añadida al final.", { label: tx(PAGE_TEMPLATES.find((t) => t.key === key)?.label ?? "") }) : tx("Plantilla «{label}» aplicada.", { label: tx(PAGE_TEMPLATES.find((t) => t.key === key)?.label ?? "") }), { action: { label: tx("Deshacer"), onClick: () => doc.undo() } });
   };
 
   /** Añade un módulo al final de una columna (desde el inspector de la sección). */
@@ -301,7 +305,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     const siblings = host?.block.type === "section" || host?.block.type === "modal" ? host.block.data.columns[f.col].blocks : blocks;
     doc.change(removeBlock(blocks, id));
     if (selectedId === id) setSelectedId(siblings[f.index + 1]?.id ?? siblings[f.index - 1]?.id ?? f.parent ?? null);
-    toast(`«${blockLabel(f.block.type)}» eliminado`, { action: { label: "Deshacer", onClick: () => doc.undo() } });
+    toast(tx("«{type}» eliminado", { type: tx(blockLabel(f.block.type)) }), { action: { label: tx("Deshacer"), onClick: () => doc.undo() } });
   };
 
   /** Pega el bloque copiado (Ctrl+C), con otro identificador, detrás del seleccionado. */
@@ -313,15 +317,15 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     } catch {
       copied = null;
     }
-    if (!copied || typeof copied !== "object" || !moduleDef(copied.type)) return toast.info("No hay ningún bloque copiado. Selecciona uno y pulsa Ctrl+C.");
-    if (!modules.some((m) => m.type === copied!.type)) return toast.error("Ese módulo no está disponible en tu plan.");
+    if (!copied || typeof copied !== "object" || !moduleDef(copied.type)) return toast.info(tx("No hay ningún bloque copiado. Selecciona uno y pulsa Ctrl+C."));
+    if (!modules.some((m) => m.type === copied!.type)) return toast.error(tx("Ese módulo no está disponible en tu plan."));
     const [copy] = withUniqueModalSlugs([duplicateBlock(copied)], blocks);
     if (tooMany(countBlocks([copy]))) return;
     const place = placeFor([copy]);
     if (!place) return;
     doc.change(insertBlocks(blocks, place, [copy]));
     select(copy.id);
-    toast.success(`«${blockLabel(copy.type)}» pegado.`);
+    toast.success(tx("«{type}» pegado.", { type: tx(blockLabel(copy.type)) }));
   };
 
   const setText = (id: string, key: string, value: string) => {
@@ -343,15 +347,15 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     if (ctrl && key === "z") return shift ? doc.redo() : doc.undo();
     if (ctrl && key === "y") return doc.redo();
     if (ctrl && key === ".") return toggleFocus();
-    if (ctrl && key === "s") return void doc.save().then((ok) => ok && toast.success("Borrador guardado. Tu web no cambia hasta que publiques."));
+    if (ctrl && key === "s") return void doc.save().then((ok) => ok && toast.success(tx("Borrador guardado. Tu web no cambia hasta que publiques.")));
     if (viewing) return;
     if (ctrl && key === "d" && selectedId) return duplicate(selectedId);
     if (ctrl && key === "c" && selected) {
       try {
         window.localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(selected));
-        toast.success(`«${blockLabel(selected.type)}» copiado. Pégalo con Ctrl+V, también en otra página.`);
+        toast.success(tx("«{type}» copiado. Pégalo con Ctrl+V, también en otra página.", { type: tx(blockLabel(selected.type)) }));
       } catch {
-        toast.error("No se ha podido copiar el bloque en este navegador.");
+        toast.error(tx("No se ha podido copiar el bloque en este navegador."));
       }
       return;
     }
@@ -386,7 +390,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           const f = findBlock(blocks, m.id);
           if (f) {
             setSelectedId(m.id);
-            setSaveName(blockLabel(f.block.type));
+            setSaveName(tx(blockLabel(f.block.type)));
           }
         } else {
           const f = findBlock(blocks, m.id);
@@ -406,7 +410,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         const href = m.href.split(/[?#]/)[0];
         const target = href === "/" ? homeSlug : pages.find((p) => `/${p.slug}` === href)?.slug;
         if (target) void openPage(target);
-        else if (href) toast.info("Ese enlace lleva a una parte de tu web que no se edita en Elephant Studio.");
+        else if (href) toast.info(tx("Ese enlace lleva a una parte de tu web que no se edita en Elephant Studio."));
         break;
       }
       case "key":
@@ -489,11 +493,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       setConfirmPublish(false);
       markGuide("publish");
       const url = page?.isHome ? "/" : `/${slug}`;
-      toast.success("Publicado. Ya se ve en tu web.", { action: { label: "Ver", onClick: () => window.open(url, "_blank", "noopener") } });
+      toast.success(tx("Publicado. Ya se ve en tu web."), { action: { label: tx("Ver"), onClick: () => window.open(url, "_blank", "noopener") } });
       // El editor no se recarga (ya tiene lo publicado): solo se actualiza el origen de lo que muestra
       await Promise.all([utils.cms.sitePages.invalidate(), utils.cms.pageVersions.invalidate({ slug }), utils.cms.pageEditor.invalidate({ slug })]);
     } catch (e) {
-      toast.error((e as Error).message || "No se ha podido publicar la página");
+      toast.error((e as Error).message || tx("No se ha podido publicar la página"));
     }
   };
 
@@ -507,10 +511,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       setVersionsOpen(false);
       setConfirmRestore(null);
       setSelectedId(null);
-      toast.success("Versión recuperada como borrador. Publica para que se vea en tu web.");
+      toast.success(tx("Versión recuperada como borrador. Publica para que se vea en tu web."));
       void utils.cms.sitePages.invalidate();
     } catch (e) {
-      toast.error((e as Error).message || "No se ha podido recuperar la versión");
+      toast.error((e as Error).message || tx("No se ha podido recuperar la versión"));
     }
   };
 
@@ -521,12 +525,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     setSelectedId(null);
     await doc.reload();
     void utils.cms.sitePages.invalidate();
-    toast.success("Cambios descartados: vuelves a ver lo que está publicado.");
+    toast.success(tx("Cambios descartados: vuelves a ver lo que está publicado."));
   };
 
   const openPreview = async () => {
     if (!slug) return;
-    if (!(await doc.save())) return toast.error("Guarda el borrador antes de abrir la vista previa.");
+    if (!(await doc.save())) return toast.error(tx("Guarda el borrador antes de abrir la vista previa."));
     window.open(`/admin/cms/paginas/vista-previa/${slug}`, "_blank", "noopener");
   };
 
@@ -536,23 +540,23 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const status = !page
     ? null
     : doc.status === "saving"
-      ? { label: "Guardando…", tone: "muted" as const, icon: Loader2 }
+      ? { label: tx("Guardando…"), tone: "muted" as const, icon: Loader2 }
       : doc.status === "error"
-        ? { label: "No se ha guardado", tone: "error" as const, icon: CircleAlert }
+        ? { label: tx("No se ha guardado"), tone: "error" as const, icon: CircleAlert }
         : doc.dirty
-          ? { label: "Cambios sin guardar", tone: "muted" as const, icon: null }
+          ? { label: tx("Cambios sin guardar"), tone: "muted" as const, icon: null }
           : doc.hasDraft
-            ? { label: page.isPublished ? "Borrador · sin publicar" : "Borrador guardado", tone: "draft" as const, icon: null }
+            ? { label: page.isPublished ? tx("Borrador · sin publicar") : tx("Borrador guardado"), tone: "draft" as const, icon: null }
             : page.isPublished
-              ? { label: "Publicada", tone: "ok" as const, icon: Check }
-              : { label: "Sin publicar", tone: "muted" as const, icon: null };
+              ? { label: tx("Publicada"), tone: "ok" as const, icon: Check }
+              : { label: tx("Sin publicar"), tone: "muted" as const, icon: null };
 
   // Datos de la empresa ({{telefono}}…) que usa la página y aún están vacíos
   const missingTokens = useMemo(() => {
     if (!tokens.data) return [];
     const data = tokens.data as Record<string, string | null | undefined>;
     const used = new Set(Array.from(JSON.stringify(blocks).matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g), (m) => m[1]));
-    return Array.from(used).filter((k) => k in SITE_TOKEN_LABELS && !String(data[k] ?? "").trim()).map((k) => SITE_TOKEN_LABELS[k]);
+    return Array.from(used).filter((k) => k in SITE_TOKEN_LABELS && !String(data[k] ?? "").trim()).map((k) => tx(SITE_TOKEN_LABELS[k]));
   }, [blocks, tokens.data]);
 
   // ── Lienzo: el marco del ancho del dispositivo, reducido si no cabe ──
@@ -583,10 +587,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center">
         <div className="max-w-sm space-y-3">
-          <p className="font-semibold">No puedes abrir Elephant Studio</p>
-          <p className="text-sm text-muted-foreground">{pagesQ.error.data?.code === "FORBIDDEN" ? "Tu cuenta no tiene permiso para editar la web de la empresa." : "No hemos podido cargar las páginas de tu web. Inténtalo de nuevo."}</p>
+          <p className="font-semibold">{tx("No puedes abrir Elephant Studio")}</p>
+          <p className="text-sm text-muted-foreground">{pagesQ.error.data?.code === "FORBIDDEN" ? tx("Tu cuenta no tiene permiso para editar la web de la empresa.") : tx("No hemos podido cargar las páginas de tu web. Inténtalo de nuevo.")}</p>
           <Button variant="outline" asChild>
-            <Link href="/admin">Volver al panel</Link>
+            <Link href="/admin">{tx("Volver al panel")}</Link>
           </Button>
         </div>
       </div>
@@ -600,41 +604,39 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
       {/* ── Barra superior ── */}
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-2 md:px-3">
-        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" asChild title="Volver a las páginas">
-          <Link href="/admin/cms/paginas" aria-label="Volver a las páginas">
+        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" asChild title={tx("Volver a las páginas")}>
+          <Link href="/admin/cms/paginas" aria-label={tx("Volver a las páginas")}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
         <div className="hidden shrink-0 items-center gap-2 pr-1 md:flex">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${ACCENT}, #8b5cf6)` }} aria-hidden>
-            S
-          </span>
-          <span className="hidden text-sm font-semibold tracking-tight xl:inline">Elephant Studio</span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${ACCENT}, #8b5cf6)` }} aria-hidden>S</span>
+          <span className="hidden text-sm font-semibold tracking-tight xl:inline">{tx("Elephant Studio")}</span>
         </div>
         <span className="hidden h-6 w-px bg-border md:block" aria-hidden />
-        <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", leftOpen && "bg-muted")} onClick={() => setLeftOpen((v) => !v)} aria-label={leftOpen ? "Ocultar panel izquierdo" : "Mostrar panel izquierdo"} title="Panel izquierdo">
+        <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", leftOpen && "bg-muted")} onClick={() => setLeftOpen((v) => !v)} aria-label={leftOpen ? tx("Ocultar panel izquierdo") : tx("Mostrar panel izquierdo")} title={tx("Panel izquierdo")}>
           <PanelLeft className="h-4 w-4" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-9 min-w-0 max-w-[150px] gap-1.5 px-2.5 lg:max-w-[220px]">
-              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{page?.title ?? "Página"}</span>
+              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{page?.title ?? tx("Página")}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="max-h-[70vh] w-64 overflow-y-auto">
-            <DropdownMenuLabel>Páginas de tu web</DropdownMenuLabel>
+            <DropdownMenuLabel>{tx("Páginas de tu web")}</DropdownMenuLabel>
             {pages.map((p) => (
               <DropdownMenuItem key={p.slug} onSelect={() => void openPage(p.slug)} className="gap-2">
                 <span className={cn("h-2 w-2 shrink-0 rounded-full", !p.isPublished ? "bg-slate-300" : p.hasDraft ? "bg-amber-400" : "bg-emerald-500")} aria-hidden />
                 <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</span>
-                {p.isHome && <span className="text-[11px] text-muted-foreground">Portada</span>}
+                {p.isHome && <span className="text-[11px] text-muted-foreground">{tx("Portada")}</span>}
                 {p.slug === slug && <Check className="h-3.5 w-3.5" />}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/admin/cms/paginas">Gestionar páginas</Link>
+              <Link href="/admin/cms/paginas">{tx("Gestionar páginas")}</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -647,7 +649,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               status.tone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300",
               status.tone === "muted" && "bg-muted text-muted-foreground",
             )}
-            title={doc.error ?? (doc.savedAt ? `Borrador guardado a las ${doc.savedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}` : undefined)}
+            title={doc.error ?? (doc.savedAt ? tx("Borrador guardado a las {time}", { time: format.time(doc.savedAt) }) : undefined)}
             role="status"
           >
             {status.icon ? <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} /> : <span className="h-2 w-2 rounded-full bg-current lg:hidden" aria-hidden />}
@@ -655,28 +657,26 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </span>
         )}
         {doc.status === "error" && (
-          <Button variant="outline" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => void doc.save().then((ok) => ok && toast.success("Borrador guardado"))} title={doc.error ?? undefined}>
-            Reintentar
-          </Button>
+          <Button variant="outline" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => void doc.save().then((ok) => ok && toast.success(tx("Borrador guardado")))} title={doc.error ?? undefined}>{tx("Reintentar")}</Button>
         )}
 
         <div className="flex flex-1 items-center justify-center gap-1">
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={doc.undo} disabled={!doc.canUndo || !!viewing} aria-label="Deshacer" title="Deshacer (Ctrl+Z)">
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={doc.undo} disabled={!doc.canUndo || !!viewing} aria-label={tx("Deshacer")} title={tx("Deshacer (Ctrl+Z)")}>
             <Undo2 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={doc.redo} disabled={!doc.canRedo || !!viewing} aria-label="Rehacer" title="Rehacer (Ctrl+Mayús+Z)">
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={doc.redo} disabled={!doc.canRedo || !!viewing} aria-label={tx("Rehacer")} title={tx("Rehacer (Ctrl+Mayús+Z)")}>
             <Redo2 className="h-4 w-4" />
           </Button>
           <span className="mx-1 h-6 w-px bg-border" aria-hidden />
-          <div className="flex rounded-lg bg-muted p-0.5" role="radiogroup" aria-label="Dispositivo">
+          <div className="flex rounded-lg bg-muted p-0.5" role="radiogroup" aria-label={tx("Dispositivo")}>
             {DEVICES.map((d) => (
               <button
                 key={d.key}
                 type="button"
                 role="radio"
                 aria-checked={device === d.key}
-                aria-label={d.label}
-                title={`${d.label} (${d.width} px)`}
+                aria-label={tx(d.label)}
+                title={tx("{label} ({width} px)", { label: tx(d.label), width: d.width })}
                 onClick={() => {
                   setDevice(d.key);
                   if (d.key === "mobile") markGuide("mobile");
@@ -687,20 +687,20 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               </button>
             ))}
           </div>
-          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 md:flex" role="group" aria-label="Zoom del lienzo">
-            <button type="button" onClick={() => stepZoom(-1)} disabled={scale <= ZOOM_STEPS[0] + 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label="Alejar" title="Alejar">
+          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 md:flex" role="group" aria-label={tx("Zoom del lienzo")}>
+            <button type="button" onClick={() => stepZoom(-1)} disabled={scale <= ZOOM_STEPS[0] + 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label={tx("Alejar")} title={tx("Alejar")}>
               <ZoomOut className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={() => setZoom(null)}
               className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
-              title="Ajustar al espacio disponible"
-              aria-label={`Zoom ${Math.round(scale * 100)} %. Pulsa para ajustar`}
+              title={tx("Ajustar al espacio disponible")}
+              aria-label={tx("Zoom {v} %. Pulsa para ajustar", { v: Math.round(scale * 100) })}
             >
-              {zoom === null ? "Ajustar" : `${Math.round(scale * 100)} %`}
+              {zoom === null ? tx("Ajustar") : tx("{v} %", { v: Math.round(scale * 100) })}
             </button>
-            <button type="button" onClick={() => stepZoom(1)} disabled={scale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label="Acercar" title="Acercar">
+            <button type="button" onClick={() => stepZoom(1)} disabled={scale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label={tx("Acercar")} title={tx("Acercar")}>
               <ZoomIn className="h-4 w-4" />
             </button>
           </div>
@@ -710,28 +710,28 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             className="hidden h-9 w-9 md:inline-flex"
             onClick={toggleFocus}
             aria-pressed={focusMode}
-            aria-label={focusMode ? "Salir del modo concentrado y mostrar los paneles (Ctrl + .)" : "Modo concentrado: ampliar el lienzo ocultando los paneles (Ctrl + .)"}
-            title={focusMode ? "Mostrar los paneles (Ctrl + .)" : "Modo concentrado: solo la página (Ctrl + .)"}
+            aria-label={focusMode ? tx("Salir del modo concentrado y mostrar los paneles (Ctrl + .)") : tx("Modo concentrado: ampliar el lienzo ocultando los paneles (Ctrl + .)")}
+            title={focusMode ? tx("Mostrar los paneles (Ctrl + .)") : tx("Modo concentrado: solo la página (Ctrl + .)")}
           >
             {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>
 
-        <div className="hidden items-center rounded-lg bg-muted p-0.5 lg:flex" role="radiogroup" aria-label="Modo de edición">
+        <div className="hidden items-center rounded-lg bg-muted p-0.5 lg:flex" role="radiogroup" aria-label={tx("Modo de edición")}>
           {[
-            { v: false, label: "Sencillo" },
-            { v: true, label: "Profesional" },
+            { v: false, label: tx("Sencillo") },
+            { v: true, label: tx("Profesional") },
           ].map((m) => (
             <button
               key={m.label}
               type="button"
               role="radio"
               aria-checked={pro === m.v}
-              title={m.v ? "Diseño avanzado, móvil, animaciones, anclas y opciones avanzadas de cada módulo" : "Lo esencial: textos, imágenes, botones y diseño básico"}
+              title={m.v ? tx("Diseño avanzado, móvil, animaciones, anclas y opciones avanzadas de cada módulo") : tx("Lo esencial: textos, imágenes, botones y diseño básico")}
               onClick={() => {
                 if (pro === m.v) return;
                 setPro(m.v);
-                toast(m.v ? "Modo profesional: diseño avanzado y pestaña «Avanzado» en el inspector." : "Modo sencillo: lo esencial para editar el contenido de tu web.");
+                toast(m.v ? tx("Modo profesional: diseño avanzado y pestaña «Avanzado» en el inspector.") : tx("Modo sencillo: lo esencial para editar el contenido de tu web."));
               }}
               className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", pro === m.v ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
             >
@@ -739,23 +739,22 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             </button>
           ))}
         </div>
-        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setVersionsOpen(true)} aria-label="Historial de versiones" title="Historial de versiones">
+        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setVersionsOpen(true)} aria-label={tx("Historial de versiones")} title={tx("Historial de versiones")}>
           <History className="h-4 w-4" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Más opciones">
+            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={tx("Más opciones")}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
             {page?.isPublished && (
               <DropdownMenuItem onSelect={() => window.open(page.isHome ? "/" : `/${page.slug}`, "_blank", "noopener")}>
-                <ExternalLink className="mr-2 h-4 w-4" /> Ver la página publicada
-              </DropdownMenuItem>
+                <ExternalLink className="mr-2 h-4 w-4" />{" "}{tx("Ver la página publicada")}</DropdownMenuItem>
             )}
             <DropdownMenuItem className="lg:hidden" onSelect={() => setPro(!pro)}>
-              {pro ? "Pasar al modo sencillo" : "Pasar al modo profesional"}
+              {pro ? tx("Pasar al modo sencillo") : tx("Pasar al modo profesional")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {
@@ -764,23 +763,19 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 setLeftTab("add");
               }}
             >
-              <LifeBuoy className="mr-2 h-4 w-4" /> Ayuda: primeros pasos
-            </DropdownMenuItem>
+              <LifeBuoy className="mr-2 h-4 w-4" />{" "}{tx("Ayuda: primeros pasos")}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setShortcuts(true)}>
-              <Keyboard className="mr-2 h-4 w-4" /> Atajos de teclado
-            </DropdownMenuItem>
+              <Keyboard className="mr-2 h-4 w-4" />{" "}{tx("Atajos de teclado")}</DropdownMenuItem>
             {page?.isPublished && doc.hasDraft && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirmDiscard(true)}>
-                  Descartar los cambios sin publicar
-                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirmDiscard(true)}>{tx("Descartar los cambios sin publicar")}</DropdownMenuItem>
               </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="outline" size="sm" className="hidden h-9 sm:inline-flex" onClick={openPreview} disabled={!page} aria-label="Vista previa" title="Vista previa del borrador">
-          <Eye className="h-4 w-4 xl:mr-1.5" /> <span className="hidden xl:inline">Vista previa</span>
+        <Button variant="outline" size="sm" className="hidden h-9 sm:inline-flex" onClick={openPreview} disabled={!page} aria-label={tx("Vista previa")} title={tx("Vista previa del borrador")}>
+          <Eye className="h-4 w-4 xl:mr-1.5" /> <span className="hidden xl:inline">{tx("Vista previa")}</span>
         </Button>
         <Button
           size="sm"
@@ -788,11 +783,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           style={{ background: ACCENT }}
           onClick={() => setConfirmPublish(true)}
           disabled={!page || !!viewing || !pendingPublish || publish.isPending}
-          title={viewing ? "Vuelve a tu borrador para publicar" : !pendingPublish ? "No hay cambios pendientes: tu web ya muestra esta versión" : "Publicar los cambios en tu web"}
+          title={viewing ? tx("Vuelve a tu borrador para publicar") : !pendingPublish ? tx("No hay cambios pendientes: tu web ya muestra esta versión") : tx("Publicar los cambios en tu web")}
         >
-          <Upload className="mr-1.5 h-4 w-4" /> Publicar
-        </Button>
-        <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", rightOpen && "bg-muted")} onClick={() => setRightOpen((v) => !v)} aria-label={rightOpen ? "Ocultar inspector" : "Mostrar inspector"} title="Inspector">
+          <Upload className="mr-1.5 h-4 w-4" />{" "}{tx("Publicar")}</Button>
+        <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", rightOpen && "bg-muted")} onClick={() => setRightOpen((v) => !v)} aria-label={rightOpen ? tx("Ocultar inspector") : tx("Mostrar inspector")} title={tx("Inspector")}>
           <PanelRight className="h-4 w-4" />
         </Button>
       </header>
@@ -800,7 +794,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <div className="relative flex min-h-0 flex-1">
         {/* ── Panel izquierdo ── */}
         {leftOpen && (
-          <aside className="absolute inset-y-0 left-0 z-30 w-[272px] shrink-0 border-r border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-left-3 motion-reduce:animate-none lg:static lg:shadow-none" aria-label="Biblioteca y estructura">
+          <aside className="absolute inset-y-0 left-0 z-30 w-[272px] shrink-0 border-r border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-left-3 motion-reduce:animate-none lg:static lg:shadow-none" aria-label={tx("Biblioteca y estructura")}>
             <LeftPanel
               tab={leftTab}
               onTab={setLeftTab}
@@ -844,29 +838,24 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           ref={areaRef}
           className="relative min-w-0 flex-1 overflow-hidden"
           style={{ backgroundColor: "var(--muted)", backgroundImage: "radial-gradient(rgba(100,116,139,0.18) 1px, transparent 1px)", backgroundSize: "18px 18px" }}
-          aria-label="Lienzo"
+          aria-label={tx("Lienzo")}
         >
           {viewing && (
             <div className="absolute inset-x-0 top-0 z-10 flex h-[52px] items-center justify-between gap-3 border-b border-[#5b5bf6]/30 bg-[#5b5bf6]/10 px-4 text-sm backdrop-blur">
-              <span className="min-w-0">
-                Estás viendo la <strong>{viewing.label}</strong>. No se puede editar; recupérala para seguir trabajando con ella.
-              </span>
+              <span className="min-w-0">{tx("Estás viendo la")}{" "}<strong>{viewing.label}</strong>{tx(". No se puede editar; recupérala para seguir trabajando con ella.")}</span>
               <span className="flex shrink-0 gap-2">
                 <Button size="sm" variant="outline" className="h-8 bg-background" onClick={() => setViewing(null)}>
-                  <X className="mr-1 h-3.5 w-3.5" /> Volver a mi borrador
-                </Button>
-                <Button size="sm" className="h-8 text-white" style={{ background: ACCENT }} onClick={() => setConfirmRestore(viewing.id)}>
-                  Recuperar esta versión
-                </Button>
+                  <X className="mr-1 h-3.5 w-3.5" />{" "}{tx("Volver a mi borrador")}</Button>
+                <Button size="sm" className="h-8 text-white" style={{ background: ACCENT }} onClick={() => setConfirmRestore(viewing.id)}>{tx("Recuperar esta versión")}</Button>
               </span>
             </div>
           )}
           {notFound ? (
             <div className="flex h-full items-center justify-center p-6 text-center">
               <div className="space-y-3">
-                <p className="font-semibold">No se ha encontrado la página</p>
+                <p className="font-semibold">{tx("No se ha encontrado la página")}</p>
                 <Button variant="outline" asChild>
-                  <Link href="/admin/studio">Abrir la portada</Link>
+                  <Link href="/admin/studio">{tx("Abrir la portada")}</Link>
                 </Button>
               </div>
             </div>
@@ -880,12 +869,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   key={canvasKey}
                   ref={iframeRef}
                   src={STUDIO_CANVAS_PATH}
-                  title={`Lienzo de ${page?.title ?? "la página"}`}
+                  title={tx("Lienzo de {title}", { title: page?.title ?? tx("la página") })}
                   className="absolute left-0 top-0 border-0 bg-white"
                   style={{ width: dev.width, height: frameH / scale, transform: `scale(${scale})`, transformOrigin: "top left" }}
                 />
                 {(!doc.loaded || !canvasReady) && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white" role="status" aria-label="Cargando la página">
+                  <div className="absolute inset-0 flex items-center justify-center bg-white" role="status" aria-label={tx("Cargando la página")}>
                     <Loader2 className="h-7 w-7 animate-spin" style={{ color: ACCENT }} />
                   </div>
                 )}
@@ -896,63 +885,58 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <div className="pointer-events-none absolute inset-x-3 top-2.5 z-20 flex items-start justify-between gap-2">
               {focusMode ? (
                 <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-background py-1 pl-3 pr-1 text-xs shadow-md duration-200 animate-in fade-in">
-                  <span className="font-medium">Modo concentrado</span>
+                  <span className="font-medium">{tx("Modo concentrado")}</span>
                   <Button size="sm" variant="ghost" className="h-7 rounded-full px-2.5 text-xs" onClick={toggleFocus} title="Ctrl + .">
-                    <Minimize2 className="mr-1 h-3.5 w-3.5" /> Mostrar los paneles
-                  </Button>
+                    <Minimize2 className="mr-1 h-3.5 w-3.5" />{" "}{tx("Mostrar los paneles")}</Button>
                 </div>
               ) : (
                 <span />
               )}
               {selected && !rightOpen && (
                 <Button size="sm" variant="outline" className="pointer-events-auto h-8 rounded-full bg-background shadow-md duration-200 animate-in fade-in" onClick={() => openInspector(selected.id, inspTab)}>
-                  <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" style={{ color: ACCENT }} /> Opciones de «{blockLabel(selected.type)}»
+                  <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" style={{ color: ACCENT }} />{" "}{tx("Opciones de «{label}»", { label: tx(blockLabel(selected.type)) })}
                 </Button>
               )}
             </div>
           )}
           {doc.loaded && source === "converted" && !viewing && (
-            <p role="note" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-full border border-sky-200 bg-sky-50 px-4 py-1.5 text-center text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
-              Hemos preparado esta página en bloques con todo su contenido. Tu web sigue mostrando la versión actual hasta que publiques.
-            </p>
+            <p role="note" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-full border border-sky-200 bg-sky-50 px-4 py-1.5 text-center text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">{tx("Hemos preparado esta página en bloques con todo su contenido. Tu web sigue mostrando la versión actual hasta que publiques.")}</p>
           )}
         </main>
 
         {/* ── Inspector ── */}
         {rightOpen && (
-          <aside className="absolute inset-y-0 right-0 z-30 flex w-[300px] shrink-0 flex-col border-l border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-right-3 motion-reduce:animate-none lg:static lg:shadow-none 2xl:w-[320px]" aria-label="Inspector">
+          <aside className="absolute inset-y-0 right-0 z-30 flex w-[300px] shrink-0 flex-col border-l border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-right-3 motion-reduce:animate-none lg:static lg:shadow-none 2xl:w-[320px]" aria-label={tx("Inspector")}>
             <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
               {selected && ModuleIcon ? (
                 <>
                   <ModuleIcon className="h-4 w-4 shrink-0" style={{ color: ACCENT }} />
-                  <nav className="flex min-w-0 items-center gap-1 text-sm" aria-label="Dónde estás">
+                  <nav className="flex min-w-0 items-center gap-1 text-sm" aria-label={tx("Dónde estás")}>
                     <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground hover:underline" onClick={() => setSelectedId(null)}>
-                      {page?.title ?? "Página"}
+                      {page?.title ?? tx("Página")}
                     </button>
                     <span className="text-muted-foreground">›</span>
-                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium">{blockLabel(selected.type)}</span>
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium">{tx(blockLabel(selected.type))}</span>
                   </nav>
                   <button
                     type="button"
-                    onClick={() => setSaveName(blockLabel(selected.type))}
+                    onClick={() => setSaveName(tx(blockLabel(selected.type)))}
                     disabled={!!viewing}
                     className="ml-auto shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-                    title="Guardar en Mis diseños para reutilizarlo en otras páginas"
-                    aria-label="Guardar en Mis diseños"
+                    title={tx("Guardar en Mis diseños para reutilizarlo en otras páginas")}
+                    aria-label={tx("Guardar en Mis diseños")}
                   >
                     <BookmarkPlus className="h-4 w-4" />
                   </button>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {found ? found.index + 1 : 0} de {parentSection?.block.type === "section" || parentSection?.block.type === "modal" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length}
-                  </span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">{tx("{v} de {parentSectionN}", { v: found ? found.index + 1 : 0, parentSectionN: parentSection?.block.type === "section" || parentSection?.block.type === "modal" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length })}</span>
                 </>
               ) : (
-                <span className="text-sm font-medium">Ajustes de la página</span>
+                <span className="text-sm font-medium">{tx("Ajustes de la página")}</span>
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {viewing ? (
-                <p className="text-sm text-muted-foreground">Mientras ves una versión anterior no se puede editar.</p>
+                <p className="text-sm text-muted-foreground">{tx("Mientras ves una versión anterior no se puede editar.")}</p>
               ) : selected ? (
                 <BlockInspector
                   key={selected.id}
@@ -970,20 +954,18 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               ) : page ? (
                 <div className="space-y-5">
                   <div className="space-y-3 rounded-xl border border-dashed border-border p-4">
-                    <p className="text-sm font-medium">No hay nada seleccionado</p>
+                    <p className="text-sm font-medium">{tx("No hay nada seleccionado")}</p>
                     <ul className="space-y-1.5 text-xs leading-relaxed text-muted-foreground">
-                      <li><span className="font-medium text-foreground">Clic</span> en un bloque para ver sus opciones aquí.</li>
-                      <li><span className="font-medium text-foreground">Doble clic</span> en un texto para escribir sobre la página.</li>
-                      <li><span className="font-medium text-foreground">Arrastra</span> módulos desde la biblioteca, o pulsa «+» bajo cualquier bloque.</li>
+                      <li><span className="font-medium text-foreground">{tx("Clic")}</span>{" "}{tx("en un bloque para ver sus opciones aquí.")}</li>
+                      <li><span className="font-medium text-foreground">{tx("Doble clic")}</span>{" "}{tx("en un texto para escribir sobre la página.")}</li>
+                      <li><span className="font-medium text-foreground">{tx("Arrastra")}</span>{" "}{tx("módulos desde la biblioteca, o pulsa «+» bajo cualquier bloque.")}</li>
                     </ul>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
                         className="bg-[#5b5bf6] text-white hover:bg-[#4a4ae0]"
                         onClick={() => setAddAt({ parent: null, col: 0, index: blocks.length })}
-                      >
-                        Añadir un bloque
-                      </Button>
+                      >{tx("Añadir un bloque")}</Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -991,19 +973,13 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                           setLeftOpen(true);
                           setLeftTab("site");
                         }}
-                      >
-                        Páginas y ajustes
-                      </Button>
+                      >{tx("Páginas y ajustes")}</Button>
                     </div>
                   </div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ajustes de esta página</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx("Ajustes de esta página")}</p>
                   {missingTokens.length > 0 && (
-                    <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
-                      Esta página usa datos de tu empresa que aún no has rellenado ({missingTokens.join(", ").toLowerCase()}). Si falta alguno, esa línea no se
-                      muestra en tu web hasta que lo completes en{" "}
-                      <Link href="/admin/configuracion/sitio"className="font-medium underline underline-offset-2">
-                        Datos de la empresa
-                      </Link>
+                    <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Esta página usa datos de tu empresa que aún no has rellenado (")}{missingTokens.join(", ").toLowerCase()}{tx("). Si falta alguno, esa línea no se muestra en tu web hasta que lo completes en")}{" "}
+                      <Link href="/admin/configuracion/sitio"className="font-medium underline underline-offset-2">{tx("Datos de la empresa")}</Link>
                       .
                     </p>
                   )}
@@ -1034,11 +1010,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <AlertDialog open={!!templateKey} onOpenChange={(o) => !o && setTemplateKey(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Usar la plantilla «{PAGE_TEMPLATES.find((t) => t.key === templateKey)?.label}»</AlertDialogTitle>
+            <AlertDialogTitle>{tx("Usar la plantilla «{label}»", { label: tx(PAGE_TEMPLATES.find((t) => t.key === templateKey)?.label ?? "") })}</AlertDialogTitle>
             <AlertDialogDescription>
               {blocks.length
-                ? "Puedes sustituir lo que tiene esta página o añadir la plantilla al final. Se guarda como borrador: tu web no cambia hasta que publiques, y puedes deshacerlo."
-                : "Se añade a la página como borrador: tu web no cambia hasta que publiques."}
+                ? tx("Puedes sustituir lo que tiene esta página o añadir la plantilla al final. Se guarda como borrador: tu web no cambia hasta que publiques, y puedes deshacerlo.")
+                : tx("Se añade a la página como borrador: tu web no cambia hasta que publiques.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {templateKey && (
@@ -1047,13 +1023,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             </div>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{tx("Cancelar")}</AlertDialogCancel>
             {blocks.length > 0 && (
-              <Button variant="outline" onClick={() => applyTemplate("append")}>
-                Añadir al final
-              </Button>
+              <Button variant="outline" onClick={() => applyTemplate("append")}>{tx("Añadir al final")}</Button>
             )}
-            <AlertDialogAction onClick={() => applyTemplate("replace")}>{blocks.length ? "Sustituir la página" : "Usar la plantilla"}</AlertDialogAction>
+            <AlertDialogAction onClick={() => applyTemplate("replace")}>{blocks.length ? tx("Sustituir la página") : tx("Usar la plantilla")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1061,13 +1035,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <AlertDialog open={confirmPublish} onOpenChange={setConfirmPublish}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Publicar «{page?.title}»?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Los cambios se verán en tu web en cuanto publiques. Guardamos esta publicación en el historial para que puedas volver a cualquier versión anterior.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{tx("¿Publicar «{title}»?", { title: page?.title })}</AlertDialogTitle>
+            <AlertDialogDescription>{tx("Los cambios se verán en tu web en cuanto publiques. Guardamos esta publicación en el historial para que puedas volver a cualquier versión anterior.")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+            <AlertDialogCancel>{tx("Seguir editando")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={publish.isPending}
               className="text-white"
@@ -1077,7 +1049,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 void doPublish();
               }}
             >
-              {publish.isPending ? "Publicando…" : "Publicar ahora"}
+              {publish.isPending ? tx("Publicando…") : tx("Publicar ahora")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1086,22 +1058,18 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <AlertDialog open={confirmRestore !== null} onOpenChange={(v) => !v && setConfirmRestore(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Recuperar esta versión?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sustituye a lo que tienes ahora en el editor y se guarda como borrador. Tu web no cambia hasta que publiques. Si te arrepientes, pulsa «Deshacer».
-            </AlertDialogDescription>
+            <AlertDialogTitle>{tx("¿Recuperar esta versión?")}</AlertDialogTitle>
+            <AlertDialogDescription>{tx("Sustituye a lo que tienes ahora en el editor y se guarda como borrador. Tu web no cambia hasta que publiques. Si te arrepientes, pulsa «Deshacer».")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{tx("Cancelar")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={restore.isPending}
               onClick={(e) => {
                 e.preventDefault();
                 if (confirmRestore !== null) void doRestore(confirmRestore);
               }}
-            >
-              Recuperar como borrador
-            </AlertDialogAction>
+            >{tx("Recuperar como borrador")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1109,14 +1077,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Descartar los cambios sin publicar?</AlertDialogTitle>
-            <AlertDialogDescription>Se borra el borrador y vuelves a ver lo que está publicado en tu web. Las versiones del historial no se tocan.</AlertDialogDescription>
+            <AlertDialogTitle>{tx("¿Descartar los cambios sin publicar?")}</AlertDialogTitle>
+            <AlertDialogDescription>{tx("Se borra el borrador y vuelves a ver lo que está publicado en tu web. Las versiones del historial no se tocan.")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => void doDiscard()}>
-              Descartar cambios
-            </AlertDialogAction>
+            <AlertDialogCancel>{tx("Cancelar")}</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" onClick={() => void doDiscard()}>{tx("Descartar cambios")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1124,19 +1090,17 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <Sheet open={globalOpen} onOpenChange={setGlobalOpen}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
           <SheetHeader>
-            <SheetTitle>Estilo global de tu web</SheetTitle>
-            <SheetDescription>Colores, tipografía, bordes y logotipo de toda tu web. Cada bloque puede tener además su propio fondo en «Diseño».</SheetDescription>
+            <SheetTitle>{tx("Estilo global de tu web")}</SheetTitle>
+            <SheetDescription>{tx("Colores, tipografía, bordes y logotipo de toda tu web. Cada bloque puede tener además su propio fondo en «Diseño».")}</SheetDescription>
           </SheetHeader>
-          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
-            Atención: este estilo es común a todas las páginas. Al pulsar «Guardar» se aplica al momento en toda tu web publicada y en la pantalla de acceso de tu equipo; no espera a «Publicar».
-          </p>
+          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Atención: este estilo es común a todas las páginas. Al pulsar «Guardar» se aplica al momento en toda tu web publicada y en la pantalla de acceso de tu equipo; no espera a «Publicar».")}</p>
           <div className="px-4 pb-6">
             <BrandIdentityEditor
               variant="full"
               onSaved={() => {
                 setCanvasReady(false);
                 setCanvasKey((k) => k + 1);
-                toast.success("Estilo global guardado: ya se ve en toda tu web.");
+                toast.success(tx("Estilo global guardado: ya se ve en toda tu web."));
               }}
             />
           </div>
@@ -1146,12 +1110,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <Sheet open={chromeOpen} onOpenChange={setChromeOpen}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
           <SheetHeader>
-            <SheetTitle>Cabecera y pie de tu web</SheetTitle>
-            <SheetDescription>El botón destacado, los menús y el pie que se ven en todas las páginas.</SheetDescription>
+            <SheetTitle>{tx("Cabecera y pie de tu web")}</SheetTitle>
+            <SheetDescription>{tx("El botón destacado, los menús y el pie que se ven en todas las páginas.")}</SheetDescription>
           </SheetHeader>
-          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">
-            Atención: la cabecera y el pie son comunes a todas las páginas. Los cambios se aplican al momento en tu web publicada; no esperan a «Publicar».
-          </p>
+          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Atención: la cabecera y el pie son comunes a todas las páginas. Los cambios se aplican al momento en tu web publicada; no esperan a «Publicar».")}</p>
           <div className="px-4">
             <SiteChromeEditor
               targets={targets}
@@ -1167,7 +1129,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
 
       <QuickInsert
         open={!!addAt}
-        where={!addAt ? "" : addAt.parent ? `en la columna ${addAt.col + 1}` : addAt.index >= blocks.length ? "al final de la página" : "en la página"}
+        where={!addAt ? "" : addAt.parent ? tx("en la columna {v}", { v: addAt.col + 1 }) : addAt.index >= blocks.length ? tx("al final de la página") : tx("en la página")}
         modules={addAt?.parent ? modules.filter((m) => !NOT_NESTABLE.includes(m.type) && m.type !== "section") : modules}
         saved={savedBlocks}
         onClose={() => setAddAt(null)}
@@ -1181,8 +1143,8 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <Dialog open={saveName !== null} onOpenChange={(o) => !o && setSaveName(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Guardar en Mis diseños</DialogTitle>
-            <DialogDescription>Lo encontrarás en la biblioteca para añadir una copia, con su diseño, en cualquier página.</DialogDescription>
+            <DialogTitle>{tx("Guardar en Mis diseños")}</DialogTitle>
+            <DialogDescription>{tx("Lo encontrarás en la biblioteca para añadir una copia, con su diseño, en cualquier página.")}</DialogDescription>
           </DialogHeader>
           <form
             className="space-y-3"
@@ -1192,14 +1154,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               saveBlock.mutate({ name: saveName.trim(), block: selected });
             }}
           >
-            <Input value={saveName ?? ""} maxLength={60} onChange={(e) => setSaveName(e.target.value)} aria-label="Nombre del bloque" autoFocus />
+            <Input value={saveName ?? ""} maxLength={60} onChange={(e) => setSaveName(e.target.value)} aria-label={tx("Nombre del bloque")} autoFocus />
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={() => setSaveName(null)}>
-                Cancelar
-              </Button>
+              <Button type="button" variant="ghost" onClick={() => setSaveName(null)}>{tx("Cancelar")}</Button>
               <Button type="submit" disabled={!saveName?.trim() || saveBlock.isPending}>
-                {saveBlock.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Guardar
-              </Button>
+                {saveBlock.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{" "}{tx("Guardar")}</Button>
             </div>
           </form>
         </DialogContent>
@@ -1218,8 +1177,8 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
       <Dialog open={shortcuts} onOpenChange={setShortcuts}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Atajos de teclado</DialogTitle>
-            <DialogDescription>Funcionan cuando no estás escribiendo en un campo.</DialogDescription>
+            <DialogTitle>{tx("Atajos de teclado")}</DialogTitle>
+            <DialogDescription>{tx("Funcionan cuando no estás escribiendo en un campo.")}</DialogDescription>
           </DialogHeader>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
             {[
@@ -1234,9 +1193,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             ].map(([k, v]) => (
               <div key={k} className="contents">
                 <dt>
-                  <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
+                  <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">{tx(k)}</kbd>
                 </dt>
-                <dd className="text-muted-foreground">{v}</dd>
+                <dd className="text-muted-foreground">{tx(v)}</dd>
               </div>
             ))}
           </dl>

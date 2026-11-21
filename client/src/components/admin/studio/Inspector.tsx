@@ -22,6 +22,7 @@ import { ANCHOR_RE, CONDITION_KINDS, DEFAULT_BLOCK_STYLE, blockLabel, conditionA
 import { FEATURE_ICONS, fieldTab, moduleDef, type FieldDef, type InspectorTab, type ModuleDef } from "@shared/studio/modules";
 import { blockSummary } from "@/components/admin/pageBuilder/BlockEditors";
 import { siteRelativeFileUrl } from "@shared/imageUpload";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 /** Valor nuevo de un campo, o una función que lo calcula a partir del valor VIGENTE (listas, subidas que terminan tarde). */
 type FieldValue = unknown | ((current: unknown) => unknown);
@@ -50,6 +51,7 @@ export function BlockInspector({
   /** Si el bloque está dentro de una sección: cuál y en qué columna */
   inside?: { id: string; col: number; modal?: boolean } | null;
 }) {
+  const tx = useStudioText();
   const def = moduleDef(block.type);
   const data = block.data as unknown as Record<string, unknown>;
   const set: SetField = (key, value, coalesce = true) =>
@@ -64,7 +66,7 @@ export function BlockInspector({
       const { style: _old, ...rest } = b;
       return (isDefaultStyle(next) ? rest : { ...rest, style: next }) as PageBlock;
     }, `${block.id}:style:${Object.keys(patch).join()}`);
-  if (!def) return <p className="text-sm text-muted-foreground">Este bloque no tiene opciones.</p>;
+  if (!def) return <p className="text-sm text-muted-foreground">{tx("Este bloque no tiene opciones.")}</p>;
   const altKeys = new Set(def.fields.flatMap((f) => (f.kind === "image" && f.altKey ? [f.altKey] : [])));
   // Cada opción en su pestaña (fieldTab): textos y fotos en Contenido, aspecto en Diseño, lo que hace en Comportamiento
   const inTab = (t: InspectorTab) => def.fields.filter((f) => !altKeys.has(f.key) && fieldTab(f, pro) === t);
@@ -81,15 +83,15 @@ export function BlockInspector({
     <div className="space-y-4">
       {inside && (
         <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
-          <span className="text-muted-foreground">{inside.modal ? "Dentro de una ventana emergente" : `Dentro de una sección · columna ${inside.col + 1}`}</span>
+          <span className="text-muted-foreground">{inside.modal ? tx("Dentro de una ventana emergente") : tx("Dentro de una sección · columna {v}", { v: inside.col + 1 })}</span>
           {onSelectBlock && (
             <button type="button" className="font-medium text-[#5b5bf6] hover:underline" onClick={() => onSelectBlock(inside.id)}>
-              {inside.modal ? "Seleccionar la ventana" : "Seleccionar la sección"}
+              {inside.modal ? tx("Seleccionar la ventana") : tx("Seleccionar la sección")}
             </button>
           )}
         </div>
       )}
-      <div className="flex gap-0.5 rounded-lg bg-muted p-1" role="tablist" aria-label="Opciones del bloque">
+      <div className="flex gap-0.5 rounded-lg bg-muted p-1" role="tablist" aria-label={tx("Opciones del bloque")}>
         {tabs.map((t) => (
           <button
             key={t}
@@ -103,7 +105,7 @@ export function BlockInspector({
               current === t ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {TAB_LABEL[t]}
+            {tx(TAB_LABEL[t])}
           </button>
         ))}
       </div>
@@ -115,7 +117,7 @@ export function BlockInspector({
       ) : current === "behavior" ? (
         <div className="space-y-5">
           {behaviorFields.length > 0 && (
-            <StyleGroup title={blockLabel(block.type)}>
+            <StyleGroup title={tx(blockLabel(block.type))}>
               {behaviorFields.map(control)}
             </StyleGroup>
           )}
@@ -138,7 +140,7 @@ export function BlockInspector({
         </div>
       ) : (
         <div className="space-y-5">
-          {designFields.length > 0 && <StyleGroup title="Distribución">{designFields.map(control)}</StyleGroup>}
+          {designFields.length > 0 && <StyleGroup title={tx("Distribución")}>{designFields.map(control)}</StyleGroup>}
           <StyleEditor style={style} setStyle={setStyle} pro={pro} part="design" />
         </div>
       )}
@@ -148,13 +150,14 @@ export function BlockInspector({
 
 /** Lo que lleva cada columna de una sección: sus módulos (se seleccionan con un clic) y un selector para añadir otro. */
 function SectionColumns({ block, modules, onAdd, onSelect }: { block: Extract<PageBlock, { type: "section" | "modal" }>; modules: ModuleDef[]; onAdd?: (col: number, type: string) => void; onSelect?: (id: string) => void }) {
+  const tx = useStudioText();
   return (
     <div className="space-y-3">
-      <span className="text-sm font-medium">{block.type === "modal" ? "Contenido de la ventana" : "Contenido de las columnas"}</span>
+      <span className="text-sm font-medium">{block.type === "modal" ? tx("Contenido de la ventana") : tx("Contenido de las columnas")}</span>
       {block.data.columns.map((c, i) => (
         <div key={i} className="space-y-1.5 rounded-lg border border-border p-2.5">
           <span className="block text-xs font-semibold text-muted-foreground">
-            {block.type === "modal" ? "Módulos" : `Columna ${i + 1}`} · {c.blocks.length === 1 ? "1 módulo" : `${c.blocks.length} módulos`}
+            {block.type === "modal" ? tx("Módulos") : tx("Columna {v}", { v: i + 1 })} · {c.blocks.length === 1 ? tx("1 módulo") : tx("{cN} módulos", { cN: c.blocks.length })}
           </span>
           {c.blocks.map((child) => (
             <button
@@ -162,21 +165,21 @@ function SectionColumns({ block, modules, onAdd, onSelect }: { block: Extract<Pa
               type="button"
               onClick={() => onSelect?.(child.id)}
               className="block w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-md px-2 py-1 text-left text-xs hover:bg-muted"
-              title="Seleccionar este módulo"
+              title={tx("Seleccionar este módulo")}
             >
-              <span className="font-medium">{blockLabel(child.type)}</span>
-              <span className="text-muted-foreground"> · {blockSummary(child) || "Sin texto todavía"}</span>
+              <span className="font-medium">{tx(blockLabel(child.type))}</span>
+              <span className="text-muted-foreground"> · {blockSummary(child, tx) || tx("Sin texto todavía")}</span>
             </button>
           ))}
           {onAdd && (
             <Select value="" onValueChange={(v) => v && onAdd(i, v)}>
-              <SelectTrigger className="h-8 text-xs" aria-label={block.type === "modal" ? "Añadir a la ventana" : `Añadir a la columna ${i + 1}`}>
-                <SelectValue placeholder={block.type === "modal" ? "Añadir a la ventana…" : "Añadir a la columna…"} />
+              <SelectTrigger className="h-8 text-xs" aria-label={block.type === "modal" ? tx("Añadir a la ventana") : tx("Añadir a la columna {v}", { v: i + 1 })}>
+                <SelectValue placeholder={block.type === "modal" ? tx("Añadir a la ventana…") : tx("Añadir a la columna…")} />
               </SelectTrigger>
               <SelectContent>
                 {modules.map((m) => (
                   <SelectItem key={m.type} value={m.type}>
-                    {m.label}
+                    {tx(m.label)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -214,6 +217,7 @@ function RangeField({ label, value, min, max, step, unit, zeroLabel, onChange }:
 }
 
 export function Segmented({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
+  const tx = useStudioText();
   return (
     <div className="space-y-1.5">
       <span className="text-sm font-medium">{label}</span>
@@ -227,7 +231,7 @@ export function Segmented({ label, value, options, onChange }: { label: string; 
             onClick={() => onChange(o.value)}
             className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", value === o.value ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
           >
-            {o.label}
+            {tx(o.label)}
           </button>
         ))}
       </div>
@@ -239,6 +243,7 @@ export function Segmented({ label, value, options, onChange }: { label: string; 
 type ListCtx = { items: Array<Record<string, string>>; index: number };
 
 function FieldControl({ field: f, value, set, targets, blockId, pro = false, ctx }: { field: FieldDef; value: unknown; set: SetField; targets: LinkTarget[]; blockId: string; pro?: boolean; ctx?: ListCtx }) {
+  const tx = useStudioText();
   const str = typeof value === "string" ? value : "";
   switch (f.kind) {
     case "fieldRef": {
@@ -249,13 +254,13 @@ function FieldControl({ field: f, value, set, targets, blockId, pro = false, ctx
       return (
         <div className="space-y-1">
           <SelectField
-            label={f.label}
+            label={tx(f.label)}
             value={str || "__always"}
-            options={[{ value: "__always", label: "Siempre (sin condición)" }, ...labels.map((l) => ({ value: l, label: l })), ...(missing ? [{ value: str, label: `«${str}» (ya no existe)` }] : [])]}
+            options={[{ value: "__always", label: tx("Siempre (sin condición)") }, ...labels.map((l) => ({ value: l, label: l })), ...(missing ? [{ value: str, label: tx("«{str}» (ya no existe)", { str: str }) }] : [])]}
             onChange={(v) => set(f.key, v === "__always" ? "" : v, false)}
           />
-          {!labels.length && !str && <p className="text-xs text-muted-foreground">Para usar una condición, pon antes un campo desplegable, de opciones o una casilla de sí/no.</p>}
-          {missing && <p className="text-xs text-destructive">Esa pregunta ya no existe: el campo se mostrará siempre hasta que elijas otra.</p>}
+          {!labels.length && !str && <p className="text-xs text-muted-foreground">{tx("Para usar una condición, pon antes un campo desplegable, de opciones o una casilla de sí/no.")}</p>}
+          {missing && <p className="text-xs text-destructive">{tx("Esa pregunta ya no existe: el campo se mostrará siempre hasta que elijas otra.")}</p>}
         </div>
       );
     }
@@ -264,16 +269,16 @@ function FieldControl({ field: f, value, set, targets, blockId, pro = false, ctx
       const source = (ctx?.items ?? []).slice(0, ctx?.index ?? 0).find((it) => (it.label ?? "").trim() === ref && CONDITION_KINDS.includes(it.kind as FormFieldKind));
       const answers = source ? conditionAnswers({ kind: source.kind as FormFieldKind, options: source.options ?? "" }) : [];
       if (!answers.length) return null;
-      return <SelectField label={f.label} value={answers.includes(str) ? str : ""} options={answers.map((a) => ({ value: a, label: a }))} onChange={(v) => set(f.key, v, false)} />;
+      return <SelectField label={tx(f.label)} value={answers.includes(str) ? str : ""} options={answers.map((a) => ({ value: a, label: a }))} onChange={(v) => set(f.key, v, false)} />;
     }
     case "text":
       return (
-        <FieldShell label={f.label} hint={f.hint}>
+        <FieldShell label={tx(f.label)} hint={f.hint ? tx(f.hint) : undefined}>
           {(id) =>
             f.multiline ? (
-              <Textarea id={id} rows={3} value={str} maxLength={f.max} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} />
+              <Textarea id={id} rows={3} value={str} maxLength={f.max} placeholder={f.placeholder ? tx(f.placeholder) : undefined} onChange={(e) => set(f.key, e.target.value)} />
             ) : (
-              <Input id={id} value={str} maxLength={f.max} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} />
+              <Input id={id} value={str} maxLength={f.max} placeholder={f.placeholder ? tx(f.placeholder) : undefined} onChange={(e) => set(f.key, e.target.value)} />
             )
           }
         </FieldShell>
@@ -281,26 +286,26 @@ function FieldControl({ field: f, value, set, targets, blockId, pro = false, ctx
     case "rich":
       return (
         <div className="space-y-1.5">
-          <span className="text-sm font-medium">{f.label}</span>
-          <RichTextEditor key={blockId} value={str} onChange={(html) => set(f.key, html)} ariaLabel={f.label} />
+          <span className="text-sm font-medium">{tx(f.label)}</span>
+          <RichTextEditor key={blockId} value={str} onChange={(html) => set(f.key, html)} ariaLabel={tx(f.label)} />
         </div>
       );
     case "image":
-      return <ImageUploader label={f.label} value={str} onChange={(url) => set(f.key, siteRelativeFileUrl(url), false)} />;
+      return <ImageUploader label={tx(f.label)} value={str} onChange={(url) => set(f.key, siteRelativeFileUrl(url), false)} />;
     case "link":
-      return <LinkPicker label={f.label} value={str} onChange={(url) => set(f.key, url)} targets={targets} />;
+      return <LinkPicker label={tx(f.label)} value={str} onChange={(url) => set(f.key, url)} targets={targets} />;
     case "select":
       return f.options.length > 4 ? (
-        <SelectField label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
+        <SelectField label={tx(f.label)} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
       ) : (
-        <Segmented label={f.label} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
+        <Segmented label={tx(f.label)} value={str} options={f.options} onChange={(v) => set(f.key, v, false)} />
       );
     case "icon":
-      return <IconPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
+      return <IconPicker label={tx(f.label)} value={str} onChange={(v) => set(f.key, v, false)} />;
     case "category":
-      return <CategoryPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
+      return <CategoryPicker label={tx(f.label)} value={str} onChange={(v) => set(f.key, v, false)} />;
     case "product":
-      return <ProductPicker label={f.label} value={str} onChange={(v) => set(f.key, v, false)} />;
+      return <ProductPicker label={tx(f.label)} value={str} onChange={(v) => set(f.key, v, false)} />;
     case "images":
       return <ImagesEditor field={f} value={Array.isArray(value) ? (value as Array<{ url: string; alt: string }>) : []} set={set} />;
     case "list":
@@ -309,6 +314,7 @@ function FieldControl({ field: f, value, set, targets, blockId, pro = false, ctx
 }
 
 function SelectField({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<{ value: string; label: string }>; onChange: (v: string) => void }) {
+  const tx = useStudioText();
   const id = useId();
   return (
     <div className="space-y-1.5">
@@ -320,7 +326,7 @@ function SelectField({ label, value, options, onChange }: { label: string; value
         <SelectContent>
           {options.map((o) => (
             <SelectItem key={o.value} value={o.value}>
-              {o.label}
+              {tx(o.label)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -330,6 +336,7 @@ function SelectField({ label, value, options, onChange }: { label: string; value
 }
 
 function IconPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const tx = useStudioText();
   return (
     <div className="space-y-1.5">
       <span className="text-sm font-medium">{label}</span>
@@ -342,8 +349,8 @@ function IconPicker({ label, value, onChange }: { label: string; value: string; 
               type="button"
               role="radio"
               aria-checked={value === i.value}
-              aria-label={i.label}
-              title={i.label}
+              aria-label={tx(i.label)}
+              title={tx(i.label)}
               onClick={() => onChange(i.value)}
               className={cn("flex aspect-square items-center justify-center rounded-md border transition-colors", value === i.value ? "border-primary bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-muted")}
             >
@@ -359,6 +366,7 @@ function IconPicker({ label, value, onChange }: { label: string; value: string; 
 const ALL = "__todas__";
 
 function CategoryPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const tx = useStudioText();
   const id = useId();
   const cats = trpc.public.getCategories.useQuery(undefined, { staleTime: 300_000 });
   const list = (cats.data ?? []) as Array<{ id: number; name: string; slug: string }>;
@@ -370,11 +378,9 @@ function CategoryPicker({ label, value, onChange }: { label: string; value: stri
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>Todos los productos</SelectItem>
+          <SelectItem value={ALL}>{tx("Todos los productos")}</SelectItem>
           {list.map((c) => (
-            <SelectItem key={c.id} value={c.slug}>
-              Categoría: {c.name}
-            </SelectItem>
+            <SelectItem key={c.id} value={c.slug}>{tx("Categoría: {name}", { name: c.name })}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -384,6 +390,7 @@ function CategoryPicker({ label, value, onChange }: { label: string; value: stri
 
 /** Un producto de la tienda (E-4: «Próximas fechas»); vacío = de todos. */
 function ProductPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const tx = useStudioText();
   const id = useId();
   const products = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0 }, { staleTime: 60_000 });
   const list = (products.data ?? []) as Array<{ id: number; title: string; slug: string }>;
@@ -395,7 +402,7 @@ function ProductPicker({ label, value, onChange }: { label: string; value: strin
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>Todos los productos</SelectItem>
+          <SelectItem value={ALL}>{tx("Todos los productos")}</SelectItem>
           {list.map((p) => (
             <SelectItem key={p.id} value={p.slug}>
               {p.title}
@@ -411,32 +418,32 @@ type Img = { url: string; alt: string };
 const asImages = (v: unknown): Img[] => (Array.isArray(v) ? (v as Img[]) : []);
 
 function ImagesEditor({ field, value, set }: { field: Extract<FieldDef, { kind: "images" }>; value: Img[]; set: SetField }) {
+  const tx = useStudioText();
   const update = (i: number, patch: Partial<Img>) => set(field.key, (cur: unknown) => asImages(cur).map((g, j) => (j === i ? { ...g, ...patch } : g)), !("url" in patch));
   return (
     <div className="space-y-3">
-      <span className="text-sm font-medium">{field.label}</span>
+      <span className="text-sm font-medium">{tx(field.label)}</span>
       {value.map((g, i) => (
         <div key={i} className="space-y-2 rounded-lg border border-border p-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Imagen {i + 1}</span>
+            <span className="text-xs font-medium text-muted-foreground">{tx("Imagen {v}", { v: i + 1 })}</span>
             <Button type="button" variant="ghost" size="sm" className="h-7 text-destructive" onClick={() => set(field.key, (cur: unknown) => asImages(cur).filter((_, j) => j !== i), false)}>
-              <Trash2 className="mr-1 h-3.5 w-3.5" /> Quitar
-            </Button>
+              <Trash2 className="mr-1 h-3.5 w-3.5" />{" "}{tx("Quitar")}</Button>
           </div>
           <ImageUploader value={g.url} onChange={(url) => update(i, { url: siteRelativeFileUrl(url) })} />
-          <PlainInput aria-label={`Descripción de la imagen ${i + 1}`} placeholder="Descripción de la imagen" value={g.alt} maxLength={300} onChange={(e) => update(i, { alt: e.target.value })} />
+          <PlainInput aria-label={tx("Descripción de la imagen {v}", { v: i + 1 })} placeholder={tx("Descripción de la imagen")} value={g.alt} maxLength={300} onChange={(e) => update(i, { alt: e.target.value })} />
         </div>
       ))}
       {value.length < field.max && (
         <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => set(field.key, (cur: unknown) => [...asImages(cur), { url: "", alt: "" }], false)}>
-          <Plus className="mr-1 h-4 w-4" /> Añadir imagen
-        </Button>
+          <Plus className="mr-1 h-4 w-4" />{" "}{tx("Añadir imagen")}</Button>
       )}
     </div>
   );
 }
 
 function ListEditor({ field, value, set, targets, blockId, pro }: { field: Extract<FieldDef, { kind: "list" }>; value: Array<Record<string, string>>; set: SetField; targets: LinkTarget[]; blockId: string; pro: boolean }) {
+  const tx = useStudioText();
   const [open, setOpen] = useState<number | null>(null);
   type Items = Array<Record<string, string>>;
   const asItems = (v: unknown): Items => (Array.isArray(v) ? (v as Items) : []);
@@ -457,7 +464,7 @@ function ListEditor({ field, value, set, targets, blockId, pro }: { field: Extra
   const itemName = (item: Record<string, string>) => [...NAME_KEYS.filter((k) => textKeys.includes(k)), ...textKeys].map((k) => item[k]).find((v) => v && v.trim());
   return (
     <div className="space-y-2">
-      <span className="text-sm font-medium">{field.label}</span>
+      <span className="text-sm font-medium">{tx(field.label)}</span>
       {value.map((item, i) => {
         const expanded = open === i;
         return (
@@ -465,15 +472,15 @@ function ListEditor({ field, value, set, targets, blockId, pro }: { field: Extra
             <div className="flex items-center gap-1 px-2 py-1.5">
               <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : i)}>
                 <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />
-                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{itemName(item) || `${field.itemLabel} ${i + 1}`}</span>
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{itemName(item) || tx("{itemLabel} {v}", { itemLabel: tx(field.itemLabel), v: i + 1 })}</span>
               </button>
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Subir" disabled={i === 0} onClick={() => move(i, -1)}>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={tx("Subir")} disabled={i === 0} onClick={() => move(i, -1)}>
                 <ArrowUp className="h-3.5 w-3.5" />
               </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Bajar" disabled={i === value.length - 1} onClick={() => move(i, 1)}>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={tx("Bajar")} disabled={i === value.length - 1} onClick={() => move(i, 1)}>
                 <ArrowDown className="h-3.5 w-3.5" />
               </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label={`Quitar ${field.itemLabel.toLowerCase()}`} onClick={() => write((cur) => cur.filter((_, j) => j !== i))}>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" aria-label={tx("Quitar {v}", { v: tx.lower(tx(field.itemLabel)) })} onClick={() => write((cur) => cur.filter((_, j) => j !== i))}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -508,7 +515,7 @@ function ListEditor({ field, value, set, targets, blockId, pro }: { field: Extra
             setOpen(value.length);
           }}
         >
-          <Plus className="mr-1 h-4 w-4" /> Añadir {field.itemLabel.toLowerCase()}
+          <Plus className="mr-1 h-4 w-4" />{" "}{tx("Añadir {item}", { item: tx.lower(tx(field.itemLabel)) })}
         </Button>
       )}
     </div>
@@ -563,16 +570,17 @@ const DEVICE_OPTIONS: ReadonlyArray<{ value: Device; label: string; icon: typeof
 
 /** Diseño (fondo, texto, caja, espacios), Comportamiento (animación) o Avanzado (dispositivos y móvil, ancla). */
 function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setStyle: (p: Partial<BlockStyle>) => void; pro: boolean; part: "design" | "behavior" | "advanced" }) {
+  const tx = useStudioText();
   const anchorId = useId();
   const [anchor, setAnchor] = useState(style.anchor);
-  const anchorError = anchor && !ANCHOR_RE.test(anchor) ? "Solo minúsculas sin tildes, números y guiones." : null;
+  const anchorError = anchor && !ANCHOR_RE.test(anchor) ? tx("Solo minúsculas sin tildes, números y guiones.") : null;
   const boxed = style.border !== "none" || style.radius !== "0" || style.shadow !== "none";
   return (
     <div className="space-y-5">
       {part === "design" && (
       <>
-      <StyleGroup title="Fondo">
-        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Fondo">
+      <StyleGroup title={tx("Fondo")}>
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={tx("Fondo")}>
           {BACKGROUNDS.map((bg) => (
             <button
               key={bg.value}
@@ -583,12 +591,12 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
               className={cn("flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[11px] leading-tight transition-colors", style.background === bg.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
             >
               <span className={cn("h-7 w-full rounded-md border border-border", bg.swatch)} aria-hidden />
-              {bg.label}
+              {tx(bg.label)}
             </button>
           ))}
         </div>
         {style.background === "gradient" && (
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Degradado">
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={tx("Degradado")}>
             {GRADIENT_OPTIONS.map((g) => (
               <button
                 key={g.value}
@@ -599,194 +607,192 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
                 className={cn("flex flex-col gap-1.5 rounded-lg border p-2 text-left text-[11px] transition-colors", style.gradient === g.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
               >
                 <span className="h-8 w-full rounded-md border border-border" style={{ backgroundImage: g.css }} aria-hidden />
-                {g.label}
+                {tx(g.label)}
               </button>
             ))}
           </div>
         )}
         {style.background === "image" && (
           <div className="space-y-3">
-            <ImageUploader label="Imagen de fondo" value={style.bgImage} onChange={(url) => setStyle({ bgImage: siteRelativeFileUrl(url) })} />
+            <ImageUploader label={tx("Imagen de fondo")} value={style.bgImage} onChange={(url) => setStyle({ bgImage: siteRelativeFileUrl(url) })} />
             <Segmented
-              label="Capa para que el texto se lea"
+              label={tx("Capa para que el texto se lea")}
               value={style.overlay}
               options={[
-                { value: "dark", label: "Oscura" },
-                { value: "light", label: "Clara" },
-                { value: "brand", label: "De marca" },
+                { value: "dark", label: tx("Oscura") },
+                { value: "light", label: tx("Clara") },
+                { value: "brand", label: tx("De marca") },
               ]}
               onChange={(v) => setStyle({ overlay: v as BlockStyle["overlay"] })}
             />
             <SelectField
-              label="Dirección de la capa"
+              label={tx("Dirección de la capa")}
               value={style.overlayDir}
               options={[
-                { value: "flat", label: "Pareja en toda la foto" },
-                { value: "bottom", label: "Más intensa abajo" },
-                { value: "top", label: "Más intensa arriba" },
-                { value: "left", label: "Más intensa a la izquierda" },
-                { value: "right", label: "Más intensa a la derecha" },
-                { value: "radial", label: "Viñeta (más intensa en los bordes)" },
+                { value: "flat", label: tx("Pareja en toda la foto") },
+                { value: "bottom", label: tx("Más intensa abajo") },
+                { value: "top", label: tx("Más intensa arriba") },
+                { value: "left", label: tx("Más intensa a la izquierda") },
+                { value: "right", label: tx("Más intensa a la derecha") },
+                { value: "radial", label: tx("Viñeta (más intensa en los bordes)") },
               ]}
               onChange={(v) => setStyle({ overlayDir: v as BlockStyle["overlayDir"] })}
             />
             {(style.overlayDir === "left" || style.overlayDir === "right") && (
-              <p className="text-xs text-muted-foreground">En el móvil la capa se degrada desde abajo y el contenido baja, para dejar libre la parte alta de la foto.</p>
+              <p className="text-xs text-muted-foreground">{tx("En el móvil la capa se degrada desde abajo y el contenido baja, para dejar libre la parte alta de la foto.")}</p>
             )}
-            <RangeField label="Fuerza de la capa" value={style.overlayOpacity} min={0} max={95} step={5} unit="%" zeroLabel="La de serie" onChange={(n) => setStyle({ overlayOpacity: n })} />
+            <RangeField label={tx("Fuerza de la capa")} value={style.overlayOpacity} min={0} max={95} step={5} unit="%" zeroLabel={tx("La de serie")} onChange={(n) => setStyle({ overlayOpacity: n })} />
             <div className="space-y-3 rounded-lg border border-border p-3">
-              <p className="text-sm font-medium">Movimiento de la foto</p>
+              <p className="text-sm font-medium">{tx("Movimiento de la foto")}</p>
               <Segmented
-                label="Acercamiento lento"
+                label={tx("Acercamiento lento")}
                 value={style.bgMotion}
                 options={[
-                  { value: "off", label: "Sin movimiento" },
-                  { value: "on", label: "Con acercamiento" },
+                  { value: "off", label: tx("Sin movimiento") },
+                  { value: "on", label: tx("Con acercamiento") },
                 ]}
                 onChange={(v) => setStyle({ bgMotion: v as BlockStyle["bgMotion"] })}
               />
               {style.bgMotion === "on" && (
                 <>
-                  <RangeField label="Intensidad" value={style.bgMotionAmount} min={2} max={25} step={1} unit="%" onChange={(n) => setStyle({ bgMotionAmount: n })} />
-                  <RangeField label="Duración" value={style.bgMotionSeconds} min={6} max={60} step={1} unit=" s" onChange={(n) => setStyle({ bgMotionSeconds: n })} />
-                  <p className="text-xs text-muted-foreground">La foto se acerca despacio desde el punto focal. Solo se mueve la foto, no el texto. Se detiene si la persona prefiere menos movimiento.</p>
+                  <RangeField label={tx("Intensidad")} value={style.bgMotionAmount} min={2} max={25} step={1} unit="%" onChange={(n) => setStyle({ bgMotionAmount: n })} />
+                  <RangeField label={tx("Duración")} value={style.bgMotionSeconds} min={6} max={60} step={1} unit=" s" onChange={(n) => setStyle({ bgMotionSeconds: n })} />
+                  <p className="text-xs text-muted-foreground">{tx("La foto se acerca despacio desde el punto focal. Solo se mueve la foto, no el texto. Se detiene si la persona prefiere menos movimiento.")}</p>
                 </>
               )}
             </div>
             <div className="space-y-3 rounded-lg border border-border p-3">
-              <p className="text-sm font-medium">Encuadre de la foto</p>
-              <RangeField label="Posición horizontal" value={style.bgX} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgX: n })} />
-              <RangeField label="Posición vertical" value={style.bgY} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgY: n })} />
-              <RangeField label="Ampliación" value={style.bgZoom} min={100} max={250} step={5} unit="%" onChange={(n) => setStyle({ bgZoom: n })} />
+              <p className="text-sm font-medium">{tx("Encuadre de la foto")}</p>
+              <RangeField label={tx("Posición horizontal")} value={style.bgX} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgX: n })} />
+              <RangeField label={tx("Posición vertical")} value={style.bgY} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgY: n })} />
+              <RangeField label={tx("Ampliación")} value={style.bgZoom} min={100} max={250} step={5} unit="%" onChange={(n) => setStyle({ bgZoom: n })} />
               <Segmented
-                label="En el móvil"
+                label={tx("En el móvil")}
                 value={style.bgMobile}
                 options={[
-                  { value: "same", label: "El mismo encuadre" },
-                  { value: "own", label: "Encuadre propio" },
+                  { value: "same", label: tx("El mismo encuadre") },
+                  { value: "own", label: tx("Encuadre propio") },
                 ]}
                 onChange={(v) => setStyle({ bgMobile: v as BlockStyle["bgMobile"] })}
               />
               {style.bgMobile === "own" && (
                 <>
-                  <RangeField label="Móvil · posición horizontal" value={style.bgXM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgXM: n })} />
-                  <RangeField label="Móvil · posición vertical" value={style.bgYM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgYM: n })} />
-                  <RangeField label="Móvil · ampliación" value={style.bgZoomM} min={100} max={250} step={5} unit="%" onChange={(n) => setStyle({ bgZoomM: n })} />
+                  <RangeField label={tx("Móvil · posición horizontal")} value={style.bgXM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgXM: n })} />
+                  <RangeField label={tx("Móvil · posición vertical")} value={style.bgYM} min={0} max={100} step={1} unit="%" onChange={(n) => setStyle({ bgYM: n })} />
+                  <RangeField label={tx("Móvil · ampliación")} value={style.bgZoomM} min={100} max={250} step={5} unit="%" onChange={(n) => setStyle({ bgZoomM: n })} />
                   <Segmented
-                    label="Móvil · ajuste de la foto"
+                    label={tx("Móvil · ajuste de la foto")}
                     value={style.bgFitM}
                     options={[
-                      { value: "cover", label: "Cubrir todo el bloque" },
-                      { value: "width", label: "Entera, arriba" },
+                      { value: "cover", label: tx("Cubrir todo el bloque") },
+                      { value: "width", label: tx("Entera, arriba") },
                     ]}
                     onChange={(v) => setStyle({ bgFitM: v as BlockStyle["bgFitM"] })}
                   />
-                  {style.bgFitM === "width" && <p className="text-xs text-muted-foreground">La foto se ve entera a todo el ancho, en la parte alta, y se desvanece hacia abajo. Con una altura mínima en el móvil, el texto queda debajo sin taparla.</p>}
+                  {style.bgFitM === "width" && <p className="text-xs text-muted-foreground">{tx("La foto se ve entera a todo el ancho, en la parte alta, y se desvanece hacia abajo. Con una altura mínima en el móvil, el texto queda debajo sin taparla.")}</p>}
                 </>
               )}
             </div>
           </div>
         )}
-        <p className="text-xs text-muted-foreground">Los colores salen de la marca de tu web, así que siempre combinan; sobre fondos oscuros el texto pasa a claro.</p>
+        <p className="text-xs text-muted-foreground">{tx("Los colores salen de la marca de tu web, así que siempre combinan; sobre fondos oscuros el texto pasa a claro.")}</p>
       </StyleGroup>
 
-      <StyleGroup title="Composición">
+      <StyleGroup title={tx("Composición")}>
         {style.background === "image" && (
           <button
             type="button"
             onClick={() => setStyle({ minHeight: "full", contentY: "center", overlayDir: "bottom", bgMotion: "on", bgMotionAmount: 9, bgMotionSeconds: 20 })}
             className="w-full rounded-lg border border-dashed border-[#5b5bf6]/60 px-3 py-2 text-left text-xs font-medium hover:bg-[#5b5bf6]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]"
-          >
-            Hero cinematográfico de pantalla completa
-            <span className="mt-0.5 block font-normal text-muted-foreground">Ocupa toda la primera pantalla, con degradado inferior y acercamiento lento de la foto. Se ajusta después en los controles de abajo.</span>
+          >{tx("Hero cinematográfico de pantalla completa")}<span className="mt-0.5 block font-normal text-muted-foreground">{tx("Ocupa toda la primera pantalla, con degradado inferior y acercamiento lento de la foto. Se ajusta después en los controles de abajo.")}</span>
           </button>
         )}
         <SelectField
-          label="Altura mínima"
+          label={tx("Altura mínima")}
           value={style.minHeight}
           options={[
-            { value: "auto", label: "Automática (la del contenido)" },
-            { value: "40", label: "40 % de la pantalla" },
-            { value: "60", label: "60 % de la pantalla" },
-            { value: "80", label: "80 % de la pantalla" },
-            { value: "full", label: "Pantalla completa" },
-            { value: "custom", label: "Valor personalizado (píxeles)" },
+            { value: "auto", label: tx("Automática (la del contenido)") },
+            { value: "40", label: tx("40 % de la pantalla") },
+            { value: "60", label: tx("60 % de la pantalla") },
+            { value: "80", label: tx("80 % de la pantalla") },
+            { value: "full", label: tx("Pantalla completa") },
+            { value: "custom", label: tx("Valor personalizado (píxeles)") },
           ]}
           onChange={(v) => setStyle({ minHeight: v as BlockStyle["minHeight"] })}
         />
-        {style.minHeight === "custom" && <RangeField label="Altura" value={style.minHeightPx} min={120} max={1600} step={20} unit=" px" onChange={(n) => setStyle({ minHeightPx: n })} />}
-        <RangeField label="Altura mínima en el móvil" value={style.minHeightM} min={0} max={2000} step={50} unit=" px" zeroLabel="La misma que en ordenador" onChange={(n) => setStyle({ minHeightM: n === 0 ? 0 : Math.max(240, n) })} />
+        {style.minHeight === "custom" && <RangeField label={tx("Altura")} value={style.minHeightPx} min={120} max={1600} step={20} unit=" px" onChange={(n) => setStyle({ minHeightPx: n })} />}
+        <RangeField label={tx("Altura mínima en el móvil")} value={style.minHeightM} min={0} max={2000} step={50} unit=" px" zeroLabel={tx("La misma que en ordenador")} onChange={(n) => setStyle({ minHeightM: n === 0 ? 0 : Math.max(240, n) })} />
         {(style.minHeight !== "auto" || style.minHeightM > 0) && (
           <Segmented
-            label="Posición vertical del contenido"
+            label={tx("Posición vertical del contenido")}
             value={style.contentY}
             options={[
-              { value: "top", label: "Arriba" },
-              { value: "center", label: "Centro" },
-              { value: "bottom", label: "Abajo" },
+              { value: "top", label: tx("Arriba") },
+              { value: "center", label: tx("Centro") },
+              { value: "bottom", label: tx("Abajo") },
             ]}
             onChange={(v) => setStyle({ contentY: v as BlockStyle["contentY"] })}
           />
         )}
         <Segmented
-          label="Ancho del contenido"
+          label={tx("Ancho del contenido")}
           value={style.contentWidth}
           options={[
-            { value: "auto", label: "Todo" },
-            { value: "wide", label: "Amplio" },
-            { value: "medium", label: "Medio" },
-            { value: "narrow", label: "Estrecho" },
+            { value: "auto", label: tx("Todo") },
+            { value: "wide", label: tx("Amplio") },
+            { value: "medium", label: tx("Medio") },
+            { value: "narrow", label: tx("Estrecho") },
           ]}
           onChange={(v) => setStyle({ contentWidth: v as BlockStyle["contentWidth"] })}
         />
-        {style.contentWidth !== "auto" && <p className="text-xs text-muted-foreground">El contenido se coloca según la alineación del texto: a la izquierda, centrado o a la derecha.</p>}
+        {style.contentWidth !== "auto" && <p className="text-xs text-muted-foreground">{tx("El contenido se coloca según la alineación del texto: a la izquierda, centrado o a la derecha.")}</p>}
       </StyleGroup>
 
-      <StyleGroup title="Texto">
+      <StyleGroup title={tx("Texto")}>
         <Segmented
-          label="Alineación"
+          label={tx("Alineación")}
           value={style.align}
           options={[
-            { value: "auto", label: "La de serie" },
-            { value: "left", label: "Izquierda" },
-            { value: "center", label: "Centro" },
-            { value: "right", label: "Derecha" },
+            { value: "auto", label: tx("La de serie") },
+            { value: "left", label: tx("Izquierda") },
+            { value: "center", label: tx("Centro") },
+            { value: "right", label: tx("Derecha") },
           ]}
           onChange={(v) => setStyle({ align: v as BlockStyle["align"] })}
         />
         <SelectField
-          label="Tamaño de los títulos"
+          label={tx("Tamaño de los títulos")}
           value={style.headingSize}
           options={[
-            { value: "auto", label: "El de serie" },
-            { value: "s", label: "Pequeño" },
-            { value: "m", label: "Mediano" },
-            { value: "l", label: "Grande" },
-            { value: "xl", label: "Muy grande" },
+            { value: "auto", label: tx("El de serie") },
+            { value: "s", label: tx("Pequeño") },
+            { value: "m", label: tx("Mediano") },
+            { value: "l", label: tx("Grande") },
+            { value: "xl", label: tx("Muy grande") },
           ]}
           onChange={(v) => setStyle({ headingSize: v as BlockStyle["headingSize"] })}
         />
         {pro && (
           <>
-            <SelectField label="Tipo de letra de los títulos" value={style.headingFont} options={FONT_OPTIONS} onChange={(v) => setStyle({ headingFont: v as BlockStyle["headingFont"] })} />
-            <SelectField label="Tipo de letra del texto" value={style.textFont} options={FONT_OPTIONS} onChange={(v) => setStyle({ textFont: v as BlockStyle["textFont"] })} />
+            <SelectField label={tx("Tipo de letra de los títulos")} value={style.headingFont} options={FONT_OPTIONS} onChange={(v) => setStyle({ headingFont: v as BlockStyle["headingFont"] })} />
+            <SelectField label={tx("Tipo de letra del texto")} value={style.textFont} options={FONT_OPTIONS} onChange={(v) => setStyle({ textFont: v as BlockStyle["textFont"] })} />
             <Segmented
-              label="Tamaño del texto"
+              label={tx("Tamaño del texto")}
               value={style.textSize}
               options={[
-                { value: "s", label: "Pequeño" },
-                { value: "auto", label: "Normal" },
-                { value: "l", label: "Grande" },
+                { value: "s", label: tx("Pequeño") },
+                { value: "auto", label: tx("Normal") },
+                { value: "l", label: tx("Grande") },
               ]}
               onChange={(v) => setStyle({ textSize: v as BlockStyle["textSize"] })}
             />
             <Segmented
-              label="Color de los títulos"
+              label={tx("Color de los títulos")}
               value={style.headingColor}
               options={[
-                { value: "auto", label: "El de serie" },
-                { value: "brand", label: "De marca" },
-                { value: "text", label: "Como el texto" },
+                { value: "auto", label: tx("El de serie") },
+                { value: "brand", label: tx("De marca") },
+                { value: "text", label: tx("Como el texto") },
               ]}
               onChange={(v) => setStyle({ headingColor: v as BlockStyle["headingColor"] })}
             />
@@ -795,51 +801,51 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
       </StyleGroup>
 
       {pro && (
-        <StyleGroup title="Caja">
+        <StyleGroup title={tx("Caja")}>
           <Segmented
-            label="Borde"
+            label={tx("Borde")}
             value={style.border}
             options={[
-              { value: "none", label: "Sin borde" },
-              { value: "thin", label: "Fino" },
-              { value: "brand", label: "De marca" },
+              { value: "none", label: tx("Sin borde") },
+              { value: "thin", label: tx("Fino") },
+              { value: "brand", label: tx("De marca") },
             ]}
             onChange={(v) => setStyle({ border: v as BlockStyle["border"] })}
           />
           <Segmented
-            label="Esquinas"
+            label={tx("Esquinas")}
             value={style.radius}
             options={[
-              { value: "0", label: "Rectas" },
-              { value: "s", label: "Suaves" },
-              { value: "m", label: "Redondas" },
-              { value: "l", label: "Muy redondas" },
+              { value: "0", label: tx("Rectas") },
+              { value: "s", label: tx("Suaves") },
+              { value: "m", label: tx("Redondas") },
+              { value: "l", label: tx("Muy redondas") },
             ]}
             onChange={(v) => setStyle({ radius: v as BlockStyle["radius"] })}
           />
           <Segmented
-            label="Sombra"
+            label={tx("Sombra")}
             value={style.shadow}
             options={[
-              { value: "none", label: "Sin sombra" },
-              { value: "s", label: "Leve" },
-              { value: "m", label: "Media" },
-              { value: "l", label: "Fuerte" },
+              { value: "none", label: tx("Sin sombra") },
+              { value: "s", label: tx("Leve") },
+              { value: "m", label: tx("Media") },
+              { value: "l", label: tx("Fuerte") },
             ]}
             onChange={(v) => setStyle({ shadow: v as BlockStyle["shadow"] })}
           />
           <p className="text-xs text-muted-foreground">
-            {boxed ? "El bloque se muestra como una tarjeta dentro del ancho de la página." : "Con borde, esquinas o sombra, el bloque se muestra como una tarjeta."}
+            {boxed ? tx("El bloque se muestra como una tarjeta dentro del ancho de la página.") : tx("Con borde, esquinas o sombra, el bloque se muestra como una tarjeta.")}
           </p>
         </StyleGroup>
       )}
 
       {pro && (
-        <StyleGroup title="Espacios">
-          <SelectField label="Espacio interior arriba" value={style.padTop} options={SPACINGS} onChange={(v) => setStyle({ padTop: v as BlockStyle["padTop"] })} />
-          <SelectField label="Espacio interior abajo" value={style.padBottom} options={SPACINGS} onChange={(v) => setStyle({ padBottom: v as BlockStyle["padBottom"] })} />
-          <Segmented label="Separación con el bloque de arriba" value={style.marginTop} options={MARGINS} onChange={(v) => setStyle({ marginTop: v as BlockStyle["marginTop"] })} />
-          <Segmented label="Separación con el bloque de abajo" value={style.marginBottom} options={MARGINS} onChange={(v) => setStyle({ marginBottom: v as BlockStyle["marginBottom"] })} />
+        <StyleGroup title={tx("Espacios")}>
+          <SelectField label={tx("Espacio interior arriba")} value={style.padTop} options={SPACINGS} onChange={(v) => setStyle({ padTop: v as BlockStyle["padTop"] })} />
+          <SelectField label={tx("Espacio interior abajo")} value={style.padBottom} options={SPACINGS} onChange={(v) => setStyle({ padBottom: v as BlockStyle["padBottom"] })} />
+          <Segmented label={tx("Separación con el bloque de arriba")} value={style.marginTop} options={MARGINS} onChange={(v) => setStyle({ marginTop: v as BlockStyle["marginTop"] })} />
+          <Segmented label={tx("Separación con el bloque de abajo")} value={style.marginBottom} options={MARGINS} onChange={(v) => setStyle({ marginBottom: v as BlockStyle["marginBottom"] })} />
         </StyleGroup>
       )}
 
@@ -847,40 +853,37 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
       )}
 
       {part === "design" && !pro && (
-        <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          En el modo profesional tienes además tipos de letra, borde, esquinas y sombra, espacios y una pestaña «Avanzado» con ajustes para el móvil
-          y ancla.
-        </p>
+        <p className="rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">{tx("En el modo profesional tienes además tipos de letra, borde, esquinas y sombra, espacios y una pestaña «Avanzado» con ajustes para el móvil y ancla.")}</p>
       )}
 
       {part === "behavior" && (
-      <StyleGroup title="Animación">
+      <StyleGroup title={tx("Animación")}>
         <div className="space-y-1">
           <Segmented
-            label="Al aparecer"
+            label={tx("Al aparecer")}
             value={style.animation}
             options={[
-              { value: "none", label: "Ninguna" },
-              { value: "fade", label: "Fundido" },
-              { value: "up", label: "Subir" },
-              { value: "zoom", label: "Acercar" },
+              { value: "none", label: tx("Ninguna") },
+              { value: "fade", label: tx("Fundido") },
+              { value: "up", label: tx("Subir") },
+              { value: "zoom", label: tx("Acercar") },
             ]}
             onChange={(v) => setStyle({ animation: v as BlockStyle["animation"] })}
           />
-          <p className="text-xs text-muted-foreground">Se ve en tu web al llegar al bloque (no mientras editas) y nunca si el visitante prefiere menos movimiento.</p>
+          <p className="text-xs text-muted-foreground">{tx("Se ve en tu web al llegar al bloque (no mientras editas) y nunca si el visitante prefiere menos movimiento.")}</p>
         </div>
       </StyleGroup>
       )}
 
       {part === "advanced" && pro && (
         <>
-          <StyleGroup title="Dispositivos">
+          <StyleGroup title={tx("Dispositivos")}>
             <div className="space-y-2">
-              <span className="text-sm font-medium">Visible en</span>
+              <span className="text-sm font-medium">{tx("Visible en")}</span>
               {DEVICE_OPTIONS.map((d) => (
                 <div key={d.value} className="flex items-center justify-between gap-3">
                   <Label htmlFor={`${anchorId}-${d.value}`} className="flex items-center gap-2 font-normal">
-                    <d.icon className="h-4 w-4 text-muted-foreground" /> {d.label}
+                    <d.icon className="h-4 w-4 text-muted-foreground" /> {tx(d.label)}
                   </Label>
                   <Switch
                     id={`${anchorId}-${d.value}`}
@@ -891,42 +894,42 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
               ))}
             </div>
             <div className="space-y-2">
-              <span className="text-sm font-medium">Vigencia programada</span>
-              <p className="text-xs text-muted-foreground">El bloque se publica solo entre estas fechas (ambas incluidas, hora de Madrid) y deja de verse sin que nadie tenga que quitarlo. Vacío = sin límite.</p>
+              <span className="text-sm font-medium">{tx("Vigencia programada")}</span>
+              <p className="text-xs text-muted-foreground">{tx("El bloque se publica solo entre estas fechas (ambas incluidas, hora de Madrid) y deja de verse sin que nadie tenga que quitarlo. Vacío = sin límite.")}</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label htmlFor={`${anchorId}-show-from`} className="text-xs font-normal">Desde</Label>
+                  <Label htmlFor={`${anchorId}-show-from`} className="text-xs font-normal">{tx("Desde")}</Label>
                   <PlainInput id={`${anchorId}-show-from`} type="date" value={style.showFrom} max={style.showUntil || undefined} onChange={(e) => setStyle({ showFrom: e.target.value })} />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor={`${anchorId}-show-until`} className="text-xs font-normal">Hasta (incluido)</Label>
+                  <Label htmlFor={`${anchorId}-show-until`} className="text-xs font-normal">{tx("Hasta (incluido)")}</Label>
                   <PlainInput id={`${anchorId}-show-until`} type="date" value={style.showUntil} min={style.showFrom || undefined} onChange={(e) => setStyle({ showUntil: e.target.value })} />
                 </div>
               </div>
             </div>
             <Segmented
-              label="Alineación en el móvil"
+              label={tx("Alineación en el móvil")}
               value={style.mobileAlign}
               options={[
-                { value: "auto", label: "Como en el ordenador" },
-                { value: "left", label: "Izquierda" },
-                { value: "center", label: "Centro" },
+                { value: "auto", label: tx("Como en el ordenador") },
+                { value: "left", label: tx("Izquierda") },
+                { value: "center", label: tx("Centro") },
               ]}
               onChange={(v) => setStyle({ mobileAlign: v as BlockStyle["mobileAlign"] })}
             />
             <Segmented
-              label="Espacios en el móvil"
+              label={tx("Espacios en el móvil")}
               value={style.mobileSpacing}
               options={[
-                { value: "same", label: "Iguales" },
-                { value: "less", label: "La mitad" },
+                { value: "same", label: tx("Iguales") },
+                { value: "less", label: tx("La mitad") },
               ]}
               onChange={(v) => setStyle({ mobileSpacing: v as BlockStyle["mobileSpacing"] })}
             />
           </StyleGroup>
-          <StyleGroup title="Enlace">
+          <StyleGroup title={tx("Enlace")}>
             <div className="space-y-1.5">
-              <Label htmlFor={anchorId}>Ancla para enlazar a esta sección</Label>
+              <Label htmlFor={anchorId}>{tx("Ancla para enlazar a esta sección")}</Label>
               <PlainInput
                 id={anchorId}
                 value={anchor}
@@ -940,7 +943,7 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
                 }}
               />
               <p className={cn("text-xs", anchorError ? "text-destructive" : "text-muted-foreground")}>
-                {anchorError ?? (anchor ? `Enlaza a esta sección con «#${anchor}» desde un botón o el menú.` : "Opcional. Sirve para que un botón lleve directamente a esta sección.")}
+                {anchorError ?? (anchor ? tx("Enlaza a esta sección con «#{anchor}» desde un botón o el menú.", { anchor: anchor }) : tx("Opcional. Sirve para que un botón lleve directamente a esta sección."))}
               </p>
             </div>
           </StyleGroup>

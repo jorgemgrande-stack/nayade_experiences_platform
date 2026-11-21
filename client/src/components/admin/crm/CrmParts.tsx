@@ -15,6 +15,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import type { TagEntityType } from "@shared/crmTagsTasks";
 import { toastError } from "@/lib/errorMessage";
+import { useI18n } from "@/i18n/I18nProvider";
 
 /** Clases de color con contraste AA en tema claro y oscuro. */
 export const TAG_COLOR_CLASSES: Record<string, string> = {
@@ -80,6 +81,7 @@ export function EntityTagsDialog({
   current: number[];
   readOnly?: boolean;
 }) {
+  const { t: tr } = useI18n();
   const utils = trpc.useUtils();
   const tags = trpc.crmTags.list.useQuery(undefined, { enabled: open });
   const [busy, setBusy] = useState<number | null>(null);
@@ -99,25 +101,25 @@ export function EntityTagsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Etiquetas de {entityName}</DialogTitle>
+          <DialogTitle>{tr("crmForm.tagsDialog.title", { name: entityName })}</DialogTitle>
           <DialogDescription>
-            {readOnly ? "Puedes consultar las etiquetas, pero no cambiarlas." : "Marca las etiquetas que quieras asignar. Los cambios se guardan al momento."}
+            {readOnly ? tr("crmForm.tagsDialog.readOnly") : tr("crmForm.tagsDialog.hint")}
           </DialogDescription>
         </DialogHeader>
         {tags.isLoading ? (
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Cargando etiquetas…
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {tr("crmForm.tagsDialog.loading")}
           </p>
         ) : tags.isError ? (
-          <p role="alert" className="text-sm text-destructive">{errorMessage(tags.error, "No se han podido cargar las etiquetas.")}</p>
+          <p role="alert" className="text-sm text-destructive">{errorMessage(tags.error, tr("crmForm.tagsDialog.loadError"))}</p>
         ) : !tags.data?.length ? (
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>Todavía no has creado ninguna etiqueta.</p>
-            <Link href="/admin/crm/etiquetas" className="font-medium text-primary underline underline-offset-4">Crear etiquetas</Link>
+            <p>{tr("crmForm.tagsDialog.none")}</p>
+            <Link href="/admin/crm/etiquetas" className="font-medium text-primary underline underline-offset-4">{tr("crmForm.tagsDialog.create")}</Link>
           </div>
         ) : (
           <fieldset className="space-y-1" disabled={readOnly}>
-            <legend className="sr-only">Etiquetas disponibles</legend>
+            <legend className="sr-only">{tr("crmForm.tagsDialog.available")}</legend>
             {tags.data.map((t) => {
               const on = current.includes(t.id);
               return (
@@ -130,7 +132,7 @@ export function EntityTagsDialog({
                     onChange={(e) => toggle(t.id, e.target.checked)}
                   />
                   <TagChip name={t.name} color={t.color} />
-                  {busy === t.id && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Guardando" />}
+                  {busy === t.id && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label={tr("crmForm.tagsDialog.saving")} />}
                   {on && busy !== t.id && <Check className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />}
                 </label>
               );
@@ -138,7 +140,7 @@ export function EntityTagsDialog({
           </fieldset>
         )}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cerrar</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{tr("crmForm.tagsDialog.close")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

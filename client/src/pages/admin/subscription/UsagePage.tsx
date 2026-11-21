@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { Formatters, Translate } from "@shared/i18n/core";
 
 interface UsageRow {
   metric: string;
@@ -23,9 +25,8 @@ interface UsageRow {
   enforcement: "hard" | "soft";
 }
 
-const nf = new Intl.NumberFormat("es-ES");
-function amount(n: number, unit: UsageRow["unit"]): string {
-  if (unit !== "bytes") return nf.format(n);
+function amount(f: Formatters, n: number, unit: UsageRow["unit"]): string {
+  if (unit !== "bytes") return f.number(n);
   const units = ["B", "KB", "MB", "GB", "TB"];
   let v = n;
   let i = 0;
@@ -33,31 +34,32 @@ function amount(n: number, unit: UsageRow["unit"]): string {
     v /= 1024;
     i++;
   }
-  return `${new Intl.NumberFormat("es-ES", { maximumFractionDigits: v < 10 && i > 0 ? 1 : 0 }).format(v)} ${units[i]}`;
+  return `${f.number(v, { maximumFractionDigits: v < 10 && i > 0 ? 1 : 0 })} ${units[i]}`;
 }
 
-const STATE: Record<UsageRow["state"], { label: string; bar: string; badge: string }> = {
-  ok: { label: "Dentro del límite", bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-300" },
-  warning: { label: "Cerca del límite", bar: "bg-amber-500", badge: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300" },
-  exceeded: { label: "Límite alcanzado", bar: "bg-red-500", badge: "bg-red-100 text-red-900 dark:bg-red-500/15 dark:text-red-300" },
-};
+const stateStyles = (t: Translate): Record<UsageRow["state"], { label: string; bar: string; badge: string }> => ({
+  ok: { label: t("subscription.usage.within"), bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-300" },
+  warning: { label: t("subscription.usage.near"), bar: "bg-amber-500", badge: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300" },
+  exceeded: { label: t("subscription.usage.reached"), bar: "bg-red-500", badge: "bg-red-100 text-red-900 dark:bg-red-500/15 dark:text-red-300" },
+});
 
 function UsageCard({ row }: { row: UsageRow }) {
+  const { t, format: f } = useI18n();
   const pct = row.ratio === null ? (row.used > 0 ? 100 : 0) : Math.min(100, Math.round(row.ratio * 100));
-  const s = STATE[row.state];
+  const s = stateStyles(t)[row.state];
   return (
     <li className="rounded-2xl border border-border bg-card p-5 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-semibold text-foreground">{row.label}</h2>
-          <p className="text-xs text-muted-foreground">Periodo: {row.periodLabel}</p>
+          <p className="text-xs text-muted-foreground">{t("subscription.usage.period", { period: row.periodLabel })}</p>
         </div>
         <Badge className={cn("border-0", s.badge)}>{s.label}</Badge>
       </div>
       <div
         className="h-2 w-full rounded-full bg-muted overflow-hidden"
         role="progressbar"
-        aria-label={`${row.label}: ${pct} % del límite`}
+        aria-label={t("subscription.usage.ariaLimit", { label: row.label, pct })}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={pct}
@@ -65,14 +67,14 @@ function UsageCard({ row }: { row: UsageRow }) {
         <div className={cn("h-full rounded-full", s.bar)} style={{ width: `${pct}%` }} />
       </div>
       <p className="text-sm text-foreground">
-        <strong>{amount(row.used, row.unit)}</strong> de {amount(row.limit, row.unit)}
-        {row.unit === "tokens" ? " tokens" : ""}
+        <strong>{amount(f, row.used, row.unit)}</strong> {t("subscription.usage.of")} {amount(f, row.limit, row.unit)}
+        {row.unit === "tokens" ? t("subscription.usage.tokens") : ""}
       </p>
       {row.state === "exceeded" && (
         <p className="text-xs text-muted-foreground">
           {row.enforcement === "hard"
-            ? "Hasta el próximo periodo no se puede usar más. Si lo necesitas, amplía tu plan."
-            : "Se sigue pudiendo usar, pero conviene revisar tu plan."}
+            ? t("subscription.usage.hardStop")
+            : t("subscription.usage.softStop")}
         </p>
       )}
     </li>
@@ -84,9 +86,10 @@ const LEVEL: Record<string, UsageRow["state"]> = { ok: "ok", warning: "warning",
 interface ScopeView { usedBytes: number; objects: number; limitGb: number | null; source: string; availableBytes: number | null; level: string }
 
 function StorageCard({ title, hint, v }: { title: string; hint: string; v: ScopeView }) {
+  const { t, format: f } = useI18n();
   const limit = v.limitGb === null ? null : v.limitGb * 1024 ** 3;
   const pct = limit === null ? 0 : limit === 0 ? 100 : Math.min(100, Math.round((v.usedBytes / limit) * 100));
-  const s = STATE[LEVEL[v.level] ?? "ok"];
+  const s = stateStyles(t)[LEVEL[v.level] ?? "ok"];
   return (
     <li className="rounded-2xl border border-border bg-card p-5 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -96,12 +99,12 @@ function StorageCard({ title, hint, v }: { title: string; hint: string; v: Scope
         </div>
         <Badge className={cn("border-0", s.badge)}>{s.label}</Badge>
       </div>
-      <div className="h-2 w-full rounded-full bg-muted overflow-hidden" role="progressbar" aria-label={`${title}: ${pct} % de la cuota`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+      <div className="h-2 w-full rounded-full bg-muted overflow-hidden" role="progressbar" aria-label={t("subscription.usage.ariaQuota", { title, pct })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
         <div className={cn("h-full rounded-full", s.bar)} style={{ width: `${pct}%` }} />
       </div>
       <p className="text-sm text-foreground">
-        <strong>{amount(v.usedBytes, "bytes")}</strong> de {limit === null ? "sin tope" : amount(limit, "bytes")} · {nf.format(v.objects)} ficheros
-        {v.availableBytes !== null ? ` · disponible ${amount(v.availableBytes, "bytes")}` : ""}
+        <strong>{amount(f, v.usedBytes, "bytes")}</strong> {t("subscription.usage.of")} {limit === null ? t("subscription.usage.noCap") : amount(f, limit, "bytes")} · {t("subscription.usage.files", { n: f.number(v.objects) })}
+        {v.availableBytes !== null ? t("subscription.usage.available", { size: amount(f, v.availableBytes, "bytes") }) : ""}
       </p>
     </li>
   );
@@ -109,20 +112,21 @@ function StorageCard({ title, hint, v }: { title: string; hint: string; v: Scope
 
 /** Almacenamiento separado: general (imágenes, documentos) y Elephant Learning (formación). Solo lectura. */
 function StorageBreakdown() {
+  const { t, format: f } = useI18n();
   const q = trpc.storage.overview.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const d = q.data as { general: ScopeView; learning: ScopeView; duplicates: { groups: number; extraObjects: number; extraBytes: number }; imageMaxBytes: number; traffic: { measurable: boolean } } | null | undefined;
   if (!d) return null;
   return (
-    <section className="space-y-3" aria-label="Almacenamiento">
-      <h2 className="text-lg font-semibold text-foreground">Almacenamiento</h2>
+    <section className="space-y-3" aria-label={t("subscription.usage.storage")}>
+      <h2 className="text-lg font-semibold text-foreground">{t("subscription.usage.storage")}</h2>
       <ul className="grid gap-4 sm:grid-cols-2">
-        <StorageCard title="General" hint="Imágenes, documentos y adjuntos" v={d.general} />
-        <StorageCard title="Formación (Elephant Learning)" hint="Vídeo, audio y PDF educativos" v={d.learning} />
+        <StorageCard title={t("subscription.usage.general")} hint={t("subscription.usage.generalHint")} v={d.general} />
+        <StorageCard title={t("subscription.usage.learning")} hint={t("subscription.usage.learningHint")} v={d.learning} />
       </ul>
       <p className="text-xs text-muted-foreground">
-        Máximo por imagen: {Math.floor(d.imageMaxBytes / 1024 ** 2)} MB.
-        {d.duplicates.groups > 0 ? ` Hay ${nf.format(d.duplicates.extraObjects)} ficheros repetidos (${amount(d.duplicates.extraBytes, "bytes")}).` : ""}
-        {d.traffic.measurable ? "" : " El tráfico de reproducción todavía no se mide."}
+        {t("subscription.usage.maxImage", { mb: Math.floor(d.imageMaxBytes / 1024 ** 2) })}
+        {d.duplicates.groups > 0 ? t("subscription.usage.duplicates", { n: f.number(d.duplicates.extraObjects), size: amount(f, d.duplicates.extraBytes, "bytes") }) : ""}
+        {d.traffic.measurable ? "" : t("subscription.usage.noTraffic")}
       </p>
     </section>
   );
@@ -130,21 +134,22 @@ function StorageBreakdown() {
 
 /** Consumo frente a los límites (también dentro de la página «Suscripción»). */
 export function UsageSection() {
+  const { t } = useI18n();
   const usage = trpc.subscription.usage.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const data = usage.data as { available: boolean; rows: UsageRow[]; lagSeconds: number } | null | undefined;
 
   return (
     <>
-        {usage.isLoading && <PanelLoading label="Cargando el consumo…" />}
-        {usage.isError && <PanelError error={usage.error} onRetry={() => usage.refetch()} title="No se ha podido cargar el consumo" />}
+        {usage.isLoading && <PanelLoading label={t("subscription.usage.loading")} />}
+        {usage.isError && <PanelError error={usage.error} onRetry={() => usage.refetch()} title={t("subscription.usage.loadError")} />}
 
         {usage.isSuccess && (!data || !data.available) && (
           <section className="rounded-2xl border border-border bg-card p-6">
-            <p className="text-sm text-muted-foreground">La medición del consumo no está disponible en esta instalación.</p>
+            <p className="text-sm text-muted-foreground">{t("subscription.usage.unavailable")}</p>
           </section>
         )}
 
-        {data?.available && data.rows.length === 0 && <p className="text-sm text-muted-foreground">Tu plan no tiene límites de consumo que mostrar.</p>}
+        {data?.available && data.rows.length === 0 && <p className="text-sm text-muted-foreground">{t("subscription.usage.noLimits")}</p>}
 
         {data?.available && data.rows.length > 0 && (
           <>
@@ -153,7 +158,7 @@ export function UsageSection() {
                 <UsageCard key={`${r.metric}:${r.period}`} row={r} />
               ))}
             </ul>
-            <p className="text-xs text-muted-foreground">Las cifras se actualizan cada pocos segundos (hasta {data.lagSeconds} s de retraso).</p>
+            <p className="text-xs text-muted-foreground">{t("subscription.usage.lag", { s: data.lagSeconds })}</p>
           </>
         )}
 
@@ -163,15 +168,16 @@ export function UsageSection() {
 }
 
 export default function UsagePage() {
+  const { t } = useI18n();
   return (
     <AdminLayout>
       <div className="max-w-4xl space-y-6">
         <div>
           <Link href="/admin/suscripcion" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Suscripción
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" /> {t("subscription.hero.title")}
           </Link>
-          <h1 className="text-2xl font-bold text-foreground mt-1">Consumo</h1>
-          <p className="text-sm text-muted-foreground">Lo que lleva usado tu empresa frente a los límites de tu plan.</p>
+          <h1 className="text-2xl font-bold text-foreground mt-1">{t("subscription.usage.pageTitle")}</h1>
+          <p className="text-sm text-muted-foreground">{t("subscription.usage.pageText")}</p>
         </div>
         <UsageSection />
       </div>

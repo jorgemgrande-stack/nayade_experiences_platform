@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { blockLabel, createBlock, type PageBlock } from "@shared/pageBlocks";
 import { LIBRARY_ELEMENTS, LIBRARY_SECTIONS, searchModules, type ModuleDef } from "@shared/studio/modules";
 import { BlockThumb } from "./BlockThumb";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 export function QuickInsert({
   open, where, modules, saved, onPick, onClose,
@@ -22,6 +23,7 @@ export function QuickInsert({
   onPick: (payload: string) => void;
   onClose: () => void;
 }) {
+  const tx = useStudioText();
   const [q, setQ] = useState("");
   const found = useMemo(() => searchModules(modules, q), [modules, q]);
   const samples = useMemo(() => new Map(modules.map((m) => [m.type, [createBlock(m.type)] as PageBlock[]])), [modules]);
@@ -52,18 +54,18 @@ export function QuickInsert({
     >
       <DialogContent className="max-h-[85vh] overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b border-border p-4">
-          <DialogTitle>Añadir {where}</DialogTitle>
-          <DialogDescription>Elige un módulo. Podrás cambiar sus textos sobre la página y su diseño en el panel derecho.</DialogDescription>
+          <DialogTitle>{tx("Añadir {where}", { where: where })}</DialogTitle>
+          <DialogDescription>{tx("Elige un módulo. Podrás cambiar sus textos sobre la página y su diseño en el panel derecho.")}</DialogDescription>
           <div className="relative pt-2">
             <Search className="pointer-events-none absolute left-2.5 top-[calc(50%+4px)] h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar módulos" aria-label="Buscar módulos" className="h-9 pl-8" />
+            <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx("Buscar módulos")} aria-label={tx("Buscar módulos")} className="h-9 pl-8" />
           </div>
         </DialogHeader>
         <div className="max-h-[60vh] space-y-5 overflow-y-auto p-4">
           {!q.trim() && saved.length > 0 && (
             <section className="space-y-2">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mis diseños</h3>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{saved.map((s) => tile(s.id, s.name, [s.block], `saved:${s.id}`, blockLabel(s.block.type)))}</div>
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tx("Mis diseños")}</h3>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{saved.map((s) => tile(s.id, s.name, [s.block], `saved:${s.id}`, tx(blockLabel(s.block.type))))}</div>
             </section>
           )}
           {[{ key: "elementos", label: "Elementos", types: LIBRARY_ELEMENTS }, ...LIBRARY_SECTIONS].map((group) => {
@@ -71,12 +73,12 @@ export function QuickInsert({
             if (!list.length) return null;
             return (
               <section key={group.key} className="space-y-2">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</h3>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{list.map((m) => tile(m.type, m.label, samples.get(m.type) ?? [], `module:${m.type}`))}</div>
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tx(group.label)}</h3>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{list.map((m) => tile(m.type, tx(m.label), samples.get(m.type) ?? [], `module:${m.type}`))}</div>
               </section>
             );
           })}
-          {!found.length && <p className="text-sm text-muted-foreground">Ningún módulo coincide con «{q}».</p>}
+          {!found.length && <p className="text-sm text-muted-foreground">{tx("Ningún módulo coincide con «{q}».", { q: q })}</p>}
         </div>
       </DialogContent>
     </Dialog>

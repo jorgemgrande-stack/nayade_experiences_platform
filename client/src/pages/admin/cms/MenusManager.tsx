@@ -12,6 +12,7 @@ import {
   Loader2, RefreshCw,
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 type MenuItem = {
   id: number;
@@ -36,6 +37,7 @@ function InlineEdit({
   placeholder?: string;
   className?: string;
 }) {
+  const tx = useStudioText();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -53,7 +55,7 @@ function InlineEdit({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
           className={`h-7 text-sm px-2 w-40 ${className}`}
-          placeholder={placeholder}
+          placeholder={tx(placeholder)}
         />
         <button onClick={save} className="text-green-600 hover:text-green-700"><Check className="w-4 h-4" /></button>
         <button onClick={cancel} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
@@ -64,7 +66,7 @@ function InlineEdit({
     <span
       className={`cursor-pointer hover:text-primary transition-colors group/edit ${className}`}
       onClick={start}
-      title="Clic para editar"
+      title={tx("Clic para editar")}
     >
       {value}
       <Edit2 className="w-3 h-3 ml-1 inline opacity-0 group-hover/edit:opacity-60 transition-opacity" />
@@ -74,6 +76,7 @@ function InlineEdit({
 
 // ── URL inline edit ──────────────────────────────────────────────────────────
 function InlineUrl({ value, onSave }: { value: string | null; onSave: (v: string | null) => void }) {
+  const tx = useStudioText();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,7 +94,7 @@ function InlineUrl({ value, onSave }: { value: string | null; onSave: (v: string
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
           className="h-6 text-xs px-2 w-48"
-          placeholder="/contacto o https://…"
+          placeholder={tx("/contacto o https://…")}
         />
         <button onClick={save} className="text-green-600 hover:text-green-700"><Check className="w-3.5 h-3.5" /></button>
         <button onClick={cancel} className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
@@ -102,10 +105,10 @@ function InlineUrl({ value, onSave }: { value: string | null; onSave: (v: string
     <span
       className="cursor-pointer text-xs text-muted-foreground hover:text-primary transition-colors group/url flex items-center gap-1"
       onClick={start}
-      title="Pulsa para cambiar a dónde lleva"
+      title={tx("Pulsa para cambiar a dónde lleva")}
     >
       <Link2 className="w-3 h-3" />
-      {value ?? <span className="italic opacity-60">sin enlace</span>}
+      {value ?? <span className="italic opacity-60">{tx("sin enlace")}</span>}
       <Edit2 className="w-2.5 h-2.5 opacity-0 group-hover/url:opacity-60 transition-opacity" />
     </span>
   );
@@ -121,6 +124,7 @@ function AddItemRow({
   placeholder?: string;
   compact?: boolean;
 }) {
+  const tx = useStudioText();
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
@@ -149,7 +153,7 @@ function AddItemRow({
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") setOpen(false); }}
-        placeholder="Texto"
+        placeholder={tx("Texto")}
         className="h-7 text-xs px-2 w-32"
       />
       <Input
@@ -167,6 +171,7 @@ function AddItemRow({
 
 // ── Main component ───────────────────────────────────────────────────────────
 export default function MenusManager() {
+  const tx = useStudioText();
   // Menú de arriba o enlaces del pie de página (los textos legales del pie se añaden solos)
   const [zone, setZone] = useState<"header" | "footer">("header");
   const utils = trpc.useUtils();
@@ -178,11 +183,11 @@ export default function MenusManager() {
     onError: (e) => toastError(e),
   });
   const createMut = trpc.cms.createMenuItem.useMutation({
-    onSuccess: () => { utils.cms.getMenuItems.invalidate(); toast.success("Ítem añadido"); },
+    onSuccess: () => { utils.cms.getMenuItems.invalidate(); toast.success(tx("Ítem añadido")); },
     onError: (e) => toastError(e),
   });
   const deleteMut = trpc.cms.deleteMenuItem.useMutation({
-    onSuccess: () => { utils.cms.getMenuItems.invalidate(); toast.success("Ítem eliminado"); },
+    onSuccess: () => { utils.cms.getMenuItems.invalidate(); toast.success(tx("Ítem eliminado")); },
     onError: (e) => toastError(e),
   });
   const reorderMut = trpc.cms.reorderMenuItems.useMutation({
@@ -234,16 +239,15 @@ export default function MenusManager() {
 
   if (isLoading) {
     return (
-      <AdminLayout title="Gestión de Menús">
+      <AdminLayout title={tx("Gestión de Menús")}>
         <div className="flex items-center justify-center h-48 text-muted-foreground">
-          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Cargando menú...
-        </div>
+          <Loader2 className="w-6 h-6 animate-spin mr-2" />{" "}{tx("Cargando menú...")}</div>
       </AdminLayout>
     );
   }
 
   return (
-    <AdminLayout title="Gestión de Menús">
+    <AdminLayout title={tx("Gestión de Menús")}>
       <div className="px-6 py-6">
       {/* Page header */}
       <div className="flex items-center justify-between mb-6 pb-5 border-b border-border/50">
@@ -252,10 +256,8 @@ export default function MenusManager() {
             <Navigation className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground leading-none">Menú de tu web</h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              Pulsa un texto o un enlace para cambiarlo · Usa las flechas para ordenar · Los cambios se guardan solos
-            </p>
+            <h1 className="text-xl font-bold text-foreground leading-none">{tx("Menú de tu web")}</h1>
+            <p className="text-xs text-muted-foreground mt-1">{tx("Pulsa un texto o un enlace para cambiarlo · Usa las flechas para ordenar · Los cambios se guardan solos")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -265,31 +267,29 @@ export default function MenusManager() {
             onClick={() => utils.cms.getMenuItems.invalidate()}
             disabled={updateMut.isPending || reorderMut.isPending}
           >
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Actualizar
-          </Button>
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />{" "}{tx("Actualizar")}</Button>
           <a href="/" target="_blank" rel="noreferrer">
             <Button size="sm" variant="outline">
-              <Globe className="w-3.5 h-3.5 mr-1.5" /> Ver sitio
-            </Button>
+              <Globe className="w-3.5 h-3.5 mr-1.5" />{" "}{tx("Ver sitio")}</Button>
           </a>
         </div>
       </div>
 
       {/* Menú de arriba o pie de página */}
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Qué menú">
+      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label={tx("Qué menú")}>
         {(["header", "footer"] as const).map((z) => (
           <Button key={z} size="sm" role="tab" aria-selected={zone === z} variant={zone === z ? "default" : "outline"} onClick={() => setZone(z)}>
-            {z === "header" ? "Menú de arriba" : "Pie de página"}
+            {z === "header" ? tx("Menú de arriba") : tx("Pie de página")}
           </Button>
         ))}
       </div>
 
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 text-xs text-muted-foreground bg-muted/30 rounded-lg px-4 py-2">
-        <span className="flex items-center gap-1"><Edit2 className="w-3 h-3" /> Clic en texto para editar</span>
-        <span className="flex items-center gap-1"><ChevronUp className="w-3 h-3" /><ChevronDown className="w-3 h-3" /> Flechas para reordenar</span>
-        <span className="flex items-center gap-1"><Plus className="w-3 h-3" /> Añadir ítem o submenú</span>
-        <span className="flex items-center gap-1"><Trash2 className="w-3 h-3" /> Eliminar (y sus submenús)</span>
+        <span className="flex items-center gap-1"><Edit2 className="w-3 h-3" />{" "}{tx("Clic en texto para editar")}</span>
+        <span className="flex items-center gap-1"><ChevronUp className="w-3 h-3" /><ChevronDown className="w-3 h-3" />{" "}{tx("Flechas para reordenar")}</span>
+        <span className="flex items-center gap-1"><Plus className="w-3 h-3" />{" "}{tx("Añadir ítem o submenú")}</span>
+        <span className="flex items-center gap-1"><Trash2 className="w-3 h-3" />{" "}{tx("Eliminar (y sus submenús)")}</span>
       </div>
 
       {/* Menu tree */}
@@ -341,8 +341,7 @@ export default function MenusManager() {
                 <div className="flex items-center gap-2 shrink-0">
                   {children.length > 0 && (
                     <Badge variant="outline" className="text-xs">
-                      <ChevronRight className="w-3 h-3 mr-0.5" /> {children.length} submenús
-                    </Badge>
+                      <ChevronRight className="w-3 h-3 mr-0.5" /> {children.length}{" "}{tx("submenús")}</Badge>
                   )}
                   <Switch
                     checked={root.isActive}
@@ -352,8 +351,7 @@ export default function MenusManager() {
                   {root.url && (
                     <a href={root.url} target="_blank" rel="noreferrer">
                       <Button size="sm" variant="ghost" className="h-7 px-2">
-                        <Eye className="w-3.5 h-3.5 mr-1" /> Ver
-                      </Button>
+                        <Eye className="w-3.5 h-3.5 mr-1" />{" "}{tx("Ver")}</Button>
                     </a>
                   )}
                   <Button
@@ -361,7 +359,7 @@ export default function MenusManager() {
                     variant="ghost"
                     className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                     onClick={() => {
-                      if (confirm(`¿Eliminar "${root.label}" y sus ${children.length} submenús?`))
+                      if (confirm(tx("¿Eliminar \"{label}\" y sus {childrenN} submenús?", { label: root.label, childrenN: children.length })))
                         deleteMut.mutate({ id: root.id });
                     }}
                     disabled={deleteMut.isPending}
@@ -421,7 +419,7 @@ export default function MenusManager() {
                           />
                           <button
                             onClick={() => {
-                              if (confirm(`¿Eliminar "${child.label}"?`))
+                              if (confirm(tx("¿Eliminar \"{label}\"?", { label: child.label })))
                                 deleteMut.mutate({ id: child.id });
                             }}
                             className="text-destructive/60 hover:text-destructive transition-colors"
@@ -436,7 +434,7 @@ export default function MenusManager() {
                     {/* Add submenu */}
                     <AddItemRow
                       onAdd={(label, url) => addChild(root.id, label, url)}
-                      placeholder="+ Añadir submenú"
+                      placeholder={tx("+ Añadir submenú")}
                       compact
                     />
                   </div>
@@ -451,14 +449,13 @@ export default function MenusManager() {
       <div className="mt-4 p-4 border-2 border-dashed border-border rounded-xl">
         <AddItemRow
           onAdd={addRoot}
-          placeholder={zone === "header" ? "Añadir enlace al menú" : "Añadir enlace al pie"}
+          placeholder={zone === "header" ? tx("Añadir enlace al menú") : tx("Añadir enlace al pie")}
         />
       </div>
 
       {/* Info */}
       <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-800 dark:text-blue-300">
-        <strong>Consejo:</strong> los cambios se guardan al momento y se ven en tu web al volver a cargarla. Las páginas sin publicar no aparecen en el menú aunque estén en esta lista. El pie de página muestra además los datos de tu empresa y los textos legales.
-      </div>
+        <strong>{tx("Consejo:")}</strong>{" "}{tx("los cambios se guardan al momento y se ven en tu web al volver a cargarla. Las páginas sin publicar no aparecen en el menú aunque estén en esta lista. El pie de página muestra además los datos de tu empresa y los textos legales.")}</div>
       </div>
     </AdminLayout>
   );

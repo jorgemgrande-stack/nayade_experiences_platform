@@ -30,7 +30,8 @@ describe("mantenimiento de la web en el encabezado del panel", () => {
   });
   it("los textos de la empresa son claros y sin términos técnicos ni de reservas", () => {
     const src = read("client/src/components/admin/MaintenanceModeControl.tsx");
-    const web = src.slice(src.indexOf("  web: {"), src.indexOf("} as const"));
+    const dict = read("shared/i18n/locales/es/maintenance.ts");
+    const web = dict.slice(dict.indexOf("  web: {"), dict.indexOf("\n  },", dict.indexOf("  web: {")));
     expect(web).toContain(`on: "Web en mantenimiento"`);
     expect(web).not.toMatch(/\/admin|rutas|[Rr]eserv|ACTIVO/);
     const msg = src.slice(src.indexOf("const WEB_DEFAULT_MESSAGE"), src.indexOf("const DEFAULT_MESSAGE"));
@@ -83,7 +84,7 @@ describe("restos de vocabulario de Náyade en modo pyme", () => {
     expect(src).toContain("<AlertDialog open={deleteTarget !== null}");
   });
   it("estado del sistema y asistente antiguo: sin «reservas» ni «Branding» para una pyme", () => {
-    expect(read("client/src/pages/admin/settings/ConfigStatus.tsx")).toContain("label: `Email de ${voc.ordersLower}`");
+    expect(read("client/src/pages/admin/settings/ConfigStatus.tsx")).toContain(`t("settingsStatus.emails.orders", { what: voc.ordersLower })`);
     const legacy = read("client/src/pages/admin/onboarding/OnboardingWizard.tsx");
     expect(legacy).toContain(`sub.install === "multi") return <Redirect to="/admin/primeros-pasos" />`);
     expect(legacy).not.toContain(`title: "Branding"`);

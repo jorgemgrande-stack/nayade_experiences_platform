@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { badgesToTokens, tokensToBadges } from "@shared/siteTokenLabels";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 const TOOLS = [
   { cmd: "bold", label: "Negrita", icon: Bold },
@@ -19,6 +20,7 @@ const TOOLS = [
 ] as const;
 
 export function RichTextEditor({ value, onChange, id, ariaLabel }: { value: string; onChange: (html: string) => void; id?: string; ariaLabel: string }) {
+  const tx = useStudioText();
   const ref = useRef<HTMLDivElement>(null);
   const saved = useRef<Range | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -67,16 +69,16 @@ export function RichTextEditor({ value, onChange, id, ariaLabel }: { value: stri
 
   return (
     <div className="rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring/40">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-1.5 py-1" role="toolbar" aria-label={`Formato de ${ariaLabel.toLowerCase()}`}>
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-1.5 py-1" role="toolbar" aria-label={tx("Formato de {v}", { v: ariaLabel.toLowerCase() })}>
         {TOOLS.map((t) => (
           <Button key={t.cmd} type="button" variant="ghost" size="icon" className="h-8 w-8" title={t.label} aria-label={t.label} onMouseDown={(e) => e.preventDefault()} onClick={() => run(t.cmd)}>
             <t.icon className="h-4 w-4" />
           </Button>
         ))}
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="Enlace" aria-label="Enlace" onMouseDown={(e) => e.preventDefault()} onClick={openLink}>
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title={tx("Enlace")} aria-label={tx("Enlace")} onMouseDown={(e) => e.preventDefault()} onClick={openLink}>
           <Link2 className="h-4 w-4" />
         </Button>
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="Quitar enlace" aria-label="Quitar enlace" onMouseDown={(e) => e.preventDefault()} onClick={() => run("unlink")}>
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title={tx("Quitar enlace")} aria-label={tx("Quitar enlace")} onMouseDown={(e) => e.preventDefault()} onClick={() => run("unlink")}>
           <Unlink className="h-4 w-4" />
         </Button>
       </div>
@@ -93,17 +95,13 @@ export function RichTextEditor({ value, onChange, id, ariaLabel }: { value: stri
               }
               if (e.key === "Escape") setLinkOpen(false);
             }}
-            placeholder="A dónde lleva: /contacto, www.tuweb.es o un correo"
-            aria-label="A dónde lleva el enlace"
+            placeholder={tx("A dónde lleva: /contacto, www.tuweb.es o un correo")}
+            aria-label={tx("A dónde lleva el enlace")}
             className="h-8"
           />
           <div className="flex gap-2">
-            <Button type="button" size="sm" onClick={applyLink}>
-              Añadir enlace
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setLinkOpen(false)}>
-              Cancelar
-            </Button>
+            <Button type="button" size="sm" onClick={applyLink}>{tx("Añadir enlace")}</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setLinkOpen(false)}>{tx("Cancelar")}</Button>
           </div>
         </div>
       )}

@@ -23,6 +23,8 @@ import { Check, FolderOpen, ImageOff, Image as ImageIcon, Loader2, Search, Uploa
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
+import { getT } from "@/i18n/standalone";
 import { IMAGE_UPLOAD_MAX_BYTES, imageUploadProblem, siteRelativeFileUrl, uploadErrorMessage } from "@shared/imageUpload";
 
 interface ImageUploaderProps {
@@ -50,12 +52,13 @@ async function uploadImage(file: File): Promise<string | null> {
     if (res.ok && data?.url) return data.url;
     toast.error(uploadErrorMessage(res.status, data?.error));
   } catch {
-    toast.error("No hay conexión con el servidor. Comprueba tu conexión e inténtalo de nuevo.");
+    toast.error(getT()("common.error.network"));
   }
   return null;
 }
 
 export default function ImageUploader({ value, onChange, label, className = "" }: ImageUploaderProps) {
+  const { t } = useI18n();
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -75,7 +78,7 @@ export default function ImageUploader({ value, onChange, label, className = "" }
     if (!url) return;
     onChangeRef.current(url);
     void utils.cms.getMediaFiles.invalidate();
-    toast.success("Imagen subida y aplicada");
+    toast.success(t("imageUploaderShared.uploaded"));
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,26 +97,26 @@ export default function ImageUploader({ value, onChange, label, className = "" }
             {previewBroken ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-3 text-center text-xs text-muted-foreground">
                 <ImageOff className="h-5 w-5" />
-                No se puede mostrar esta imagen. Elige otra o súbela de nuevo.
+                {t("imageUploaderShared.previewBroken")}
               </div>
             ) : (
-              <img src={siteRelativeFileUrl(value)} alt="Imagen seleccionada" className="h-full w-full object-cover" onError={() => setPreviewBroken(true)} />
+              <img src={siteRelativeFileUrl(value)} alt={t("imageUploaderShared.selectedAlt")} className="h-full w-full object-cover" onError={() => setPreviewBroken(true)} />
             )}
             {uploading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-medium text-white">
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Subiendo…
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> {t("imageUploaderShared.uploadingDots")}
               </div>
             )}
           </div>
           <div className="flex flex-wrap gap-1.5">
             <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => setLibraryOpen(true)}>
-              <FolderOpen className="mr-1 h-3.5 w-3.5" /> Cambiar
+              <FolderOpen className="mr-1 h-3.5 w-3.5" /> {t("imageUploaderShared.change")}
             </Button>
             <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Upload className="mr-1 h-3.5 w-3.5" /> Subir otra
+              <Upload className="mr-1 h-3.5 w-3.5" /> {t("imageUploaderShared.uploadAnother")}
             </Button>
             <Button type="button" size="sm" variant="ghost" className="h-8 text-xs text-destructive hover:text-destructive" onClick={() => onChangeRef.current("")}>
-              <X className="mr-1 h-3.5 w-3.5" /> Quitar
+              <X className="mr-1 h-3.5 w-3.5" /> {t("imageUploaderShared.remove")}
             </Button>
           </div>
         </div>
@@ -121,7 +124,7 @@ export default function ImageUploader({ value, onChange, label, className = "" }
         <div
           role="button"
           tabIndex={0}
-          aria-label="Subir una imagen"
+          aria-label={t("imageUploaderShared.uploadAria")}
           onDrop={(e) => {
             e.preventDefault();
             setDragOver(false);
@@ -145,7 +148,7 @@ export default function ImageUploader({ value, onChange, label, className = "" }
           }`}
         >
           {uploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <ImageIcon className={`w-6 h-6 ${dragOver ? "text-primary" : "text-muted-foreground/50"}`} />}
-          <p className="text-xs font-medium text-center">{uploading ? "Subiendo imagen…" : dragOver ? "Suelta la imagen aquí" : "Arrastra una imagen o haz clic para subirla"}</p>
+          <p className="text-xs font-medium text-center">{uploading ? t("imageUploaderShared.uploadingImage") : dragOver ? t("imageUploaderShared.dropHere") : t("imageUploaderShared.dragOrClick")}</p>
           <Button
             size="sm"
             variant="outline"
@@ -157,7 +160,7 @@ export default function ImageUploader({ value, onChange, label, className = "" }
             type="button"
           >
             <FolderOpen className="w-3 h-3 mr-1" />
-            Elegir de Multimedia
+            {t("imageUploaderShared.pickFromMedia")}
           </Button>
         </div>
       )}
@@ -171,7 +174,7 @@ export default function ImageUploader({ value, onChange, label, className = "" }
         onConfirm={(url) => {
           onChangeRef.current(url);
           setLibraryOpen(false);
-          toast.success("Imagen aplicada");
+          toast.success(t("imageUploaderShared.applied"));
         }}
       />
     </div>
@@ -180,6 +183,7 @@ export default function ImageUploader({ value, onChange, label, className = "" }
 
 /** Biblioteca Multimedia: elegir (marcar) y confirmar con «Usar imagen»; también subir una nueva. */
 export function MediaLibraryDialog({ open, current, onClose, onConfirm }: { open: boolean; current: string; onClose: () => void; onConfirm: (url: string) => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const media = trpc.cms.getMediaFiles.useQuery(undefined, { enabled: open });
   const [search, setSearch] = useState("");
@@ -210,24 +214,24 @@ export function MediaLibraryDialog({ open, current, onClose, onConfirm }: { open
     await utils.cms.getMediaFiles.invalidate();
     setSearch("");
     setPicked(url);
-    toast.success("Imagen subida. Pulsa «Usar imagen» para aplicarla.");
+    toast.success(t("imageUploaderShared.uploadedPick"));
   };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-4">
         <DialogHeader>
-          <DialogTitle>Biblioteca Multimedia</DialogTitle>
-          <DialogDescription>Elige una imagen y pulsa «Usar imagen». También puedes subir una nueva (JPG, PNG, WebP, GIF, SVG o AVIF, hasta {IMAGE_UPLOAD_MAX_BYTES / 1024 / 1024} MB).</DialogDescription>
+          <DialogTitle>{t("imageUploaderShared.libraryTitle")}</DialogTitle>
+          <DialogDescription>{t("imageUploaderShared.libraryHelp", { mb: IMAGE_UPLOAD_MAX_BYTES / 1024 / 1024 })}</DialogDescription>
         </DialogHeader>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Buscar por nombre…" aria-label="Buscar imágenes" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+            <Input placeholder={t("imageUploaderShared.searchPlaceholder")} aria-label={t("imageUploaderShared.searchAria")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
           </div>
           <Button type="button" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
             {uploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-            {uploading ? "Subiendo…" : "Subir nueva"}
+            {uploading ? t("imageUploaderShared.uploadingDots") : t("imageUploaderShared.uploadNew")}
           </Button>
           <input
             ref={fileRef}
@@ -241,23 +245,23 @@ export function MediaLibraryDialog({ open, current, onClose, onConfirm }: { open
             }}
           />
         </div>
-        <div className="min-h-[280px] flex-1 overflow-y-auto rounded-lg border border-border p-2" role="listbox" aria-label="Imágenes de la biblioteca">
+        <div className="min-h-[280px] flex-1 overflow-y-auto rounded-lg border border-border p-2" role="listbox" aria-label={t("imageUploaderShared.listAria")}>
           {media.isLoading ? (
             <div className="flex h-full min-h-[260px] items-center justify-center text-sm text-muted-foreground" role="status">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cargando la biblioteca…
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("imageUploaderShared.loadingLibrary")}
             </div>
           ) : media.error ? (
             <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-              No se ha podido cargar la biblioteca.
+              {t("imageUploaderShared.loadError")}
               <Button type="button" size="sm" variant="outline" onClick={() => void media.refetch()}>
-                Reintentar
+                {t("imageUploaderShared.retry")}
               </Button>
             </div>
           ) : images.length === 0 ? (
             <div className="flex h-full min-h-[260px] flex-col items-center justify-center text-center text-muted-foreground">
               <ImageIcon className="mb-3 h-10 w-10 opacity-30" />
-              <p className="text-sm font-medium">{search ? "No hay imágenes que coincidan" : "Todavía no hay imágenes en la biblioteca"}</p>
-              <p className="mt-1 text-xs">Sube una con «Subir nueva».</p>
+              <p className="text-sm font-medium">{search ? t("imageUploaderShared.noMatch") : t("imageUploaderShared.empty")}</p>
+              <p className="mt-1 text-xs">{t("imageUploaderShared.emptyHint")}</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3 md:grid-cols-4">
@@ -272,7 +276,7 @@ export function MediaLibraryDialog({ open, current, onClose, onConfirm }: { open
                     role="option"
                     aria-selected={isPicked}
                     aria-disabled={isBroken}
-                    title={isBroken ? `${name}: no se puede cargar esta imagen` : name}
+                    title={isBroken ? t("imageUploaderShared.brokenTitle", { name }) : name}
                     onClick={() => !isBroken && setPicked(file.url)}
                     onDoubleClick={() => !isBroken && file.url !== current && onConfirm(file.url)}
                     className={cn(
@@ -282,7 +286,7 @@ export function MediaLibraryDialog({ open, current, onClose, onConfirm }: { open
                   >
                     {isBroken ? (
                       <span className="flex flex-1 flex-col items-center justify-center gap-1 p-2 text-center text-[11px] text-muted-foreground">
-                        <ImageOff className="h-5 w-5" /> No disponible
+                        <ImageOff className="h-5 w-5" /> {t("imageUploaderShared.unavailable")}
                       </span>
                     ) : (
                       <img src={siteRelativeFileUrl(file.url)} alt={name} className="min-h-0 w-full flex-1 object-cover" loading="lazy" onError={() => setBroken((s) => new Set(s).add(file.id))} />
@@ -294,7 +298,7 @@ export function MediaLibraryDialog({ open, current, onClose, onConfirm }: { open
                       </span>
                     )}
                     {file.url === current && !isPicked && !isBroken && (
-                      <span className="absolute left-1.5 top-1.5 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">Actual</span>
+                      <span className="absolute left-1.5 top-1.5 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-medium">{t("imageUploaderShared.current")}</span>
                     )}
                   </button>
                 );
@@ -304,14 +308,14 @@ export function MediaLibraryDialog({ open, current, onClose, onConfirm }: { open
         </div>
         <DialogFooter className="items-center gap-2 sm:justify-between">
           <p className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-muted-foreground" aria-live="polite">
-            {picked && picked !== current ? `Seleccionada: ${pickedFile ? pickedFile.originalName || pickedFile.filename : "imagen nueva"}` : "Ninguna imagen nueva seleccionada"}
+            {picked && picked !== current ? t("imageUploaderShared.selected", { name: pickedFile ? pickedFile.originalName || pickedFile.filename : t("imageUploaderShared.newImage") }) : t("imageUploaderShared.noneSelected")}
           </p>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
+              {t("imageUploaderShared.cancel")}
             </Button>
             <Button type="button" disabled={!canConfirm} onClick={() => onConfirm(picked)}>
-              <Check className="mr-1.5 h-4 w-4" /> Usar imagen
+              <Check className="mr-1.5 h-4 w-4" /> {t("imageUploaderShared.use")}
             </Button>
           </div>
         </DialogFooter>

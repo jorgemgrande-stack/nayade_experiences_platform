@@ -19,20 +19,21 @@ import { Label } from "@/components/ui/label";
 import { PanelError } from "@/components/admin/PanelStates";
 import { COUNTRIES, CURRENCIES, TIMEZONES, companySchema, spanishFiscalErrors, type CompanyData as CompanyFields } from "@shared/setupWizard";
 import { validateEmail, validateIban, validatePhone } from "@shared/formValidation";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type Values = Record<keyof CompanyFields, string>;
 
 /** Datos fiscales opcionales de las facturas (ajustes de la empresa). */
 const EXTRA_KEYS = [
-  { key: "site_legal_email", label: "Email para facturas", validate: validateEmail, autoComplete: "email" },
-  { key: "site_legal_phone", label: "Teléfono para facturas", validate: validatePhone, autoComplete: "tel" },
-  { key: "site_legal_iban", label: "IBAN", validate: validateIban, autoComplete: "off" },
+  { key: "site_legal_email", label: "settingsCompany.extra.email", validate: validateEmail, autoComplete: "email" },
+  { key: "site_legal_phone", label: "settingsCompany.extra.phone", validate: validatePhone, autoComplete: "tel" },
+  { key: "site_legal_iban", label: "settingsCompany.extra.iban", validate: validateIban, autoComplete: "off" },
 ] as const;
 
 const selectClass = "h-11 sm:h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60";
 
-function errMsg(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : "No se han podido guardar los datos. Inténtalo de nuevo.";
+function errMsg(e: unknown, fallback: string): string {
+  return e instanceof Error && e.message ? e.message : fallback;
 }
 
 function Field({ id, label, error, hint, required, children }: { id: string; label: string; error?: string; hint?: string; required?: boolean; children: React.ReactNode }) {
@@ -52,6 +53,7 @@ function Field({ id, label, error, hint, required, children }: { id: string; lab
 const describedBy = (id: string, error?: string, hint?: string) => [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
 
 export default function CompanyData() {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const status = trpc.setupWizard.status.useQuery(undefined, { retry: false });
   const settingsQ = trpc.config.listSystemSettings.useQuery();
@@ -78,20 +80,20 @@ export default function CompanyData() {
 
   const save = trpc.setupWizard.saveCompany.useMutation({
     onSuccess: async () => {
-      toast.success("Datos de la empresa guardados. Se aplicarán a las facturas que emitas a partir de ahora.");
+      toast.success(t("settingsCompany.saved"));
       await utils.setupWizard.status.invalidate();
     },
-    onError: (e) => toast.error(errMsg(e)),
+    onError: (e) => toast.error(errMsg(e, t("settingsCompany.saveFailed"))),
   });
   const saveExtra = trpc.config.updateSystemSetting.useMutation();
 
   if (status.isError) {
-    return <PanelError error={status.error} onRetry={() => status.refetch()} title="No se han podido cargar los datos de la empresa" />;
+    return <PanelError error={status.error} onRetry={() => status.refetch()} title={t("settingsCompany.loadError")} />;
   }
   if (!v || !extra) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-label="Cargando" />
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-label={t("settingsCompany.loading")} />
       </div>
     );
   }
@@ -136,7 +138,7 @@ export default function CompanyData() {
       await utils.config.listSystemSettings.invalidate();
       await utils.setupWizard.status.invalidate();
     } catch (err) {
-      toast.error(errMsg(err));
+      toast.error(errMsg(err, t("settingsCompany.saveFailed")));
     }
   };
 
@@ -165,73 +167,73 @@ export default function CompanyData() {
         <section aria-labelledby="co-issuer-title" className="flex gap-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
           <Info className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
           <div className="min-w-0 space-y-1">
-            <h2 id="co-issuer-title" className="text-sm font-medium text-foreground">Datos que figuran en tus documentos</h2>
+            <h2 id="co-issuer-title" className="text-sm font-medium text-foreground">{t("settingsCompany.issuer.title")}</h2>
             <p className="break-words text-foreground/80">
-              <strong>{issuer.name || "Sin razón social"}</strong>
-              {issuer.taxId ? <> · NIF {issuer.taxId}</> : null}
+              <strong>{issuer.name || t("settingsCompany.issuer.noName")}</strong>
+              {issuer.taxId ? <> · {t("settingsCompany.issuer.taxId", { taxId: issuer.taxId })}</> : null}
               {issuer.address ? <> · {issuer.address}</> : null}
             </p>
             <p>
               {issuer.fromSignup
-                ? "Son los de tu alta. Si los corriges y guardas, se aplicarán a las facturas, abonos y tickets que emitas a partir de ahora."
-                : `Guardados el ${new Date(issuer.since!).toLocaleString("es-ES", { dateStyle: "long", timeStyle: "short" })}. Se aplican a las facturas, abonos y tickets que emitas a partir de ahora.`}
-              {" "}Las facturas ya emitidas conservan los datos con los que se emitieron. También aparecen en el aviso legal y la política de privacidad de tu web.
+                ? t("settingsCompany.issuer.fromSignup")
+                : t("settingsCompany.issuer.savedOn", { date: format.dateTime(issuer.since!, { dateStyle: "long", timeStyle: "short" }) })}
+              {" "}{t("settingsCompany.issuer.keep")}
             </p>
           </div>
         </section>
       )}
       {readOnly && (
         <p role="status" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
-          Tu suscripción está en solo lectura: puedes consultar los datos, pero no cambiarlos.
+          {t("settingsCompany.readOnly")}
         </p>
       )}
 
       <section className="bg-card border border-border/50 rounded-2xl p-4 sm:p-6 space-y-4">
-        <h2 className="text-base font-semibold">Empresa</h2>
-        <p className="text-xs text-muted-foreground">Aparecen en tus presupuestos, facturas y tickets, y en el aviso legal y la política de privacidad de tu web.</p>
+        <h2 className="text-base font-semibold">{t("settingsCompany.company.title")}</h2>
+        <p className="text-xs text-muted-foreground">{t("settingsCompany.company.intro")}</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          {input("tradeName", "Nombre comercial", { required: true, autoComplete: "organization" })}
-          {input("legalName", "Razón social", { required: true, hint: "Tal y como figura en el registro mercantil o en Hacienda." })}
-          {input("taxId", "NIF / CIF", { required: true, hint: v.country === "ES" ? "Con su letra o dígito de control, por ejemplo B12345674." : undefined })}
-          {input("address", "Dirección fiscal", { required: true, autoComplete: "street-address" })}
-          {input("postalCode", "Código postal", { autoComplete: "postal-code", hint: v.country === "ES" ? "5 cifras, por ejemplo 28001." : undefined })}
-          {input("city", "Ciudad", { autoComplete: "address-level2" })}
-          {input("province", "Provincia", { autoComplete: "address-level1" })}
-          <Field id="co-country" label="País" error={errors.country} required>
+          {input("tradeName", t("settingsCompany.company.tradeName"), { required: true, autoComplete: "organization" })}
+          {input("legalName", t("settingsCompany.company.legalName"), { required: true, hint: t("settingsCompany.company.legalNameHint") })}
+          {input("taxId", t("settingsCompany.company.taxId"), { required: true, hint: v.country === "ES" ? t("settingsCompany.company.taxIdHint") : undefined })}
+          {input("address", t("settingsCompany.company.address"), { required: true, autoComplete: "street-address" })}
+          {input("postalCode", t("settingsCompany.company.postalCode"), { autoComplete: "postal-code", hint: v.country === "ES" ? t("settingsCompany.company.postalCodeHint") : undefined })}
+          {input("city", t("settingsCompany.company.city"), { autoComplete: "address-level2" })}
+          {input("province", t("settingsCompany.company.province"), { autoComplete: "address-level1" })}
+          <Field id="co-country" label={t("settingsCompany.company.country")} error={errors.country} required>
             <select id="co-country" className={selectClass} value={v.country} onChange={set("country")} aria-invalid={!!errors.country} disabled={readOnly}>
               {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
             </select>
           </Field>
-          <Field id="co-currency" label="Moneda" error={errors.currency} required>
+          <Field id="co-currency" label={t("settingsCompany.company.currency")} error={errors.currency} required>
             <select id="co-currency" className={selectClass} value={v.currency} onChange={set("currency")} aria-invalid={!!errors.currency} disabled={readOnly}>
               {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
-          <Field id="co-timezone" label="Zona horaria" error={errors.timezone} required>
+          <Field id="co-timezone" label={t("settingsCompany.company.timezone")} error={errors.timezone} required>
             <select id="co-timezone" className={selectClass} value={v.timezone} onChange={set("timezone")} aria-invalid={!!errors.timezone} disabled={readOnly}>
-              {TIMEZONES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+              {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>)}
             </select>
           </Field>
         </div>
       </section>
 
       <section className="bg-card border border-border/50 rounded-2xl p-4 sm:p-6 space-y-4">
-        <h2 className="text-base font-semibold">Contacto público</h2>
-        <p className="text-xs text-muted-foreground">Aparece en tu web y en los correos a tus clientes. Si lo dejas vacío, no se muestra.</p>
+        <h2 className="text-base font-semibold">{t("settingsCompany.contact.title")}</h2>
+        <p className="text-xs text-muted-foreground">{t("settingsCompany.contact.intro")}</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          {input("publicPhone", "Teléfono", { autoComplete: "tel", type: "tel" })}
-          {input("publicEmail", "Email de contacto", { autoComplete: "email", type: "email" })}
-          {input("publicLocation", "Ubicación", { hint: "Por ejemplo, la ciudad o la dirección donde atiendes a tus clientes." })}
+          {input("publicPhone", t("settingsCompany.contact.phone"), { autoComplete: "tel", type: "tel" })}
+          {input("publicEmail", t("settingsCompany.contact.email"), { autoComplete: "email", type: "email" })}
+          {input("publicLocation", t("settingsCompany.contact.location"), { hint: t("settingsCompany.contact.locationHint") })}
         </div>
       </section>
 
       {EXTRA_KEYS.some((x) => x.key in extra) && (
         <section className="bg-card border border-border/50 rounded-2xl p-4 sm:p-6 space-y-4">
-          <h2 className="text-base font-semibold">Datos de contacto en las facturas</h2>
-          <p className="text-xs text-muted-foreground">Opcionales. Si los dejas vacíos, las facturas no los muestran.</p>
+          <h2 className="text-base font-semibold">{t("settingsCompany.invoiceContact.title")}</h2>
+          <p className="text-xs text-muted-foreground">{t("settingsCompany.invoiceContact.intro")}</p>
           <div className="grid gap-4 sm:grid-cols-2">
             {EXTRA_KEYS.filter((x) => x.key in extra).map((x) => (
-              <Field key={x.key} id={`ex-${x.key}`} label={x.label} error={extraErrors[x.key] ?? undefined}>
+              <Field key={x.key} id={`ex-${x.key}`} label={t(x.label)} error={extraErrors[x.key] ?? undefined}>
                 <Input
                   id={`ex-${x.key}`}
                   value={extra[x.key] ?? ""}
@@ -251,10 +253,10 @@ export default function CompanyData() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <Button type="submit" disabled={pending || readOnly} className="h-11 sm:h-10">
           {pending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-1 h-4 w-4" aria-hidden="true" />}
-          Guardar
+          {t("settingsCompany.save")}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Son los mismos datos que pide <Link href="/admin/primeros-pasos" className="underline underline-offset-4">Primeros pasos</Link>.
+          {t("settingsCompany.sameData.a")}<Link href="/admin/primeros-pasos" className="underline underline-offset-4">{t("settingsCompany.firstSteps")}</Link>{t("settingsCompany.sameData.b")}
         </p>
       </div>
     </form>

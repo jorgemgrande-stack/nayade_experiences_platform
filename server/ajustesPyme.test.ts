@@ -64,7 +64,7 @@ describe("pantallas (fuente)", () => {
     expect(company).not.toContain("cms.updateSiteSettings");
     expect(settings).toContain('sub.mode === "tasks"');
     expect(settings).toContain("<CompanyData />");
-    expect(settings).toMatch(/<h1[^>]*>Datos de la empresa<\/h1>/);
+    expect(settings).toMatch(/<h1[^>]*>\{t\("settingsGeneral\.companyTitle"\)\}<\/h1>/);
   });
 
   it("sin los textos de la instalación original que no se mostraban", () => {

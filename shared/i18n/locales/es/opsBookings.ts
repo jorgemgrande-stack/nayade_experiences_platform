@@ -1,0 +1,20 @@
+/** Operaciones: listado de actividades programadas (reservas). */
+export default {
+  title: "Actividades",
+  heading: "Actividades programadas",
+  count: "{n, plural, one {# actividad} other {# actividades}} — generadas automáticamente al confirmar el pago",
+  searchPlaceholder: "Buscar actividad...",
+  statusPlaceholder: "Estado",
+  all: "Todos",
+  status: { pendiente: "Pendiente", confirmado: "Confirmado", en_curso: "En Curso", completado: "Completado", cancelado: "Cancelado" },
+  source: { tarjeta_fisica: "Tarjeta Física", tarjeta_redsys: "Tarjeta Redsys", transferencia: "Transferencia", efectivo: "Efectivo", otro: "Otro" },
+  emptyTitle: "No hay actividades programadas",
+  emptyText: "Las actividades se crean automáticamente cuando se confirma un pago (Redsys, transferencia o efectivo)",
+  col: { number: "Nº Actividad", client: "Cliente", date: "Fecha", persons: "Personas", total: "Total", origin: "Origen", state: "Estado" },
+  manual: "Manual",
+  confirm: "Confirmar",
+  complete: "Completar",
+  cancel: "Cancelar",
+  cancelConfirm: "¿Cancelar esta actividad?",
+  statusUpdated: "Estado actualizado",
+};

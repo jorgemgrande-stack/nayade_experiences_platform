@@ -10,6 +10,9 @@ import { CORE_VERSION as RUNTIME_CORE_VERSION } from "./_core/modules/runtime";
 import { coreVersionInfo, deployedCommit } from "./_core/coreVersion";
 // @ts-ignore script .mjs sin declaraciones de tipos
 import { readCoreVersion, findChangelogSection, validateRelease, tagName } from "../scripts/release/etiquetar-core.mjs";
+import { readFileSync as __readEs } from "node:fs";
+const esDictText = () => ["setup", "help"].map((n) => __readEs(new URL(`../shared/i18n/locales/es/${n}.ts`, import.meta.url), "utf8")).join("\n");
+;
 
 const root = path.join(__dirname, "..");
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -95,7 +98,8 @@ describe("etiquetar-core: lectura y validación", () => {
 describe("panel: Acerca de Elephant Core", () => {
   it("está en el Centro de ayuda, usa la versión compartida y el commit solo si lo envía el servidor", () => {
     const page = read("client/src/pages/admin/help/HelpCenter.tsx");
-    expect(page).toContain("Acerca de Elephant Core");
+    expect(page).toContain('t("help.about.title")');
+    expect(esDictText()).toContain("Acerca de Elephant Core");
     expect(page).toContain('from "@shared/version"');
     expect(page).toContain("trpc.system.version.useQuery");
     expect(page).toMatch(/info\.data\?\.commit \?/);

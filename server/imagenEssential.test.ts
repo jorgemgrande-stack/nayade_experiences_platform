@@ -13,6 +13,7 @@ import { newProductDefaults, presentialSaleAllowed } from "../shared/catalogDefa
 import { canChargeCash, cashChange, parseTendered, quickTenders } from "../client/src/pages/admin/tpv/tpvScreenLogic";
 import { ALL_COOKIE_CATEGORIES, cookieBody, cookieCategories, hasOptionalCookies } from "../shared/cookieCategories";
 
+import { srcShows, esDictText } from "./i18nSource";
 const read = (rel: string) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 const code = (src: string) => src.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
 
@@ -72,7 +73,8 @@ describe("productos nuevos (M5)", () => {
   });
   it("el formulario usa «Por unidad» en una pyme y el botón «Nuevo producto» usa el color de la marca (AA)", () => {
     const src = read("client/src/pages/admin/products/ExperiencesManager.tsx");
-    expect(src).toContain('{isNewCompany ? "Por unidad" : "Por persona"}');
+    expect(src).toContain('{isNewCompany ? t("productsCatalog.modal.perUnitLicensed") : t("productsCatalog.modal.perPerson")}');
+    expect(read("shared/i18n/locales/es/productsCatalog.ts")).toContain('perUnitLicensed: "Por unidad"');
     expect(code(src)).not.toMatch(/linear-gradient\(135deg,#f97316,#f59e0b\)/);
   });
 });
@@ -156,18 +158,18 @@ describe("aviso de cookies: solo las categorías que existen", () => {
 describe("contraste AA en Facturas, formulario de producto y web pública", () => {
   it("Facturas: totales de abonos, neto y rectificativas con colores por significado", () => {
     const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
-    const invoices = crm.slice(crm.indexOf("Docs. en período"), crm.indexOf("Visualizar factura"));
+    const invoices = crm.slice(crm.indexOf('t("crmInvoices.docsEnPeriodo")'), crm.indexOf('t("crmInvoices.visualizarFactura")'));
     expect(invoices.length).toBeGreaterThan(1000);
     expect(invoices).not.toMatch(/text-(?:violet|emerald|orange|sky)-\d{3}(?:\/\d+)?/);
-    expect(crm).toContain('<div className="text-xs text-info mb-1">Total abonos</div>');
-    expect(crm).toContain('<div className="text-xs text-success mb-1">Neto real</div>');
+    expect(crm).toContain('<div className="text-xs text-info mb-1">{t("crmInvoices.totalAbonos")}</div>');
+    expect(crm).toContain('<div className="text-xs text-success mb-1">{t("crmInvoices.netoReal")}</div>');
     // Número de factura en una sola línea
     expect(crm).toContain('<span className="text-sm font-mono font-bold text-foreground whitespace-nowrap">{inv.invoiceNumber}</span>');
   });
   it("formulario de producto: las etiquetas del descuento se leen en oscuro (texto principal)", () => {
     const src = read("client/src/pages/admin/products/ExperiencesManager.tsx");
-    expect(src).toContain('<Label htmlFor="discountPercent" className="text-xs text-foreground">Descuento (%)</Label>');
-    expect(src).toContain('<Label htmlFor="discountExpiresAt" className="text-xs text-foreground">Válido hasta</Label>');
+    expect(src).toContain('<Label htmlFor="discountPercent" className="text-xs text-foreground">{t("productsCatalog.modal.discountPercent")}</Label>');
+    expect(src).toContain('<Label htmlFor="discountExpiresAt" className="text-xs text-foreground">{t("productsCatalog.modal.validUntil")}</Label>');
     expect(src).not.toMatch(/bg-amber-50/);
   });
   it("web pública: «Escribir una opinión» en el color de lectura de la web", () => {
@@ -175,6 +177,6 @@ describe("contraste AA en Facturas, formulario de producto y web pública", () =
   });
   it("plural de oportunidades", () => {
     const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
-    expect(crm).toContain('=== 1 ? "oportunidad en total" : "oportunidades en total"');
+    expect(crm).toContain('=== 1 ? t("crmDashboard.oportunidadEnTotal") : t("crmDashboard.oportunidadesEnTotal")');
   });
 });

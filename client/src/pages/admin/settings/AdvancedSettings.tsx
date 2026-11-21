@@ -7,20 +7,22 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, AlertTriangle, Shield, Zap } from "lucide-react";
+import { useI18n } from "@/i18n/I18nProvider";
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 
 const RISK_META: Record<string, { label: string; color: string }> = {
-  low:    { label: "Bajo",  color: "bg-emerald-100 text-emerald-700" },
-  medium: { label: "Medio", color: "bg-amber-100 text-amber-700" },
-  high:   { label: "Alto",  color: "bg-red-100 text-red-700" },
+  low:    { label: "settingsGeneral.advanced.riskLow",    color: "bg-emerald-100 text-emerald-700" },
+  medium: { label: "settingsGeneral.advanced.riskMedium", color: "bg-amber-100 text-amber-700" },
+  high:   { label: "settingsGeneral.advanced.riskHigh",   color: "bg-red-100 text-red-700" },
 };
 
 function FeatureFlagsTab() {
+  const { t } = useI18n();
   const flagsQ = trpc.config.listFeatureFlags.useQuery();
   const updateMut = trpc.config.updateFeatureFlag.useMutation({
-    onSuccess: () => { toast.success("Flag actualizado"); flagsQ.refetch(); },
-    onError: (e) => toast.error("Error: " + e.message),
+    onSuccess: () => { toast.success(t("settingsGeneral.advanced.flagUpdated")); flagsQ.refetch(); },
+    onError: (e) => toast.error(t("settingsGeneral.advanced.error", { message: e.message })),
   });
 
   const flags = flagsQ.data ?? [];
@@ -31,7 +33,7 @@ function FeatureFlagsTab() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
         <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
         <div className="text-sm text-amber-800">
-          <span className="font-semibold">Precaución:</span> Desactivar un flag puede interrumpir funcionalidades en producción. Los cambios son inmediatos.
+          <span className="font-semibold">{t("settingsGeneral.advanced.caution")}</span> {t("settingsGeneral.advanced.cautionText")}
         </div>
       </div>
 
@@ -58,11 +60,11 @@ function FeatureFlagsTab() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-foreground">{flag.name}</span>
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${risk.color}`}>
-                          Riesgo {risk.label}
+                          {t("settingsGeneral.advanced.risk", { level: t(risk.label) })}
                         </span>
                         {!flag.defaultEnabled && (
                           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                            Off por defecto
+                            {t("settingsGeneral.advanced.offDefault")}
                           </span>
                         )}
                       </div>
@@ -89,15 +91,7 @@ function FeatureFlagsTab() {
 
 // ─── System Settings ──────────────────────────────────────────────────────────
 
-const CATEGORY_LABELS: Record<string, string> = {
-  email:      "Correos electrónicos",
-  finance:    "Finanzas y tolerancias",
-  branding:   "Marca y empresa",
-  operations: "Operaciones",
-  imap:       "Configuración IMAP",
-  payments:   "Pagos",
-  app:        "Aplicación",
-};
+const CATEGORY_KEYS = ["email", "finance", "branding", "operations", "imap", "payments", "app"];
 
 interface SettingRowProps {
   id: number;
@@ -109,11 +103,12 @@ interface SettingRowProps {
 }
 
 function SettingRow({ settingKey, label, description, value, isSensitive }: SettingRowProps) {
+  const { t } = useI18n();
   const [localValue, setLocalValue] = useState(value ?? "");
   const [dirty, setDirty] = useState(false);
   const updateMut = trpc.config.updateSystemSetting.useMutation({
-    onSuccess: () => { toast.success(`"${label}" guardado`); setDirty(false); },
-    onError: (e) => toast.error("Error: " + e.message),
+    onSuccess: () => { toast.success(t("settingsGeneral.advanced.settingSaved", { label })); setDirty(false); },
+    onError: (e) => toast.error(t("settingsGeneral.advanced.error", { message: e.message })),
   });
 
   if (isSensitive) {
@@ -127,7 +122,7 @@ function SettingRow({ settingKey, label, description, value, isSensitive }: Sett
           {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
           <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">{settingKey}</p>
         </div>
-        <span className="text-xs text-muted-foreground italic">Solo por variable de entorno</span>
+        <span className="text-xs text-muted-foreground italic">{t("settingsGeneral.advanced.envOnly")}</span>
       </div>
     );
   }
@@ -144,7 +139,7 @@ function SettingRow({ settingKey, label, description, value, isSensitive }: Sett
           className="w-56 h-8 text-sm"
           value={localValue}
           onChange={(e) => { setLocalValue(e.target.value); setDirty(true); }}
-          placeholder="(usa valor por defecto)"
+          placeholder={t("settingsGeneral.advanced.defaultPlaceholder")}
         />
         {dirty && (
           <Button
@@ -163,6 +158,7 @@ function SettingRow({ settingKey, label, description, value, isSensitive }: Sett
 }
 
 function SystemSettingsTab() {
+  const { t } = useI18n();
   const settingsQ = trpc.config.listSystemSettings.useQuery();
   const settings = settingsQ.data ?? [];
   const categories = Array.from(new Set(settings.map(s => s.category))).sort();
@@ -172,7 +168,7 @@ function SystemSettingsTab() {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex gap-3">
         <Zap className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
         <div className="text-sm text-blue-800">
-          Los ajustes vacíos usan los valores por defecto del sistema. Los cambios se aplican en un máximo de 60 segundos (caché).
+          {t("settingsGeneral.advanced.defaultsNotice")}
         </div>
       </div>
 
@@ -188,7 +184,7 @@ function SystemSettingsTab() {
           <div key={cat} className="bg-card border border-border/50 rounded-2xl overflow-hidden">
             <div className="px-5 py-3 bg-muted/30 border-b border-border/50">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
-                {CATEGORY_LABELS[cat] ?? cat.replace(/_/g, " ")}
+                {CATEGORY_KEYS.includes(cat) ? t(`settingsGeneral.advanced.cat.${cat}`) : cat.replace(/_/g, " ")}
               </h3>
             </div>
             <div className="divide-y divide-border/30">
@@ -216,28 +212,29 @@ function SystemSettingsTab() {
 type Tab = "flags" | "settings";
 
 export default function AdvancedSettings() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("flags");
 
   return (
     <AdminLayout>
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">Configuración avanzada</h1>
-          <p className="text-sm text-muted-foreground mt-1">Feature flags y ajustes de sistema. Solo administradores.</p>
+          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsGeneral.advanced.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("settingsGeneral.advanced.intro")}</p>
         </div>
 
         <div className="flex gap-1 bg-muted/40 p-1 rounded-xl w-fit">
-          {(["flags", "settings"] as Tab[]).map(t => (
+          {(["flags", "settings"] as Tab[]).map(k => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={k}
+              onClick={() => setTab(k)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                tab === t
+                tab === k
                   ? "bg-background shadow-sm text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {t === "flags" ? "Feature Flags" : "Ajustes de sistema"}
+              {k === "flags" ? t("settingsGeneral.advanced.tabFlags") : t("settingsGeneral.advanced.tabSettings")}
             </button>
           ))}
         </div>

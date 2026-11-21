@@ -5,15 +5,17 @@
 import { Link } from "wouter";
 import { CheckCircle2, ChevronRight, Circle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export default function PeopleFirstSteps() {
+  const { t } = useI18n();
   const { data } = trpc.hr.onboarding.status.useQuery();
   if (!data || data.allDone) return null;
   return (
     <section aria-labelledby="personal-primeros-pasos" className="rounded-xl border border-orange-500/30 bg-orange-500/[0.04] p-4 sm:p-5">
       <div className="flex items-baseline justify-between gap-3 mb-3">
-        <h2 id="personal-primeros-pasos" className="text-sm font-semibold text-foreground">Primeros pasos con Personal</h2>
-        <span className="text-xs text-foreground/50">{data.completed} de {data.total}</span>
+        <h2 id="personal-primeros-pasos" className="text-sm font-semibold text-foreground">{t("peopleShared.firstSteps.title")}</h2>
+        <span className="text-xs text-foreground/50">{t("peopleShared.firstSteps.count", { done: data.completed, total: data.total })}</span>
       </div>
       <ol className="space-y-1.5">
         {data.steps.map((s) => (
@@ -24,7 +26,7 @@ export default function PeopleFirstSteps() {
                 <span className={`block text-sm ${s.done ? "text-foreground/50 line-through" : "text-foreground font-medium"}`}>{s.title}</span>
                 {!s.done && <span className="block text-xs text-foreground/50">{s.description}</span>}
               </span>
-              <span className="sr-only">{s.done ? "Hecho" : "Pendiente"}</span>
+              <span className="sr-only">{s.done ? t("peopleShared.firstSteps.done") : t("peopleShared.firstSteps.pending")}</span>
               {!s.done && <ChevronRight className="w-4 h-4 mt-0.5 shrink-0 text-foreground/30 group-hover:text-foreground/60" aria-hidden="true" />}
             </Link>
           </li>

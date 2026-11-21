@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
 import { useVocabulary } from "@/lib/vocabulary";
+import { useFormat, useI18n } from "@/i18n/I18nProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DiscountCode {
@@ -63,14 +64,17 @@ const EMPTY_FORM: FormState = {
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
-  if (status === "active") return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Activo</Badge>;
-  if (status === "inactive") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Inactivo</Badge>;
-  return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Caducado</Badge>;
+  const { t } = useI18n();
+  if (status === "active") return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">{t("discounts.status.active")}</Badge>;
+  if (status === "inactive") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">{t("discounts.status.inactive")}</Badge>;
+  return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">{t("discounts.status.expired")}</Badge>;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function DiscountCodesManager() {
   const voc = useVocabulary();
+  const { t } = useI18n();
+  const f = useFormat();
   const utils = trpc.useUtils();
 
   // Filters
@@ -99,11 +103,11 @@ export default function DiscountCodesManager() {
 
   // Mutations
   const createMutation = trpc.discounts.create.useMutation({
-    onSuccess: () => { toast.success("Código creado correctamente"); utils.discounts.list.invalidate(); closeForm(); },
+    onSuccess: () => { toast.success(t("discounts.toast.created")); utils.discounts.list.invalidate(); closeForm(); },
     onError: (e) => toastError(e),
   });
   const updateMutation = trpc.discounts.update.useMutation({
-    onSuccess: () => { toast.success("Código actualizado"); utils.discounts.list.invalidate(); closeForm(); },
+    onSuccess: () => { toast.success(t("discounts.toast.updated")); utils.discounts.list.invalidate(); closeForm(); },
     onError: (e) => toastError(e),
   });
   const toggleMutation = trpc.discounts.toggleStatus.useMutation({
@@ -112,14 +116,14 @@ export default function DiscountCodesManager() {
   });
   const deleteMutation = trpc.discounts.delete.useMutation({
     onSuccess: (res) => {
-      if (res.softDeleted) toast.info("Código desactivado (tiene usos registrados)");
-      else toast.success("Código eliminado");
+      if (res.softDeleted) toast.info(t("discounts.toast.softDeleted"));
+      else toast.success(t("discounts.toast.deleted"));
       utils.discounts.list.invalidate();
     },
     onError: (e) => toastError(e),
   });
   const duplicateMutation = trpc.discounts.duplicate.useMutation({
-    onSuccess: () => { toast.success("Código duplicado"); utils.discounts.list.invalidate(); },
+    onSuccess: () => { toast.success(t("discounts.toast.duplicated")); utils.discounts.list.invalidate(); },
     onError: (e) => toastError(e),
   });
 
@@ -151,9 +155,9 @@ export default function DiscountCodesManager() {
 
   function handleSubmit() {
     const percent = parseFloat(form.discountPercent);
-    if (!form.code.trim()) return toast.error("El código es obligatorio");
-    if (!form.name.trim()) return toast.error("El nombre interno es obligatorio");
-    if (isNaN(percent) || percent < 1 || percent > 100) return toast.error("El porcentaje debe estar entre 1 y 100");
+    if (!form.code.trim()) return toast.error(t("discounts.toast.codeRequired"));
+    if (!form.name.trim()) return toast.error(t("discounts.toast.nameRequired"));
+    if (isNaN(percent) || percent < 1 || percent > 100) return toast.error(t("discounts.toast.percentRange"));
 
     const payload = {
       code: form.code,
@@ -177,33 +181,33 @@ export default function DiscountCodesManager() {
   const totalPages = Math.ceil(total / 20);
 
   return (
-    <AdminLayout title="Códigos de Descuento">
+    <AdminLayout title={t("discounts.title")}>
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
               <Tag className="w-6 h-6 text-violet-400" />
-              Códigos de Descuento
+              {t("discounts.title")}
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
               {voc.licensed
-                ? "Gestiona los códigos promocionales que tus clientes pueden usar en la caja y en la tienda online."
-                : "Gestiona los códigos promocionales aplicables en TPV, tienda online y venta delegada."}
+                ? t("discounts.descriptionLicensed")
+                : t("discounts.description")}
             </p>
           </div>
           <Button onClick={openCreate} className="bg-violet-600 hover:bg-violet-700 text-white gap-2">
-            <Plus className="w-4 h-4" /> Nuevo código
+            <Plus className="w-4 h-4" /> {t("discounts.newCode")}
           </Button>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total códigos", value: total, icon: Tag, color: "text-violet-400" },
-            { label: "Activos", value: items.filter(i => i.status === "active").length, icon: ToggleRight, color: "text-green-400" },
-            { label: "Inactivos", value: items.filter(i => i.status === "inactive").length, icon: ToggleLeft, color: "text-yellow-400" },
-            { label: "Caducados", value: items.filter(i => i.status === "expired").length, icon: Calendar, color: "text-red-400" },
+            { label: t("discounts.stats.total"), value: total, icon: Tag, color: "text-violet-400" },
+            { label: t("discounts.stats.active"), value: items.filter(i => i.status === "active").length, icon: ToggleRight, color: "text-green-400" },
+            { label: t("discounts.stats.inactive"), value: items.filter(i => i.status === "inactive").length, icon: ToggleLeft, color: "text-yellow-400" },
+            { label: t("discounts.stats.expired"), value: items.filter(i => i.status === "expired").length, icon: Calendar, color: "text-red-400" },
           ].map((stat) => (
             <Card key={stat.label} className="bg-card border-border">
               <CardContent className="p-4 flex items-center gap-3">
@@ -223,7 +227,7 @@ export default function DiscountCodesManager() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por código o nombre..."
+                placeholder={t("discounts.filter.searchPlaceholder")}
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 className="pl-9"
@@ -231,13 +235,13 @@ export default function DiscountCodesManager() {
             </div>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as any); setPage(1); }}>
               <SelectTrigger className="w-40">
-                <SelectValue placeholder="Estado" />
+                <SelectValue placeholder={t("discounts.filter.statusPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="active">Activos</SelectItem>
-                <SelectItem value="inactive">Inactivos</SelectItem>
-                <SelectItem value="expired">Caducados</SelectItem>
+                <SelectItem value="all">{t("discounts.filter.all")}</SelectItem>
+                <SelectItem value="active">{t("discounts.filter.active")}</SelectItem>
+                <SelectItem value="inactive">{t("discounts.filter.inactive")}</SelectItem>
+                <SelectItem value="expired">{t("discounts.filter.expired")}</SelectItem>
               </SelectContent>
             </Select>
           </CardContent>
@@ -247,28 +251,28 @@ export default function DiscountCodesManager() {
         <Card className="bg-card border-border">
           <CardContent className="p-0">
             {listError ? (
-              <PanelError className="m-4" title="No se han podido cargar los códigos de descuento" error={listError} onRetry={() => void refetch()} />
+              <PanelError className="m-4" title={t("discounts.loadError")} error={listError} onRetry={() => void refetch()} />
             ) : isLoading ? (
-              <div className="p-8 text-center text-muted-foreground">Cargando...</div>
+              <div className="p-8 text-center text-muted-foreground">{t("discounts.loading")}</div>
             ) : items.length === 0 ? (
               <div className="p-12 text-center">
                 <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-muted-foreground">No hay códigos de descuento todavía.</p>
+                <p className="text-muted-foreground">{t("discounts.empty")}</p>
                 <Button onClick={openCreate} variant="outline" className="mt-4 gap-2">
-                  <Plus className="w-4 h-4" /> Crear el primero
+                  <Plus className="w-4 h-4" /> {t("discounts.createFirst")}
                 </Button>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow className="border-border">
-                    <TableHead>Código</TableHead>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead className="text-center">Descuento</TableHead>
-                    <TableHead className="text-center">Usos</TableHead>
-                    <TableHead>Caduca</TableHead>
-                    <TableHead className="text-center">Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHead>{t("discounts.col.code")}</TableHead>
+                    <TableHead>{t("discounts.col.name")}</TableHead>
+                    <TableHead className="text-center">{t("discounts.col.discount")}</TableHead>
+                    <TableHead className="text-center">{t("discounts.col.uses")}</TableHead>
+                    <TableHead>{t("discounts.col.expires")}</TableHead>
+                    <TableHead className="text-center">{t("discounts.col.status")}</TableHead>
+                    <TableHead className="text-right">{t("discounts.col.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -299,10 +303,10 @@ export default function DiscountCodesManager() {
                       <TableCell>
                         {item.expiresAt ? (
                           <span className="text-sm text-muted-foreground">
-                            {new Date(item.expiresAt).toLocaleDateString("es-ES")}
+                            {f.date(new Date(item.expiresAt))}
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground/50">Sin caducidad</span>
+                          <span className="text-xs text-muted-foreground/50">{t("discounts.noExpiry")}</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center">
@@ -311,26 +315,26 @@ export default function DiscountCodesManager() {
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button
-                            variant="ghost" size="icon" title="Ver usos"
+                            variant="ghost" size="icon" title={t("discounts.action.viewUses")}
                             onClick={() => setShowUses(item.id)}
                           >
                             <Eye className="w-4 h-4 text-blue-400" />
                           </Button>
                           <Button
-                            variant="ghost" size="icon" title="Editar"
+                            variant="ghost" size="icon" title={t("discounts.action.edit")}
                             onClick={() => openEdit(item)}
                           >
                             <Edit2 className="w-4 h-4 text-yellow-400" />
                           </Button>
                           <Button
-                            variant="ghost" size="icon" title="Duplicar"
+                            variant="ghost" size="icon" title={t("discounts.action.duplicate")}
                             onClick={() => duplicateMutation.mutate({ id: item.id })}
                           >
                             <Copy className="w-4 h-4 text-muted-foreground" />
                           </Button>
                           <Button
                             variant="ghost" size="icon"
-                            title={item.status === "active" ? "Desactivar" : "Activar"}
+                            title={item.status === "active" ? t("discounts.action.deactivate") : t("discounts.action.activate")}
                             onClick={() => toggleMutation.mutate({ id: item.id, active: item.status !== "active" })}
                           >
                             {item.status === "active"
@@ -339,9 +343,9 @@ export default function DiscountCodesManager() {
                             }
                           </Button>
                           <Button
-                            variant="ghost" size="icon" title="Eliminar"
+                            variant="ghost" size="icon" title={t("discounts.action.delete")}
                             onClick={() => {
-                              if (confirm(`¿Eliminar el código "${item.code}"?`)) {
+                              if (confirm(t("discounts.confirmDelete", { code: item.code }))) {
                                 deleteMutation.mutate({ id: item.id });
                               }
                             }}
@@ -361,9 +365,9 @@ export default function DiscountCodesManager() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex justify-center gap-2">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-            <span className="text-sm text-muted-foreground self-center">Página {page} de {totalPages}</span>
-            <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>{t("discounts.prev")}</Button>
+            <span className="text-sm text-muted-foreground self-center">{t("discounts.pageOf", { page, total: totalPages })}</span>
+            <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>{t("discounts.next")}</Button>
           </div>
         )}
       </div>
@@ -372,12 +376,12 @@ export default function DiscountCodesManager() {
       <Dialog open={showForm} onOpenChange={(open) => { if (!open) closeForm(); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Editar código de descuento" : "Nuevo código de descuento"}</DialogTitle>
+            <DialogTitle>{editingId ? t("discounts.form.editTitle") : t("discounts.form.newTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Código <span className="text-red-400">*</span></Label>
+                <Label>{t("discounts.form.code")} <span className="text-red-400">*</span></Label>
                 <Input
                   placeholder="VERANO25"
                   value={form.code}
@@ -385,10 +389,10 @@ export default function DiscountCodesManager() {
                   disabled={!!editingId}
                   className="font-mono uppercase"
                 />
-                <p className="text-xs text-muted-foreground">Solo letras, números y guiones</p>
+                <p className="text-xs text-muted-foreground">{t("discounts.form.codeHint")}</p>
               </div>
               <div className="space-y-1.5">
-                <Label>Descuento (%) <span className="text-red-400">*</span></Label>
+                <Label>{t("discounts.form.percent")} <span className="text-red-400">*</span></Label>
                 <div className="relative">
                   <Input
                     type="number" min="1" max="100" step="0.5"
@@ -401,46 +405,46 @@ export default function DiscountCodesManager() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Nombre interno <span className="text-red-400">*</span></Label>
+              <Label>{t("discounts.form.name")} <span className="text-red-400">*</span></Label>
               <Input
-                placeholder="Campaña verano 2026"
+                placeholder={t("discounts.form.namePlaceholder")}
                 value={form.name}
                 onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Descripción</Label>
+              <Label>{t("discounts.form.description")}</Label>
               <Input
-                placeholder="Descripción breve del código"
+                placeholder={t("discounts.form.descriptionPlaceholder")}
                 value={form.description}
                 onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Fecha de caducidad</Label>
+                <Label>{t("discounts.form.expiresAt")}</Label>
                 <Input
                   type="date"
                   value={form.expiresAt}
                   onChange={(e) => setForm(f => ({ ...f, expiresAt: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">Dejar vacío = sin caducidad</p>
+                <p className="text-xs text-muted-foreground">{t("discounts.form.expiresHint")}</p>
               </div>
               <div className="space-y-1.5">
-                <Label>Uso máximo</Label>
+                <Label>{t("discounts.form.maxUses")}</Label>
                 <Input
                   type="number" min="1"
-                  placeholder="Sin límite"
+                  placeholder={t("discounts.form.maxUsesPlaceholder")}
                   value={form.maxUses}
                   onChange={(e) => setForm(f => ({ ...f, maxUses: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">Dejar vacío = usos ilimitados</p>
+                <p className="text-xs text-muted-foreground">{t("discounts.form.maxUsesHint")}</p>
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Observaciones internas</Label>
+              <Label>{t("discounts.form.observations")}</Label>
               <Textarea
-                placeholder="Notas internas sobre este código..."
+                placeholder={t("discounts.form.observationsPlaceholder")}
                 value={form.observations}
                 onChange={(e) => setForm(f => ({ ...f, observations: e.target.value }))}
                 rows={2}
@@ -448,13 +452,13 @@ export default function DiscountCodesManager() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeForm}>Cancelar</Button>
+            <Button variant="outline" onClick={closeForm}>{t("discounts.form.cancel")}</Button>
             <Button
               onClick={handleSubmit}
               disabled={createMutation.isPending || updateMutation.isPending}
               className="bg-violet-600 hover:bg-violet-700 text-white"
             >
-              {editingId ? "Guardar cambios" : "Crear código"}
+              {editingId ? t("discounts.form.save") : t("discounts.form.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -465,35 +469,35 @@ export default function DiscountCodesManager() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-400" /> Historial de usos
+              <Users className="w-5 h-5 text-blue-400" /> {t("discounts.uses.title")}
             </DialogTitle>
           </DialogHeader>
           <div className="max-h-96 overflow-y-auto">
             {!usesData || usesData.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Este código no ha sido usado todavía.</p>
+              <p className="text-center text-muted-foreground py-8">{t("discounts.uses.none")}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Canal</TableHead>
-                    <TableHead className="text-right">Original</TableHead>
-                    <TableHead className="text-right">Descuento</TableHead>
-                    <TableHead className="text-right">Final</TableHead>
+                    <TableHead>{t("discounts.uses.date")}</TableHead>
+                    <TableHead>{t("discounts.uses.channel")}</TableHead>
+                    <TableHead className="text-right">{t("discounts.uses.original")}</TableHead>
+                    <TableHead className="text-right">{t("discounts.uses.discount")}</TableHead>
+                    <TableHead className="text-right">{t("discounts.uses.final")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {usesData.map((use) => (
                     <TableRow key={use.id}>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(use.appliedAt).toLocaleString("es-ES")}
+                        {f.dateTime(new Date(use.appliedAt))}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs capitalize">{use.channel}</Badge>
                       </TableCell>
-                      <TableCell className="text-right text-sm">{parseFloat(use.originalAmount as unknown as string).toFixed(2)} €</TableCell>
-                      <TableCell className="text-right text-sm text-red-400">-{parseFloat(use.discountAmount as unknown as string).toFixed(2)} €</TableCell>
-                      <TableCell className="text-right text-sm font-bold text-green-400">{parseFloat(use.finalAmount as unknown as string).toFixed(2)} €</TableCell>
+                      <TableCell className="text-right text-sm">{f.currency(parseFloat(use.originalAmount as unknown as string))}</TableCell>
+                      <TableCell className="text-right text-sm text-red-400">-{f.currency(parseFloat(use.discountAmount as unknown as string))}</TableCell>
+                      <TableCell className="text-right text-sm font-bold text-green-400">{f.currency(parseFloat(use.finalAmount as unknown as string))}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -501,7 +505,7 @@ export default function DiscountCodesManager() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUses(null)}>Cerrar</Button>
+            <Button variant="outline" onClick={() => setShowUses(null)}>{t("discounts.uses.close")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

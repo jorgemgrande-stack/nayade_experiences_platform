@@ -8,7 +8,13 @@
  *  - No promete horarios ni tiempos de respuesta del soporte.
  *
  * Si cambia una pantalla, actualiza aquí el artículo correspondiente y la fecha de revisión.
+ *
+ * Idioma: este fichero es el contenido en español (fuente de verdad: ids, rutas y enlaces). La traducción alemana vive en
+ * `shared/i18n/helpCenterDe.ts`, por id de artículo, con la misma estructura (título, resumen, pasos, notas y etiquetas de
+ * enlace). Las funciones de consulta reciben un idioma opcional (`es` por defecto) y devuelven el artículo ya localizado.
  */
+import type { Locale } from "./i18n/core";
+import { HELP_DE } from "./i18n/helpCenterDe";
 
 export const HELP_REVIEWED_AT = "2026-11-01";
 
@@ -277,12 +283,32 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
 ];
 
-export function getHelpArticle(id: string | null | undefined): HelpArticle | undefined {
-  return id ? HELP_ARTICLES.find((a) => a.id === id) : undefined;
+/** Artículo en el idioma pedido; si no hay traducción de ese artículo, se devuelve el español. */
+export function localizeArticle(a: HelpArticle, locale: Locale = "es"): HelpArticle {
+  if (locale !== "de") return a;
+  const de = HELP_DE[a.id];
+  if (!de) return a;
+  return {
+    ...a,
+    title: de.title,
+    summary: de.summary,
+    steps: de.steps,
+    notes: a.notes ? de.notes ?? a.notes : undefined,
+    links: a.links.map((l, i) => ({ ...l, label: de.links[i] ?? l.label })),
+  };
+}
+
+export function helpArticlesFor(locale: Locale = "es"): HelpArticle[] {
+  return locale === "es" ? HELP_ARTICLES : HELP_ARTICLES.map((a) => localizeArticle(a, locale));
+}
+
+export function getHelpArticle(id: string | null | undefined, locale: Locale = "es"): HelpArticle | undefined {
+  const a = id ? HELP_ARTICLES.find((x) => x.id === id) : undefined;
+  return a ? localizeArticle(a, locale) : undefined;
 }
 
 /** Ayuda contextual de una pantalla: coincide la ruta y, si el artículo la indica, la pestaña. */
-export function helpForLocation(path: string, search = ""): HelpArticle | undefined {
+export function helpForLocation(path: string, search = "", locale: Locale = "es"): HelpArticle | undefined {
   const clean = path.replace(/\/+$/, "") || "/";
   const tab = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("tab");
   let fallback: HelpArticle | undefined;
@@ -291,11 +317,11 @@ export function helpForLocation(path: string, search = ""): HelpArticle | undefi
       const samePath = c.prefix ? clean.startsWith(c.path) : clean === c.path;
       if (!samePath) continue;
       if (c.tab) {
-        if (c.tab === tab) return a;
+        if (c.tab === tab) return localizeArticle(a, locale);
       } else if (!fallback) fallback = a;
     }
   }
-  return fallback;
+  return fallback ? localizeArticle(fallback, locale) : undefined;
 }
 
 function norm(s: string): string {
@@ -303,10 +329,11 @@ function norm(s: string): string {
 }
 
 /** Búsqueda sencilla (sin acentos ni mayúsculas) en título, resumen y pasos. */
-export function searchHelp(query: string): HelpArticle[] {
+export function searchHelp(query: string, locale: Locale = "es"): HelpArticle[] {
   const terms = norm(query).split(/\s+/).filter(Boolean);
-  if (!terms.length) return HELP_ARTICLES;
-  return HELP_ARTICLES.filter((a) => {
+  const all = helpArticlesFor(locale);
+  if (!terms.length) return all;
+  return all.filter((a) => {
     const text = norm([a.title, a.summary, ...a.steps, ...(a.notes ?? [])].join(" "));
     return terms.every((t) => text.includes(t));
   });

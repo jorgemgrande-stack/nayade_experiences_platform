@@ -12,6 +12,7 @@ import {
   Eye, EyeOff, ChevronDown, ChevronUp, Server, Send,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { useI18n } from "@/i18n/I18nProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ function AccountModal({
   initial?: AccountForm;
   editId?: number;
 }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const [form, setForm] = useState<AccountForm>(initial ?? EMPTY_FORM);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -85,11 +87,11 @@ function AccountModal({
   const f = (k: keyof AccountForm) => (v: any) => setForm(p => ({ ...p, [k]: v }));
 
   const createMut = trpc.emailAccounts.create.useMutation({
-    onSuccess: () => { toast.success("Cuenta creada"); utils.emailAccounts.list.invalidate(); onClose(); },
+    onSuccess: () => { toast.success(t("settingsEmailAccounts.created")); utils.emailAccounts.list.invalidate(); onClose(); },
     onError: e => toast.error(e.message),
   });
   const updateMut = trpc.emailAccounts.update.useMutation({
-    onSuccess: () => { toast.success("Cuenta actualizada"); utils.emailAccounts.list.invalidate(); onClose(); },
+    onSuccess: () => { toast.success(t("settingsEmailAccounts.updated")); utils.emailAccounts.list.invalidate(); onClose(); },
     onError: e => toast.error(e.message),
   });
   const testImapMut = trpc.emailAccounts.testImap.useMutation({
@@ -133,22 +135,22 @@ function AccountModal({
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editId ? "Editar cuenta de email" : "Nueva cuenta de email"}</DialogTitle>
+          <DialogTitle>{editId ? t("settingsEmailAccounts.modal.editTitle") : t("settingsEmailAccounts.modal.newTitle")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5 py-2">
           {/* General */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Nombre de la cuenta *">
-              <Input value={form.name} onChange={e => f("name")(e.target.value)} className="h-8 text-xs" placeholder="Ej: Administración" />
+            <Field label={t("settingsEmailAccounts.modal.accountName")}>
+              <Input value={form.name} onChange={e => f("name")(e.target.value)} className="h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.accountNamePh")} />
             </Field>
-            <Field label="Email de la cuenta *">
+            <Field label={t("settingsEmailAccounts.modal.accountEmail")}>
               <Input value={form.email} onChange={e => f("email")(e.target.value)} className="h-8 text-xs" placeholder="info@empresa.es" />
             </Field>
-            <Field label="Nombre remitente *">
-              <Input value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder="Nombre de tu empresiences" />
+            <Field label={t("settingsEmailAccounts.modal.fromName")}>
+              <Input value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.fromNamePh")} />
             </Field>
-            <Field label="Email remitente *">
+            <Field label={t("settingsEmailAccounts.modal.fromEmail")}>
               <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-8 text-xs" placeholder="info@tuempresa.es" />
             </Field>
           </div>
@@ -157,23 +159,23 @@ function AccountModal({
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Server className="w-3.5 h-3.5 text-sky-400" />
-              <h3 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Recepción (IMAP)</h3>
+              <h3 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">{t("settingsEmailAccounts.modal.receiving")}</h3>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <Field label="Servidor IMAP *">
+                <Field label={t("settingsEmailAccounts.modal.imapServer")}>
                   <Input value={form.imapHost} onChange={e => f("imapHost")(e.target.value)} className="h-8 text-xs font-mono" placeholder="imap.empresa.es" />
                 </Field>
               </div>
-              <Field label="Puerto">
+              <Field label={t("settingsEmailAccounts.modal.port")}>
                 <Input type="number" value={form.imapPort} onChange={e => f("imapPort")(Number(e.target.value))} className="h-8 text-xs" />
               </Field>
-              <Field label="Usuario IMAP *">
+              <Field label={t("settingsEmailAccounts.modal.imapUser")}>
                 <Input value={form.imapUser} onChange={e => f("imapUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
               </Field>
               <div className="col-span-2">
-                <Field label="Contraseña IMAP *">
-                  <PasswordInput value={form.imapPassword} onChange={f("imapPassword")} placeholder={editId ? "Dejar vacío para mantener" : ""} />
+                <Field label={t("settingsEmailAccounts.modal.imapPassword")}>
+                  <PasswordInput value={form.imapPassword} onChange={f("imapPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
                 </Field>
               </div>
               <div className="flex items-center gap-2 pt-4">
@@ -186,7 +188,7 @@ function AccountModal({
               <Button type="button" size="sm" variant="outline" onClick={handleTestImap} disabled={testingImap || !form.imapHost}
                 className="h-7 text-xs gap-1">
                 {testingImap ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Server className="w-3 h-3" />}
-                Probar IMAP
+                {t("settingsEmailAccounts.modal.testImap")}
               </Button>
               {imapTestResult && (
                 <span className={`text-xs flex items-center gap-1 ${imapTestResult.ok ? "text-emerald-400" : "text-red-400"}`}>
@@ -201,23 +203,23 @@ function AccountModal({
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Send className="w-3.5 h-3.5 text-violet-400" />
-              <h3 className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Envío (SMTP)</h3>
+              <h3 className="text-xs font-semibold text-violet-400 uppercase tracking-wider">{t("settingsEmailAccounts.modal.sending")}</h3>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <Field label="Servidor SMTP *">
+                <Field label={t("settingsEmailAccounts.modal.smtpServer")}>
                   <Input value={form.smtpHost} onChange={e => f("smtpHost")(e.target.value)} className="h-8 text-xs font-mono" placeholder="smtp.empresa.es" />
                 </Field>
               </div>
-              <Field label="Puerto">
+              <Field label={t("settingsEmailAccounts.modal.port")}>
                 <Input type="number" value={form.smtpPort} onChange={e => f("smtpPort")(Number(e.target.value))} className="h-8 text-xs" />
               </Field>
-              <Field label="Usuario SMTP *">
+              <Field label={t("settingsEmailAccounts.modal.smtpUser")}>
                 <Input value={form.smtpUser} onChange={e => f("smtpUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
               </Field>
               <div className="col-span-2">
-                <Field label="Contraseña SMTP *">
-                  <PasswordInput value={form.smtpPassword} onChange={f("smtpPassword")} placeholder={editId ? "Dejar vacío para mantener" : ""} />
+                <Field label={t("settingsEmailAccounts.modal.smtpPassword")}>
+                  <PasswordInput value={form.smtpPassword} onChange={f("smtpPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
                 </Field>
               </div>
               <div className="flex items-center gap-2 pt-4">
@@ -230,7 +232,7 @@ function AccountModal({
               <Button type="button" size="sm" variant="outline" onClick={handleTestSmtp} disabled={testingSmtp || !form.smtpHost}
                 className="h-7 text-xs gap-1">
                 {testingSmtp ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                Probar SMTP
+                {t("settingsEmailAccounts.modal.testSmtp")}
               </Button>
               {smtpTestResult && (
                 <span className={`text-xs flex items-center gap-1 ${smtpTestResult.ok ? "text-emerald-400" : "text-red-400"}`}>
@@ -245,48 +247,48 @@ function AccountModal({
           <button type="button" onClick={() => setShowAdvanced(s => !s)}
             className="flex items-center gap-1 text-xs text-foreground/40 hover:text-foreground/70">
             {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            Configuración avanzada
+            {t("settingsEmailAccounts.modal.advanced")}
           </button>
           {showAdvanced && (
             <div className="grid grid-cols-2 gap-3 pt-1">
-              <Field label="Carpeta Recibidos">
+              <Field label={t("settingsEmailAccounts.modal.folderInbox")}>
                 <Input value={form.folderInbox} onChange={e => f("folderInbox")(e.target.value)} className="h-8 text-xs font-mono" />
               </Field>
-              <Field label="Carpeta Enviados">
+              <Field label={t("settingsEmailAccounts.modal.folderSent")}>
                 <Input value={form.folderSent} onChange={e => f("folderSent")(e.target.value)} className="h-8 text-xs font-mono" />
               </Field>
-              <Field label="Carpeta Archivo">
+              <Field label={t("settingsEmailAccounts.modal.folderArchive")}>
                 <Input value={form.folderArchive} onChange={e => f("folderArchive")(e.target.value)} className="h-8 text-xs font-mono" />
               </Field>
-              <Field label="Carpeta Papelera">
+              <Field label={t("settingsEmailAccounts.modal.folderTrash")}>
                 <Input value={form.folderTrash} onChange={e => f("folderTrash")(e.target.value)} className="h-8 text-xs font-mono" />
               </Field>
-              <Field label="Emails por sync">
+              <Field label={t("settingsEmailAccounts.modal.perSync")}>
                 <Input type="number" value={form.maxEmailsPerSync} onChange={e => f("maxEmailsPerSync")(Number(e.target.value))} className="h-8 text-xs" />
               </Field>
-              <Field label="Intervalo sync (min)">
+              <Field label={t("settingsEmailAccounts.modal.syncInterval")}>
                 <Input type="number" value={form.syncIntervalMinutes} onChange={e => f("syncIntervalMinutes")(Number(e.target.value))} className="h-8 text-xs" />
               </Field>
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="sync-enabled" checked={form.syncEnabled}
                   onChange={e => f("syncEnabled")(e.target.checked)} className="accent-sky-500" />
-                <label htmlFor="sync-enabled" className="text-xs cursor-pointer">Sincronización automática</label>
+                <label htmlFor="sync-enabled" className="text-xs cursor-pointer">{t("settingsEmailAccounts.modal.autoSync")}</label>
               </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="is-default" checked={form.isDefault}
                   onChange={e => f("isDefault")(e.target.checked)} className="accent-sky-500" />
-                <label htmlFor="is-default" className="text-xs cursor-pointer">Cuenta por defecto</label>
+                <label htmlFor="is-default" className="text-xs cursor-pointer">{t("settingsEmailAccounts.modal.isDefault")}</label>
               </div>
             </div>
           )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>{t("settingsEmailAccounts.modal.cancel")}</Button>
           <Button size="sm" onClick={handleSubmit} disabled={isPending || !form.name || !form.imapHost || !form.smtpHost}
             className="gap-1">
             {isPending && <RefreshCw className="w-3 h-3 animate-spin" />}
-            {editId ? "Guardar cambios" : "Crear cuenta"}
+            {editId ? t("settingsEmailAccounts.modal.saveChanges") : t("settingsEmailAccounts.modal.createAccount")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -297,6 +299,7 @@ function AccountModal({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function EmailAccountsSettings() {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const { data: accounts = [], isLoading } = trpc.emailAccounts.list.useQuery();
   const [showCreate, setShowCreate] = useState(false);
@@ -304,7 +307,7 @@ export default function EmailAccountsSettings() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const deleteMut = trpc.emailAccounts.delete.useMutation({
-    onSuccess: () => { toast.success("Cuenta eliminada"); utils.emailAccounts.list.invalidate(); setDeleteId(null); },
+    onSuccess: () => { toast.success(t("settingsEmailAccounts.deleted")); utils.emailAccounts.list.invalidate(); setDeleteId(null); },
     onError: e => toast.error(e.message),
   });
   const setActiveMut = trpc.emailAccounts.setActive.useMutation({
@@ -313,7 +316,7 @@ export default function EmailAccountsSettings() {
   });
   const syncMut = trpc.emailAccounts.syncNow.useMutation({
     onSuccess: (data) => {
-      toast.success(`Sync completado — ${data.synced} emails nuevos${data.errors ? `, ${data.errors} errores` : ""}`);
+      toast.success(t("settingsEmailAccounts.syncDone", { synced: data.synced, errors: data.errors ?? 0 }));
       utils.emailAccounts.list.invalidate();
     },
     onError: e => toast.error(e.message),
@@ -342,19 +345,19 @@ export default function EmailAccountsSettings() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Mail className="w-5 h-5 text-sky-400" /> Cuentas de Email Comercial
+              <Mail className="w-5 h-5 text-sky-400" /> {t("settingsEmailAccounts.title")}
             </h1>
             <p className="text-sm text-foreground/50 mt-1">
-              Gestiona las cuentas IMAP/SMTP para la bandeja de email integrada en Atención Comercial.
+              {t("settingsEmailAccounts.intro")}
             </p>
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => syncMut.mutate({})} disabled={syncMut.isPending} className="gap-1 text-xs">
               {syncMut.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Sincronizar ahora
+              {t("settingsEmailAccounts.syncNow")}
             </Button>
             <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1 text-xs">
-              <Plus className="w-3 h-3" /> Nueva cuenta
+              <Plus className="w-3 h-3" /> {t("settingsEmailAccounts.newAccount")}
             </Button>
           </div>
         </div>
@@ -367,9 +370,9 @@ export default function EmailAccountsSettings() {
         ) : accounts.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-border/40 rounded-xl">
             <Mail className="w-8 h-8 text-foreground/20 mx-auto mb-3" />
-            <p className="text-sm text-foreground/40">No hay cuentas de email configuradas</p>
+            <p className="text-sm text-foreground/40">{t("settingsEmailAccounts.empty")}</p>
             <Button size="sm" onClick={() => setShowCreate(true)} className="mt-4 gap-1">
-              <Plus className="w-3 h-3" /> Añadir primera cuenta
+              <Plus className="w-3 h-3" /> {t("settingsEmailAccounts.addFirst")}
             </Button>
           </div>
         ) : (
@@ -388,12 +391,12 @@ export default function EmailAccountsSettings() {
                     <p className="text-sm font-medium truncate">{account.name}</p>
                     {account.isDefault && (
                       <span className="text-[10px] bg-sky-500/15 text-sky-400 px-1.5 py-0.5 rounded-full">
-                        Por defecto
+                        {t("settingsEmailAccounts.isDefaultBadge")}
                       </span>
                     )}
                     {!account.isActive && (
                       <span className="text-[10px] bg-foreground/10 text-foreground/40 px-1.5 py-0.5 rounded-full">
-                        Inactiva
+                        {t("settingsEmailAccounts.inactive")}
                       </span>
                     )}
                   </div>
@@ -402,7 +405,7 @@ export default function EmailAccountsSettings() {
                     <span>IMAP: {account.imapHost}:{account.imapPort}</span>
                     <span>SMTP: {account.smtpHost}:{account.smtpPort}</span>
                     {account.lastSyncAt && (
-                      <span>Último sync: {new Date(account.lastSyncAt).toLocaleString("es-ES", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}</span>
+                      <span>{t("settingsEmailAccounts.lastSync", { date: format.dateTime(account.lastSyncAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) })}</span>
                     )}
                   </div>
                   {account.lastSyncError && (
@@ -416,7 +419,7 @@ export default function EmailAccountsSettings() {
                     <input type="checkbox" checked={account.isActive}
                       onChange={e => setActiveMut.mutate({ id: account.id, isActive: e.target.checked })}
                       className="accent-sky-500" />
-                    <span className="text-xs text-foreground/50">Activa</span>
+                    <span className="text-xs text-foreground/50">{t("settingsEmailAccounts.active")}</span>
                   </label>
                   <Button size="sm" variant="ghost" className="h-7 px-2"
                     onClick={() => setEditAccount(account)}>
@@ -450,16 +453,16 @@ export default function EmailAccountsSettings() {
         {/* Delete confirm */}
         <Dialog open={deleteId !== null} onOpenChange={v => { if (!v) setDeleteId(null); }}>
           <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>Eliminar cuenta</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{t("settingsEmailAccounts.deleteTitle")}</DialogTitle></DialogHeader>
             <p className="text-sm text-foreground/70">
-              ¿Eliminar esta cuenta? Los emails ya sincronizados se conservarán en la base de datos.
+              {t("settingsEmailAccounts.deleteText")}
             </p>
             <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setDeleteId(null)}>Cancelar</Button>
+              <Button variant="outline" size="sm" onClick={() => setDeleteId(null)}>{t("settingsEmailAccounts.cancel")}</Button>
               <Button size="sm" variant="destructive"
                 onClick={() => deleteId && deleteMut.mutate({ id: deleteId })}
                 disabled={deleteMut.isPending}>
-                Eliminar
+                {t("settingsEmailAccounts.delete")}
               </Button>
             </DialogFooter>
           </DialogContent>

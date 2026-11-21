@@ -18,6 +18,7 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export const KPI_STYLES = {
   emerald: { bg: "bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/80 dark:via-emerald-900/30 dark:to-[#080e1c]", border: "border-emerald-200 dark:border-emerald-500/30", glow: "bg-emerald-500/10", icon: "text-emerald-600 dark:text-emerald-400", number: "text-emerald-700 dark:text-emerald-300", label: "text-emerald-600/70 dark:text-emerald-300/70", dot: "bg-emerald-500 dark:bg-emerald-400" },
@@ -59,6 +60,7 @@ export interface KpiCardProps {
 }
 
 export function KpiCard({ label, value, suffix = "", change, positive, subLabel, icon: Icon, color, href }: KpiCardProps) {
+  const { t } = useI18n();
   const s = KPI_STYLES[color];
   const animated = useCountUp(value);
   const inner = (
@@ -75,7 +77,7 @@ export function KpiCard({ label, value, suffix = "", change, positive, subLabel,
         {change && (
           <div className={cn("flex items-center gap-1 text-[10px] font-semibold mt-1", positive ? "text-emerald-400" : "text-rose-400")}>
             {positive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {change} vs mes anterior
+            {t("panelStates.kpiVsPrevious", { change })}
           </div>
         )}
         {subLabel && <p className={cn("text-[10px] mt-1", s.label)}>{subLabel}</p>}

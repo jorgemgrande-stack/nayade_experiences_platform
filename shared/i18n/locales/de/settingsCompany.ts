@@ -1,0 +1,48 @@
+import type { Mirror } from "../../core";
+import type es from "../es/settingsCompany";
+
+export default {
+  saveFailed: "Die Daten konnten nicht gespeichert werden. Versuche es noch einmal.",
+  loadError: "Die Unternehmensdaten konnten nicht geladen werden",
+  loading: "Wird geladen",
+  saved: "Unternehmensdaten gespeichert. Sie gelten für alle Rechnungen, die du ab jetzt ausstellst.",
+  extra: { email: "E-Mail für Rechnungen", phone: "Telefon für Rechnungen", iban: "IBAN" },
+  issuer: {
+    title: "Angaben, die auf deinen Dokumenten stehen",
+    noName: "Kein Firmenname",
+    taxId: "Steuernr. {taxId}",
+    fromSignup: "Das sind die Angaben aus deiner Registrierung. Wenn du sie korrigierst und speicherst, gelten sie für alle Rechnungen, Gutschriften und Kassenbons, die du ab jetzt ausstellst.",
+    savedOn: "Gespeichert am {date}. Sie gelten für alle Rechnungen, Gutschriften und Kassenbons, die du ab jetzt ausstellst.",
+    keep: "Bereits ausgestellte Rechnungen behalten die Angaben, mit denen sie ausgestellt wurden. Sie erscheinen außerdem im Impressum und in der Datenschutzerklärung deiner Website.",
+  },
+  readOnly: "Dein Abonnement ist im Nur-Lesezugriff: Du kannst die Daten ansehen, aber nicht ändern.",
+  company: {
+    title: "Unternehmen",
+    intro: "Sie erscheinen auf deinen Angeboten, Rechnungen und Kassenbons sowie im Impressum und in der Datenschutzerklärung deiner Website.",
+    tradeName: "Firmenname",
+    legalName: "Eingetragener Firmenname",
+    legalNameHint: "Genau so, wie er im Handelsregister oder beim Finanzamt steht.",
+    taxId: "Steuernummer (NIF/CIF)",
+    taxIdHint: "Mit Buchstabe bzw. Prüfziffer, zum Beispiel B12345674.",
+    address: "Steuerlicher Firmensitz",
+    postalCode: "Postleitzahl",
+    postalCodeHint: "5 Ziffern, zum Beispiel 28001.",
+    city: "Stadt",
+    province: "Provinz",
+    country: "Land",
+    currency: "Währung",
+    timezone: "Zeitzone",
+  },
+  contact: {
+    title: "Öffentlicher Kontakt",
+    intro: "Erscheint auf deiner Website und in den E-Mails an deine Kunden. Wenn du das Feld leer lässt, wird nichts angezeigt.",
+    phone: "Telefon",
+    email: "Kontakt-E-Mail",
+    location: "Standort",
+    locationHint: "Zum Beispiel die Stadt oder die Adresse, an der du deine Kunden empfängst.",
+  },
+  invoiceContact: { title: "Kontaktdaten auf den Rechnungen", intro: "Optional. Wenn du sie leer lässt, zeigen die Rechnungen sie nicht an." },
+  save: "Speichern",
+  sameData: { a: "Das sind dieselben Angaben, die ", b: " abfragt." },
+  firstSteps: "Erste Schritte",
+} satisfies Mirror<typeof es>;

@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { FileCheck2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useI18n } from "@/i18n/I18nProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,17 +31,18 @@ type Status = {
 };
 type Receipt = { reference: string; requestedAt: number; text: string; receiptSent: boolean };
 
-const STATUS_LABEL: Record<string, string> = {
-  received: "Recibida",
-  under_review: "En revisión",
-  accepted: "Aceptada",
-  rejected: "Rechazada",
-  completed: "Completada",
-};
-const fmt = (ms: number) => new Date(ms).toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
 const newKey = () => randomId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
 
 export function WithdrawalSection() {
+  const { t, format: f } = useI18n();
+  const STATUS_LABEL: Record<string, string> = {
+    received: t("subscription.withdrawal.status.received"),
+    under_review: t("subscription.withdrawal.status.under_review"),
+    accepted: t("subscription.withdrawal.status.accepted"),
+    rejected: t("subscription.withdrawal.status.rejected"),
+    completed: t("subscription.withdrawal.status.completed"),
+  };
+  const fmt = (ms: number) => f.dateTime(ms, { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
   const utils = trpc.useUtils();
   const q = trpc.subscription.withdrawalStatus.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const [statement, setStatement] = useState("");
@@ -51,7 +53,7 @@ export function WithdrawalSection() {
     onSuccess: (r) => {
       const rec = (r as { receipt: Receipt }).receipt;
       setReceipt(rec);
-      toast.success(`Solicitud de desistimiento registrada (${rec.reference})`);
+      toast.success(t("subscription.withdrawal.toast", { ref: rec.reference }));
       void utils.subscription.withdrawalStatus.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -64,50 +66,49 @@ export function WithdrawalSection() {
   return (
     <section id="desistimiento" className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-withdrawal">
       <h2 id="sub-withdrawal" className="font-semibold text-foreground flex items-center gap-2">
-        <Undo2 className="w-4 h-4" aria-hidden="true" /> Desistimiento del contrato
+        <Undo2 className="w-4 h-4" aria-hidden="true" /> {t("subscription.withdrawal.title")}
       </h2>
 
       {receipt && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm dark:border-emerald-500/40 dark:bg-emerald-500/10" role="status">
           <p className="font-medium flex items-center gap-2">
-            <FileCheck2 className="w-4 h-4" aria-hidden="true" /> Justificante {receipt.reference}
+            <FileCheck2 className="w-4 h-4" aria-hidden="true" /> {t("subscription.withdrawal.receipt", { ref: receipt.reference })}
           </p>
           <p className="mt-1">{receipt.text}</p>
-          <p className="mt-1 text-muted-foreground">{receipt.receiptSent ? "También te lo hemos enviado por correo." : "Guarda esta referencia: es tu justificante."}</p>
+          <p className="mt-1 text-muted-foreground">{receipt.receiptSent ? t("subscription.withdrawal.receiptSent") : t("subscription.withdrawal.receiptKeep")}</p>
         </div>
       )}
 
       {last && !receipt && (
         <p className="text-sm">
-          Solicitud <strong>{last.reference}</strong> del {fmt(last.requestedAt)}: <Badge variant="secondary">{STATUS_LABEL[last.status] ?? last.status}</Badge>
+          {t("subscription.withdrawal.request")} <strong>{last.reference}</strong> {t("subscription.withdrawal.ofDate", { date: fmt(last.requestedAt) })} <Badge variant="secondary">{STATUS_LABEL[last.status] ?? last.status}</Badge>
         </p>
       )}
 
       {s.available ? (
         <>
           <p className="text-sm text-muted-foreground">
-            Como particular, puedes desistir del contrato sin dar ningún motivo hasta el <strong>{s.assessment.deadlineAt ? fmt(s.assessment.deadlineAt) : "fin del plazo"}</strong>.
-            Si pediste empezar a usar el servicio de inmediato, se descontará la parte ya prestada. Esto no es lo mismo que cancelar la suscripción, que termina al final del periodo pagado.
+            {t("subscription.withdrawal.canText")} <strong>{s.assessment.deadlineAt ? fmt(s.assessment.deadlineAt) : t("subscription.withdrawal.endOfTerm")}</strong>. {t("subscription.withdrawal.canTail")}
           </p>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline">Desistir del contrato aquí</Button>
+              <Button variant="outline">{t("subscription.withdrawal.btn")}</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Confirmar desistimiento</AlertDialogTitle>
+                <AlertDialogTitle>{t("subscription.withdrawal.confirmTitle")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Vas a comunicar que desistes del contrato de Elephant Source. Recibirás un justificante con la fecha y la hora. Revisaremos la solicitud y te informaremos de la resolución y del reembolso que corresponda.
+                  {t("subscription.withdrawal.confirmText")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <label className="text-sm font-medium" htmlFor="withdrawal-statement">
-                Comentario (opcional)
+                {t("subscription.withdrawal.comment")}
               </label>
-              <Textarea id="withdrawal-statement" maxLength={1000} value={statement} onChange={(e) => setStatement(e.target.value)} placeholder="No es necesario indicar el motivo" />
+              <Textarea id="withdrawal-statement" maxLength={1000} value={statement} onChange={(e) => setStatement(e.target.value)} placeholder={t("subscription.withdrawal.commentPlaceholder")} />
               <AlertDialogFooter>
-                <AlertDialogCancel>Volver</AlertDialogCancel>
+                <AlertDialogCancel>{t("subscription.change.back")}</AlertDialogCancel>
                 <AlertDialogAction disabled={withdraw.isPending} onClick={() => withdraw.mutate({ idempotencyKey: key, ...(statement.trim() ? { statement: statement.trim() } : {}) })}>
-                  Confirmar desistimiento
+                  {t("subscription.withdrawal.confirmBtn")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

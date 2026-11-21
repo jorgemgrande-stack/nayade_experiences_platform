@@ -15,6 +15,57 @@ import {
   Shield, Save, Loader2, Check, ExternalLink, History,
   CircleDot, Clock,
 } from "lucide-react";
+import { useI18n } from "@/i18n/I18nProvider";
+
+// Texto español de configSections.ts → clave del diccionario (las secciones son lógica pura, sin React)
+const SECTION_LABEL_KEYS: Record<string, string> = {
+  "Información del negocio": "settingsConfig.lab.negocio",
+  "Datos fiscales": "settingsConfig.lab.fiscal",
+  "Horarios": "settingsConfig.lab.horarios",
+  "Emails y notificaciones": "settingsConfig.lab.emails",
+  "Pagos y pasarelas": "settingsConfig.lab.pagos",
+  "TPV físico": "settingsConfig.lab.tpv",
+  "Caja": "settingsConfig.lab.caja",
+  "Banco y conciliación": "settingsConfig.lab.banco",
+  "Automatizaciones": "settingsConfig.lab.automatizaciones",
+  "Integraciones externas": "settingsConfig.lab.integraciones",
+  "Branding": "settingsConfig.lab.branding",
+  "Avanzado": "settingsConfig.lab.avanzado",
+  "Datos de la empresa": "settingsConfig.lab.empresa",
+  "Presupuestos y facturas": "settingsConfig.lab.documentos",
+  "Cobros online": "settingsConfig.lab.cobros",
+  "Datáfono": "settingsConfig.lab.datafono",
+  "Recordatorios automáticos": "settingsConfig.lab.recordatorios",
+  "Mensajería": "settingsConfig.lab.mensajeria",
+  "Marca": "settingsConfig.lab.marca",
+};
+const SECTION_DESC_KEYS: Record<string, string> = {
+  "Nombre, teléfono, dominio y datos de contacto de la empresa.": "settingsConfig.desc.negocio",
+  "NIF/CIF, empresa facturadora, dirección fiscal y tipos de IVA.": "settingsConfig.desc.fiscal",
+  "Horarios de apertura por temporada y días operativos.": "settingsConfig.desc.horarios",
+  "Direcciones de correo para cada tipo de notificación. Vacío = usa la dirección por defecto del sistema.": "settingsConfig.desc.emails",
+  "Configuración de Redsys y otras pasarelas de pago.": "settingsConfig.desc.pagos",
+  "Punto de venta presencial, datáfono y tolerancias.": "settingsConfig.desc.tpv",
+  "Caja registradora, umbrales de alerta y tolerancias de cuadre.": "settingsConfig.desc.caja",
+  "Importación de extractos bancarios y tolerancias de conciliación.": "settingsConfig.desc.banco",
+  "Jobs automáticos: recordatorios de presupuestos, cancelaciones caducadas y más.": "settingsConfig.desc.automatizaciones",
+  "GoHighLevel CRM, IMAP para ingesta de emails del datáfono y otros conectores externos.": "settingsConfig.desc.integraciones",
+  "Logotipo, colores, imagen destacada y redes sociales.": "settingsConfig.desc.branding",
+  "Feature flags, ajustes técnicos e historial de cambios.": "settingsConfig.desc.avanzado",
+  "Nombre comercial, datos fiscales y contacto público. Son los mismos que indicaste en «Primeros pasos».": "settingsConfig.desc.empresa",
+  "Direcciones que reciben los avisos de la plataforma. Si dejas una vacía, se usa la dirección general.": "settingsConfig.desc.emailsPyme",
+  "Validez de los presupuestos y plazo de pago de las facturas.": "settingsConfig.desc.documentos",
+  "Cobro con tarjeta en tu web a través de la pasarela de pago de tu empresa (Redsys).": "settingsConfig.desc.cobros",
+  "Tolerancia al cuadrar las operaciones del datáfono.": "settingsConfig.desc.datafono",
+  "Cuándo se envían los recordatorios y avisos automáticos.": "settingsConfig.desc.recordatorios",
+  "Conexión con la mensajería contratada.": "settingsConfig.desc.mensajeria",
+};
+const SECTION_LINK_KEYS: Record<string, string> = {
+  "Abrir «Datos de la empresa»": "settingsConfig.link.empresa",
+  "Conectar la pasarela de pago": "settingsConfig.link.pasarela",
+  "Abrir la puesta en marcha de Finance Sync": "settingsConfig.link.financeSync",
+  "Abrir las reglas de Automatizaciones": "settingsConfig.link.automatizaciones",
+};
 
 // ─── Section Definitions ──────────────────────────────────────────────────────
 // Datos y filtrado por plan en ./configSections (lógica pura, con pruebas)
@@ -28,7 +79,7 @@ const SECTION_ICONS: Record<SectionId, React.ComponentType<{ className?: string 
 // ─── Dangerous settings ────────────────────────────────────────────────────────
 
 const DANGEROUS_SETTINGS: Record<string, string> = {
-  redsys_environment: "Cambiar el entorno de Redsys afecta los cobros en tiempo real. En modo producción los pagos son reales e irreversibles.",
+  redsys_environment: "settingsConfig.dangerous.redsys",
 };
 
 function DangerousSettingModal({ settingKey, label, newValue, warning, onConfirm, onClose }: {
@@ -39,6 +90,7 @@ function DangerousSettingModal({ settingKey, label, newValue, warning, onConfirm
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [typed, setTyped] = useState("");
   const canConfirm = typed === "CONFIRMAR";
   return (
@@ -49,15 +101,15 @@ function DangerousSettingModal({ settingKey, label, newValue, warning, onConfirm
             <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground">Cambio crítico</h3>
+            <h3 className="font-semibold text-foreground">{t("settingsConfig.dangerous.title")}</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Vas a guardar <strong>{label}</strong> con valor <code className="text-xs bg-muted px-1 rounded">{newValue}</code>.
+              {t("settingsConfig.dangerous.youWillSave")}<strong>{label}</strong>{t("settingsConfig.dangerous.withValue")}<code className="text-xs bg-muted px-1 rounded">{newValue}</code>.
             </p>
-            <p className="text-sm text-red-600 mt-2">{warning}</p>
+            <p className="text-sm text-red-600 mt-2">{t(warning)}</p>
           </div>
         </div>
         <div className="mb-4">
-          <p className="text-xs text-muted-foreground mb-1.5">Escribe <strong>CONFIRMAR</strong> para continuar:</p>
+          <p className="text-xs text-muted-foreground mb-1.5">{t("settingsConfig.dangerous.typePrefix")}<strong>CONFIRMAR</strong>{t("settingsConfig.dangerous.typeSuffix")}</p>
           <Input
             className="h-8 text-sm font-mono"
             value={typed}
@@ -67,8 +119,8 @@ function DangerousSettingModal({ settingKey, label, newValue, warning, onConfirm
           />
         </div>
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={!canConfirm}>Guardar</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>{t("settingsConfig.dangerous.cancel")}</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={!canConfirm}>{t("settingsConfig.dangerous.save")}</Button>
         </div>
       </div>
     </div>
@@ -89,6 +141,7 @@ function ConfirmModal({ pending, onConfirm, onClose }: {
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [typed, setTyped] = useState("");
   const requireTyping = pending.riskLevel === "high" && !pending.newEnabled;
   const canConfirm = !requireTyping || typed === "CONFIRMAR";
@@ -100,16 +153,16 @@ function ConfirmModal({ pending, onConfirm, onClose }: {
             <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground">Cambio de alto riesgo</h3>
+            <h3 className="font-semibold text-foreground">{t("settingsConfig.flagModal.title")}</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              ¿Seguro que quieres <strong>{pending.newEnabled ? "activar" : "desactivar"}</strong>{" "}
-              <em>{pending.name}</em>? Este flag tiene impacto en producción.
+              {t("settingsConfig.flagModal.sure")}<strong>{pending.newEnabled ? t("settingsConfig.flagModal.enable") : t("settingsConfig.flagModal.disable")}</strong>{" "}
+              <em>{pending.name}</em>{t("settingsConfig.flagModal.impact")}
             </p>
           </div>
         </div>
         {requireTyping && (
           <div className="mb-4">
-            <p className="text-xs text-muted-foreground mb-1.5">Escribe <strong>CONFIRMAR</strong> para continuar:</p>
+            <p className="text-xs text-muted-foreground mb-1.5">{t("settingsConfig.dangerous.typePrefix")}<strong>CONFIRMAR</strong>{t("settingsConfig.dangerous.typeSuffix")}</p>
             <Input
               className="h-8 text-sm font-mono"
               value={typed}
@@ -120,8 +173,8 @@ function ConfirmModal({ pending, onConfirm, onClose }: {
           </div>
         )}
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={!canConfirm}>Confirmar</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>{t("settingsConfig.dangerous.cancel")}</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={!canConfirm}>{t("settingsConfig.flagModal.confirm")}</Button>
         </div>
       </div>
     </div>
@@ -141,6 +194,7 @@ interface SettingFieldProps {
 }
 
 function SettingField({ settingKey, label, description, value, isSensitive, technical }: SettingFieldProps) {
+  const { t } = useI18n();
   const [local, setLocal] = useState(value ?? "");
   const [dirty, setDirty] = useState(false);
   const [pendingSave, setPendingSave] = useState(false);
@@ -148,11 +202,11 @@ function SettingField({ settingKey, label, description, value, isSensitive, tech
   const settingsQ = trpc.config.listSystemSettings.useQuery();
   const updateMut = trpc.config.updateSystemSetting.useMutation({
     onSuccess: () => {
-      toast.success(`"${label}" guardado`);
+      toast.success(t("settingsConfig.settingSaved", { label }));
       setDirty(false);
       settingsQ.refetch();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toast.error(t("settingsConfig.error", { message: e.message })),
   });
 
   function handleSave() {
@@ -174,7 +228,7 @@ function SettingField({ settingKey, label, description, value, isSensitive, tech
           {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
           {technical && <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>}
         </div>
-        <span className="text-xs text-muted-foreground italic shrink-0">{technical ? "Configurar en Railway" : "Lo gestiona el equipo de soporte"}</span>
+        <span className="text-xs text-muted-foreground italic shrink-0">{technical ? t("settingsConfig.configureRailway") : t("settingsConfig.managedBySupport")}</span>
       </div>
     );
   }
@@ -185,7 +239,7 @@ function SettingField({ settingKey, label, description, value, isSensitive, tech
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-medium text-foreground">{label}</span>
-            {isDangerous && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Cambio crítico — requiere confirmación" />}
+            {isDangerous && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title={t("settingsConfig.criticalChangeTitle")} />}
           </div>
           {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
           {technical && <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>}
@@ -196,7 +250,7 @@ function SettingField({ settingKey, label, description, value, isSensitive, tech
             className="w-full sm:w-52 h-11 sm:h-8 text-sm"
             value={local}
             onChange={(e) => { setLocal(e.target.value); setDirty(true); }}
-            placeholder="(valor por defecto)"
+            placeholder={t("settingsConfig.defaultValue")}
           />
           {dirty && (
             <Button
@@ -204,7 +258,7 @@ function SettingField({ settingKey, label, description, value, isSensitive, tech
               className="h-11 sm:h-8 px-3"
               disabled={updateMut.isPending}
               onClick={handleSave}
-              aria-label={`Guardar ${label}`}
+              aria-label={t("settingsConfig.saveLabel", { label })}
             >
               {updateMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             </Button>
@@ -233,7 +287,7 @@ const RISK_COLORS: Record<string, string> = {
   high:   "bg-red-100 text-red-700",
 };
 const RISK_LABELS: Record<string, string> = {
-  low: "Bajo", medium: "Medio", high: "Alto",
+  low: "settingsConfig.risk.low", medium: "settingsConfig.risk.medium", high: "settingsConfig.risk.high",
 };
 
 interface FlagRowProps {
@@ -247,6 +301,7 @@ interface FlagRowProps {
 }
 
 function FlagRow({ flagKey, name, description, enabled, riskLevel, onRequestChange, isPending }: FlagRowProps) {
+  const { t } = useI18n();
   const risk = RISK_COLORS[riskLevel] ?? RISK_COLORS.low;
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-border/30 last:border-0">
@@ -254,7 +309,7 @@ function FlagRow({ flagKey, name, description, enabled, riskLevel, onRequestChan
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-foreground">{name}</span>
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${risk}`}>
-            Riesgo {RISK_LABELS[riskLevel] ?? riskLevel}
+            {t("settingsConfig.risk.text", { level: RISK_LABELS[riskLevel] ? t(RISK_LABELS[riskLevel]) : riskLevel })}
           </span>
         </div>
         {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
@@ -280,6 +335,7 @@ function StatusDot({ status }: { status: "ok" | "warning" | "neutral" }) {
 // ─── Audit Log ────────────────────────────────────────────────────────────────
 
 function AuditLog() {
+  const { t, format } = useI18n();
   const [filterKey,  setFilterKey]  = useState("");
   const [filterType, setFilterType] = useState<"all" | "feature_flag" | "system_setting">("all");
   const [filterUser, setFilterUser] = useState("");
@@ -302,7 +358,7 @@ function AuditLog() {
       {/* Filter bar */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Input
-          placeholder="Buscar clave…"
+          placeholder={t("settingsConfig.audit.searchKey")}
           value={filterKey}
           onChange={e => setFilterKey(e.target.value)}
           className="h-8 text-xs"
@@ -312,12 +368,12 @@ function AuditLog() {
           onChange={e => setFilterType(e.target.value as typeof filterType)}
           className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         >
-          <option value="all">Todos los tipos</option>
-          <option value="feature_flag">Feature flag</option>
-          <option value="system_setting">Setting</option>
+          <option value="all">{t("settingsConfig.audit.allTypes")}</option>
+          <option value="feature_flag">{t("settingsConfig.audit.typeFlag")}</option>
+          <option value="system_setting">{t("settingsConfig.audit.typeSetting")}</option>
         </select>
         <Input
-          placeholder="Usuario…"
+          placeholder={t("settingsConfig.audit.user")}
           value={filterUser}
           onChange={e => setFilterUser(e.target.value)}
           className="h-8 text-xs"
@@ -327,14 +383,14 @@ function AuditLog() {
           value={dateFrom}
           onChange={e => setDateFrom(e.target.value)}
           className="h-8 text-xs"
-          title="Desde"
+          title={t("settingsConfig.audit.from")}
         />
         <Input
           type="date"
           value={dateTo}
           onChange={e => setDateTo(e.target.value)}
           className="h-8 text-xs"
-          title="Hasta"
+          title={t("settingsConfig.audit.to")}
         />
       </div>
       {hasFilters && (
@@ -342,7 +398,7 @@ function AuditLog() {
           onClick={() => { setFilterKey(""); setFilterType("all"); setFilterUser(""); setDateFrom(""); setDateTo(""); }}
           className="text-xs text-muted-foreground hover:text-foreground underline"
         >
-          Limpiar filtros
+          {t("settingsConfig.audit.clear")}
         </button>
       )}
 
@@ -353,26 +409,26 @@ function AuditLog() {
         </div>
       ) : !logsQ.data?.length ? (
         <p className="text-sm text-muted-foreground text-center py-8">
-          {hasFilters ? "No hay resultados para los filtros aplicados." : "No hay cambios registrados todavía."}
+          {hasFilters ? t("settingsConfig.audit.noResults") : t("settingsConfig.audit.empty")}
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/50">
-                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Fecha</th>
-                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Tipo</th>
-                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Clave</th>
-                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Anterior</th>
-                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Nuevo</th>
-                <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Por</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">{t("settingsConfig.audit.colDate")}</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">{t("settingsConfig.audit.colType")}</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">{t("settingsConfig.audit.colKey")}</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">{t("settingsConfig.audit.colOld")}</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">{t("settingsConfig.audit.colNew")}</th>
+                <th className="text-left py-2 text-xs font-semibold text-muted-foreground">{t("settingsConfig.audit.colBy")}</th>
               </tr>
             </thead>
             <tbody>
               {logsQ.data.map(log => (
                 <tr key={log.id} className="border-b border-border/30 last:border-0">
                   <td className="py-2 pr-4 text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(log.changedAt).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })}
+                    {format.dateTime(log.changedAt, { dateStyle: "short", timeStyle: "short" })}
                   </td>
                   <td className="py-2 pr-4">
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
@@ -380,7 +436,7 @@ function AuditLog() {
                         ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
                         : "bg-muted text-muted-foreground"
                     }`}>
-                      {log.entityType === "feature_flag" ? "flag" : "setting"}
+                      {log.entityType === "feature_flag" ? t("settingsConfig.audit.flag") : t("settingsConfig.audit.setting")}
                     </span>
                   </td>
                   <td className="py-2 pr-4 font-mono text-xs">{log.key}</td>
@@ -415,6 +471,7 @@ interface SectionContentProps {
 }
 
 function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, isFlagPending, technical }: SectionContentProps) {
+  const { t } = useI18n();
   const sectionSettings = allSettings.filter(s => section.settingKeys.includes(s.key));
   const sectionFlags = allFlags.filter(f => section.flagModules.includes(f.module));
 
@@ -424,7 +481,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
         <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
           <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800 dark:text-amber-300">
-            <strong>Solo administradores técnicos.</strong> Los cambios en esta sección pueden afectar el funcionamiento del sistema en producción.
+            <strong>{t("settingsConfig.advanced.notice")}</strong>{t("settingsConfig.advanced.noticeText")}
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -433,8 +490,8 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
             className="flex items-center justify-between gap-3 p-4 bg-card border border-border/50 rounded-xl hover:border-border transition-colors"
           >
             <div>
-              <p className="text-sm font-medium text-foreground">Feature Flags y ajustes técnicos</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Vista técnica completa con todos los flags y settings</p>
+              <p className="text-sm font-medium text-foreground">{t("settingsConfig.advanced.flagsTitle")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("settingsConfig.advanced.flagsText")}</p>
             </div>
             <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
           </a>
@@ -443,8 +500,8 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
             className="flex items-center justify-between gap-3 p-4 bg-card border border-border/50 rounded-xl hover:border-border transition-colors"
           >
             <div>
-              <p className="text-sm font-medium text-foreground">Datos del negocio</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Textos, imágenes y contenido CMS de la web pública</p>
+              <p className="text-sm font-medium text-foreground">{t("settingsConfig.advanced.siteTitle")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("settingsConfig.advanced.siteText")}</p>
             </div>
             <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
           </a>
@@ -453,7 +510,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
         <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 bg-muted/30 border-b border-border/50 flex items-center gap-2">
             <History className="w-4 h-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">Historial de cambios</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t("settingsConfig.advanced.history")}</h3>
           </div>
           <div className="p-5">
             <AuditLog />
@@ -468,7 +525,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
       href={section.link.href}
       className="flex items-center justify-between gap-3 p-4 min-h-11 bg-card border border-border/50 rounded-xl hover:border-border transition-colors"
     >
-      <span className="text-sm font-medium text-foreground">{section.link.label}</span>
+      <span className="text-sm font-medium text-foreground">{SECTION_LINK_KEYS[section.link.label] ? t(SECTION_LINK_KEYS[section.link.label]) : section.link.label}</span>
       <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
     </Link>
   );
@@ -481,7 +538,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
     return (
       <div className="bg-muted/20 rounded-xl p-8 text-center">
         <CircleDot className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground">No hay ajustes configurables en esta sección todavía.</p>
+        <p className="text-sm text-muted-foreground">{t("settingsConfig.emptySection")}</p>
       </div>
     );
   }
@@ -492,7 +549,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
       {sectionSettings.length > 0 && (
         <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 bg-muted/30 border-b border-border/50">
-            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Ajustes</h3>
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">{t("settingsConfig.settingsHeading")}</h3>
           </div>
           <div className="px-5">
             {sectionSettings.map(s => (
@@ -515,9 +572,9 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
           <div className="flex gap-3">
             <Shield className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
             <div className="text-sm text-slate-700 dark:text-slate-300">
-              <p className="font-medium mb-1">Variables confidenciales en Railway</p>
+              <p className="font-medium mb-1">{t("settingsConfig.envHints.title")}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                Estos valores contienen credenciales y deben configurarse como variables de entorno:
+                {t("settingsConfig.envHints.text")}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {envVarHints.map(v => (
@@ -533,7 +590,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
         <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 bg-muted/30 border-b border-border/50 flex items-center gap-2">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Feature Flags</h3>
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">{t("settingsConfig.flagsHeading")}</h3>
           </div>
           <div className="px-5">
             {sectionFlags.map(f => (
@@ -558,6 +615,8 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ConfigPanel() {
+  const { t } = useI18n();
+  const tx = (text: string, map: Record<string, string>) => (map[text] ? t(map[text]) : text);
   const [activeId, setActiveId] = useState<SectionId>("negocio");
   const [pendingFlag, setPendingFlag] = useState<PendingFlag | null>(null);
 
@@ -575,12 +634,12 @@ export default function ConfigPanel() {
 
   const updateFlagMut = trpc.config.updateFeatureFlag.useMutation({
     onSuccess: () => {
-      toast.success("Flag actualizado");
+      toast.success(t("settingsConfig.flagUpdated"));
       flagsQ.refetch();
       setPendingFlag(null);
     },
     onError: (e) => {
-      toast.error("Error: " + e.message);
+      toast.error(t("settingsConfig.error", { message: e.message }));
       setPendingFlag(null);
     },
   });
@@ -615,9 +674,9 @@ export default function ConfigPanel() {
     <AdminLayout>
       <div className="max-w-5xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-heading font-bold text-foreground">Configuración</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsConfig.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {licensed ? "Avisos por correo, documentos, cobros, caja y marca de tu empresa." : "Gestiona los ajustes del negocio, notificaciones, módulos y más."}
+            {licensed ? t("settingsConfig.introLicensed") : t("settingsConfig.introLegacy")}
           </p>
         </div>
         <WorkplaceLocks place="admin" className="mb-6" />
@@ -632,7 +691,7 @@ export default function ConfigPanel() {
           <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
             {/* Selector de sección en móvil */}
             <div className="md:hidden p-3 border-b border-border/50">
-              <label htmlFor="config-section" className="sr-only">Sección</label>
+              <label htmlFor="config-section" className="sr-only">{t("settingsConfig.section")}</label>
               <select
                 id="config-section"
                 value={activeSection.id}
@@ -640,12 +699,12 @@ export default function ConfigPanel() {
                 className="w-full h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 {sections.map((s) => (
-                  <option key={s.id} value={s.id}>{s.label}</option>
+                  <option key={s.id} value={s.id}>{tx(s.label, SECTION_LABEL_KEYS)}</option>
                 ))}
               </select>
             </div>
             {/* Sidebar */}
-            <aside aria-label="Secciones de ajustes" className="hidden md:block w-52 shrink-0 border-r border-border/50 py-3">
+            <aside aria-label={t("settingsConfig.sectionsAria")} className="hidden md:block w-52 shrink-0 border-r border-border/50 py-3">
               {sections.map(section => {
                 const Icon = SECTION_ICONS[section.id];
                 const status = computeStatus(section);
@@ -663,9 +722,9 @@ export default function ConfigPanel() {
                     }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
-                    <span className="text-sm flex-1 truncate">{section.label}</span>
+                    <span className="text-sm flex-1 truncate">{tx(section.label, SECTION_LABEL_KEYS)}</span>
                     {section.id === "avanzado"
-                      ? <Shield className="w-3.5 h-3.5 shrink-0 text-amber-500" title="Solo administradores técnicos" />
+                      ? <Shield className="w-3.5 h-3.5 shrink-0 text-amber-500" title={t("settingsConfig.techOnly")} />
                       : <StatusDot status={status} />
                     }
                   </button>
@@ -678,9 +737,9 @@ export default function ConfigPanel() {
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-1">
                   {(() => { const Icon = SECTION_ICONS[activeSection.id]; return <Icon className="w-5 h-5 text-muted-foreground" />; })()}
-                  <h2 className="text-lg font-semibold text-foreground">{activeSection.label}</h2>
+                  <h2 className="text-lg font-semibold text-foreground">{tx(activeSection.label, SECTION_LABEL_KEYS)}</h2>
                 </div>
-                <p className="text-sm text-muted-foreground">{activeSection.description}</p>
+                <p className="text-sm text-muted-foreground">{tx(activeSection.description, SECTION_DESC_KEYS)}</p>
               </div>
 
               <SectionContent

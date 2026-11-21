@@ -4,7 +4,8 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { CONTRACT_STATUS_LABEL, type ContractStatus } from "@shared/contractsEsign";
+import type { ContractStatus } from "@shared/contractsEsign";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export function PageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
   return (
@@ -27,12 +28,19 @@ const VARIANT: Record<ContractStatus, "default" | "secondary" | "destructive" | 
 };
 
 export function StatusBadge({ status }: { status: ContractStatus }) {
-  return <Badge variant={VARIANT[status]}>{CONTRACT_STATUS_LABEL[status]}</Badge>;
+  const { t } = useI18n();
+  return <Badge variant={VARIANT[status]}>{t(`contracts.status.${status}`)}</Badge>;
 }
 
-export const fmtMs = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleString("es-ES") : "—");
-export const fmtDay = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString("es-ES", { timeZone: "UTC" }) : d);
-export const fmtEur = (v: string | null) => (v == null ? "—" : new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(v)));
+/** Formatos de fecha e importe del módulo, según el idioma de la interfaz. */
+export function useEsignFmt() {
+  const { format } = useI18n();
+  return {
+    fmtMs: (ms: number | null | undefined) => (ms ? format.dateTime(ms, { dateStyle: "short", timeStyle: "medium" }) : "—"),
+    fmtDay: (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? format.date(`${d}T12:00:00Z`, { timeZone: "UTC" }) : d),
+    fmtEur: (v: string | null) => (v == null ? "—" : format.currency(Number(v))),
+  };
+}
 
 export function downloadBase64Pdf(fileName: string, base64: string) {
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));

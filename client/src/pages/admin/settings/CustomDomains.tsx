@@ -27,9 +27,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { DOMAIN_STAGE_LABELS, type CustomDomainView, type DomainRecordView, type DomainStage } from "@shared/customDomains";
+import { useI18n } from "@/i18n/I18nProvider";
+import { type CustomDomainView, type DomainRecordView, type DomainStage } from "@shared/customDomains";
 
-const STEPS = ["Dominio", "Titularidad", "Registros DNS", "Certificado", "Activo"] as const;
+const STEPS = ["domain", "ownership", "dns", "certificate", "active"] as const;
 
 /** Paso del asistente en el que está cada etapa (0-4). */
 function stepOf(stage: DomainStage): number {
@@ -64,10 +65,12 @@ const STAGE_TONE: Record<DomainStage, string> = {
 const AUTO_CHECK: ReadonlySet<DomainStage> = new Set<DomainStage>(["pending_verification", "pending_dns", "pending_certificate", "checking", "error"]);
 
 function StageBadge({ stage }: { stage: DomainStage }) {
-  return <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", STAGE_TONE[stage])}>{DOMAIN_STAGE_LABELS[stage]}</span>;
+  const { t } = useI18n();
+  return <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", STAGE_TONE[stage])}>{t(`settingsDomains.stage.${stage}`)}</span>;
 }
 
 function CopyValue({ value, label }: { value: string; label: string }) {
+  const { t } = useI18n();
   const [done, setDone] = useState(false);
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -77,7 +80,7 @@ function CopyValue({ value, label }: { value: string; label: string }) {
         variant="outline"
         size="icon"
         className="h-8 w-8 shrink-0"
-        aria-label={`Copiar ${label}`}
+        aria-label={t("settingsDomains.copyLabel", { label })}
         onClick={() => {
           void navigator.clipboard?.writeText(value).then(() => {
             setDone(true);
@@ -92,6 +95,7 @@ function CopyValue({ value, label }: { value: string; label: string }) {
 }
 
 function RecordsTable({ records }: { records: DomainRecordView[] }) {
+  const { t } = useI18n();
   if (records.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -100,20 +104,20 @@ function RecordsTable({ records }: { records: DomainRecordView[] }) {
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge variant="secondary" className="font-mono">{r.type}</Badge>
             <span className="text-xs text-muted-foreground">
-              {r.purpose === "ownership" ? "Demuestra que el dominio es tuyo" : r.purpose === "traffic" ? "Lleva las visitas a tu web" : "Necesario para el certificado HTTPS"}
+              {r.purpose === "ownership" ? t("settingsDomains.purpose.ownership") : r.purpose === "traffic" ? t("settingsDomains.purpose.traffic") : t("settingsDomains.purpose.certificate")}
             </span>
             <span className={cn("ml-auto inline-flex items-center gap-1 text-xs font-medium", r.ok ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
               {r.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-              {r.ok ? "Detectado" : "Aún no detectado"}
+              {r.ok ? t("settingsDomains.detected") : t("settingsDomains.notDetected")}
             </span>
           </div>
           <div className="grid gap-2 sm:grid-cols-[7rem_1fr] sm:items-center">
-            <span className="text-xs font-medium text-muted-foreground">Nombre / host</span>
-            <CopyValue value={r.name} label="nombre" />
-            <span className="text-xs font-medium text-muted-foreground">Valor / destino</span>
-            <CopyValue value={r.value} label="valor" />
+            <span className="text-xs font-medium text-muted-foreground">{t("settingsDomains.nameHost")}</span>
+            <CopyValue value={r.name} label={t("settingsDomains.copyName")} />
+            <span className="text-xs font-medium text-muted-foreground">{t("settingsDomains.valueTarget")}</span>
+            <CopyValue value={r.value} label={t("settingsDomains.copyValue")} />
           </div>
-          {r.name !== r.fqdn && <p className="mt-2 text-xs text-muted-foreground">Nombre completo: <span className="font-mono">{r.fqdn}</span></p>}
+          {r.name !== r.fqdn && <p className="mt-2 text-xs text-muted-foreground">{t("settingsDomains.fullName")}<span className="font-mono">{r.fqdn}</span></p>}
         </div>
       ))}
     </div>
@@ -121,13 +125,14 @@ function RecordsTable({ records }: { records: DomainRecordView[] }) {
 }
 
 function Stepper({ current, done }: { current: number; done: boolean }) {
+  const { t } = useI18n();
   return (
-    <ol className="grid grid-cols-5 gap-1 sm:gap-2" aria-label="Pasos de la conexión">
-      {STEPS.map((label, i) => {
+    <ol className="grid grid-cols-5 gap-1 sm:gap-2" aria-label={t("settingsDomains.stepsLabel")}>
+      {STEPS.map((stepKey, i) => {
         const complete = i < current || (done && i === current);
         const active = i === current && !done;
         return (
-          <li key={label} className="flex flex-col items-center gap-1 text-center" aria-current={active ? "step" : undefined}>
+          <li key={stepKey} className="flex flex-col items-center gap-1 text-center" aria-current={active ? "step" : undefined}>
             <span
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold",
@@ -138,7 +143,7 @@ function Stepper({ current, done }: { current: number; done: boolean }) {
             >
               {complete ? <Check className="h-4 w-4" /> : i + 1}
             </span>
-            <span className={cn("text-[11px] leading-tight sm:text-xs", active ? "font-semibold" : "text-muted-foreground")}>{label}</span>
+            <span className={cn("text-[11px] leading-tight sm:text-xs", active ? "font-semibold" : "text-muted-foreground")}>{t(`settingsDomains.steps.${stepKey}`)}</span>
           </li>
         );
       })}
@@ -147,6 +152,7 @@ function Stepper({ current, done }: { current: number; done: boolean }) {
 }
 
 function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: CustomDomainView; busy: boolean; onCheck: () => void; onPrimary: () => void; onDisconnect: () => void }) {
+  const { t, format } = useI18n();
   const step = stepOf(d.stage);
   const traffic = d.records.filter((r) => r.purpose !== "ownership");
   return (
@@ -157,7 +163,7 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
           <StageBadge stage={d.stage} />
           {d.primary && (
             <Badge variant="outline" className="gap-1">
-              <Star className="h-3 w-3" /> Principal
+              <Star className="h-3 w-3" /> {t("settingsDomains.primary")}
             </Badge>
           )}
         </div>
@@ -170,9 +176,9 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
 
         {d.stage === "pending_verification" && (
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold">Paso 2 · Crea este registro TXT en tu proveedor de dominio</h3>
+            <h3 className="text-sm font-semibold">{t("settingsDomains.step2.title")}</h3>
             <p className="text-sm text-muted-foreground">
-              Entra en el panel DNS de tu dominio (donde lo registraste: Dinahosting, IONOS, GoDaddy…) y añade un registro nuevo. No toques los registros de correo (MX, SPF, DKIM, DMARC): no hace falta cambiar nada más.
+              {t("settingsDomains.step2.help")}
             </p>
             <RecordsTable records={d.records} />
           </div>
@@ -180,20 +186,20 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
 
         {(d.stage === "pending_dns" || ((d.stage === "pending_certificate" || d.stage === "checking" || d.stage === "error") && traffic.length > 0)) && (
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold">Paso 3 · Registros DNS que pide la plataforma para {d.domain}</h3>
+            <h3 className="text-sm font-semibold">{t("settingsDomains.step3.title", { domain: d.domain })}</h3>
             {traffic.length > 0 ? (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Crea {traffic.length === 1 ? "este registro" : "estos registros"} exactamente como aparecen. Si ya existe un registro con el mismo nombre (por ejemplo, un CNAME o un A antiguo de {d.domain}), sustitúyelo. No cambies los servidores de nombres.
+                  {t(traffic.length === 1 ? "settingsDomains.step3.helpOne" : "settingsDomains.step3.helpMany", { domain: d.domain })}
                 </p>
                 <RecordsTable records={traffic} />
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Estamos preparando tu dominio en la plataforma. Los registros aparecerán aquí en cuanto estén listos.</p>
+              <p className="text-sm text-muted-foreground">{t("settingsDomains.step3.preparing")}</p>
             )}
             {d.apex && (
               <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-                {d.domain} es un dominio raíz. Muchos proveedores no admiten CNAME en la raíz: si el tuyo no tiene la opción ALIAS, ANAME o «CNAME flattening», conecta mejor www.{d.domain}.
+                {t("settingsDomains.step3.apex", { domain: d.domain })}
               </p>
             )}
           </div>
@@ -202,16 +208,16 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
         {(d.stage === "pending_certificate" || d.stage === "checking") && (
           <div className="flex items-start gap-2 rounded-md bg-muted p-3 text-sm">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>Paso 4 · El certificado HTTPS se emite solo en cuanto el DNS es correcto. No tienes que hacer nada: lo comprobamos automáticamente.</span>
+            <span>{t("settingsDomains.step4")}</span>
           </div>
         )}
 
         {d.stage === "active" && (
           <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
             <p className="flex items-center gap-2 font-medium">
-              <CheckCircle2 className="h-4 w-4" /> Paso 5 · Tu web ya se sirve en https://{d.domain}
+              <CheckCircle2 className="h-4 w-4" /> {t("settingsDomains.step5", { domain: d.domain })}
             </p>
-            {d.https && <p className="text-xs">Última comprobación: {d.https.detail} ({new Date(d.https.checkedAt).toLocaleString("es-ES")}).</p>}
+            {d.https && <p className="text-xs">{t("settingsDomains.lastCheck", { detail: d.https.detail, date: format.dateTime(d.https.checkedAt, { dateStyle: "short", timeStyle: "medium" }) })}</p>}
           </div>
         )}
 
@@ -219,39 +225,40 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
           {d.stage !== "disconnected" && d.stage !== "active" && (
             <Button onClick={onCheck} disabled={busy}>
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              {d.stage === "pending_verification" ? "Ya lo he creado: comprobar" : "Comprobar ahora"}
+              {d.stage === "pending_verification" ? t("settingsDomains.alreadyCreated") : t("settingsDomains.checkNow")}
             </Button>
           )}
           {d.stage === "active" && (
             <>
               <Button variant="outline" asChild>
                 <a href={`https://${d.domain}`} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" /> Abrir mi web
+                  <ExternalLink className="mr-2 h-4 w-4" /> {t("settingsDomains.openSite")}
                 </a>
               </Button>
               {!d.primary && (
                 <Button onClick={onPrimary} disabled={busy}>
-                  <Star className="mr-2 h-4 w-4" /> Usar como dominio principal
+                  <Star className="mr-2 h-4 w-4" /> {t("settingsDomains.usePrimary")}
                 </Button>
               )}
               <Button variant="outline" onClick={onCheck} disabled={busy}>
-                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} Comprobar
+                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} {t("settingsDomains.check")}
               </Button>
             </>
           )}
           {d.stage !== "disconnected" && (
             <Button variant="ghost" className="text-red-700 hover:text-red-800 dark:text-red-400" onClick={onDisconnect} disabled={busy}>
-              <Unplug className="mr-2 h-4 w-4" /> {d.stage === "active" ? "Desconectar" : "Cancelar conexión"}
+              <Unplug className="mr-2 h-4 w-4" /> {d.stage === "active" ? t("settingsDomains.disconnect") : t("settingsDomains.cancelConnection")}
             </Button>
           )}
         </div>
-        {d.lastCheckedAt && <p className="text-xs text-muted-foreground">Comprobado por última vez: {new Date(d.lastCheckedAt).toLocaleString("es-ES")}</p>}
+        {d.lastCheckedAt && <p className="text-xs text-muted-foreground">{t("settingsDomains.checkedAt", { date: format.dateTime(d.lastCheckedAt, { dateStyle: "short", timeStyle: "medium" }) })}</p>}
       </CardContent>
     </Card>
   );
 }
 
 export default function CustomDomains() {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const status = trpc.domains.status.useQuery(undefined, { refetchOnWindowFocus: true, retry: 1 });
   const [domain, setDomain] = useState("");
@@ -269,13 +276,13 @@ export default function CustomDomains() {
   });
   const check = trpc.domains.check.useMutation({
     onSuccess: (d) => {
-      if (d.stage === "active") toast.success(`${d.domain} ya está activo`);
+      if (d.stage === "active") toast.success(t("settingsDomains.isActive", { domain: d.domain }));
       refresh();
     },
     onError,
   });
-  const primary = trpc.domains.setPrimary.useMutation({ onSuccess: () => (toast.success("Dominio principal actualizado"), refresh()), onError });
-  const disconnect = trpc.domains.disconnect.useMutation({ onSuccess: () => (toast.success("Dominio desconectado"), refresh()), onError });
+  const primary = trpc.domains.setPrimary.useMutation({ onSuccess: () => (toast.success(t("settingsDomains.primaryUpdated")), refresh()), onError });
+  const disconnect = trpc.domains.disconnect.useMutation({ onSuccess: () => (toast.success(t("settingsDomains.disconnected")), refresh()), onError });
 
   const overview = status.data?.available ? status.data.overview : null;
   const visible = useMemo(() => (overview?.domains ?? []).filter((d) => d.stage !== "disconnected"), [overview]);
@@ -286,23 +293,23 @@ export default function CustomDomains() {
   // Mientras la página está abierta y el dominio en curso no está activo, se vuelve a comprobar cada 30 s
   useEffect(() => {
     if (!current || !AUTO_CHECK.has(current.stage)) return;
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       if (document.visibilityState === "visible" && !check.isPending) check.mutate({ domain: current.domain });
     }, 30_000);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [current?.domain, current?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <AdminLayout>
       <div className="max-w-4xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Dominio propio</h1>
-          <p className="text-sm text-muted-foreground">Conecta el dominio de tu empresa (por ejemplo, www.tuempresa.es) para que tu web se sirva en él con HTTPS. Tu dirección de la plataforma sigue funcionando siempre.</p>
+          <h1 className="text-2xl font-bold">{t("settingsDomains.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("settingsDomains.intro")}</p>
         </div>
 
         {status.isLoading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
+            <Loader2 className="h-4 w-4 animate-spin" /> {t("settingsDomains.loading")}
           </div>
         )}
         {status.error && <p className="text-sm text-red-700 dark:text-red-400">{status.error.message}</p>}
@@ -317,22 +324,22 @@ export default function CustomDomains() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <Globe className="h-4 w-4" /> Tus direcciones
+                  <Globe className="h-4 w-4" /> {t("settingsDomains.addresses")}
                 </CardTitle>
-                <CardDescription>El dominio principal es el que se usa en los enlaces, los correos y el mapa del sitio.</CardDescription>
+                <CardDescription>{t("settingsDomains.addressesHelp")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {overview.fallback && (
                   <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
                     <span className="break-all font-mono text-sm">{overview.fallback}</span>
-                    <Badge variant="secondary">Dirección de la plataforma · siempre disponible</Badge>
+                    <Badge variant="secondary">{t("settingsDomains.platformAddress")}</Badge>
                     {overview.primary === overview.fallback ? (
                       <Badge variant="outline" className="gap-1">
-                        <Star className="h-3 w-3" /> Principal
+                        <Star className="h-3 w-3" /> {t("settingsDomains.primary")}
                       </Badge>
                     ) : (
                       <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={() => primary.mutate({ domain: overview.fallback! })}>
-                        Usar como principal
+                        {t("settingsDomains.useAsPrimary")}
                       </Button>
                     )}
                   </div>
@@ -348,7 +355,7 @@ export default function CustomDomains() {
                     <StageBadge stage={d.stage} />
                     {d.primary && (
                       <Badge variant="outline" className="gap-1">
-                        <Star className="h-3 w-3" /> Principal
+                        <Star className="h-3 w-3" /> {t("settingsDomains.primary")}
                       </Badge>
                     )}
                   </button>
@@ -368,9 +375,9 @@ export default function CustomDomains() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{visible.length === 0 ? "Paso 1 · Escribe tu dominio" : "Conectar otro dominio"}</CardTitle>
+                <CardTitle className="text-base">{visible.length === 0 ? t("settingsDomains.step1Title") : t("settingsDomains.connectAnother")}</CardTitle>
                 <CardDescription>
-                  Recomendamos un subdominio como <span className="font-mono">www.tuempresa.es</span>: funciona con cualquier proveedor. Necesitas acceso al panel DNS de tu dominio.
+                  {t("settingsDomains.recommendBefore")}<span className="font-mono">www.tuempresa.es</span>{t("settingsDomains.recommendAfter")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -382,22 +389,22 @@ export default function CustomDomains() {
                       if (domain.trim()) add.mutate({ domain: domain.trim() });
                     }}
                   >
-                    <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="www.tuempresa.es" aria-label="Dominio" autoComplete="off" spellCheck={false} inputMode="url" className="sm:flex-1" />
+                    <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="www.tuempresa.es" aria-label={t("settingsDomains.domainAria")} autoComplete="off" spellCheck={false} inputMode="url" className="sm:flex-1" />
                     <Button type="submit" disabled={add.isPending || !domain.trim()}>
-                      {add.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Continuar
+                      {add.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {t("settingsDomains.continue")}
                     </Button>
                   </form>
                 ) : (
                   <div className="space-y-2 text-sm">
                     <p className="text-muted-foreground">{overview.allowance.reason}</p>
                     <Button variant="outline" size="sm" asChild>
-                      <Link href="/admin/suscripcion">Ver mi plan</Link>
+                      <Link href="/admin/suscripcion">{t("settingsDomains.viewPlan")}</Link>
                     </Button>
                   </div>
                 )}
                 {overview.allowance.max !== null && overview.allowance.max > 0 && (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    En uso: {overview.allowance.used} de {overview.allowance.max}.
+                    {t("settingsDomains.inUse", { used: overview.allowance.used, max: overview.allowance.max })}
                   </p>
                 )}
               </CardContent>
@@ -405,7 +412,7 @@ export default function CustomDomains() {
 
             {disconnected.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                Desconectados: {disconnected.map((d) => d.domain).join(", ")}. Para volver a conectar uno, escríbelo arriba: te pediremos de nuevo el registro TXT.
+                {t("settingsDomains.disconnectedList", { list: disconnected.map((d) => d.domain).join(", ") })}
               </p>
             )}
           </>
@@ -415,13 +422,13 @@ export default function CustomDomains() {
       <AlertDialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Desconectar {confirm}?</AlertDialogTitle>
+            <AlertDialogTitle>{t("settingsDomains.confirm.title", { domain: confirm })}</AlertDialogTitle>
             <AlertDialogDescription>
-              Tu web dejará de servirse en este dominio. Si era el principal, la dirección de la plataforma pasa a serlo. Tus registros DNS no se tocan: puedes borrarlos tú en tu proveedor.
+              {t("settingsDomains.confirm.text")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t("settingsDomains.confirm.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 text-white hover:bg-red-700"
               onClick={() => {
@@ -429,7 +436,7 @@ export default function CustomDomains() {
                 setConfirm(null);
               }}
             >
-              Desconectar
+              {t("settingsDomains.confirm.action")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

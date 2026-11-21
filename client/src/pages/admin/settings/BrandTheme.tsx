@@ -4,15 +4,17 @@
  */
 import AdminLayout from "@/components/AdminLayout";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export default function BrandTheme() {
+  const { t } = useI18n();
   return (
     <AdminLayout>
       <div className="max-w-7xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Marca y tema</h1>
+          <h1 className="text-2xl font-bold">{t("settingsGeneral.brand.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Tu logotipo, tus colores y tus imágenes. Se aplican a la vez en tu web y en la pantalla de acceso de tu equipo.
+            {t("settingsGeneral.brand.intro")}
           </p>
         </div>
         <BrandIdentityEditor variant="full" />

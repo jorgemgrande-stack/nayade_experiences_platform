@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { Translate } from "@shared/i18n/core";
 import { Price, ProductIcon } from "@/components/connect/ConnectParts";
 import { fichaPath } from "@/components/connect/LockedFeature";
 import { useConnectCatalog, type ConnectCatalogItem } from "@/components/connect/useConnect";
@@ -68,7 +70,12 @@ const GROUP_ICON: Record<ExtensionGroupId, LucideIcon> = { available: CheckCircl
 const GROUP_TONE: Record<ExtensionGroupId, string> = { available: "emerald", on_request: "amber", coming_soon: "electric", contracted: "turquoise", not_included: "night" };
 const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 const scrollIntoView = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" }));
-const per = (i: CheckoutInterval) => (i === "year" ? "año" : "mes");
+const perOf = (t: Translate, i: CheckoutInterval) => (i === "year" ? t("subscription.plans.intervalYear") : t("subscription.plans.intervalMonth"));
+const stepTitle = (t: Translate, s: number) => (s === 1 ? t("subscription.checkout.step1") : s === 2 ? t("subscription.checkout.step2") : t("subscription.checkout.step3"));
+const groupTitle = (t: Translate, id: ExtensionGroupId) =>
+  ({ available: t("subscription.checkout.group.available.title"), on_request: t("subscription.checkout.group.on_request.title"), coming_soon: t("subscription.checkout.group.coming_soon.title"), not_included: t("subscription.checkout.group.not_included.title"), contracted: t("subscription.checkout.group.contracted.title") })[id];
+const groupIntro = (t: Translate, id: ExtensionGroupId) =>
+  ({ available: t("subscription.checkout.group.available.intro"), on_request: t("subscription.checkout.group.on_request.intro"), coming_soon: t("subscription.checkout.group.coming_soon.intro"), not_included: t("subscription.checkout.group.not_included.intro"), contracted: t("subscription.checkout.group.contracted.intro") })[id];
 
 // ── Borrador en el navegador (con try/catch: el almacenamiento puede no estar disponible) ──
 function readDraft(key: string | null): CheckoutDraft | null {
@@ -99,6 +106,7 @@ export interface ConversionRequest {
  * elección nueva lleva otro `at`). `currentPlan`: plan de la prueba. `plans`: planes publicados (nombres y precios).
  */
 export function ConversionSection({ requested, currentPlan = null, plans = [] }: { requested?: ConversionRequest | null; currentPlan?: string | null; plans?: PanelPlanInfo[] } = {}) {
+  const { t } = useI18n();
   const status = trpc.subscription.conversionStatus.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const enabled = !!status.data?.enabled;
   if (!status.data) return null;
@@ -106,10 +114,10 @@ export function ConversionSection({ requested, currentPlan = null, plans = [] }:
     return (
       <section id="contratar" className="scroll-mt-4 rounded-3xl border border-border bg-card p-6" aria-labelledby="sub-convert">
         <h2 id="sub-convert" className="text-xl font-extrabold tracking-tight text-foreground">
-          Contratar
+          {t("subscription.checkout.title")}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          La contratación en línea desde el panel todavía no está disponible. Envíanos una solicitud desde el plan que te interese y te ayudamos a contratarlo sin perder nada de lo que has preparado.
+          {t("subscription.checkout.unavailable")}
         </p>
       </section>
     );
@@ -118,6 +126,7 @@ export function ConversionSection({ requested, currentPlan = null, plans = [] }:
 }
 
 function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequest | null; currentPlan: string | null; plans: PanelPlanInfo[] }) {
+  const { t } = useI18n();
   const { user } = useAuth();
   const uid = (user as { id?: number } | null)?.id;
   // Sin la persona identificada no se lee ni se escribe ningún borrador (nunca el de otra persona)
@@ -135,7 +144,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
   const [step, setStep] = useState<CheckoutStep>(initial?.step ?? 1);
   const [touched, setTouched] = useState<Partial<Record<BuyerField, boolean>>>({});
   const [accepted, setAccepted] = useState({ terms: false, privacy: false });
-  const [notes, setNotes] = useState<string[]>(initial && meaningful(initial) ? ["Hemos recuperado la selección que dejaste a medias."] : []);
+  const [notes, setNotes] = useState<string[]>(initial && meaningful(initial) ? [t("subscription.checkout.recovered")] : []);
   const [legalNotice, setLegalNotice] = useState<string | null>(null);
 
   const extensions = useMemo(() => checkoutExtensions(catalog.items as ConnectCatalogItem[], plan), [catalog.items, plan]);
@@ -162,7 +171,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
     setPlan(requested.plan);
     setStep(1);
     if (requested.modules?.length && catalog.isError) {
-      setNotes(["No hemos podido comprobar los módulos elegidos ahora mismo: contrata el plan y añádelos después desde su ficha."]);
+      setNotes([t("subscription.checkout.modulesCheckFailed")]);
     } else if (requested.modules?.length) {
       const offered = checkoutExtensions(catalog.items as ConnectCatalogItem[], requested.plan)
         .filter((e) => e.selectable)
@@ -190,7 +199,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
         if (lastSig.current === s) setQuote({ sig: s, data: d as Preview });
       })
       .catch((e: { message?: string }) => {
-        if (lastSig.current === s) setQuoteError(e?.message ?? "No se ha podido calcular el importe");
+        if (lastSig.current === s) setQuoteError(e?.message ?? t("subscription.checkout.calcFailed"));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, interval, add.join(",")]);
@@ -296,9 +305,9 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
         </span>
         <div className="min-w-0 flex-1">
           <h2 id="sub-convert" className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-            Contratar tu plan
+            {t("subscription.checkout.heading")}
           </h2>
-          <p className="text-sm text-muted-foreground sm:text-base">Elige plan, periodicidad y ampliaciones. Todo lo que has preparado durante la prueba se conserva.</p>
+          <p className="text-sm text-muted-foreground sm:text-base">{t("subscription.checkout.intro")}</p>
         </div>
       </div>
 
@@ -318,12 +327,12 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="min-w-0 space-y-6">
           <h3 id="sx-step-actual" tabIndex={-1} className="sr-only">
-            Paso {step} de 3: {CHECKOUT_STEPS[step - 1].title}
+            {t("subscription.checkout.stepOf", { step, title: stepTitle(t, step) })}
           </h3>
           {step === 1 && (
             <>
-              <Panel icon={<Layers className="h-5 w-5" />} title="Plan seleccionado" intro="Elige el plan con el que quieres seguir.">
-                <div role="radiogroup" aria-label="Plan" className="grid gap-3 sm:grid-cols-2">
+              <Panel icon={<Layers className="h-5 w-5" />} title={t("subscription.checkout.planPanel")} intro={t("subscription.checkout.planIntro")}>
+                <div role="radiogroup" aria-label={t("subscription.checkout.planGroup")} className="grid gap-3 sm:grid-cols-2">
                   {CHECKOUT_PLANS.map((k) => {
                     const info = planInfo(k);
                     const pr = planPresentation({ key: k, tagline: info?.tagline ?? null });
@@ -341,18 +350,18 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                             <span className="text-lg font-extrabold text-foreground">{info?.name ?? k}</span>
                             {sel && (
                               <span className="sx-tone-tag inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
-                                <Check className="h-3 w-3" aria-hidden="true" /> Seleccionado
+                                <Check className="h-3 w-3" aria-hidden="true" /> {t("subscription.checkout.selected")}
                               </span>
                             )}
-                            {k === currentPlan && <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">Tu prueba</span>}
+                            {k === currentPlan && <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{t("subscription.checkout.yourTrial")}</span>}
                           </span>
                           {pr.audience && <span className="block text-sm text-muted-foreground">{pr.audience}</span>}
                           {price ? (
                             <span className="mt-1 block text-sm text-foreground">
-                              <strong className="text-base font-bold">{formatMoney(price.amountCents, price.currency)}</strong> /{per(interval)} {taxLabel(price)}
+                              <strong className="text-base font-bold">{formatMoney(price.amountCents, price.currency)}</strong> /{perOf(t, interval)} {taxLabel(price)}
                             </span>
                           ) : (
-                            <span className="mt-1 block text-sm text-muted-foreground">Precio en el resumen</span>
+                            <span className="mt-1 block text-sm text-muted-foreground">{t("subscription.checkout.priceInSummary")}</span>
                           )}
                         </span>
                       </label>
@@ -362,17 +371,17 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                 <p className="mt-3 flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <span>
-                    Enterprise se contrata con nuestro equipo comercial:{" "}
+                    {t("subscription.checkout.enterprisePre")}{" "}
                     <a href="#planes" className="font-medium text-foreground underline underline-offset-4">
-                      solicítalo desde su plan
+                      {t("subscription.checkout.enterpriseLink")}
                     </a>
                     .
                   </span>
                 </p>
               </Panel>
 
-              <Panel icon={<CalendarDays className="h-5 w-5" />} title="Periodicidad" intro="Cómo quieres que se facture tu plan.">
-                <div role="radiogroup" aria-label="Periodicidad" className="grid grid-cols-2 gap-3">
+              <Panel icon={<CalendarDays className="h-5 w-5" />} title={t("subscription.checkout.intervalPanel")} intro={t("subscription.checkout.intervalIntro")}>
+                <div role="radiogroup" aria-label={t("subscription.checkout.intervalPanel")} className="grid grid-cols-2 gap-3">
                   {(["month", "year"] as const).map((i) => {
                     const info = planInfo(plan);
                     const price = i === "year" ? info?.yearly : info?.monthly;
@@ -384,10 +393,10 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                           {sel && <span className="cx-tone-chip h-2.5 w-2.5 rounded-full" />}
                         </span>
                         <span className="min-w-0">
-                          <span className="block font-semibold text-foreground">{i === "year" ? "Anual" : "Mensual"}</span>
+                          <span className="block font-semibold text-foreground">{i === "year" ? t("subscription.plans.yearly") : t("subscription.plans.monthly")}</span>
                           {price && (
                             <span className="block text-xs text-muted-foreground">
-                              {formatMoney(price.amountCents, price.currency)} /{per(i)} {taxLabel(price)}
+                              {formatMoney(price.amountCents, price.currency)} /{perOf(t, i)} {taxLabel(price)}
                             </span>
                           )}
                         </span>
@@ -399,24 +408,24 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
 
               <Extensions extensions={extensions} loading={catalog.isLoading} error={catalog.isError} selected={add} onToggle={(k, on) => setAdd((a) => (on ? Array.from(new Set([...a, k])) : a.filter((x) => x !== k)))} onPlan={setPlan} />
 
-              <StepNav next={{ label: "Continuar con los datos de facturación", disabled: !quoteOk, onClick: () => go(2) }} hint={!quoteOk && !calculating ? "Revisa la selección: el importe no es válido." : null} />
+              <StepNav next={{ label: t("subscription.checkout.continueBilling"), disabled: !quoteOk, onClick: () => go(2) }} hint={!quoteOk && !calculating ? t("subscription.checkout.invalidSelection") : null} />
             </>
           )}
 
           {step === 2 && (
             <>
-              <Panel icon={<Building2 className="h-5 w-5" />} title="Datos de facturación" intro="Empresa o profesional. Se usan para la factura y para calcular los impuestos en el pago.">
+              <Panel icon={<Building2 className="h-5 w-5" />} title={t("subscription.checkout.billingPanel")} intro={t("subscription.checkout.billingIntro")}>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field id="legalName" label="Razón social o nombre fiscal" value={buyer.legalName} error={touched.legalName ? errors.legalName : undefined} autoComplete="organization" maxLength={160} onChange={(v) => setBuyer((b) => ({ ...b, legalName: v }))} onBlur={() => setTouched((t) => ({ ...t, legalName: true }))} />
-                  <Field id="taxId" label="NIF / CIF u otro identificador fiscal" value={buyer.taxId} error={touched.taxId ? errors.taxId : undefined} maxLength={40} onChange={(v) => setBuyer((b) => ({ ...b, taxId: v }))} onBlur={() => setTouched((t) => ({ ...t, taxId: true }))} />
+                  <Field id="legalName" label={t("subscription.checkout.legalName")} value={buyer.legalName} error={touched.legalName ? errors.legalName : undefined} autoComplete="organization" maxLength={160} onChange={(v) => setBuyer((b) => ({ ...b, legalName: v }))} onBlur={() => setTouched((t) => ({ ...t, legalName: true }))} />
+                  <Field id="taxId" label={t("subscription.checkout.taxId")} value={buyer.taxId} error={touched.taxId ? errors.taxId : undefined} maxLength={40} onChange={(v) => setBuyer((b) => ({ ...b, taxId: v }))} onBlur={() => setTouched((t) => ({ ...t, taxId: true }))} />
                   <div className="sm:col-span-2">
-                    <Field id="line1" label="Dirección fiscal" value={buyer.line1} error={touched.line1 ? errors.line1 : undefined} autoComplete="address-line1" maxLength={200} onChange={(v) => setBuyer((b) => ({ ...b, line1: v }))} onBlur={() => setTouched((t) => ({ ...t, line1: true }))} />
+                    <Field id="line1" label={t("subscription.checkout.line1")} value={buyer.line1} error={touched.line1 ? errors.line1 : undefined} autoComplete="address-line1" maxLength={200} onChange={(v) => setBuyer((b) => ({ ...b, line1: v }))} onBlur={() => setTouched((t) => ({ ...t, line1: true }))} />
                   </div>
-                  <Field id="postalCode" label="Código postal" value={buyer.postalCode} error={touched.postalCode ? errors.postalCode : undefined} autoComplete="postal-code" maxLength={12} onChange={(v) => setBuyer((b) => ({ ...b, postalCode: v }))} onBlur={() => setTouched((t) => ({ ...t, postalCode: true }))} />
-                  <Field id="city" label="Ciudad" value={buyer.city} error={touched.city ? errors.city : undefined} autoComplete="address-level2" maxLength={120} onChange={(v) => setBuyer((b) => ({ ...b, city: v }))} onBlur={() => setTouched((t) => ({ ...t, city: true }))} />
+                  <Field id="postalCode" label={t("subscription.checkout.postalCode")} value={buyer.postalCode} error={touched.postalCode ? errors.postalCode : undefined} autoComplete="postal-code" maxLength={12} onChange={(v) => setBuyer((b) => ({ ...b, postalCode: v }))} onBlur={() => setTouched((t) => ({ ...t, postalCode: true }))} />
+                  <Field id="city" label={t("subscription.checkout.city")} value={buyer.city} error={touched.city ? errors.city : undefined} autoComplete="address-level2" maxLength={120} onChange={(v) => setBuyer((b) => ({ ...b, city: v }))} onBlur={() => setTouched((t) => ({ ...t, city: true }))} />
                   <Field
                     id="country"
-                    label="País (código de 2 letras, p. ej. ES)"
+                    label={t("subscription.checkout.country")}
                     value={buyer.country}
                     error={touched.country ? errors.country : undefined}
                     autoComplete="country"
@@ -425,24 +434,24 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                     onBlur={() => setTouched((t) => ({ ...t, country: true }))}
                   />
                 </div>
-                <p className="mt-3 text-xs text-muted-foreground">Los campos son obligatorios. El servidor vuelve a comprobarlos antes de abrir el pago.</p>
+                <p className="mt-3 text-xs text-muted-foreground">{t("subscription.checkout.allRequired")}</p>
               </Panel>
-              <StepNav back={{ label: "Volver al plan", onClick: () => go(1) }} next={{ label: "Revisar y confirmar", onClick: () => go(3) }} />
+              <StepNav back={{ label: t("subscription.checkout.backToPlan"), onClick: () => go(1) }} next={{ label: t("subscription.checkout.reviewConfirm"), onClick: () => go(3) }} />
             </>
           )}
 
           {step === 3 && p && (
             <>
-              <Panel icon={<FileText className="h-5 w-5" />} title="Revisión" intro="Comprueba tu selección antes de ir al pago seguro.">
+              <Panel icon={<FileText className="h-5 w-5" />} title={t("subscription.checkout.reviewPanel")} intro={t("subscription.checkout.reviewIntro")}>
                 <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                  <Review label="Plan" value={`${planName} · ${interval === "year" ? "anual" : "mensual"}`} onEdit={() => go(1)} />
-                  <Review label="Ampliaciones" value={addNames.length > 0 ? addNames.join(", ") : "Sin ampliaciones"} onEdit={() => go(1)} />
-                  <Review label="Facturación a" value={`${buyer.legalName.trim()} · ${buyer.taxId.trim()}`} onEdit={() => go(2)} />
-                  <Review label="Domicilio fiscal" value={`${buyer.line1.trim()}, ${buyer.postalCode.trim()} ${buyer.city.trim()} (${buyer.country.trim().toUpperCase()})`} onEdit={() => go(2)} />
+                  <Review label={t("subscription.checkout.reviewPlan")} value={t("subscription.contract.planInterval", { plan: planName, interval: interval === "year" ? t("subscription.common.perYear") : t("subscription.common.perMonth") })} onEdit={() => go(1)} />
+                  <Review label={t("subscription.checkout.reviewExtensions")} value={addNames.length > 0 ? addNames.join(", ") : t("subscription.checkout.noExtensions")} onEdit={() => go(1)} />
+                  <Review label={t("subscription.checkout.reviewBillTo")} value={`${buyer.legalName.trim()} · ${buyer.taxId.trim()}`} onEdit={() => go(2)} />
+                  <Review label={t("subscription.checkout.reviewAddress")} value={`${buyer.line1.trim()}, ${buyer.postalCode.trim()} ${buyer.city.trim()} (${buyer.country.trim().toUpperCase()})`} onEdit={() => go(2)} />
                 </dl>
               </Panel>
 
-              <Panel icon={<Lock className="h-5 w-5" />} title="Condiciones y confirmación">
+              <Panel icon={<Lock className="h-5 w-5" />} title={t("subscription.checkout.termsPanel")}>
                 <div className="space-y-3">
                   {legalNotice && (
                     <p role="alert" className="flex gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
@@ -452,26 +461,26 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                   <div className="flex items-start gap-3 text-sm">
                     <Checkbox id="conv-terms" checked={accepted.terms} disabled={!p.termsVersion} onCheckedChange={(v) => setAccepted((a) => ({ ...a, terms: v === true }))} className="mt-0.5" />
                     <Label htmlFor="conv-terms" className="block font-normal leading-snug">
-                      Acepto las{" "}
+                      {t("subscription.checkout.acceptPre")}{" "}
                       <a href={LEGAL.terms} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline underline-offset-4">
-                        condiciones de contratación de Elephant Source
-                        <span className="sr-only"> (se abre en otra pestaña)</span>
+                        {t("subscription.checkout.termsLink")}
+                        <span className="sr-only">{t("subscription.page.newTab")}</span>
                       </a>
-                      {p.termsVersion ? ` (versión ${p.termsVersion})` : ""}.
+                      {p.termsVersion ? t("subscription.checkout.versionSuffix", { v: p.termsVersion }) : ""}{t("subscription.checkout.termsTail")}
                     </Label>
                   </div>
                   <div className="flex items-start gap-3 text-sm">
                     <Checkbox id="conv-privacy" checked={accepted.privacy} onCheckedChange={(v) => setAccepted((a) => ({ ...a, privacy: v === true }))} className="mt-0.5" />
                     <Label htmlFor="conv-privacy" className="block font-normal leading-snug">
-                      He leído la{" "}
+                      {t("subscription.checkout.readPre")}{" "}
                       <a href={LEGAL.privacy} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline underline-offset-4">
-                        política de privacidad
-                        <span className="sr-only"> (se abre en otra pestaña)</span>
+                        {t("subscription.checkout.privacyLink")}
+                        <span className="sr-only">{t("subscription.page.newTab")}</span>
                       </a>
-                      {p.privacyVersion ? ` (versión ${p.privacyVersion})` : ""}.
+                      {p.privacyVersion ? t("subscription.checkout.versionSuffix", { v: p.privacyVersion }) : ""}{t("subscription.checkout.privacyTail")}
                     </Label>
                   </div>
-                  {!p.termsVersion && <p className="text-sm text-danger">Las condiciones de contratación no están publicadas ahora mismo: no se puede contratar en línea.</p>}
+                  {!p.termsVersion && <p className="text-sm text-danger">{t("subscription.checkout.noTerms")}</p>}
                 </div>
               </Panel>
 
@@ -482,19 +491,19 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Button type="button" variant="outline" className="h-12 w-full rounded-xl px-5 sm:w-auto" onClick={() => go(2)}>
-                  <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Volver y editar
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("subscription.checkout.backEdit")}
                 </Button>
                 <Button type="button" className="cx-cta h-auto min-h-12 w-full whitespace-normal rounded-xl px-6 py-3 text-base font-semibold hover:bg-transparent sm:w-auto" disabled={!canConfirm} onClick={confirm}>
                   {start.isPending || redirecting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Lock className="h-4 w-4" aria-hidden="true" />}
-                  {redirecting ? "Abriendo el pago seguro…" : start.isPending ? "Preparando el pago…" : "Confirmar y continuar al pago"}
+                  {redirecting ? t("subscription.checkout.opening") : start.isPending ? t("subscription.checkout.preparing") : t("subscription.checkout.confirmGo")}
                 </Button>
               </div>
               {start.error?.data?.code === "CONFLICT" && /pago abierto|contratación en curso/.test(start.error.message) && (
                 <p className="text-sm text-danger" role="alert">
-                  Tienes un pago pendiente. {start.error.message}
+                  {t("subscription.checkout.pendingPayment", { message: start.error.message })}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">El pago se hace en Stripe. Tu plan se activa en cuanto Stripe confirma el cobro; si cierras la ventana antes, no se cobra nada y tu selección te espera aquí.</p>
+              <p className="text-xs text-muted-foreground">{t("subscription.checkout.stripeNote")}</p>
             </>
           )}
           {step === 3 && !p && (
@@ -504,7 +513,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
           )}
         </div>
 
-        <aside className={cn("min-w-0", step === 3 ? "hidden lg:block" : "")} aria-label="Resumen de la contratación">
+        <aside className={cn("min-w-0", step === 3 ? "hidden lg:block" : "")} aria-label={t("subscription.checkout.summaryAria")}>
           <div className="lg:sticky lg:top-4">
             <Summary id="sx-summary-aside" p={p} planName={planName} interval={interval} calculating={calculating} error={quoteError} />
           </div>
@@ -515,8 +524,9 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
 }
 
 function Stepper({ step, reach, onGo }: { step: CheckoutStep; reach: CheckoutStep; onGo: (s: CheckoutStep) => void }) {
+  const { t } = useI18n();
   return (
-    <nav aria-label="Pasos de la contratación">
+    <nav aria-label={t("subscription.checkout.stepsNav")}>
       <ol className="flex items-center gap-2 sm:gap-3">
         {CHECKOUT_STEPS.map((s, i) => {
           const state = s.step === step ? "current" : s.step < step ? "done" : "todo";
@@ -534,8 +544,8 @@ function Stepper({ step, reach, onGo }: { step: CheckoutStep; reach: CheckoutSte
                 <span className="sx-step-dot inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold">{state === "done" ? <Check className="h-4 w-4" aria-hidden="true" /> : s.step}</span>
                 {/* En el móvil solo se lee el paso actual; el resto, con su número (y su nombre para lectores de pantalla) */}
                 <span className={cn("min-w-0 text-sm", state === "current" ? "font-semibold text-foreground" : "sr-only text-muted-foreground sm:not-sr-only")}>
-                  {s.title}
-                  {state === "done" && <span className="sr-only"> (completado)</span>}
+                  {stepTitle(t, s.step)}
+                  {state === "done" && <span className="sr-only">{t("subscription.checkout.completed")}</span>}
                 </span>
               </button>
               {i < CHECKOUT_STEPS.length - 1 && <span aria-hidden="true" data-done={s.step < step} className="sx-step-line h-0.5 min-w-3 flex-1 rounded-full" />}
@@ -614,12 +624,13 @@ function Field({
 }
 
 function Review({ label, value, onEdit }: { label: string; value: string; onEdit: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="min-w-0 rounded-xl border border-border bg-card px-3 py-2.5">
       <dt className="flex items-center justify-between gap-2 text-xs uppercase tracking-wider text-muted-foreground">
         {label}
         <button type="button" onClick={onEdit} className="text-xs font-medium normal-case tracking-normal text-foreground underline underline-offset-4">
-          Editar<span className="sr-only"> {label.toLowerCase()}</span>
+          {t("subscription.checkout.edit")}<span className="sr-only"> {label.toLowerCase()}</span>
         </button>
       </dt>
       <dd className="mt-1 break-words font-medium text-foreground">{value}</dd>
@@ -663,18 +674,20 @@ function Extensions({
   onToggle: (key: string, on: boolean) => void;
   onPlan: (p: CheckoutPlan) => void;
 }) {
+  const { t } = useI18n();
   return (
-    <Panel icon={<PackagePlus className="h-5 w-5" />} title="Módulos adicionales" intro="Las ampliaciones del marketplace, con su disponibilidad real para tu empresa.">
-      {loading && <p className="text-sm text-muted-foreground">Cargando las ampliaciones…</p>}
-      {error && <p className="text-sm text-muted-foreground">No se han podido cargar las ampliaciones ahora mismo. Puedes contratar el plan y añadirlas después.</p>}
-      {!loading && !error && extensions.length === 0 && <p className="text-sm text-muted-foreground">No hay ampliaciones publicadas para tu empresa.</p>}
+    <Panel icon={<PackagePlus className="h-5 w-5" />} title={t("subscription.checkout.extensionsPanel")} intro={t("subscription.checkout.extensionsIntro")}>
+      {loading && <p className="text-sm text-muted-foreground">{t("subscription.checkout.extensionsLoading")}</p>}
+      {error && <p className="text-sm text-muted-foreground">{t("subscription.checkout.extensionsError")}</p>}
+      {!loading && !error && extensions.length === 0 && <p className="text-sm text-muted-foreground">{t("subscription.checkout.extensionsNone")}</p>}
       <div className="space-y-3">
         {EXTENSION_GROUPS.map((g) => {
           const list = extensions.filter((e) => e.group === g.id);
           if (list.length === 0) return null;
           const GIcon = GROUP_ICON[g.id];
-          const count = list.length === 1 ? "1 opción" : `${list.length} opciones`;
+          const count = t("subscription.checkout.options", { n: list.length });
           const picked = list.filter((e) => selected.includes(e.item.key)).length;
+          const pickedLabel = picked > 0 ? `${t("subscription.checkout.picked", { n: picked })} · ` : "";
           return (
             <details key={g.id} className="sx-details overflow-hidden rounded-2xl border border-border bg-card" open={g.id === "available" || picked > 0}>
               <summary className="flex items-center gap-3 px-4 py-3">
@@ -682,15 +695,15 @@ function Extensions({
                   <GIcon className="h-4 w-4" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-foreground">{g.title}</span>
-                  <span className="hidden text-xs text-muted-foreground sm:block">{g.intro}</span>
+                  <span className="block font-semibold text-foreground">{groupTitle(t, g.id)}</span>
+                  <span className="hidden text-xs text-muted-foreground sm:block">{groupIntro(t, g.id)}</span>
                   <span className="block text-xs text-muted-foreground sm:hidden">
-                    {picked > 0 ? `${picked} elegida${picked > 1 ? "s" : ""} · ` : ""}
+                    {pickedLabel}
                     {count}
                   </span>
                 </span>
                 <span className="hidden shrink-0 text-right text-xs text-muted-foreground sm:inline">
-                  {picked > 0 ? `${picked} elegida${picked > 1 ? "s" : ""} · ` : ""}
+                  {pickedLabel}
                   {count}
                 </span>
                 <ChevronDown className="sx-chevron h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -705,17 +718,18 @@ function Extensions({
         })}
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
-        ¿Buscas otra cosa?{" "}
+        {t("subscription.checkout.lookElse")}{" "}
         <Link href="/admin/ampliar" className="font-medium text-foreground underline underline-offset-4">
-          Explora el marketplace
+          {t("subscription.checkout.exploreMarketplace")}
         </Link>{" "}
-        y vuelve: tu selección se conserva.
+        {t("subscription.checkout.comeBack")}
       </p>
     </Panel>
   );
 }
 
 function ExtensionRow({ e, checked, onToggle, onPlan }: { e: CheckoutExtension<ConnectCatalogItem>; checked: boolean; onToggle: (key: string, on: boolean) => void; onPlan: (p: CheckoutPlan) => void }) {
+  const { t } = useI18n();
   const id = `conv-mod-${e.item.key}`;
   return (
     <li data-selected={checked} className={cn("flex flex-wrap items-start gap-3 px-4 py-3", checked && "bg-muted/40")}>
@@ -737,11 +751,11 @@ function ExtensionRow({ e, checked, onToggle, onPlan }: { e: CheckoutExtension<C
         {e.note && <p className="mt-1 text-xs text-foreground">{e.note}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <Link href={fichaPath(e.item.key)} className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-4">
-            {e.group === "on_request" ? "Ver ficha y solicitar" : "Ver ficha"} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            {e.group === "on_request" ? t("subscription.checkout.seeCardRequest") : t("subscription.checkout.seeCard")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
           </Link>
           {e.needsPlan && (
             <button type="button" onClick={() => onPlan(e.needsPlan!)} className="font-medium text-foreground underline underline-offset-4">
-              Elegir el plan {e.needsPlan === "business" ? "Business" : "Essential"}
+              {t("subscription.checkout.pickPlan", { plan: e.needsPlan === "business" ? "Business" : "Essential" })}
             </button>
           )}
         </div>
@@ -753,21 +767,22 @@ function ExtensionRow({ e, checked, onToggle, onPlan }: { e: CheckoutExtension<C
 
 /** Resumen económico: importes del servidor; los impuestos solo se dan por definitivos en el pago (Stripe Tax). */
 function Summary({ id, p, planName, interval, calculating, error }: { id: string; p: Preview | null; planName: string; interval: CheckoutInterval; calculating: boolean; error: string | null }) {
+  const { t } = useI18n();
   const cur = p?.quote.currency ?? "EUR";
   return (
     <section className="cx-glow overflow-hidden rounded-2xl border border-border bg-card" aria-labelledby={id} aria-live="polite">
       <div className="border-b border-border px-4 py-3 sm:px-5">
         <h3 id={id} className="text-lg font-bold text-foreground">
-          Resumen de tu contratación
+          {t("subscription.checkout.summaryTitle")}
         </h3>
         <p className="text-xs text-muted-foreground">
-          {planName} · facturación {interval === "year" ? "anual" : "mensual"}
+          {interval === "year" ? t("subscription.checkout.summaryYear", { plan: planName }) : t("subscription.checkout.summaryMonth", { plan: planName })}
         </p>
       </div>
       <div className="space-y-3 px-4 py-4 sm:px-5">
         {calculating && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Calculando el importe…
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {t("subscription.checkout.calculating")}
           </p>
         )}
         {error && (
@@ -779,11 +794,11 @@ function Summary({ id, p, planName, interval, calculating, error }: { id: string
           <>
             {!p.quote.ok && (
               <p role="alert" className="text-sm text-danger">
-                {p.quote.errors[0] ?? "Revisa la selección"}
+                {p.quote.errors[0] ?? t("subscription.checkout.reviewSelection")}
               </p>
             )}
             <table className="w-full text-sm">
-              <caption className="sr-only">Detalle del importe</caption>
+              <caption className="sr-only">{t("subscription.checkout.amountDetail")}</caption>
               <tbody>
                 {p.quote.lines.map((l) => (
                   <tr key={l.key} className="border-b border-border last:border-0">
@@ -792,7 +807,7 @@ function Summary({ id, p, planName, interval, calculating, error }: { id: string
                       {l.quantity > 1 ? ` × ${l.quantity}` : ""}
                     </th>
                     <td className="whitespace-nowrap py-2 text-right text-foreground">
-                      {formatMoney(l.amountCents, cur)} /{per(l.interval)}
+                      {formatMoney(l.amountCents, cur)} /{perOf(t, l.interval)}
                     </td>
                   </tr>
                 ))}
@@ -801,29 +816,29 @@ function Summary({ id, p, planName, interval, calculating, error }: { id: string
             <dl className="space-y-1.5 rounded-xl bg-muted/50 p-3 text-sm">
               {p.quote.totals.monthlyCents > 0 && (
                 <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Base imponible mensual</dt>
+                  <dt className="text-muted-foreground">{t("subscription.checkout.baseMonthly")}</dt>
                   <dd className="font-semibold text-foreground">{formatMoney(p.quote.totals.monthlyCents, cur)}</dd>
                 </div>
               )}
               {p.quote.totals.yearlyCents > 0 && (
                 <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Base imponible anual</dt>
+                  <dt className="text-muted-foreground">{t("subscription.checkout.baseYearly")}</dt>
                   <dd className="font-semibold text-foreground">{formatMoney(p.quote.totals.yearlyCents, cur)}</dd>
                 </div>
               )}
               <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Impuestos (IVA)</dt>
-                <dd className="text-right text-foreground">Se calculan en el pago</dd>
+                <dt className="text-muted-foreground">{t("subscription.checkout.taxesVat")}</dt>
+                <dd className="text-right text-foreground">{t("subscription.checkout.taxesAtPayment")}</dd>
               </div>
             </dl>
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>
-                Importe provisional sin impuestos. {p.taxNotice} El total con impuestos se muestra en la página de pago antes de pagar.
+                {t("subscription.checkout.provisional", { notice: p.taxNotice })}
               </span>
             </p>
             <p className="text-xs text-muted-foreground">
-              La suscripción se renueva automáticamente cada {per(interval)}. Podrás cambiar de plan o cancelarla desde esta página.
+              {interval === "year" ? t("subscription.checkout.renewsYear") : t("subscription.checkout.renewsMonth")}
             </p>
           </>
         )}

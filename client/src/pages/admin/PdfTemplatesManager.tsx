@@ -2,6 +2,7 @@ import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,10 +13,6 @@ import {
   ChevronLeft, Loader2, Eye, Monitor, Smartphone, Palette,
 } from "lucide-react";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  facturacion: "Facturación", presupuestos: "Presupuestos",
-  tpv: "Caja", proveedores: "Proveedores", general: "General",
-};
 const CATEGORY_COLORS: Record<string, string> = {
   facturacion: "bg-blue-100 text-blue-800", presupuestos: "bg-purple-100 text-purple-800",
   tpv: "bg-green-100 text-green-800", proveedores: "bg-orange-100 text-orange-800",
@@ -58,6 +55,11 @@ const DEFAULT_BODY = `<!DOCTYPE html>
 
 export default function PdfTemplatesManager() {
   const utils = trpc.useUtils();
+  const { t } = useI18n();
+  const categoryLabels: Record<string, string> = {
+    facturacion: t("pdfTemplates.category.facturacion"), presupuestos: t("pdfTemplates.category.presupuestos"),
+    tpv: t("pdfTemplates.category.tpv"), proveedores: t("pdfTemplates.category.proveedores"), general: t("pdfTemplates.category.general"),
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [mode, setMode] = useState<"view" | "edit" | "create">("view");
@@ -82,45 +84,45 @@ export default function PdfTemplatesManager() {
 
   const saveMutation = trpc.pdfTemplates.save.useMutation({
     onSuccess: () => {
-      toast.success("Plantilla PDF guardada");
+      toast.success(t("pdfTemplates.toast.saved"));
       utils.pdfTemplates.list.invalidate();
       if (selectedId) utils.pdfTemplates.get.invalidate({ id: selectedId });
       setMode("view");
     },
-    onError: (err) => toast.error("Error al guardar", { description: err.message }),
+    onError: (err) => toast.error(t("pdfTemplates.toast.saveError"), { description: err.message }),
   });
   const createMutation = trpc.pdfTemplates.create.useMutation({
     onSuccess: (data) => {
-      toast.success("Plantilla PDF creada");
+      toast.success(t("pdfTemplates.toast.created"));
       utils.pdfTemplates.list.invalidate();
       setSelectedId(data.id);
       setMode("view");
     },
-    onError: (err) => toast.error("Error al crear", { description: err.message }),
+    onError: (err) => toast.error(t("pdfTemplates.toast.createError"), { description: err.message }),
   });
   const deleteMutation = trpc.pdfTemplates.delete.useMutation({
     onSuccess: () => {
-      toast.success("Plantilla eliminada");
+      toast.success(t("pdfTemplates.toast.deleted"));
       utils.pdfTemplates.list.invalidate();
       setSelectedId(null); setMode("view"); setShowDeleteConfirm(null);
     },
-    onError: (err) => toast.error("Error al eliminar", { description: err.message }),
+    onError: (err) => toast.error(t("pdfTemplates.toast.deleteError"), { description: err.message }),
   });
   const restoreMutation = trpc.pdfTemplates.restore.useMutation({
     onSuccess: () => {
-      toast.success("Plantilla restaurada a valores originales");
+      toast.success(t("pdfTemplates.toast.restored"));
       utils.pdfTemplates.list.invalidate();
       if (selectedId) utils.pdfTemplates.get.invalidate({ id: selectedId });
       setShowRestoreConfirm(null);
     },
-    onError: (err) => toast.error("Error al restaurar", { description: err.message }),
+    onError: (err) => toast.error(t("pdfTemplates.toast.restoreError"), { description: err.message }),
   });
 
   const filtered = templates?.filter(t => activeCategory === "all" || t.category === activeCategory) ?? [];
   const categories = [
-    { id: "all", label: "Todas", count: templates?.length ?? 0 },
+    { id: "all", label: t("pdfTemplates.all"), count: templates?.length ?? 0 },
     ...["facturacion","presupuestos","tpv","proveedores","general"].map(c => ({
-      id: c, label: CATEGORY_LABELS[c] ?? c,
+      id: c, label: categoryLabels[c] ?? c,
       count: templates?.filter(t => t.category === c).length ?? 0,
     })).filter(c => c.count > 0),
   ];
@@ -153,7 +155,7 @@ export default function PdfTemplatesManager() {
 
   const handleCreate = () => {
     if (!createForm.id || !createForm.name || !createForm.bodyHtml) {
-      toast.error("ID, nombre y HTML son obligatorios");
+      toast.error(t("pdfTemplates.toast.required"));
       return;
     }
     createMutation.mutate(createForm);
@@ -169,12 +171,12 @@ export default function PdfTemplatesManager() {
             <FileText className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold">Plantillas PDF</h1>
-            <p className="text-xs text-muted-foreground">{templates?.length ?? 0} plantillas &middot; Facturas, Presupuestos, Tickets, Liquidaciones</p>
+            <h1 className="text-lg font-semibold">{t("pdfTemplates.title")}</h1>
+            <p className="text-xs text-muted-foreground">{t("pdfTemplates.subtitle", { count: templates?.length ?? 0 })}</p>
           </div>
         </div>
         <Button size="sm" onClick={() => { setMode("create"); setSelectedId(null); setEditForm(null); }}>
-          <Plus className="h-4 w-4 mr-1" /> Nueva plantilla PDF
+          <Plus className="h-4 w-4 mr-1" /> {t("pdfTemplates.newTemplate")}
         </Button>
       </div>
 
@@ -193,7 +195,7 @@ export default function PdfTemplatesManager() {
             {loadingList ? (
               <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : filtered.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">Sin plantillas</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">{t("pdfTemplates.empty")}</p>
             ) : filtered.map(tpl => {
               const tplAny = tpl as Record<string, unknown>;
               return (
@@ -201,12 +203,12 @@ export default function PdfTemplatesManager() {
                   className={`w-full text-left px-4 py-3 border-b transition-colors hover:bg-accent/50 ${selectedId === tpl.id && mode !== "create" ? "bg-accent" : ""}`}>
                   <div className="flex items-start justify-between gap-1">
                     <span className="text-sm font-medium leading-tight">{tpl.name}</span>
-                    {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">Custom</span>}
+                    {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("pdfTemplates.custom")}</span>}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{tpl.description}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{CATEGORY_LABELS[tpl.category] ?? tpl.category}</span>
-                    {!(tplAny.isActive as boolean) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">Inactiva</span>}
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
+                    {!(tplAny.isActive as boolean) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">{t("pdfTemplates.inactive")}</span>}
                   </div>
                 </button>
               );
@@ -220,78 +222,78 @@ export default function PdfTemplatesManager() {
           {mode === "create" && (
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               <div className="flex items-center gap-3">
-                <Button variant="ghost" size="sm" onClick={() => setMode("view")}><ChevronLeft className="h-4 w-4 mr-1" /> Volver</Button>
-                <h2 className="text-base font-semibold">Nueva Plantilla PDF Personalizada</h2>
+                <Button variant="ghost" size="sm" onClick={() => setMode("view")}><ChevronLeft className="h-4 w-4 mr-1" /> {t("pdfTemplates.create.back")}</Button>
+                <h2 className="text-base font-semibold">{t("pdfTemplates.create.title")}</h2>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>ID único <span className="text-red-500">*</span></Label>
+                  <Label>{t("pdfTemplates.create.uniqueId")} <span className="text-red-500">*</span></Label>
                   <Input value={createForm.id} onChange={e => setCreateForm(p => ({ ...p, id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") }))} placeholder="mi_plantilla_pdf" />
-                  <p className="text-xs text-muted-foreground">Solo minúsculas, números y guiones bajos</p>
+                  <p className="text-xs text-muted-foreground">{t("pdfTemplates.create.idHint")}</p>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Nombre <span className="text-red-500">*</span></Label>
-                  <Input value={createForm.name} onChange={e => setCreateForm(p => ({ ...p, name: e.target.value }))} placeholder="Nombre de la plantilla" />
+                  <Label>{t("pdfTemplates.create.nameRequired")} <span className="text-red-500">*</span></Label>
+                  <Input value={createForm.name} onChange={e => setCreateForm(p => ({ ...p, name: e.target.value }))} placeholder={t("pdfTemplates.create.namePlaceholder")} />
                 </div>
                 <div className="space-y-1.5 col-span-2">
-                  <Label>Descripción</Label>
-                  <Input value={createForm.description} onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))} placeholder="Descripción breve del documento" />
+                  <Label>{t("pdfTemplates.field.description")}</Label>
+                  <Input value={createForm.description} onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))} placeholder={t("pdfTemplates.create.descriptionPlaceholder")} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Categoría</Label>
+                  <Label>{t("pdfTemplates.create.category")}</Label>
                   <Select value={createForm.category} onValueChange={v => setCreateForm(p => ({ ...p, category: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {Object.entries(CATEGORY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                      {Object.entries(categoryLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Empresa</Label>
+                  <Label>{t("pdfTemplates.field.company")}</Label>
                   <Input value={createForm.companyName} onChange={e => setCreateForm(p => ({ ...p, companyName: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>NIF/CIF</Label>
+                  <Label>{t("pdfTemplates.field.taxId")}</Label>
                   <Input value={createForm.companyNif} onChange={e => setCreateForm(p => ({ ...p, companyNif: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Email empresa</Label>
+                  <Label>{t("pdfTemplates.field.companyEmail")}</Label>
                   <Input value={createForm.companyEmail} onChange={e => setCreateForm(p => ({ ...p, companyEmail: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> Color cabecera</Label>
+                  <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> {t("pdfTemplates.field.headerColor")}</Label>
                   <div className="flex gap-2">
                     <input type="color" value={createForm.headerColor} onChange={e => setCreateForm(p => ({ ...p, headerColor: e.target.value }))} className="h-9 w-12 cursor-pointer rounded border" />
                     <Input value={createForm.headerColor} onChange={e => setCreateForm(p => ({ ...p, headerColor: e.target.value }))} className="font-mono text-sm" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> Color acento</Label>
+                  <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> {t("pdfTemplates.field.accentColor")}</Label>
                   <div className="flex gap-2">
                     <input type="color" value={createForm.accentColor} onChange={e => setCreateForm(p => ({ ...p, accentColor: e.target.value }))} className="h-9 w-12 cursor-pointer rounded border" />
                     <Input value={createForm.accentColor} onChange={e => setCreateForm(p => ({ ...p, accentColor: e.target.value }))} className="font-mono text-sm" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Texto del pie</Label>
+                  <Label>{t("pdfTemplates.field.footerText")}</Label>
                   <Input value={createForm.footerText} onChange={e => setCreateForm(p => ({ ...p, footerText: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Texto legal</Label>
+                  <Label>{t("pdfTemplates.field.legalText")}</Label>
                   <Input value={createForm.legalText} onChange={e => setCreateForm(p => ({ ...p, legalText: e.target.value }))} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>HTML del documento <span className="text-red-500">*</span></Label>
-                <p className="text-xs text-muted-foreground">HTML completo con estilos inline. Usa {"{{variable}}"} para variables dinámicas.</p>
+                <Label>{t("pdfTemplates.field.bodyHtml")} <span className="text-red-500">*</span></Label>
+                <p className="text-xs text-muted-foreground">{t("pdfTemplates.field.htmlHint", { token: "{{variable}}" })}</p>
                 <Textarea value={createForm.bodyHtml} onChange={e => setCreateForm(p => ({ ...p, bodyHtml: e.target.value }))} rows={20} className="font-mono text-xs" />
               </div>
               <div className="flex gap-2 pt-2">
                 <Button onClick={handleCreate} disabled={createMutation.isPending}>
                   {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                  Crear plantilla
+                  {t("pdfTemplates.create.submit")}
                 </Button>
-                <Button variant="outline" onClick={() => setMode("view")}>Cancelar</Button>
+                <Button variant="outline" onClick={() => setMode("view")}>{t("pdfTemplates.create.cancel")}</Button>
               </div>
             </div>
           )}
@@ -301,16 +303,16 @@ export default function PdfTemplatesManager() {
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Button variant="ghost" size="sm" onClick={() => { setMode("view"); setEditForm(null); }}><ChevronLeft className="h-4 w-4 mr-1" /> Volver</Button>
-                  <h2 className="text-base font-semibold">Editar Plantilla PDF</h2>
+                  <Button variant="ghost" size="sm" onClick={() => { setMode("view"); setEditForm(null); }}><ChevronLeft className="h-4 w-4 mr-1" /> {t("pdfTemplates.create.back")}</Button>
+                  <h2 className="text-base font-semibold">{t("pdfTemplates.edit.title")}</h2>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setShowRestoreConfirm(selectedId)}>
-                    <RotateCcw className="h-4 w-4 mr-1" /> Restaurar original
+                    <RotateCcw className="h-4 w-4 mr-1" /> {t("pdfTemplates.edit.restoreOriginal")}
                   </Button>
                   <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending}>
                     {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                    Guardar cambios
+                    {t("pdfTemplates.edit.saveChanges")}
                   </Button>
                 </div>
               </div>
@@ -320,50 +322,50 @@ export default function PdfTemplatesManager() {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <Label>Nombre</Label>
+                      <Label>{t("pdfTemplates.field.name")}</Label>
                       <Input value={editForm.name} onChange={e => setEditForm(p => p ? { ...p, name: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Descripción</Label>
+                      <Label>{t("pdfTemplates.field.description")}</Label>
                       <Input value={editForm.description} onChange={e => setEditForm(p => p ? { ...p, description: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Empresa</Label>
+                      <Label>{t("pdfTemplates.field.company")}</Label>
                       <Input value={editForm.companyName} onChange={e => setEditForm(p => p ? { ...p, companyName: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>NIF/CIF</Label>
+                      <Label>{t("pdfTemplates.field.taxId")}</Label>
                       <Input value={editForm.companyNif} onChange={e => setEditForm(p => p ? { ...p, companyNif: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Dirección</Label>
+                      <Label>{t("pdfTemplates.field.address")}</Label>
                       <Input value={editForm.companyAddress} onChange={e => setEditForm(p => p ? { ...p, companyAddress: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Teléfono</Label>
+                      <Label>{t("pdfTemplates.field.phone")}</Label>
                       <Input value={editForm.companyPhone} onChange={e => setEditForm(p => p ? { ...p, companyPhone: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Email empresa</Label>
+                      <Label>{t("pdfTemplates.field.companyEmail")}</Label>
                       <Input value={editForm.companyEmail} onChange={e => setEditForm(p => p ? { ...p, companyEmail: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Texto del pie</Label>
+                      <Label>{t("pdfTemplates.field.footerText")}</Label>
                       <Input value={editForm.footerText} onChange={e => setEditForm(p => p ? { ...p, footerText: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Texto legal</Label>
+                      <Label>{t("pdfTemplates.field.legalText")}</Label>
                       <Input value={editForm.legalText} onChange={e => setEditForm(p => p ? { ...p, legalText: e.target.value } : p)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> Color cabecera</Label>
+                      <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> {t("pdfTemplates.field.headerColor")}</Label>
                       <div className="flex gap-2">
                         <input type="color" value={editForm.headerColor} onChange={e => setEditForm(p => p ? { ...p, headerColor: e.target.value } : p)} className="h-9 w-12 cursor-pointer rounded border" />
                         <Input value={editForm.headerColor} onChange={e => setEditForm(p => p ? { ...p, headerColor: e.target.value } : p)} className="font-mono text-sm" />
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> Color acento</Label>
+                      <Label className="flex items-center gap-1"><Palette className="h-3.5 w-3.5" /> {t("pdfTemplates.field.accentColor")}</Label>
                       <div className="flex gap-2">
                         <input type="color" value={editForm.accentColor} onChange={e => setEditForm(p => p ? { ...p, accentColor: e.target.value } : p)} className="h-9 w-12 cursor-pointer rounded border" />
                         <Input value={editForm.accentColor} onChange={e => setEditForm(p => p ? { ...p, accentColor: e.target.value } : p)} className="font-mono text-sm" />
@@ -372,21 +374,21 @@ export default function PdfTemplatesManager() {
                     <div className="flex items-center gap-4 col-span-2">
                       <label className="flex items-center gap-2 cursor-pointer text-sm">
                         <input type="checkbox" checked={editForm.showLogo} onChange={e => setEditForm(p => p ? { ...p, showLogo: e.target.checked } : p)} className="rounded" />
-                        Mostrar logo
+                        {t("pdfTemplates.edit.showLogo")}
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer text-sm">
                         <input type="checkbox" checked={editForm.showWatermark} onChange={e => setEditForm(p => p ? { ...p, showWatermark: e.target.checked } : p)} className="rounded" />
-                        Marca de agua
+                        {t("pdfTemplates.edit.watermark")}
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer text-sm">
                         <input type="checkbox" checked={editForm.isActive} onChange={e => setEditForm(p => p ? { ...p, isActive: e.target.checked } : p)} className="rounded" />
-                        Activa
+                        {t("pdfTemplates.edit.active")}
                       </label>
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>HTML del documento</Label>
-                    <p className="text-xs text-muted-foreground">HTML completo con estilos inline. Usa {"{{variable}}"} para variables dinámicas.</p>
+                    <Label>{t("pdfTemplates.field.bodyHtml")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("pdfTemplates.field.htmlHint", { token: "{{variable}}" })}</p>
                     <Textarea value={editForm.bodyHtml} onChange={e => setEditForm(p => p ? { ...p, bodyHtml: e.target.value } : p)} rows={24} className="font-mono text-xs" />
                   </div>
                 </>
@@ -400,23 +402,23 @@ export default function PdfTemplatesManager() {
               <div className="flex items-center justify-between border-b px-6 py-3 shrink-0 bg-muted/10">
                 <div className="flex items-center gap-2">
                   <button onClick={() => setPreviewMode("desktop")} className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors ${previewMode === "desktop" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>
-                    <Monitor className="h-3.5 w-3.5" /> Desktop
+                    <Monitor className="h-3.5 w-3.5" /> {t("pdfTemplates.view.desktop")}
                   </button>
                   <button onClick={() => setPreviewMode("mobile")} className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors ${previewMode === "mobile" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>
-                    <Smartphone className="h-3.5 w-3.5" /> Móvil
+                    <Smartphone className="h-3.5 w-3.5" /> {t("pdfTemplates.view.mobile")}
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => { setMode("edit"); }}>
-                    <Pencil className="h-4 w-4 mr-1" /> Editar
+                    <Pencil className="h-4 w-4 mr-1" /> {t("pdfTemplates.view.edit")}
                   </Button>
                   {templates?.find(t => t.id === selectedId) && !!(templates.find(t => t.id === selectedId) as Record<string, unknown>).isCustom && (
                     <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => setShowDeleteConfirm(selectedId)}>
-                      <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+                      <Trash2 className="h-4 w-4 mr-1" /> {t("pdfTemplates.view.delete")}
                     </Button>
                   )}
                   <Button size="sm" variant="outline" onClick={() => setShowRestoreConfirm(selectedId)}>
-                    <RotateCcw className="h-4 w-4 mr-1" /> Restaurar
+                    <RotateCcw className="h-4 w-4 mr-1" /> {t("pdfTemplates.view.restore")}
                   </Button>
                 </div>
               </div>
@@ -429,25 +431,25 @@ export default function PdfTemplatesManager() {
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm font-medium">{fullTemplate.name}</span>
                       <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[(fullTemplate as Record<string, unknown>).category as string] ?? "bg-gray-100 text-gray-700"}`}>
-                        {CATEGORY_LABELS[(fullTemplate as Record<string, unknown>).category as string] ?? (fullTemplate as Record<string, unknown>).category as string}
+                        {categoryLabels[(fullTemplate as Record<string, unknown>).category as string] ?? (fullTemplate as Record<string, unknown>).category as string}
                       </span>
                     </div>
                     <div className="p-4 border-b bg-gray-50/50">
                       <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div><span className="text-muted-foreground">Empresa:</span> <strong>{(fullTemplate as Record<string, unknown>).companyName as string}</strong></div>
-                        <div><span className="text-muted-foreground">NIF:</span> <strong>{(fullTemplate as Record<string, unknown>).companyNif as string}</strong></div>
-                        <div><span className="text-muted-foreground">Email:</span> {(fullTemplate as Record<string, unknown>).companyEmail as string}</div>
-                        <div><span className="text-muted-foreground">Teléfono:</span> {(fullTemplate as Record<string, unknown>).companyPhone as string}</div>
-                        <div className="col-span-2"><span className="text-muted-foreground">Dirección:</span> {(fullTemplate as Record<string, unknown>).companyAddress as string}</div>
+                        <div><span className="text-muted-foreground">{t("pdfTemplates.view.company")}</span> <strong>{(fullTemplate as Record<string, unknown>).companyName as string}</strong></div>
+                        <div><span className="text-muted-foreground">{t("pdfTemplates.view.nif")}</span> <strong>{(fullTemplate as Record<string, unknown>).companyNif as string}</strong></div>
+                        <div><span className="text-muted-foreground">{t("pdfTemplates.view.email")}</span> {(fullTemplate as Record<string, unknown>).companyEmail as string}</div>
+                        <div><span className="text-muted-foreground">{t("pdfTemplates.view.phone")}</span> {(fullTemplate as Record<string, unknown>).companyPhone as string}</div>
+                        <div className="col-span-2"><span className="text-muted-foreground">{t("pdfTemplates.view.address")}</span> {(fullTemplate as Record<string, unknown>).companyAddress as string}</div>
                         <div className="flex items-center gap-3">
-                          <span className="text-muted-foreground">Color cabecera:</span>
+                          <span className="text-muted-foreground">{t("pdfTemplates.view.headerColor")}</span>
                           <span className="flex items-center gap-1">
                             <span className="inline-block h-4 w-4 rounded border" style={{ background: (fullTemplate as Record<string, unknown>).headerColor as string }}></span>
                             <code className="text-xs">{(fullTemplate as Record<string, unknown>).headerColor as string}</code>
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="text-muted-foreground">Color acento:</span>
+                          <span className="text-muted-foreground">{t("pdfTemplates.view.accentColor")}</span>
                           <span className="flex items-center gap-1">
                             <span className="inline-block h-4 w-4 rounded border" style={{ background: (fullTemplate as Record<string, unknown>).accentColor as string }}></span>
                             <code className="text-xs">{(fullTemplate as Record<string, unknown>).accentColor as string}</code>
@@ -460,11 +462,11 @@ export default function PdfTemplatesManager() {
                       className="w-full border-0"
                       style={{ height: previewMode === "mobile" ? "600px" : "800px" }}
                       sandbox="allow-same-origin"
-                      title="Vista previa PDF"
+                      title={t("pdfTemplates.view.previewTitle")}
                     />
                     <div className="p-3 border-t bg-gray-50 text-xs text-muted-foreground">
-                      <strong>Pie:</strong> {(fullTemplate as Record<string, unknown>).footerText as string}
-                      {!!(fullTemplate as Record<string, unknown>).legalText && <> &nbsp;·&nbsp; <strong>Legal:</strong> {(fullTemplate as Record<string, unknown>).legalText as string}</>}
+                      <strong>{t("pdfTemplates.view.footer")}</strong> {(fullTemplate as Record<string, unknown>).footerText as string}
+                      {!!(fullTemplate as Record<string, unknown>).legalText && <> &nbsp;·&nbsp; <strong>{t("pdfTemplates.view.legal")}</strong> {(fullTemplate as Record<string, unknown>).legalText as string}</>}
                     </div>
                   </div>
                 ) : null}
@@ -479,10 +481,10 @@ export default function PdfTemplatesManager() {
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted">
                   <FileText className="h-7 w-7 text-muted-foreground" />
                 </div>
-                <p className="text-sm font-medium">Selecciona una plantilla PDF</p>
-                <p className="text-xs text-muted-foreground max-w-xs">Elige una plantilla del panel izquierdo para ver su previsualización, editar su contenido o crear una nueva.</p>
+                <p className="text-sm font-medium">{t("pdfTemplates.emptyState.select")}</p>
+                <p className="text-xs text-muted-foreground max-w-xs">{t("pdfTemplates.emptyState.help")}</p>
                 <Button size="sm" onClick={() => { setMode("create"); setSelectedId(null); }}>
-                  <Plus className="h-4 w-4 mr-1" /> Nueva plantilla PDF
+                  <Plus className="h-4 w-4 mr-1" /> {t("pdfTemplates.newTemplate")}
                 </Button>
               </div>
             </div>
@@ -494,13 +496,13 @@ export default function PdfTemplatesManager() {
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-sm space-y-4">
-            <h3 className="font-semibold text-base">¿Eliminar plantilla?</h3>
-            <p className="text-sm text-muted-foreground">Esta acción no se puede deshacer. Solo se pueden eliminar plantillas personalizadas.</p>
+            <h3 className="font-semibold text-base">{t("pdfTemplates.deleteDialog.title")}</h3>
+            <p className="text-sm text-muted-foreground">{t("pdfTemplates.deleteDialog.text")}</p>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirm(null)}>Cancelar</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirm(null)}>{t("pdfTemplates.deleteDialog.cancel")}</Button>
               <Button variant="destructive" size="sm" onClick={() => deleteMutation.mutate({ id: showDeleteConfirm })} disabled={deleteMutation.isPending}>
                 {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                Eliminar
+                {t("pdfTemplates.deleteDialog.confirm")}
               </Button>
             </div>
           </div>
@@ -511,13 +513,13 @@ export default function PdfTemplatesManager() {
       {showRestoreConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-sm space-y-4">
-            <h3 className="font-semibold text-base">¿Restaurar plantilla original?</h3>
-            <p className="text-sm text-muted-foreground">Se perderán todos los cambios personalizados y se restaurará el diseño original del sistema.</p>
+            <h3 className="font-semibold text-base">{t("pdfTemplates.restoreDialog.title")}</h3>
+            <p className="text-sm text-muted-foreground">{t("pdfTemplates.restoreDialog.text")}</p>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={() => setShowRestoreConfirm(null)}>Cancelar</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowRestoreConfirm(null)}>{t("pdfTemplates.restoreDialog.cancel")}</Button>
               <Button size="sm" onClick={() => restoreMutation.mutate({ id: showRestoreConfirm })} disabled={restoreMutation.isPending}>
                 {restoreMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
-                Restaurar
+                {t("pdfTemplates.restoreDialog.confirm")}
               </Button>
             </div>
           </div>

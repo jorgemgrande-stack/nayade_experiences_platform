@@ -6,17 +6,18 @@ import type { ComponentProps } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { hasSiteTokens, splitTokens, TOKEN_BADGE_CLASS } from "@shared/siteTokenLabels";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 export function TokenPreview({ text }: { text: unknown }) {
+  const tx = useStudioText();
   const value = typeof text === "string" ? text : "";
   if (!hasSiteTokens(value)) return null;
   return (
-    <p className="text-xs text-muted-foreground" data-testid="token-preview">
-      En tu web se verá:{" "}
+    <p className="text-xs text-muted-foreground" data-testid="token-preview">{tx("En tu web se verá:")}{" "}
       {splitTokens(value).map((p, i) =>
         "token" in p ? (
-          <span key={i} className={TOKEN_BADGE_CLASS} title={`Se rellena con el dato de «Datos de la empresa» (${p.label.toLowerCase()})`}>
-            {p.label}
+          <span key={i} className={TOKEN_BADGE_CLASS} title={tx("Se rellena con el dato de «Datos de la empresa» ({v})", { v: tx.lower(tx(p.label)) })}>
+            {tx(p.label)}
           </span>
         ) : (
           <span key={i}>{p.text}</span>

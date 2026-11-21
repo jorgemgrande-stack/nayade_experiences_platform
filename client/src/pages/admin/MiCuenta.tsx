@@ -13,17 +13,21 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, Mail, MonitorSmartphone, Trash2 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
+import { useI18n } from "@/i18n/I18nProvider";
 
-const fmt = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
+/** Texto con partes en negrita marcadas como <b>…</b>. */
+const rich = (text: string): React.ReactNode => text.split(/(<b>.*?<\/b>)/g).map((p, i) => (p.startsWith("<b>") ? <strong key={i}>{p.slice(3, -4)}</strong> : p));
 
 function EmailSection() {
+  const { t, format: f } = useI18n();
+  const fmt = (iso: string) => f.dateTime(iso, { dateStyle: "medium", timeStyle: "short" });
   const { user } = useAuth();
   const pendingQ = trpc.accountSecurity.pendingEmailChange.useQuery();
   const [newEmail, setNewEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const request = trpc.accountSecurity.requestEmailChange.useMutation({
     onSuccess: (r) => {
-      toast.success(r.sent ? `Te hemos enviado un enlace a ${r.newEmail}. Ábrelo para confirmar el cambio.` : "Solicitud registrada, pero no se pudo enviar el correo. Inténtalo de nuevo más tarde.");
+      toast.success(r.sent ? t("help.account.linkSent", { email: r.newEmail }) : t("help.account.requestNotSent"));
       setNewEmail("");
       setCurrentPassword("");
       pendingQ.refetch();
@@ -37,18 +41,18 @@ function EmailSection() {
     <section className="bg-card border border-border rounded-xl p-5 space-y-4" aria-labelledby="mi-cuenta-correo">
       <div className="flex items-center gap-2">
         <Mail className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-        <h2 id="mi-cuenta-correo" className="font-semibold text-foreground">Correo de acceso</h2>
+        <h2 id="mi-cuenta-correo" className="font-semibold text-foreground">{t("help.account.emailTitle")}</h2>
       </div>
       <p className="text-sm text-muted-foreground">
-        Correo actual: <span className="font-medium text-foreground">{user?.email ?? "—"}</span>
+        {t("help.account.currentEmail")} <span className="font-medium text-foreground">{user?.email ?? "—"}</span>
       </p>
       {pending && (
         <p className="text-sm rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2" role="status">
-          Cambio pendiente de confirmar a <strong>{pending.newEmail}</strong> (el enlace caduca el {fmt(pending.expiresAt)}).
+          {rich(t("help.account.pendingChange", { email: pending.newEmail, date: fmt(pending.expiresAt) }))}
         </p>
       )}
       {unavailable ? (
-        <p className="text-sm text-muted-foreground">El cambio de correo todavía no está disponible en esta empresa.</p>
+        <p className="text-sm text-muted-foreground">{t("help.account.unavailableEmail")}</p>
       ) : (
         <form
           className="grid gap-3 sm:grid-cols-2"
@@ -58,19 +62,19 @@ function EmailSection() {
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="mi-cuenta-nuevo-correo">Correo nuevo</Label>
+            <Label htmlFor="mi-cuenta-nuevo-correo">{t("help.account.newEmail")}</Label>
             <Input id="mi-cuenta-nuevo-correo" type="email" autoComplete="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="mi-cuenta-contrasena">Contraseña actual</Label>
+            <Label htmlFor="mi-cuenta-contrasena">{t("help.account.currentPassword")}</Label>
             <Input id="mi-cuenta-contrasena" type="password" autoComplete="current-password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
           </div>
           <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={request.isPending || !newEmail || !currentPassword}>
               {request.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
-              Enviar enlace de verificación
+              {t("help.account.sendLink")}
             </Button>
-            <span className="text-xs text-muted-foreground">El cambio se aplica al abrir el enlace del correo nuevo. Después tendrás que volver a iniciar sesión.</span>
+            <span className="text-xs text-muted-foreground">{t("help.account.sendLinkHint")}</span>
           </div>
         </form>
       )}
@@ -79,10 +83,12 @@ function EmailSection() {
 }
 
 function DevicesSection() {
+  const { t, format: f } = useI18n();
+  const fmt = (iso: string) => f.dateTime(iso, { dateStyle: "medium", timeStyle: "short" });
   const devicesQ = trpc.accountSecurity.myDevices.useQuery();
   const forget = trpc.accountSecurity.forgetDevice.useMutation({
     onSuccess: () => {
-      toast.success("Dispositivo olvidado. Si se vuelve a usar, te avisaremos por correo.");
+      toast.success(t("help.account.forgotten"));
       devicesQ.refetch();
     },
     onError: (e) => toastError(e),
@@ -93,15 +99,15 @@ function DevicesSection() {
     <section className="bg-card border border-border rounded-xl p-5 space-y-4" aria-labelledby="mi-cuenta-dispositivos">
       <div className="flex items-center gap-2">
         <MonitorSmartphone className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-        <h2 id="mi-cuenta-dispositivos" className="font-semibold text-foreground">Dispositivos con los que has iniciado sesión</h2>
+        <h2 id="mi-cuenta-dispositivos" className="font-semibold text-foreground">{t("help.account.devicesTitle")}</h2>
       </div>
-      <p className="text-sm text-muted-foreground">Cuando inicies sesión desde un dispositivo nuevo te avisaremos por correo. Si no reconoces alguno, olvídalo y cambia tu contraseña.</p>
+      <p className="text-sm text-muted-foreground">{t("help.account.devicesText")}</p>
       {devicesQ.isLoading ? (
-        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-label="Cargando" /></div>
+        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-label={t("help.account.loading")} /></div>
       ) : data?.available === false ? (
-        <p className="text-sm text-muted-foreground">El registro de dispositivos todavía no está disponible en esta empresa.</p>
+        <p className="text-sm text-muted-foreground">{t("help.account.devicesUnavailable")}</p>
       ) : !data?.devices.length ? (
-        <p className="text-sm text-muted-foreground">Todavía no hay dispositivos registrados. Se registran al iniciar sesión.</p>
+        <p className="text-sm text-muted-foreground">{t("help.account.devicesEmpty")}</p>
       ) : (
         <ul className="divide-y divide-border">
           {data.devices.map((d) => (
@@ -109,13 +115,13 @@ function DevicesSection() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">
                   {d.label}
-                  {d.current && <span className="ml-2 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">Este dispositivo</span>}
+                  {d.current && <span className="ml-2 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">{t("help.account.thisDevice")}</span>}
                 </p>
-                <p className="text-xs text-muted-foreground">Primera vez: {fmt(d.firstSeenAt)} · Último acceso: {fmt(d.lastSeenAt)}</p>
+                <p className="text-xs text-muted-foreground">{t("help.account.seen", { first: fmt(d.firstSeenAt), last: fmt(d.lastSeenAt) })}</p>
               </div>
-              <Button variant="outline" size="sm" disabled={forget.isPending} onClick={() => forget.mutate({ id: d.id })} aria-label={`Olvidar ${d.label}`}>
+              <Button variant="outline" size="sm" disabled={forget.isPending} onClick={() => forget.mutate({ id: d.id })} aria-label={t("help.account.forgetAria", { label: d.label })}>
                 <Trash2 className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                Olvidar
+                {t("help.account.forget")}
               </Button>
             </li>
           ))}
@@ -126,8 +132,9 @@ function DevicesSection() {
 }
 
 export default function MiCuenta() {
+  const { t } = useI18n();
   return (
-    <AdminLayout title="Mi cuenta">
+    <AdminLayout title={t("help.account.title")}>
       <div className="max-w-3xl space-y-6">
         <EmailSection />
         <DevicesSection />

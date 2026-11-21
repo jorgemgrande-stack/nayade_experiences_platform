@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   Building2, Receipt, Palette, Mail, Settings2, Plug,
   Check, ChevronLeft, ChevronRight, Loader2, Shield,
@@ -19,106 +20,75 @@ type StepId = "business_info" | "fiscal" | "branding" | "emails" | "modules" | "
 
 interface StepField {
   key: string;
-  label: string;
   type?: "text" | "email" | "url" | "number";
   placeholder?: string;
 }
 
 interface WizardStep {
   id: StepId;
-  title: string;
-  subtitle: string;
   icon: React.ComponentType<{ className?: string }>;
   fields?: StepField[];
-  note?: string;
+  hasNote?: boolean;
 }
 
 const STEPS: WizardStep[] = [
   {
     id: "business_info",
-    title: "Información del negocio",
-    subtitle: "Nombre, teléfono y datos de contacto del negocio",
     icon: Building2,
     fields: [
-      { key: "brand_name",          label: "Nombre comercial",              type: "text" },
-      { key: "brand_short_name",    label: "Nombre corto",                  type: "text" },
-      { key: "brand_phone",         label: "Teléfono principal",            type: "text" },
-      { key: "brand_support_phone", label: "Teléfono de reservas / soporte", type: "text" },
-      { key: "brand_domain",        label: "Dominio web",                   type: "text",  placeholder: "tuempresa.es" },
-      { key: "brand_website_url",   label: "URL completa de la web",        type: "url",   placeholder: "https://..." },
-      { key: "brand_location",      label: "Localización / dirección breve", type: "text" },
+      { key: "brand_name",          type: "text" },
+      { key: "brand_short_name",    type: "text" },
+      { key: "brand_phone",         type: "text" },
+      { key: "brand_support_phone", type: "text" },
+      { key: "brand_domain",        type: "text",  placeholder: "tuempresa.es" },
+      { key: "brand_website_url",   type: "url",   placeholder: "https://..." },
+      { key: "brand_location",      type: "text" },
     ],
   },
   {
     id: "fiscal",
-    title: "Datos fiscales",
-    subtitle: "NIF/CIF, domicilio fiscal e impuestos",
     icon: Receipt,
     fields: [
-      { key: "brand_nif",          label: "NIF / CIF",               type: "text" },
-      { key: "brand_address",      label: "Domicilio fiscal completo", type: "text" },
-      { key: "tax_rate_general",   label: "IVA general (%)",          type: "number", placeholder: "21" },
-      { key: "tax_rate_reduced",   label: "IVA reducido (%)",         type: "number", placeholder: "10" },
+      { key: "brand_nif",          type: "text" },
+      { key: "brand_address",      type: "text" },
+      { key: "tax_rate_general",   type: "number", placeholder: "21" },
+      { key: "tax_rate_reduced",   type: "number", placeholder: "10" },
     ],
-    note: "El IBAN y credenciales bancarias no se almacenan en base de datos. Configúralos en Railway como variables de entorno si fueran necesarios.",
+    hasNote: true,
   },
   {
     id: "branding",
-    title: "Marca",
-    subtitle: "Logo, colores e imagen visual de la marca",
     icon: Palette,
     fields: [
-      { key: "brand_logo_url",        label: "URL del logotipo",             type: "url",  placeholder: "https://..." },
-      { key: "brand_hero_image_url",  label: "URL imagen hero (opcional)",   type: "url",  placeholder: "https://..." },
-      { key: "brand_primary_color",   label: "Color principal (hex)",        type: "text", placeholder: "#2563eb" },
-      { key: "brand_accent_color",    label: "Color acento (hex)",           type: "text", placeholder: "#f59e0b" },
-      { key: "brand_instagram",       label: "URL perfil de Instagram",      type: "url",  placeholder: "https://instagram.com/..." },
+      { key: "brand_logo_url",        type: "url",  placeholder: "https://..." },
+      { key: "brand_hero_image_url",  type: "url",  placeholder: "https://..." },
+      { key: "brand_primary_color",   type: "text", placeholder: "#2563eb" },
+      { key: "brand_accent_color",    type: "text", placeholder: "#f59e0b" },
+      { key: "brand_instagram",       type: "url",  placeholder: "https://instagram.com/..." },
     ],
   },
   {
     id: "emails",
-    title: "Emails y notificaciones",
-    subtitle: "Direcciones de correo para cada tipo de notificación (vacío = usa el email por defecto del sistema)",
     icon: Mail,
     fields: [
-      { key: "email_reservations",    label: "Email de reservas",           type: "email" },
-      { key: "email_admin_alerts",    label: "Email de alertas de admin",   type: "email" },
-      { key: "email_accounting",      label: "Email de contabilidad",       type: "email" },
-      { key: "email_cancellations",   label: "Email de cancelaciones",      type: "email" },
-      { key: "email_tpv_ingestion",   label: "Email ingesta datáfono",      type: "email" },
-      { key: "email_noreply_sender",  label: "Email remitente noreply",     type: "email" },
-      { key: "email_copy_recipient",  label: "Email copia de reservas",     type: "email" },
+      { key: "email_reservations",    type: "email" },
+      { key: "email_admin_alerts",    type: "email" },
+      { key: "email_accounting",      type: "email" },
+      { key: "email_cancellations",   type: "email" },
+      { key: "email_tpv_ingestion",   type: "email" },
+      { key: "email_noreply_sender",  type: "email" },
+      { key: "email_copy_recipient",  type: "email" },
     ],
   },
-  {
-    id: "modules",
-    title: "Módulos activos",
-    subtitle: "Activa o desactiva los módulos que usa tu negocio",
-    icon: Settings2,
-  },
-  {
-    id: "integrations",
-    title: "Integraciones externas",
-    subtitle: "Credenciales de servicios externos — solo se configuran en Railway, nunca en base de datos",
-    icon: Plug,
-  },
+  { id: "modules", icon: Settings2 },
+  { id: "integrations", icon: Plug },
 ];
 
 // Modules shown in step 5 (key → label)
-const MODULE_FLAGS: Array<{ key: string; label: string; description: string }> = [
-  { key: "crm_module_enabled",                    label: "CRM",                          description: "Leads, presupuestos, reservas y clientes" },
-  { key: "tpv_enabled",                           label: "TPV físico",                   description: "Terminal punto de venta presencial" },
-  { key: "cash_register_module_enabled",          label: "Caja registradora",            description: "Seguimiento de fondos y cierres de caja" },
-  { key: "bank_movements_module_enabled",         label: "Movimientos bancarios",        description: "Importación y gestión de extractos bancarios" },
-  { key: "card_terminal_batches_enabled",         label: "Conciliación datáfono",        description: "Liquidaciones y batches del datáfono" },
-  { key: "email_ingestion_enabled",               label: "Ingesta de emails IMAP",       description: "Lectura automática de emails del datáfono" },
-  { key: "reav_module_enabled",                   label: "Expedientes REAV",             description: "Gestión de expedientes REAV" },
-  { key: "hotel_module_enabled",                  label: "Hotel",                        description: "Habitaciones y reservas de hotel" },
-  { key: "spa_module_enabled",                    label: "SPA",                          description: "Reservas de spa y tratamientos" },
-  { key: "restaurants_module_enabled",            label: "Restaurantes",                 description: "Reservas de restaurante" },
-  { key: "ticketing_module_enabled",              label: "Ticketing",                    description: "Venta de entradas individuales" },
-  { key: "suppliers_module_enabled",              label: "Proveedores",                  description: "Gestión de proveedores y liquidaciones" },
-  { key: "cancellations_module_enabled",          label: "Módulo cancelaciones",         description: "Seguimiento y procesamiento de cancelaciones" },
+const MODULE_FLAGS: string[] = [
+  "crm_module_enabled", "tpv_enabled", "cash_register_module_enabled", "bank_movements_module_enabled", "card_terminal_batches_enabled",
+  "email_ingestion_enabled", "reav_module_enabled", "hotel_module_enabled", "spa_module_enabled", "restaurants_module_enabled",
+  "ticketing_module_enabled", "suppliers_module_enabled", "cancellations_module_enabled",
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -129,6 +99,7 @@ function StepIndicator({ step, index, isCurrent, isCompleted }: {
   isCurrent: boolean;
   isCompleted: boolean;
 }) {
+  const { t } = useI18n();
   const Icon = step.icon;
   return (
     <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
@@ -139,7 +110,7 @@ function StepIndicator({ step, index, isCurrent, isCompleted }: {
       }`}>
         {isCompleted ? <Check className="w-3.5 h-3.5" /> : index + 1}
       </div>
-      <span className="text-sm font-medium">{step.title}</span>
+      <span className="text-sm font-medium">{t(`onboarding.steps.${step.id}.title`)}</span>
     </div>
   );
 }
@@ -151,23 +122,24 @@ function FieldsStep({ step, values, onChange }: {
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
 }) {
+  const { t } = useI18n();
   if (!step.fields) return null;
   return (
     <div className="space-y-4">
-      {step.note && (
+      {step.hasNote && (
         <div className="flex gap-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
           <Shield className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-          <p className="text-sm text-slate-600 dark:text-slate-400">{step.note}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{t("onboarding.steps.fiscal.note")}</p>
         </div>
       )}
       {step.fields.map(field => (
         <div key={field.key}>
-          <label className="block text-sm font-medium text-foreground mb-1.5">{field.label}</label>
+          <label className="block text-sm font-medium text-foreground mb-1.5">{t(`onboarding.fields.${field.key}`)}</label>
           <Input
             type={field.type ?? "text"}
             value={values[field.key] ?? ""}
             onChange={e => onChange(field.key, e.target.value)}
-            placeholder={field.placeholder ?? ""}
+            placeholder={field.key === "brand_domain" ? t("onboarding.fields.brand_domain_ph") : field.placeholder ?? ""}
             className="h-9"
           />
         </div>
@@ -183,6 +155,7 @@ function ModulesStep({ flags, onToggle, isPending }: {
   onToggle: (key: string, enabled: boolean) => void;
   isPending: boolean;
 }) {
+  const { t } = useI18n();
   const flagMap = new Map(flags.map(f => [f.key, f]));
 
   return (
@@ -190,22 +163,22 @@ function ModulesStep({ flags, onToggle, isPending }: {
       <div className="flex gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <p className="text-sm text-amber-800 dark:text-amber-200">
-          Los cambios son inmediatos. Desactivar un módulo oculta su sección en el panel de admin.
+          {t("onboarding.modules.warning")}
         </p>
       </div>
-      {MODULE_FLAGS.map(mod => {
-        const flag = flagMap.get(mod.key);
+      {MODULE_FLAGS.map(modKey => {
+        const flag = flagMap.get(modKey);
         const enabled = flag?.enabled ?? true;
         return (
-          <div key={mod.key} className="flex items-center justify-between gap-4 p-4 bg-card border border-border/50 rounded-xl">
+          <div key={modKey} className="flex items-center justify-between gap-4 p-4 bg-card border border-border/50 rounded-xl">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">{mod.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{mod.description}</p>
+              <p className="text-sm font-medium text-foreground">{t(`onboarding.modules.${modKey}.label`)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t(`onboarding.modules.${modKey}.description`)}</p>
             </div>
             <Switch
               checked={enabled}
               disabled={isPending || !flag}
-              onCheckedChange={checked => onToggle(mod.key, checked)}
+              onCheckedChange={checked => onToggle(modKey, checked)}
             />
           </div>
         );
@@ -219,6 +192,7 @@ function ModulesStep({ flags, onToggle, isPending }: {
 function IntegrationsStep({ envStatus }: {
   envStatus: Array<{ key: string; label: string; group: string; isSet: boolean }>;
 }) {
+  const { t } = useI18n();
   const groups = Array.from(new Set(envStatus.map(e => e.group)));
 
   return (
@@ -226,8 +200,7 @@ function IntegrationsStep({ envStatus }: {
       <div className="flex gap-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
         <Shield className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Las credenciales de integraciones externas <strong>nunca se guardan en base de datos</strong>.
-          Configúralas directamente en las variables de entorno de Railway.
+          {t("onboarding.integrations.noteBefore")}<strong>{t("onboarding.integrations.noteBold")}</strong>{t("onboarding.integrations.noteAfter")}
         </p>
       </div>
 
@@ -247,12 +220,12 @@ function IntegrationsStep({ envStatus }: {
                   {env.isSet ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Configurado</span>
+                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t("onboarding.integrations.set")}</span>
                     </>
                   ) : (
                     <>
                       <Circle className="w-4 h-4 text-muted-foreground/40" />
-                      <span className="text-xs text-muted-foreground">Pendiente en Railway</span>
+                      <span className="text-xs text-muted-foreground">{t("onboarding.integrations.pending")}</span>
                     </>
                   )}
                 </div>
@@ -280,6 +253,7 @@ export default function OnboardingWizard() {
 }
 
 function OnboardingWizardLegacy() {
+  const { t } = useI18n();
   const [currentStep, setCurrentStep] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
@@ -293,7 +267,7 @@ function OnboardingWizardLegacy() {
   const updateSettingMut = trpc.config.updateSystemSetting.useMutation();
   const updateFlagMut = trpc.config.updateFeatureFlag.useMutation({
     onSuccess: () => flagsQ.refetch(),
-    onError: (e) => toast.error("Error al cambiar módulo: " + e.message),
+    onError: (e) => toast.error(t("onboarding.toast.moduleError", { message: e.message })),
   });
   const completeStepMut = trpc.onboarding.completeStep.useMutation({
     onSuccess: () => statusQ.refetch(),
@@ -337,15 +311,15 @@ function OnboardingWizardLegacy() {
       // Mark step as completed
       await completeStepMut.mutateAsync({ step: step.id });
 
-      toast.success(`Paso "${step.title}" guardado`);
+      toast.success(t("onboarding.toast.stepSaved", { title: t(`onboarding.steps.${step.id}.title`) }));
 
       if (currentStep < STEPS.length - 1) {
         setCurrentStep(prev => prev + 1);
       } else {
-        toast.success("¡Configuración completada! El sistema está listo.");
+        toast.success(t("onboarding.toast.allReady"));
       }
     } catch (e) {
-      toast.error("Error al guardar el paso");
+      toast.error(t("onboarding.toast.stepError"));
     } finally {
       setSaving(false);
     }
@@ -355,10 +329,10 @@ function OnboardingWizardLegacy() {
     setSaving(true);
     try {
       await completeStepMut.mutateAsync({ step: "modules" });
-      toast.success("Módulos configurados");
+      toast.success(t("onboarding.toast.modulesDone"));
       setCurrentStep(prev => prev + 1);
     } catch {
-      toast.error("Error al guardar");
+      toast.error(t("onboarding.toast.saveError"));
     } finally {
       setSaving(false);
     }
@@ -368,10 +342,10 @@ function OnboardingWizardLegacy() {
     setSaving(true);
     try {
       await completeStepMut.mutateAsync({ step: "integrations" });
-      toast.success("¡Configuración completada!");
+      toast.success(t("onboarding.toast.done"));
       statusQ.refetch();
     } catch {
-      toast.error("Error al guardar");
+      toast.error(t("onboarding.toast.saveError"));
     } finally {
       setSaving(false);
     }
@@ -398,16 +372,16 @@ function OnboardingWizardLegacy() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-heading font-bold text-foreground">Configuración inicial</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">{t("onboarding.title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Completa los datos de tu negocio para empezar a usar la plataforma.
+            {t("onboarding.intro")}
           </p>
         </div>
 
         {/* Progress bar */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Progreso de configuración</span>
+            <span className="text-xs font-medium text-muted-foreground">{t("onboarding.progress")}</span>
             <span className="text-xs font-semibold text-foreground">{progress}%</span>
           </div>
           <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -419,7 +393,7 @@ function OnboardingWizardLegacy() {
           {allDone && (
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Configuración completada. Puedes editar cualquier sección cuando quieras.
+              {t("onboarding.allDone")}
             </p>
           )}
         </div>
@@ -454,14 +428,14 @@ function OnboardingWizardLegacy() {
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-1">
                   {(() => { const Icon = step.icon; return <Icon className="w-5 h-5 text-muted-foreground" />; })()}
-                  <h2 className="text-lg font-semibold text-foreground">{step.title}</h2>
+                  <h2 className="text-lg font-semibold text-foreground">{t(`onboarding.steps.${step.id}.title`)}</h2>
                   {completedMap[step.id] && (
                     <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
-                      Completado
+                      {t("onboarding.completed")}
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">{step.subtitle}</p>
+                <p className="text-sm text-muted-foreground">{t(`onboarding.steps.${step.id}.subtitle`)}</p>
               </div>
 
               {/* Step content */}
@@ -486,7 +460,7 @@ function OnboardingWizardLegacy() {
                   disabled={currentStep === 0}
                 >
                   <ChevronLeft className="w-4 h-4 mr-1" />
-                  Anterior
+                  {t("onboarding.back")}
                 </Button>
 
                 {step.id === "modules" ? (
@@ -496,7 +470,7 @@ function OnboardingWizardLegacy() {
                     onClick={completeModulesStep}
                   >
                     {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                    Continuar
+                    {t("onboarding.continue")}
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 ) : step.id === "integrations" ? (
@@ -507,7 +481,7 @@ function OnboardingWizardLegacy() {
                     variant={allDone ? "outline" : "default"}
                   >
                     {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                    {allDone ? "Volver al panel" : "Finalizar configuración"}
+                    {allDone ? t("onboarding.backToPanel") : t("onboarding.finish")}
                     {!allDone && <Check className="w-4 h-4 ml-1" />}
                   </Button>
                 ) : (
@@ -517,7 +491,7 @@ function OnboardingWizardLegacy() {
                     onClick={saveCurrentStep}
                   >
                     {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                    Guardar y continuar
+                    {t("onboarding.saveContinue")}
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 )}
