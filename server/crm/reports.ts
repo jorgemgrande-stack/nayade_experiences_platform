@@ -10,6 +10,7 @@
  */
 import { madridDate } from "../controlPlane/madridCalendar";
 import { normalizeCompanyName } from "./service";
+import { activityOrigin, AMBIGUOUS_NOTE, type ActivityOrigin } from "./focus";
 import type { Activity, Company, Contact, Lead, Opportunity } from "./types";
 
 export interface ReportData {
@@ -91,7 +92,8 @@ export function crmReports(d: ReportData, o: { from: number; to: number; now: nu
   const byPerson: Record<string, { activities: number; tasksDone: number; tasksPending: number; tasksOverdue: number; openOpportunities: number }> = {};
   const person = (k: string | null | undefined) => (byPerson[k?.trim() || "sin responsable"] ??= { activities: 0, tasksDone: 0, tasksPending: 0, tasksOverdue: 0, openOpportunities: 0 });
   for (const a of d.activities) {
-    if (a.kind !== "task" && inRange(a.createdAt, from, to)) person(a.author).activities++;
+    // Solo las personas del equipo figuran como responsables: los procesos automáticos van aparte (activityStream)
+    if (a.kind !== "task" && inRange(a.createdAt, from, to) && activityOrigin(a.author) === "human") person(a.author).activities++;
     if (a.kind === "task") {
       const who = person(a.assignee ?? null);
       if (a.doneAt !== null) {
@@ -103,6 +105,30 @@ export function crmReports(d: ReportData, o: { from: number; to: number; now: nu
     }
   }
   for (const x of d.opportunities) if (x.stage !== "won" && x.stage !== "lost") person(x.owner).openOpportunities++;
+
+  // ── Actividad por origen: personas, procesos automáticos y sin clasificar (trazabilidad completa) ──
+  const events = d.activities.filter((a) => a.kind !== "task" && inRange(a.createdAt, from, to));
+  const byOrigin: Record<ActivityOrigin, number> = { human: 0, automatic: 0, unknown: 0 };
+  const byAuthor: Record<string, { origin: ActivityOrigin; count: number }> = {};
+  for (const a of events) {
+    const origin = activityOrigin(a.author);
+    byOrigin[origin]++;
+    const k = a.author?.trim() || "sin autor";
+    (byAuthor[k] ??= { origin, count: 0 }).count++;
+  }
+  const STREAM_LIMIT = 200;
+  const activityStream = {
+    total: events.length,
+    byOrigin,
+    byAuthor,
+    note: AMBIGUOUS_NOTE,
+    // Los más recientes primero; el total y los recuentos son siempre completos aunque la lista se recorte
+    events: [...events]
+      .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id)
+      .slice(0, STREAM_LIMIT)
+      .map((a) => ({ id: a.id, entityType: a.entityType, entityId: a.entityId, kind: a.kind, summary: a.summary.slice(0, 300), author: a.author, origin: activityOrigin(a.author), createdAt: a.createdAt })),
+    truncated: events.length > STREAM_LIMIT,
+  };
 
   // ── Seguimientos pendientes (estado actual) ──
   const openOpps = d.opportunities.filter((x) => x.stage !== "won" && x.stage !== "lost");
@@ -141,7 +167,7 @@ export function crmReports(d: ReportData, o: { from: number; to: number; now: nu
     companiesWithUnknownTenant: o.knownTenants ? d.companies.filter((c) => c.tenantId && !o.knownTenants!.has(c.tenantId)).map((c) => ({ id: c.id, tenantId: c.tenantId })) : null,
   };
 
-  return { period: { from, to, timeZone: "Europe/Madrid" }, leads: { total: leads.length, byMonth: leadsByMonth }, conversion, activityByPerson: byPerson, followUps, quality, generatedAt: now };
+  return { period: { from, to, timeZone: "Europe/Madrid" }, leads: { total: leads.length, byMonth: leadsByMonth }, conversion, activityByPerson: byPerson, activityStream, followUps, quality, generatedAt: now };
 }
 
 /** CSV seguro (separador «;», cabecera, campos entre comillas y sin fórmulas: los que empiezan por = + - @ se prefijan). */
