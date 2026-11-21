@@ -16,43 +16,44 @@ import { toast } from "sonner";
 import { toastError } from "@/lib/errorMessage";
 import { useVocabulary } from "@/lib/vocabulary";
 
+import { useI18n } from "@/i18n/I18nProvider";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion" | "revertir_resolucion" | "cambiar_financiero" | "reenviar_emails";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
-  meteorologicas: "Condiciones meteorológicas",
-  accidente: "Accidente",
-  enfermedad: "Enfermedad",
-  desistimiento: "Desistimiento voluntario",
-  otra: "Otra razón",
+  meteorologicas: "crmCancellations.lbl_REASON_meteorologicas",
+  accidente: "crmCancellations.lbl_REASON_accidente",
+  enfermedad: "crmCancellations.lbl_REASON_enfermedad",
+  desistimiento: "crmCancellations.lbl_REASON_desistimiento",
+  otra: "crmCancellations.lbl_REASON_otra",
 };
 
 const OP_STATUS_LABELS: Record<string, string> = {
-  recibida: "Recibida",
-  en_revision: "En revisión",
-  pendiente_documentacion: "Pend. documentación",
-  pendiente_decision: "Pend. decisión",
-  resuelta: "Resuelta",
-  cerrada: "Cerrada",
-  incidencia: "Incidencia",
+  recibida: "crmCancellations.lbl_OP_recibida",
+  en_revision: "crmCancellations.lbl_OP_en_revision",
+  pendiente_documentacion: "crmCancellations.lbl_OP_pendiente_documentacion",
+  pendiente_decision: "crmCancellations.lbl_OP_pendiente_decision",
+  resuelta: "crmCancellations.lbl_OP_resuelta",
+  cerrada: "crmCancellations.lbl_OP_cerrada",
+  incidencia: "crmCancellations.lbl_OP_incidencia",
 };
 
 const RES_STATUS_LABELS: Record<string, string> = {
-  sin_resolver: "Sin resolver",
-  rechazada: "Rechazada",
-  aceptada_total: "Aceptada total",
-  aceptada_parcial: "Aceptada parcial",
+  sin_resolver: "crmCancellations.lbl_RES_sin_resolver",
+  rechazada: "crmCancellations.lbl_RES_rechazada",
+  aceptada_total: "crmCancellations.lbl_RES_aceptada_total",
+  aceptada_parcial: "crmCancellations.lbl_RES_aceptada_parcial",
 };
 
 const FIN_STATUS_LABELS: Record<string, string> = {
-  sin_compensacion: "Sin compensación",
-  pendiente_devolucion: "Pend. devolución",
-  devuelta_economicamente: "Devuelta",
-  pendiente_bono: "Pend. bono",
-  compensada_bono: "Compensada bono",
-  compensacion_mixta: "Mixta",
-  incidencia_economica: "Incidencia económica",
+  sin_compensacion: "crmCancellations.lbl_FIN_sin_compensacion",
+  pendiente_devolucion: "crmCancellations.lbl_FIN_pendiente_devolucion",
+  devuelta_economicamente: "crmCancellations.lbl_FIN_devuelta_economicamente",
+  pendiente_bono: "crmCancellations.lbl_FIN_pendiente_bono",
+  compensada_bono: "crmCancellations.lbl_FIN_compensada_bono",
+  compensacion_mixta: "crmCancellations.lbl_FIN_compensacion_mixta",
+  incidencia_economica: "crmCancellations.lbl_FIN_incidencia_economica",
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ function ActionPanelWrapper({ title, color, children }: { title: string; color: 
 }
 
 function TimelineEntry({ log }: { log: { id: number; actionType: string; adminUserName: string | null; payload: Record<string, unknown> | null; createdAt: Date } }) {
+  const { t, format } = useI18n();
   const icons: Record<string, React.ReactNode> = {
     created: <Plus className="w-3 h-3" />,
     rejected: <XCircle className="w-3 h-3 text-red-400" />,
@@ -138,21 +140,21 @@ function TimelineEntry({ log }: { log: { id: number; actionType: string; adminUs
     client_reclamation: <MessageSquareWarning className="w-3 h-3 text-rose-400" />,
   };
   const ACTION_LABELS: Record<string, string> = {
-    created: "Solicitud creada",
-    rejected: "Solicitud rechazada",
-    accepted_total: "Aceptada — compensación total",
-    accepted_partial: "Aceptada — compensación parcial",
-    doc_requested: "Documentación solicitada",
-    incidence: "Incidencia registrada",
-    closed: "Expediente cerrado",
-    note_added: "Nota interna",
-    voucher_generated: "Bono generado",
-    voucher_sent: "Bono enviado",
-    email_sent: "Email enviado",
-    system_propagation: "Propagación del sistema",
-    refund_executed: "Devolución ejecutada",
-    status_change: "Cambio de estado",
-    client_reclamation: "Reclamación del cliente",
+    created: t("crmCancellations.solicitudCreada"),
+    rejected: t("crmCancellations.solicitudRechazada"),
+    accepted_total: t("crmCancellations.aceptadaCompensacionTotal"),
+    accepted_partial: t("crmCancellations.aceptadaCompensacionParcial"),
+    doc_requested: t("crmCancellations.documentacionSolicitada"),
+    incidence: t("crmCancellations.incidenciaRegistrada"),
+    closed: t("crmCancellations.expedienteCerrado"),
+    note_added: t("crmCancellations.notaInterna"),
+    voucher_generated: t("crmCancellations.bonoGenerado"),
+    voucher_sent: t("crmCancellations.bonoEnviado"),
+    email_sent: t("crmCancellations.emailEnviado"),
+    system_propagation: t("crmCancellations.propagacionDelSistema"),
+    refund_executed: t("crmCancellations.devolucionEjecutada"),
+    status_change: t("crmCancellations.cambioDeEstado"),
+    client_reclamation: t("crmCancellations.reclamacionDelCliente"),
   };
   const note = (log.payload as Record<string, unknown>)?.note as string | undefined;
   const description = (log.payload as Record<string, unknown>)?.description as string | undefined;
@@ -169,7 +171,7 @@ function TimelineEntry({ log }: { log: { id: number; actionType: string; adminUs
         {description && <p className="text-gray-400 text-xs mt-0.5 whitespace-pre-wrap">{description}</p>}
         {note && !description && <p className="text-gray-500 text-xs mt-0.5 truncate">{note}</p>}
         <p className="text-gray-600 text-xs mt-0.5">
-          {log.adminUserName ?? "Sistema"} · {ts.toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+          {log.adminUserName ?? "Sistema"} · {format.dateTime(ts, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
     </div>
@@ -185,6 +187,7 @@ interface Props {
 }
 
 export default function CancellationDetailModal({ requestId, onClose, onNavigateToReservation, autoOpenAccept }: Props) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const linkedLabel = `${voc.Order} vinculad${voc.agree("o", "a")}`;
@@ -234,21 +237,21 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   const invalidate = () => utils.cancellations.getRequest.invalidate({ id: requestId });
 
   const rejectMut = trpc.cancellations.rejectRequest.useMutation({
-    onSuccess: () => { toast.success("Solicitud rechazada"); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.solicitudRechazada")); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
   const acceptMut = trpc.cancellations.acceptRequest.useMutation({
-    onSuccess: () => { toast.success("Solicitud aceptada"); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.solicitudAceptada")); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
   const docsMut = trpc.cancellations.requestDocumentation.useMutation({
     onSuccess: (data) => {
       if (data.emailSent === false) {
-        toast.error("Estado actualizado, pero el email NO pudo enviarse al cliente. Revisa la configuración del mailer.");
+        toast.error(t("crmCancellations.estadoActualizadoPeroEl"));
       } else {
-        toast.success("Documentación solicitada — email enviado al cliente");
+        toast.success(t("crmCancellations.documentacionSolicitadaEmailEn"));
       }
       setActivePanel("none");
       invalidate();
@@ -257,17 +260,17 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   });
 
   const incidenceMut = trpc.cancellations.markIncidence.useMutation({
-    onSuccess: () => { toast.success("Incidencia registrada"); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.incidenciaRegistrada")); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
   const closeMut = trpc.cancellations.closeRequest.useMutation({
-    onSuccess: () => { toast.success("Expediente cerrado"); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.expedienteCerrado")); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
   const notesMut = trpc.cancellations.updateNotes.useMutation({
-    onSuccess: () => { toast.success("Nota guardada"); setInternalNote(""); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.notaGuardada")); setInternalNote(""); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
@@ -277,12 +280,12 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   });
 
   const reclamationMut = trpc.cancellations.addClientReclamation.useMutation({
-    onSuccess: () => { toast.success("Reclamación registrada"); setReclamationText(""); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.reclamacionRegistrada")); setReclamationText(""); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
   const markRefundExecMut = trpc.cancellations.markRefundExecuted.useMutation({
-    onSuccess: () => { toast.success("Devolución marcada como realizada"); setRefundExecNote(""); setRefundExecProofUrl(""); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.devolucionMarcadaComoRealizada")); setRefundExecNote(""); setRefundExecProofUrl(""); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
@@ -292,18 +295,18 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   );
 
   const statusMut = trpc.cancellations.updateOperationalStatus.useMutation({
-    onSuccess: () => { toast.success("Estado actualizado"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.estadoActualizado")); invalidate(); },
     onError: (e) => toastError(e),
   });
 
   const [resendTo, setResendTo] = useState("");
   const resendMut = trpc.cancellations.resendRequestEmails.useMutation({
     onSuccess: (d) => {
-      const lines = d.sent.map(s => `${s.ok ? "✓" : "✗"} ${s.label}`).join("\n");
+      const lines = d.sent.map(s => t("crmCancellations.texto2", { v: s.ok ? "✓" : "✗", label: s.label })).join("\n");
       if (d.failed === 0) {
-        toast.success(`${d.sent.length} email(s) enviados:\n${lines}`);
+        toast.success(t("crmCancellations.emailSEnviados", { length: d.sent.length, lines }));
       } else {
-        toast.error(`${d.failed} email(s) fallaron:\n${lines}`);
+        toast.error(t("crmCancellations.emailSFallaron", { failed: d.failed, lines }));
       }
       setActivePanel("none");
     },
@@ -311,12 +314,12 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   });
 
   const revertMut = trpc.cancellations.revertResolution.useMutation({
-    onSuccess: () => { toast.success("Resolución revertida — expediente en revisión"); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.resolucionRevertidaExpedienteE")); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
   const financialOverrideMut = trpc.cancellations.updateFinancialStatus.useMutation({
-    onSuccess: () => { toast.success("Estado financiero actualizado"); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmCancellations.estadoFinancieroActualizado")); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
@@ -349,9 +352,9 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             <AlertTriangle className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h2 className="text-white font-semibold">Solicitud #{req.id}</h2>
+            <h2 className="text-white font-semibold">{t("crmCancellations.solicitud", { id: req.id })}</h2>
             <p className="text-gray-500 text-xs">
-              {new Date(req.createdAt).toLocaleString("es-ES", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              {format.dateTime(req.createdAt, { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>
           <button onClick={onClose} className="ml-auto p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors">
@@ -364,7 +367,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 1: Datos del solicitante ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Datos del solicitante</h3>
+            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.datosDelSolicitante")}</h3>
             <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
@@ -408,7 +411,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
           {/* ── Bloque 1b: Desglose de la reserva vinculada ── */}
           {linkedReservation && (
             <section>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Desglose de {voc.theOrder}</h3>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.desgloseDe", { theOrder: voc.theOrder })}</h3>
               <div className="bg-[#1a1a1a] rounded-xl border border-white/5 overflow-hidden">
                 {/* Cabecera reserva */}
                 <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5">
@@ -425,9 +428,9 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     linkedReservation.status === "cancelled" ? "text-red-400 bg-red-500/10 border-red-500/20" :
                     "text-gray-400 bg-gray-500/10 border-gray-500/20"
                   }`}>
-                    {linkedReservation.status === "paid" ? "Pagada" :
-                     linkedReservation.status === "cancelled" ? "Cancelada" :
-                     linkedReservation.status === "pending_payment" ? "Pend. pago" :
+                    {linkedReservation.status === "paid" ? t("crmCancellations.pagada") :
+                     linkedReservation.status === "cancelled" ? t("crmCancellations.cancelada") :
+                     linkedReservation.status === "pending_payment" ? t("crmCancellations.pendPago") :
                      linkedReservation.status}
                   </span>
                 </div>
@@ -442,8 +445,8 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                       <p className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
                         <Users className="w-3 h-3" />
                         {linkedReservation.pricingType === "per_unit" && linkedReservation.unitsBooked
-                          ? `${linkedReservation.unitsBooked} unidad${linkedReservation.unitsBooked > 1 ? "es" : ""} × ${linkedReservation.unitCapacity ?? 1} pax`
-                          : `${linkedReservation.people} persona${linkedReservation.people > 1 ? "s" : ""}`
+                          ? t("crmCancellations.unidadesPax", { units: linkedReservation.unitsBooked, capacity: linkedReservation.unitCapacity ?? 1 })
+                          : t("crmCancellations.personasN", { people: linkedReservation.people })
                         }
                       </p>
                     </div>
@@ -458,7 +461,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                           }, 0);
                         } catch { /* ignore */ }
                         const mainCents = linkedReservation.amountTotal - extrasTotal;
-                        return mainCents > 0 ? `${(mainCents / 100).toFixed(2)} €` : null;
+                        return mainCents > 0 ? t("crmCancellations.texto3", { toFixed: (mainCents / 100).toFixed(2) }) : null;
                       })()}
                     </span>
                   </div>
@@ -470,7 +473,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                       const extras = (Array.isArray(raw) && raw.length > 0) ? raw : JSON.parse(linkedReservation.cancellableItemsJson ?? "[]");
                       if (!Array.isArray(extras) || extras.length === 0) return null;
                       return extras.map((ex: any, i: number) => {
-                        const name = ex.name ?? ex.experienceTitle ?? ex.productName ?? `Extra ${i + 1}`;
+                        const name = ex.name ?? ex.experienceTitle ?? ex.productName ?? t("crmCancellations.extra", { v: i + 1 });
                         const qty = ex.quantity ?? 1;
                         const priceCents = ex.price ?? (ex.unitPrice != null ? ex.unitPrice * 100 : null);
                         return (
@@ -478,7 +481,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                             <PackagePlus className="w-4 h-4 text-gray-600 flex-shrink-0" />
                             <div className="flex-1 min-w-0">
                               <p className="text-gray-400 text-sm truncate">{name}</p>
-                              {qty > 1 && <p className="text-gray-600 text-xs">×{qty}</p>}
+                              {qty > 1 && <p className="text-gray-600 text-xs">{t("crmCancellations.texto", { qty })}</p>}
                             </div>
                             {priceCents != null && (
                               <span className="text-gray-400 text-sm font-mono flex-shrink-0">
@@ -495,18 +498,18 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 {/* Totales */}
                 <div className="border-t border-white/10 px-4 py-3 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-xs flex items-center gap-1.5"><Euro className="w-3 h-3" />Total {voc.order}</span>
+                    <span className="text-gray-400 text-xs flex items-center gap-1.5"><Euro className="w-3 h-3" />{t("crmCancellations.total2", { order: voc.order })}</span>
                     <span className="text-white text-sm font-bold font-mono">{(linkedReservation.amountTotal / 100).toFixed(2)} €</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-xs">Importe cobrado</span>
+                    <span className="text-gray-400 text-xs">{t("crmCancellations.importeCobrado")}</span>
                     <span className={`text-sm font-mono ${(linkedReservation.amountPaid ?? 0) >= linkedReservation.amountTotal ? "text-emerald-400" : "text-amber-400"}`}>
                       {((linkedReservation.amountPaid ?? 0) / 100).toFixed(2)} €
                     </span>
                   </div>
                   {(linkedReservation.amountPaid ?? 0) < linkedReservation.amountTotal && (
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-500 text-xs">Pendiente de cobro</span>
+                      <span className="text-gray-500 text-xs">{t("crmCancellations.pendienteDeCobro")}</span>
                       <span className="text-red-400 text-sm font-mono">
                         {((linkedReservation.amountTotal - (linkedReservation.amountPaid ?? 0)) / 100).toFixed(2)} €
                       </span>
@@ -519,16 +522,16 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 2: Motivo ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Motivo de anulación</h3>
+            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.motivoDeAnulacion")}</h3>
             <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4 space-y-2">
               <div className="flex items-center gap-2">
                 <ReasonIcon reason={req.reason} />
-                <span className="text-gray-300 text-sm">{REASON_LABELS[req.reason] ?? req.reason}</span>
+                <span className="text-gray-300 text-sm">{REASON_LABELS[req.reason] ? t(REASON_LABELS[req.reason]) : req.reason}</span>
               </div>
             </div>
             {req.reasonDetail && (
               <div className="mt-2 bg-[#1a1a1a] rounded-xl border border-white/5 p-4">
-                <p className="text-gray-400 text-xs mb-1">Detalle del motivo</p>
+                <p className="text-gray-400 text-xs mb-1">{t("crmCancellations.detalleDelMotivo")}</p>
                 <p className="text-gray-300 text-sm leading-relaxed">{req.reasonDetail}</p>
               </div>
             )}
@@ -536,26 +539,26 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 3: Estado ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Estado del expediente</h3>
+            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.estadoDelExpediente")}</h3>
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-3 text-center">
-                <p className="text-gray-500 text-xs mb-2">Operativo</p>
+                <p className="text-gray-500 text-xs mb-2">{t("crmCancellations.operativo")}</p>
                 <StatusBadge
-                  label={OP_STATUS_LABELS[req.operationalStatus] ?? req.operationalStatus}
+                  label={OP_STATUS_LABELS[req.operationalStatus] ? t(OP_STATUS_LABELS[req.operationalStatus]) : req.operationalStatus}
                   className="bg-amber-500/10 text-amber-400 border-amber-500/20"
                 />
               </div>
               <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-3 text-center">
-                <p className="text-gray-500 text-xs mb-2">Resolución</p>
+                <p className="text-gray-500 text-xs mb-2">{t("crmCancellations.resolucion")}</p>
                 <StatusBadge
-                  label={RES_STATUS_LABELS[req.resolutionStatus] ?? req.resolutionStatus}
+                  label={RES_STATUS_LABELS[req.resolutionStatus] ? t(RES_STATUS_LABELS[req.resolutionStatus]) : req.resolutionStatus}
                   className="bg-blue-500/10 text-blue-400 border-blue-500/20"
                 />
               </div>
               <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-3 text-center">
-                <p className="text-gray-500 text-xs mb-2">Financiero</p>
+                <p className="text-gray-500 text-xs mb-2">{t("crmCancellations.financiero")}</p>
                 <StatusBadge
-                  label={FIN_STATUS_LABELS[req.financialStatus] ?? req.financialStatus}
+                  label={FIN_STATUS_LABELS[req.financialStatus] ? t(FIN_STATUS_LABELS[req.financialStatus]) : req.financialStatus}
                   className="bg-purple-500/10 text-purple-400 border-purple-500/20"
                 />
               </div>
@@ -569,7 +572,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   disabled={req.operationalStatus === s || statusMut.isPending}
                   className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 disabled:opacity-30 transition-all"
                 >
-                  → {OP_STATUS_LABELS[s]}
+                  → {OP_STATUS_LABELS[s] ? t(OP_STATUS_LABELS[s]) : s}
                 </button>
               ))}
               {req.operationalStatus === "incidencia" && (
@@ -577,9 +580,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   onClick={() => statusMut.mutate({ id: req.id, status: "en_revision" })}
                   disabled={statusMut.isPending}
                   className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/40 text-orange-400 hover:text-white hover:bg-orange-500/20 transition-all"
-                >
-                  ✓ Resolver incidencia
-                </button>
+                >{t("crmCancellations.resolverIncidencia")}</button>
               )}
             </div>
           </section>
@@ -587,7 +588,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
           {/* ── Bloque 4: Bono activo ── */}
           {voucher && (
             <section>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Bono de compensación</h3>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.bonoDeCompensacion")}</h3>
               <div className="bg-purple-500/5 rounded-xl border border-purple-500/20 p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -600,8 +601,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   {voucher.activityName ?? voc.voucherItem} · {parseFloat(voucher.value).toFixed(2)} {voucher.currency}
                 </p>
                 {voucher.expiresAt && (
-                  <p className="text-gray-500 text-xs">
-                    Caduca: {new Date(voucher.expiresAt).toLocaleDateString("es-ES")}
+                  <p className="text-gray-500 text-xs">{t("crmCancellations.caduca")}{" "}{format.date(voucher.expiresAt, {})}
                   </p>
                 )}
                 {voucher.pdfUrl && (
@@ -610,9 +610,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 transition-colors"
-                  >
-                    Descargar PDF
-                  </a>
+                  >{t("crmCancellations.descargarPdf")}</a>
                 )}
               </div>
             </section>
@@ -620,10 +618,10 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 5: Timeline ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Historial de actividad</h3>
+            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.historialDeActividad")}</h3>
             <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4">
               {logs.length === 0 ? (
-                <p className="text-gray-600 text-sm">Sin actividad registrada aún.</p>
+                <p className="text-gray-600 text-sm">{t("crmCancellations.sinActividadRegistradaAun")}</p>
               ) : (
                 <div className="space-y-0">
                   {logs.map((log) => (
@@ -637,7 +635,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
           {/* ── Bloque 6: Notas internas ── */}
           {req.adminNotes && (
             <section>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Notas internas</h3>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.notasInternas")}</h3>
               <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4">
                 <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{req.adminNotes}</p>
               </div>
@@ -646,46 +644,44 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 7: Acciones operativas ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Acciones</h3>
+            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.acciones")}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
-              <ActionButton label="Rechazar" icon={<XCircle className="w-4 h-4" />} color="red" active={activePanel === "rechazar"} onClick={() => togglePanel("rechazar")} />
-              <ActionButton label="Aceptar" icon={<CheckCircle2 className="w-4 h-4" />} color="green" active={activePanel === "aceptar"} onClick={() => togglePanel("aceptar")} />
-              <ActionButton label="Pedir docs" icon={<FileQuestion className="w-4 h-4" />} color="blue" active={activePanel === "solicitar_docs"} onClick={() => togglePanel("solicitar_docs")} />
-              <ActionButton label="Incidencia" icon={<AlertTriangle className="w-4 h-4" />} color="orange" active={activePanel === "incidencia"} onClick={() => togglePanel("incidencia")} />
-              <ActionButton label="Nota interna" icon={<Plus className="w-4 h-4" />} color="purple" active={activePanel === "nota"} onClick={() => togglePanel("nota")} />
-              <ActionButton label="Cerrar" icon={<Archive className="w-4 h-4" />} color="gray" active={activePanel === "cerrar"} onClick={() => togglePanel("cerrar")} />
-              <ActionButton label={`Vincular ${voc.order}`} icon={<Link className="w-4 h-4" />} color="blue" active={activePanel === "vincular"} onClick={() => togglePanel("vincular")} />
-              <ActionButton label="Reclamación cliente" icon={<MessageSquareWarning className="w-4 h-4" />} color="red" active={activePanel === "reclamacion"} onClick={() => togglePanel("reclamacion")} />
+              <ActionButton label={t("crmCancellations.rechazar")} icon={<XCircle className="w-4 h-4" />} color="red" active={activePanel === "rechazar"} onClick={() => togglePanel("rechazar")} />
+              <ActionButton label={t("crmCancellations.aceptar")} icon={<CheckCircle2 className="w-4 h-4" />} color="green" active={activePanel === "aceptar"} onClick={() => togglePanel("aceptar")} />
+              <ActionButton label={t("crmCancellations.pedirDocs")} icon={<FileQuestion className="w-4 h-4" />} color="blue" active={activePanel === "solicitar_docs"} onClick={() => togglePanel("solicitar_docs")} />
+              <ActionButton label={t("crmCancellations.incidencia")} icon={<AlertTriangle className="w-4 h-4" />} color="orange" active={activePanel === "incidencia"} onClick={() => togglePanel("incidencia")} />
+              <ActionButton label={t("crmCancellations.notaInterna")} icon={<Plus className="w-4 h-4" />} color="purple" active={activePanel === "nota"} onClick={() => togglePanel("nota")} />
+              <ActionButton label={t("crmCancellations.cerrar")} icon={<Archive className="w-4 h-4" />} color="gray" active={activePanel === "cerrar"} onClick={() => togglePanel("cerrar")} />
+              <ActionButton label={t("crmCancellations.vincular", { order: voc.order })} icon={<Link className="w-4 h-4" />} color="blue" active={activePanel === "vincular"} onClick={() => togglePanel("vincular")} />
+              <ActionButton label={t("crmCancellations.reclamacionCliente")} icon={<MessageSquareWarning className="w-4 h-4" />} color="red" active={activePanel === "reclamacion"} onClick={() => togglePanel("reclamacion")} />
               {req.financialStatus === "pendiente_devolucion" && (
-                <ActionButton label="Marcar devuelta" icon={<Banknote className="w-4 h-4" />} color="green" active={activePanel === "marcar_devolucion"} onClick={() => togglePanel("marcar_devolucion")} />
+                <ActionButton label={t("crmCancellations.marcarDevuelta")} icon={<Banknote className="w-4 h-4" />} color="green" active={activePanel === "marcar_devolucion"} onClick={() => togglePanel("marcar_devolucion")} />
               )}
               {req.resolutionStatus !== "sin_resolver" && req.operationalStatus !== "cerrada" && (
-                <ActionButton label="Revertir resolución" icon={<RotateCcw className="w-4 h-4" />} color="orange" active={activePanel === "revertir_resolucion"} onClick={() => togglePanel("revertir_resolucion")} />
+                <ActionButton label={t("crmCancellations.revertirResolucion")} icon={<RotateCcw className="w-4 h-4" />} color="orange" active={activePanel === "revertir_resolucion"} onClick={() => togglePanel("revertir_resolucion")} />
               )}
-              <ActionButton label="Estado financiero" icon={<Settings className="w-4 h-4" />} color="gray" active={activePanel === "cambiar_financiero"} onClick={() => togglePanel("cambiar_financiero")} />
-              <ActionButton label="Reenviar emails" icon={<Mail className="w-4 h-4" />} color="blue" active={activePanel === "reenviar_emails"} onClick={() => { setResendTo(req.email ?? ""); togglePanel("reenviar_emails"); }} />
+              <ActionButton label={t("crmCancellations.estadoFinanciero")} icon={<Settings className="w-4 h-4" />} color="gray" active={activePanel === "cambiar_financiero"} onClick={() => togglePanel("cambiar_financiero")} />
+              <ActionButton label={t("crmCancellations.reenviarEmails")} icon={<Mail className="w-4 h-4" />} color="blue" active={activePanel === "reenviar_emails"} onClick={() => { setResendTo(req.email ?? ""); togglePanel("reenviar_emails"); }} />
             </div>
 
             {/* ── Panel: Rechazar ── */}
             {activePanel === "rechazar" && (
-              <ActionPanelWrapper title="Rechazar solicitud" color="red">
+              <ActionPanelWrapper title={t("crmCancellations.rechazarSolicitud")} color="red">
                 <Textarea
                   value={rejectNote}
                   onChange={(e) => setRejectNote(e.target.value)}
-                  placeholder="Motivo del rechazo (se incluirá en el email al cliente)..."
+                  placeholder={t("crmCancellations.motivoDelRechazoSe")}
                   rows={3}
                   className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
                 />
                 <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                  <input type="checkbox" checked={rejectSendEmail} onChange={(e) => setRejectSendEmail(e.target.checked)} className="rounded" />
-                  Enviar email de notificación al cliente
-                </label>
+                  <input type="checkbox" checked={rejectSendEmail} onChange={(e) => setRejectSendEmail(e.target.checked)} className="rounded" />{t("crmCancellations.enviarEmailDeNotificacion")}</label>
                 <Button
                   className="w-full bg-red-600 hover:bg-red-700 text-white"
                   disabled={rejectMut.isPending}
                   onClick={() => rejectMut.mutate({ id: req.id, adminText: rejectNote, sendEmail: rejectSendEmail })}
                 >
-                  {rejectMut.isPending ? "Rechazando..." : "Confirmar rechazo"}
+                  {rejectMut.isPending ? t("crmCancellations.rechazando") : t("crmCancellations.confirmarRechazo")}
                 </Button>
               </ActionPanelWrapper>
             )}
@@ -742,24 +738,22 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               };
 
               return (
-                <ActionPanelWrapper title="Aceptar solicitud" color="green">
+                <ActionPanelWrapper title={t("crmCancellations.aceptarSolicitud")} color="green">
                   {/* ── Paso 1: Ámbito ── */}
                   {hasExtras && (
                     <div>
-                      <p className="text-gray-400 text-xs font-semibold mb-2">1. ¿Qué se anula?</p>
+                      <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.n1QueSeAnula")}</p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => { setAcceptScope("total"); setSelectedLineQuantities(new Map()); }}
                           className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "total" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
                         >
-                          {voc.Order} complet{voc.agree("o", "a")}
+                          {t("crmCancellations.complet", { Order: voc.Order })}{voc.agree("o", "a")}
                         </button>
                         <button
                           onClick={() => setAcceptScope("lineas")}
                           className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "lineas" ? "border-blue-500/50 bg-blue-500/10 text-blue-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
-                        >
-                          Líneas específicas
-                        </button>
+                        >{t("crmCancellations.lineasEspecificas")}</button>
                       </div>
                       {acceptScope === "lineas" && (
                         <div className="mt-2 space-y-1.5 bg-[#111] rounded-lg border border-white/5 p-3">
@@ -796,19 +790,17 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                                   </div>
                                 ) : (
                                   <span className="text-xs text-gray-500 font-mono flex-shrink-0">
-                                    {ex.quantity > 1 && `×${ex.quantity} · `}{((ex.priceCents * ex.quantity) / 100).toFixed(2)} €
+                                    {ex.quantity > 1 && t("crmCancellations.texto4", { quantity: ex.quantity })}{((ex.priceCents * ex.quantity) / 100).toFixed(2)} €
                                   </span>
                                 )}
                               </div>
                             );
                           })}
                           {selectedLineQuantities.size === 0 && (
-                            <p className="text-gray-600 text-xs">Selecciona al menos una línea</p>
+                            <p className="text-gray-600 text-xs">{t("crmCancellations.seleccionaAlMenosUna")}</p>
                           )}
                           {selectedLineQuantities.size > 0 && (
-                            <p className="text-blue-400 text-xs font-medium pt-1 border-t border-white/5 mt-1">
-                              Total seleccionado: {scopeAmountEur} €
-                            </p>
+                            <p className="text-blue-400 text-xs font-medium pt-1 border-t border-white/5 mt-1">{t("crmCancellations.totalSeleccionado", { scopeAmountEur })}</p>
                           )}
                         </div>
                       )}
@@ -817,72 +809,66 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
                   {/* ── Paso 2: Tipo de compensación ── */}
                   <div>
-                    <p className="text-gray-400 text-xs font-semibold mb-2">{hasExtras ? "2." : "1."} Tipo de compensación</p>
+                    <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.tipoDeCompensacion", { v: hasExtras ? "2." : "1." })}</p>
                     <div className="flex gap-2">
                       <button
                         onClick={() => setAcceptCompType("devolucion")}
                         className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "devolucion" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
                       >
-                        <Banknote className="w-4 h-4" /> Devolución
-                      </button>
+                        <Banknote className="w-4 h-4" />{" "}{t("crmCancellations.devolucion")}</button>
                       <button
                         onClick={() => setAcceptCompType("bono")}
                         className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "bono" ? "border-purple-500/50 bg-purple-500/10 text-purple-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
                       >
-                        <Gift className="w-4 h-4" /> Bono
-                      </button>
+                        <Gift className="w-4 h-4" />{" "}{t("crmCancellations.bono")}</button>
                     </div>
                   </div>
 
                   {/* ── Paso 3: Importe ── */}
                   <div>
-                    <p className="text-gray-400 text-xs font-semibold mb-2">{hasExtras ? "3." : "2."} Importe</p>
+                    <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.importe", { v: hasExtras ? "3." : "2." })}</p>
                     {acceptCompType === "devolucion" ? (
                       <>
                         <div className="flex items-center gap-2 mb-2">
-                          <Label className="text-gray-400 text-xs">Importe a devolver (€)</Label>
+                          <Label className="text-gray-400 text-xs">{t("crmCancellations.importeADevolver")}</Label>
                           {scopeAmountCents > 0 && (
                             <button
                               onClick={() => setRefundAmount(scopeAmountEur)}
                               className="text-xs text-blue-400 hover:text-blue-300 ml-auto"
-                            >
-                              Usar {scopeAmountEur} €
-                            </button>
+                            >{t("crmCancellations.usar", { scopeAmountEur })}</button>
                           )}
                         </div>
                         <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white" />
-                        {isPartial && <p className="text-amber-400 text-xs mt-1">Compensación parcial del importe afectado</p>}
+                        {isPartial && <p className="text-amber-400 text-xs mt-1">{t("crmCancellations.compensacionParcialDelImporte")}</p>}
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">Nota de devolución (opcional)</Label>
-                          <Input value={refundNote} onChange={(e) => setRefundNote(e.target.value)} placeholder="Ej: Transferencia en 5 días hábiles" className="bg-[#111] border-white/10 text-white mt-1" />
+                          <Label className="text-gray-400 text-xs">{t("crmCancellations.notaDeDevolucionOpcional")}</Label>
+                          <Input value={refundNote} onChange={(e) => setRefundNote(e.target.value)} placeholder={t("crmCancellations.ejTransferenciaEn5")} className="bg-[#111] border-white/10 text-white mt-1" />
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="flex items-center gap-2 mb-2">
-                          <Label className="text-gray-400 text-xs">Valor del bono (€)</Label>
+                          <Label className="text-gray-400 text-xs">{t("crmCancellations.valorDelBono")}</Label>
                           {scopeAmountCents > 0 && (
                             <button
                               onClick={() => setVoucherValue(scopeAmountEur)}
                               className="text-xs text-blue-400 hover:text-blue-300 ml-auto"
-                            >
-                              Usar {scopeAmountEur} €
-                            </button>
+                            >{t("crmCancellations.usar", { scopeAmountEur })}</button>
                           )}
                         </div>
                         <Input value={voucherValue} onChange={(e) => setVoucherValue(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white" />
-                        {isPartial && <p className="text-amber-400 text-xs mt-1">Bono parcial del importe afectado</p>}
+                        {isPartial && <p className="text-amber-400 text-xs mt-1">{t("crmCancellations.bonoParcialDelImporte")}</p>}
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">{voc.voucherItem} del bono</Label>
+                          <Label className="text-gray-400 text-xs">{t("crmCancellations.delBono", { voucherItem: voc.voucherItem })}</Label>
                           <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder={voc.voucherItemExample} className="bg-[#111] border-white/10 text-white mt-1" />
                         </div>
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">Caducidad (opcional)</Label>
+                          <Label className="text-gray-400 text-xs">{t("crmCancellations.caducidadOpcional")}</Label>
                           <Input value={voucherExpires} onChange={(e) => setVoucherExpires(e.target.value)} type="date" className="bg-[#111] border-white/10 text-white mt-1" />
                         </div>
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">Condiciones (opcional)</Label>
-                          <Textarea value={voucherConditions} onChange={(e) => setVoucherConditions(e.target.value)} rows={2} placeholder="Condiciones de uso..." className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none mt-1" />
+                          <Label className="text-gray-400 text-xs">{t("crmCancellations.condicionesOpcional")}</Label>
+                          <Textarea value={voucherConditions} onChange={(e) => setVoucherConditions(e.target.value)} rows={2} placeholder={t("crmCancellations.condicionesDeUso")} className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none mt-1" />
                         </div>
                       </>
                     )}
@@ -920,10 +906,10 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     }}
                   >
                     {acceptMut.isPending
-                      ? "Procesando..."
+                      ? t("crmCancellations.procesando")
                       : acceptScope === "lineas"
-                        ? `Confirmar anulación de ${selectedLineQuantities.size} línea${selectedLineQuantities.size > 1 ? "s" : ""}`
-                        : "Confirmar anulación completa"}
+                        ? t("crmCancellations.confirmarAnulacionDeLineas", { n: selectedLineQuantities.size })
+                        : t("crmCancellations.confirmarAnulacionCompleta")}
                   </Button>
                 </ActionPanelWrapper>
               );
@@ -931,59 +917,55 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
             {/* ── Panel: Solicitar documentación ── */}
             {activePanel === "solicitar_docs" && (
-              <ActionPanelWrapper title="Solicitar documentación" color="blue">
+              <ActionPanelWrapper title={t("crmCancellations.solicitarDocumentacion")} color="blue">
                 <Textarea
                   value={docsText}
                   onChange={(e) => setDocsText(e.target.value)}
-                  placeholder="Indica qué documentos necesitas (parte médico, factura, etc.)..."
+                  placeholder={t("crmCancellations.indicaQueDocumentosNecesitas")}
                   rows={3}
                   className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
                 />
                 <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                  <input type="checkbox" checked={docsSendEmail} onChange={(e) => setDocsSendEmail(e.target.checked)} className="rounded" />
-                  Enviar email al cliente con la solicitud
-                </label>
+                  <input type="checkbox" checked={docsSendEmail} onChange={(e) => setDocsSendEmail(e.target.checked)} className="rounded" />{t("crmCancellations.enviarEmailAlCliente")}</label>
                 <Button
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   disabled={docsMut.isPending || docsText.trim().length < 10}
                   onClick={() => docsMut.mutate({ id: req.id, text: docsText, sendEmail: docsSendEmail })}
                 >
-                  {docsMut.isPending ? "Enviando..." : "Solicitar documentación"}
+                  {docsMut.isPending ? t("crmCancellations.enviando") : t("crmCancellations.solicitarDocumentacion")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Incidencia ── */}
             {activePanel === "incidencia" && (
-              <ActionPanelWrapper title="Registrar incidencia" color="orange">
+              <ActionPanelWrapper title={t("crmCancellations.registrarIncidencia")} color="orange">
                 <Textarea
                   value={incidenceNote}
                   onChange={(e) => setIncidenceNote(e.target.value)}
-                  placeholder="Describe la incidencia detectada..."
+                  placeholder={t("crmCancellations.describeLaIncidenciaDetectada")}
                   rows={3}
                   className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
                 />
                 <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                  <input type="checkbox" checked={incidenceEconomic} onChange={(e) => setIncidenceEconomic(e.target.checked)} className="rounded" />
-                  Marcar como incidencia económica
-                </label>
+                  <input type="checkbox" checked={incidenceEconomic} onChange={(e) => setIncidenceEconomic(e.target.checked)} className="rounded" />{t("crmCancellations.marcarComoIncidenciaEconomica")}</label>
                 <Button
                   className="w-full bg-orange-600 hover:bg-orange-700 text-white"
                   disabled={incidenceMut.isPending}
                   onClick={() => incidenceMut.mutate({ id: req.id, note: incidenceNote, economicIncidence: incidenceEconomic })}
                 >
-                  {incidenceMut.isPending ? "Registrando..." : "Registrar incidencia"}
+                  {incidenceMut.isPending ? t("crmCancellations.registrando") : t("crmCancellations.registrarIncidencia")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Nota interna ── */}
             {activePanel === "nota" && (
-              <ActionPanelWrapper title="Nota interna" color="purple">
+              <ActionPanelWrapper title={t("crmCancellations.notaInterna")} color="purple">
                 <Textarea
                   value={internalNote}
                   onChange={(e) => setInternalNote(e.target.value)}
-                  placeholder="Escribe una nota interna (no se envía al cliente)..."
+                  placeholder={t("crmCancellations.escribeUnaNotaInterna")}
                   rows={3}
                   className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
                 />
@@ -992,19 +974,19 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   disabled={notesMut.isPending || !internalNote.trim()}
                   onClick={() => notesMut.mutate({ id: req.id, adminNotes: internalNote })}
                 >
-                  {notesMut.isPending ? "Guardando..." : "Guardar nota"}
+                  {notesMut.isPending ? t("crmCancellations.guardando") : t("crmCancellations.guardarNota")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Cerrar expediente ── */}
             {activePanel === "cerrar" && (
-              <ActionPanelWrapper title="Cerrar expediente" color="gray">
-                <p className="text-xs text-gray-500">Solo se puede cerrar un expediente que ya tiene resolución (rechazado o aceptado).</p>
+              <ActionPanelWrapper title={t("crmCancellations.cerrarExpediente")} color="gray">
+                <p className="text-xs text-gray-500">{t("crmCancellations.soloSePuedeCerrar")}</p>
                 <Textarea
                   value={closeNote}
                   onChange={(e) => setCloseNote(e.target.value)}
-                  placeholder="Notas de cierre del expediente (opcional)..."
+                  placeholder={t("crmCancellations.notasDeCierreDel")}
                   rows={2}
                   className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
                 />
@@ -1013,26 +995,26 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   disabled={closeMut.isPending}
                   onClick={() => closeMut.mutate({ id: req.id, note: closeNote })}
                 >
-                  {closeMut.isPending ? "Cerrando..." : "Cerrar expediente"}
+                  {closeMut.isPending ? t("crmCancellations.cerrando") : t("crmCancellations.cerrarExpediente")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Vincular reserva ── */}
             {activePanel === "vincular" && (
-              <ActionPanelWrapper title={`Vincular ${voc.order}`} color="blue">
+              <ActionPanelWrapper title={t("crmCancellations.vincular", { order: voc.order })} color="blue">
                 {req.linkedReservationId && (
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-2">
-                    <p className="text-xs text-blue-300 font-medium">{linkedLabel} ahora</p>
-                    <p className="text-blue-400 text-sm font-mono mt-0.5">ID #{req.linkedReservationId}</p>
+                    <p className="text-xs text-blue-300 font-medium">{t("crmCancellations.ahora", { linkedLabel })}</p>
+                    <p className="text-blue-400 text-sm font-mono mt-0.5">{t("crmCancellations.id", { linkedReservationId: req.linkedReservationId })}</p>
                   </div>
                 )}
-                <p className="text-xs text-gray-500">Busca por número de {voc.order}, nombre del cliente o email.</p>
+                <p className="text-xs text-gray-500">{t("crmCancellations.buscaPorNumeroDe", { order: voc.order })}</p>
                 <div className="flex gap-2">
                   <Input
                     value={linkSearch}
                     onChange={(e) => setLinkSearch(e.target.value)}
-                    placeholder={voc.licensed ? "Número o nombre..." : "RES-2026-0001 o nombre..."}
+                    placeholder={voc.licensed ? t("crmCancellations.numeroONombre") : t("crmCancellations.res20260001O")}
                     className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 flex-1"
                     onKeyDown={(e) => { if (e.key === "Enter") setLinkSearchQuery(linkSearch); }}
                   />
@@ -1057,7 +1039,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-white text-xs font-mono font-medium">{r.reservationNumber ?? `#${r.id}`}</span>
                           {r.cancellationRequestId && r.cancellationRequestId !== req.id && (
-                            <span className="text-xs text-orange-400 border border-orange-500/30 rounded px-1.5 py-0.5">Ya vinculada</span>
+                            <span className="text-xs text-orange-400 border border-orange-500/30 rounded px-1.5 py-0.5">{t("crmCancellations.yaVinculada")}</span>
                           )}
                           <span className={`text-xs px-1.5 py-0.5 rounded border ${r.status === 'paid' ? 'text-green-400 border-green-500/20' : 'text-gray-400 border-white/10'}`}>{r.status}</span>
                         </div>
@@ -1068,19 +1050,17 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   </div>
                 )}
                 {searchResults && searchResults.length === 0 && linkSearchQuery && (
-                  <p className="text-gray-500 text-xs text-center py-2">Sin resultados para "{linkSearchQuery}"</p>
+                  <p className="text-gray-500 text-xs text-center py-2">{t("crmCancellations.sinResultadosPara", { linkSearchQuery })}</p>
                 )}
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Marcar devolución realizada ── */}
             {activePanel === "marcar_devolucion" && (
-              <ActionPanelWrapper title="Registrar devolución realizada" color="green">
-                <p className="text-xs text-gray-500">
-                  Confirma que la transferencia bancaria ha sido ejecutada. El estado financiero pasará a "Devuelta económicamente".
-                </p>
+              <ActionPanelWrapper title={t("crmCancellations.registrarDevolucionRealizada")} color="green">
+                <p className="text-xs text-gray-500">{t("crmCancellations.confirmaQueLaTransferencia")}</p>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">Fecha de la transferencia</Label>
+                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.fechaDeLaTransferencia")}</Label>
                   <Input
                     type="date"
                     value={refundExecDate}
@@ -1089,7 +1069,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   />
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">URL del comprobante (opcional)</Label>
+                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.urlDelComprobanteOpcional")}</Label>
                   <Input
                     value={refundExecProofUrl}
                     onChange={(e) => setRefundExecProofUrl(e.target.value)}
@@ -1098,11 +1078,11 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   />
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">Nota interna (opcional)</Label>
+                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.notaInternaOpcional")}</Label>
                   <Input
                     value={refundExecNote}
                     onChange={(e) => setRefundExecNote(e.target.value)}
-                    placeholder="Ej: Transferencia Banco Santander ref. 123…"
+                    placeholder={t("crmCancellations.ejTransferenciaBancoSantander")}
                     className="bg-[#111] border-white/10 text-white"
                   />
                 </div>
@@ -1116,21 +1096,19 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     note: refundExecNote || undefined,
                   })}
                 >
-                  {markRefundExecMut.isPending ? "Guardando..." : "Confirmar devolución realizada"}
+                  {markRefundExecMut.isPending ? t("crmCancellations.guardando") : t("crmCancellations.confirmarDevolucionRealizada")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Revertir resolución ── */}
             {activePanel === "revertir_resolucion" && (
-              <ActionPanelWrapper title="Revertir resolución" color="orange">
-                <p className="text-xs text-gray-500">
-                  Revierte la resolución actual (<strong>{req.resolutionStatus}</strong>) y devuelve el expediente a "En revisión". El estado financiero se reseteará a "Sin compensación". Úsalo solo si la resolución fue un error.
-                </p>
+              <ActionPanelWrapper title={t("crmCancellations.revertirResolucion")} color="orange">
+                <p className="text-xs text-gray-500">{t("crmCancellations.revierteLaResolucionActual")}<strong>{req.resolutionStatus}</strong>{t("crmCancellations.yDevuelveElExpediente")}</p>
                 <Textarea
                   value={revertReason}
                   onChange={(e) => setRevertReason(e.target.value)}
-                  placeholder="Motivo de la reversión (opcional)..."
+                  placeholder={t("crmCancellations.motivoDeLaReversion")}
                   rows={2}
                   className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
                 />
@@ -1139,51 +1117,47 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   disabled={revertMut.isPending}
                   onClick={() => revertMut.mutate({ id: req.id, reason: revertReason || undefined })}
                 >
-                  {revertMut.isPending ? "Revirtiendo..." : "Confirmar reversión"}
+                  {revertMut.isPending ? t("crmCancellations.revirtiendo") : t("crmCancellations.confirmarReversion")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Cambiar estado financiero ── */}
             {activePanel === "cambiar_financiero" && (
-              <ActionPanelWrapper title="Override estado financiero" color="gray">
-                <p className="text-xs text-gray-500">
-                  Cambio manual del estado financiero. Úsalo para corregir estados que no se actualizaron automáticamente.
-                </p>
+              <ActionPanelWrapper title={t("crmCancellations.overrideEstadoFinanciero")} color="gray">
+                <p className="text-xs text-gray-500">{t("crmCancellations.cambioManualDelEstado")}</p>
                 <select
                   value={financialOverrideStatus}
                   onChange={(e) => setFinancialOverrideStatus(e.target.value)}
                   className="w-full bg-[#111] border border-white/10 text-white rounded-lg px-3 py-2 text-sm"
                 >
-                  <option value="">— Selecciona estado —</option>
-                  <option value="sin_compensacion">Sin compensación</option>
-                  <option value="pendiente_devolucion">Pendiente devolución</option>
-                  <option value="devuelta_economicamente">Devuelta económicamente</option>
-                  <option value="pendiente_bono">Pendiente bono</option>
-                  <option value="compensada_bono">Compensada con bono</option>
-                  <option value="compensacion_mixta">Compensación mixta</option>
-                  <option value="incidencia_economica">Incidencia económica</option>
+                  <option value="">{t("crmCancellations.seleccionaEstado")}</option>
+                  <option value="sin_compensacion">{t("crmCancellations.sinCompensacion")}</option>
+                  <option value="pendiente_devolucion">{t("crmCancellations.pendienteDevolucion")}</option>
+                  <option value="devuelta_economicamente">{t("crmCancellations.devueltaEconomicamente")}</option>
+                  <option value="pendiente_bono">{t("crmCancellations.pendienteBono")}</option>
+                  <option value="compensada_bono">{t("crmCancellations.compensadaConBono")}</option>
+                  <option value="compensacion_mixta">{t("crmCancellations.compensacionMixta")}</option>
+                  <option value="incidencia_economica">{t("crmCancellations.incidenciaEconomica")}</option>
                 </select>
                 <Button
                   className="w-full bg-gray-600 hover:bg-gray-700 text-white"
                   disabled={financialOverrideMut.isPending || !financialOverrideStatus}
                   onClick={() => financialOverrideMut.mutate({ id: req.id, financialStatus: financialOverrideStatus as any })}
                 >
-                  {financialOverrideMut.isPending ? "Actualizando..." : "Aplicar cambio"}
+                  {financialOverrideMut.isPending ? t("crmCancellations.actualizando") : t("crmCancellations.aplicarCambio")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Reclamación post-cierre del cliente ── */}
             {activePanel === "reclamacion" && (
-              <ActionPanelWrapper title="Registrar reclamación del cliente" color="red">
-                <p className="text-xs text-gray-500">
-                  Disponible aunque el expediente esté cerrado. Úsalo cuando el cliente siga insistiendo tras la resolución. Quedará registrado en el historial.
-                </p>
+              <ActionPanelWrapper title={t("crmCancellations.registrarReclamacionDelCliente")} color="red">
+                <p className="text-xs text-gray-500">{t("crmCancellations.disponibleAunqueElExpediente")}</p>
                 <Textarea
                   value={reclamationText}
                   onChange={(e) => setReclamationText(e.target.value)}
-                  placeholder="Describe la reclamación o insistencia del cliente..."
+                  placeholder={t("crmCancellations.describeLaReclamacionO")}
                   rows={4}
                   className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
                 />
@@ -1192,46 +1166,39 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   disabled={reclamationMut.isPending || reclamationText.trim().length === 0}
                   onClick={() => reclamationMut.mutate({ id: req.id, description: reclamationText.trim() })}
                 >
-                  {reclamationMut.isPending ? "Registrando..." : "Registrar reclamación"}
+                  {reclamationMut.isPending ? t("crmCancellations.registrando") : t("crmCancellations.registrarReclamacion")}
                 </Button>
               </ActionPanelWrapper>
             )}
 
             {/* ── Panel: Reenviar emails ── */}
             {activePanel === "reenviar_emails" && (
-              <ActionPanelWrapper title="Reenviar emails del expediente" color="blue">
-                <p className="text-xs text-gray-500">
-                  Reenvía todos los correos correspondientes al estado actual del expediente (acuse de recibo, resolución, bono). Útil si el cliente no los recibió.
-                </p>
+              <ActionPanelWrapper title={t("crmCancellations.reenviarEmailsDelExpediente")} color="blue">
+                <p className="text-xs text-gray-500">{t("crmCancellations.reenviaTodosLosCorreos")}</p>
                 <div className="bg-[#111] rounded-lg border border-white/5 p-3 space-y-1">
-                  <p className="text-gray-400 text-xs font-semibold mb-2">Emails que se enviarán:</p>
+                  <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.emailsQueSeEnviaran")}</p>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <Mail className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                    Acuse de recibo de la solicitud
-                  </div>
+                    <Mail className="w-3 h-3 text-blue-400 flex-shrink-0" />{t("crmCancellations.acuseDeReciboDe")}</div>
                   {req.resolutionStatus !== "sin_resolver" && (
                     <div className="flex items-center gap-2 text-xs text-gray-400">
                       <Mail className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                      {req.resolutionStatus === "rechazada" ? "Resolución: rechazada" :
-                       req.compensationType === "bono" ? "Resolución: compensación con bono" :
-                       "Resolución: devolución económica"}
+                      {req.resolutionStatus === "rechazada" ? t("crmCancellations.resolucionRechazada") :
+                       req.compensationType === "bono" ? t("crmCancellations.resolucionCompensacionConBono") :
+                       t("crmCancellations.resolucionDevolucionEconomica")}
                     </div>
                   )}
                   {voucher && (
                     <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <Mail className="w-3 h-3 text-purple-400 flex-shrink-0" />
-                      Envío del bono {voucher.code}
+                      <Mail className="w-3 h-3 text-purple-400 flex-shrink-0" />{t("crmCancellations.envioDelBono", { code: voucher.code })}
                     </div>
                   )}
                   {req.financialStatus === "devuelta_economicamente" && (
                     <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <Mail className="w-3 h-3 text-green-400 flex-shrink-0" />
-                      Confirmación de devolución ejecutada
-                    </div>
+                      <Mail className="w-3 h-3 text-green-400 flex-shrink-0" />{t("crmCancellations.confirmacionDeDevolucionEjecut")}</div>
                   )}
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">Destinatario</Label>
+                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.destinatario")}</Label>
                   <Input
                     value={resendTo}
                     onChange={(e) => setResendTo(e.target.value)}
@@ -1239,16 +1206,14 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     type="email"
                     className="bg-[#111] border-white/10 text-white"
                   />
-                  <p className="text-gray-600 text-xs mt-1">
-                    Por defecto el email del solicitante. Cambia aquí para enviar a otra dirección de prueba.
-                  </p>
+                  <p className="text-gray-600 text-xs mt-1">{t("crmCancellations.porDefectoElEmail")}</p>
                 </div>
                 <Button
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   disabled={resendMut.isPending || !resendTo.trim()}
                   onClick={() => resendMut.mutate({ id: req.id, to: resendTo.trim() })}
                 >
-                  {resendMut.isPending ? "Enviando..." : "Reenviar emails"}
+                  {resendMut.isPending ? t("crmCancellations.enviando") : t("crmCancellations.reenviarEmails")}
                 </Button>
               </ActionPanelWrapper>
             )}

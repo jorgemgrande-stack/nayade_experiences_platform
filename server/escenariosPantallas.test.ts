@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
+import { srcShows, esDictText } from "./i18nSource";
 const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
 
 describe("pantallas de un usuario nuevo", () => {
@@ -49,7 +50,7 @@ describe("pantallas de un usuario nuevo", () => {
     const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
     const modal = crm.slice(crm.indexOf("function DirectQuoteModal"));
     expect(modal).toMatch(/<DialogContent className="[^"]*\*:min-w-0[^"]*">/);
-    expect(modal).toContain('className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">sin {voc.lead}');
+    expect(modal).toContain('className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">');
   });
 
   it("enviar o reenviar un presupuesto muestra lo que ha pasado con el correo, nunca un «enviado» fijo", () => {

@@ -12,6 +12,7 @@ import { buildGestoriaInvoiceZip } from "./gestoriaInvoiceExport";
 import { resolveExportPeriod } from "../shared/gestoriaExportPeriod";
 import type { FiscalDocument } from "./fiscalDocuments";
 
+import { srcShows, esDictText } from "./i18nSource";
 const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
 
 function lum(hex: string) {
@@ -67,10 +68,10 @@ describe("contraste AA", () => {
   });
 
   it("textos marcados por la prueba integral con tokens del panel", () => {
-    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('<span className="text-info">Env. ');
+    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('<span className="text-info">{t("crmQuotes.env")}');
     expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toContain('<span className="text-info">{t("crmProposals.list.sentOn"');
-    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toMatch(/aceptado: +{ label: "Aceptado", +className: TONE_BADGE.success }/);
-    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toMatch(/aceptado: +{ className: TONE_BADGE.success }/);
+    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toMatch(/aceptado: +\{ label: (?:"Aceptado"|t\("crmQuotes\.aceptado"\)), +className: TONE_BADGE\.success \}/);
+    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toMatch(/aceptado: +\{ className: TONE_BADGE\.success \}/);
     const reports = read("client/src/pages/admin/accounting/AccountingReports.tsx");
     expect(reports).toContain('className="gap-2 text-foreground">');
     expect(reports).toContain("font-semibold text-success\">{fmtEurLocal(r.amount)}");

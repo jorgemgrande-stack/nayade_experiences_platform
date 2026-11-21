@@ -15,7 +15,7 @@ import { toastError } from "@/lib/errorMessage";
 import { Download, RefreshCw } from "lucide-react";
 import { isEmptyExport, isEmptyExportMessage, madridDayKey, resolveExportPeriod, suggestedExportQuarter, type GestoriaExportPeriod } from "@shared/gestoriaExportPeriod";
 
-const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+import { useI18n } from "@/i18n/I18nProvider";
 const selectClass = "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm";
 
 function downloadBase64(fileName: string, mimeType: string, contentBase64: string) {
@@ -29,6 +29,8 @@ function downloadBase64(fileName: string, mimeType: string, contentBase64: strin
 }
 
 export default function GestoriaExportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t, format } = useI18n();
+  const monthName = (i: number) => { const n = format.date(new Date(2000, i, 1), { month: "long" }); return n.charAt(0).toUpperCase() + n.slice(1); };
   const today = madridDayKey(new Date());
   const thisYear = Number(today.slice(0, 4));
   // Propuesta: el trimestre en curso o, si aún no tiene facturas, el último que sí las tiene
@@ -68,15 +70,15 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
       const res = await utils.crm.invoices.exportForGestoria.fetch(period, { staleTime: 0, gcTime: 0 });
       if (isEmptyExport(res)) {
         // Un ZIP vacío no sirve a la gestoría: se avisa y no se descarga nada
-        toast.warning(`No hay facturas ni abonos emitidos en ${res.period.label}. Elige otro periodo.`);
+        toast.warning(t("crmInvoices.noHayFacturasNi", { label: res.period.label }));
         return;
       }
       downloadBase64(res.fileName, res.mimeType, res.contentBase64);
-      const what = `${res.invoices} ${res.invoices === 1 ? "factura" : "facturas"}, ${res.creditNotes} ${res.creditNotes === 1 ? "abono" : "abonos"} y ${res.tickets} ${res.tickets === 1 ? "ticket de caja" : "tickets de caja"}`;
+      const what = t("crmInvoices.resumenFacturasAbonosTickets", { invoices: res.invoices, creditNotes: res.creditNotes, tickets: res.tickets });
       if (res.missingPdfs.length) {
-        toast.warning(`Descargado (${what}). Faltan ${res.missingPdfs.length} PDF: figuran en el libro y en LEEME.txt; descárgalos uno a uno.`);
+        toast.warning(t("crmInvoices.descargadoFaltanPdfFiguran", { what, length: res.missingPdfs.length }));
       } else {
-        toast.success(`Descargado: ${what} de ${res.period.label}.`);
+        toast.success(t("crmInvoices.descargadoDe", { what, label: res.period.label }));
       }
       onOpenChange(false);
     } catch (e) {
@@ -93,14 +95,12 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Exportar para la gestoría</DialogTitle>
-          <DialogDescription>
-            Un archivo ZIP con el PDF de cada factura y abono emitidos en el periodo y el libro de facturas emitidas (con los tickets de caja), listo para enviar a tu gestoría.
-          </DialogDescription>
+          <DialogTitle>{t("crmInvoices.exportarParaLaGestoria")}</DialogTitle>
+          <DialogDescription>{t("crmInvoices.unArchivoZipCon")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="flex gap-2" role="radiogroup" aria-label="Tipo de periodo">
+          <div className="flex gap-2" role="radiogroup" aria-label={t("crmInvoices.tipoDePeriodo")}>
             {([["quarter", "Trimestre"], ["month", "Mes"], ["range", "Fechas"]] as const).map(([k, text]) => (
               <button
                 key={k}
@@ -120,26 +120,26 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
           {kind !== "range" ? (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="gx-year">Año</Label>
+                <Label htmlFor="gx-year">{t("crmInvoices.ano")}</Label>
                 <select id="gx-year" className={selectClass} value={year} onChange={(e) => { touched.current = true; setYear(Number(e.target.value)); }}>
                   {years.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
               {kind === "quarter" ? (
                 <div className="space-y-1">
-                  <Label htmlFor="gx-quarter">Trimestre</Label>
+                  <Label htmlFor="gx-quarter">{t("crmInvoices.trimestre")}</Label>
                   <select id="gx-quarter" className={selectClass} value={quarter} onChange={(e) => { touched.current = true; setQuarter(Number(e.target.value)); }}>
-                    <option value={1}>1.er trimestre (ene-mar)</option>
-                    <option value={2}>2.º trimestre (abr-jun)</option>
-                    <option value={3}>3.er trimestre (jul-sep)</option>
-                    <option value={4}>4.º trimestre (oct-dic)</option>
+                    <option value={1}>{t("crmInvoices.n1ErTrimestreEne")}</option>
+                    <option value={2}>{t("crmInvoices.n2TrimestreAbrJun")}</option>
+                    <option value={3}>{t("crmInvoices.n3ErTrimestreJul")}</option>
+                    <option value={4}>{t("crmInvoices.n4TrimestreOctDic")}</option>
                   </select>
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <Label htmlFor="gx-month">Mes</Label>
+                  <Label htmlFor="gx-month">{t("crmInvoices.mes")}</Label>
                   <select id="gx-month" className={selectClass} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-                    {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                    {Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>{monthName(i)}</option>)}
                   </select>
                 </div>
               )}
@@ -147,26 +147,26 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="gx-from">Desde</Label>
+                <Label htmlFor="gx-from">{t("crmInvoices.desde")}</Label>
                 <Input id="gx-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="gx-to">Hasta</Label>
+                <Label htmlFor="gx-to">{t("crmInvoices.hasta")}</Label>
                 <Input id="gx-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
               </div>
             </div>
           )}
 
           <p className={`text-sm ${invalid ? "text-red-500" : "text-foreground/60"}`} aria-live="polite">
-            {invalid || `Se incluirán las facturas, abonos y tickets de caja emitidos en ${label} (fechas de España peninsular).`}
+            {invalid || t("crmInvoices.seIncluiranLasFacturas", { label })}
           </p>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancelar</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>{t("crmInvoices.cancelar")}</Button>
           <Button onClick={handleExport} disabled={busy || !!invalid} className="bg-orange-600 hover:bg-orange-700 text-white">
             {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
-            {busy ? "Preparando…" : "Descargar ZIP"}
+            {busy ? t("crmInvoices.preparando") : t("crmInvoices.descargarZip")}
           </Button>
         </DialogFooter>
       </DialogContent>

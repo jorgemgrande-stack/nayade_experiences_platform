@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { emptyExportMessage, isEmptyExport, isEmptyExportMessage, resolveExportPeriod, suggestedExportQuarter } from "../shared/gestoriaExportPeriod";
 
+import { srcShows, esDictText } from "./i18nSource";
 const NOW = new Date("2026-11-01T10:00:00Z");
 
 describe("trimestre propuesto", () => {
@@ -40,7 +41,7 @@ describe("periodo vacío", () => {
     const check = src.indexOf("if (isEmptyExport(res))");
     expect(check).toBeGreaterThan(0);
     expect(check).toBeLessThan(src.indexOf("downloadBase64(res.fileName"));
-    expect(src).toContain("No hay facturas ni abonos emitidos en");
+    expect(esDictText()).toContain("No hay facturas ni abonos emitidos en");
     expect(src).toContain("suggestedExportQuarter(");
     expect(src).not.toContain("lastClosedQuarter");
   });
