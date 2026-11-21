@@ -7,6 +7,7 @@ import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { productEditionsHref } from "@shared/leadWebRequest";
+import { useI18n } from "@/i18n/I18nProvider";
 import AdminLayout from "@/components/AdminLayout";
 import {
   Calendar, CalendarDays, ChevronLeft, ChevronRight,
@@ -57,10 +58,10 @@ function getOpStatus(ev: any): "completa" | "sin_monitor" | "sin_hora" | "incide
 }
 
 const OP_STATUS_CONFIG = {
-  completa:    { dot: "bg-emerald-400", label: "Operativa completa",   border: "border-l-emerald-500" },
-  sin_monitor: { dot: "bg-red-400",     label: "Sin monitor",          border: "border-l-red-500" },
-  sin_hora:    { dot: "bg-amber-400",   label: "Sin hora de llegada",  border: "border-l-amber-500" },
-  incidencia:  { dot: "bg-orange-400",  label: "Incidencia",           border: "border-l-orange-500" },
+  completa:    { dot: "bg-emerald-400", label: "opsCalendar.op.completa",   border: "border-l-emerald-500" },
+  sin_monitor: { dot: "bg-red-400",     label: "opsCalendar.op.sin_monitor",          border: "border-l-red-500" },
+  sin_hora:    { dot: "bg-amber-400",   label: "opsCalendar.op.sin_hora",  border: "border-l-amber-500" },
+  incidencia:  { dot: "bg-orange-400",  label: "opsCalendar.op.incidencia",           border: "border-l-orange-500" },
 };
 
 // ─── Pill de reserva en la celda ──────────────────────────────────────────────
@@ -117,6 +118,7 @@ interface SessionEvent {
 }
 
 function SessionPill({ s, onClick }: { s: SessionEvent; onClick: () => void }) {
+  const { t } = useI18n();
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
@@ -125,7 +127,7 @@ function SessionPill({ s, onClick }: { s: SessionEvent; onClick: () => void }) {
         bg-violet-500/15 text-violet-200 border-violet-400/40 hover:bg-violet-500/25 transition-colors text-left"
     >
       <Layers className="w-2.5 h-2.5 shrink-0" />
-      <span className="shrink-0" title={s.startTime ? undefined : "Hora por confirmar"}>{s.startTime ?? "h. por conf."}</span>
+      <span className="shrink-0" title={s.startTime ? undefined : t("opsCalendar.session.timeTbc")}>{s.startTime ?? t("opsCalendar.session.timeTbcShort")}</span>
       <span className="truncate">{s.productTitle}</span>
       <span className="shrink-0 opacity-70 ml-auto">·{s.participants}</span>
     </button>
@@ -134,27 +136,28 @@ function SessionPill({ s, onClick }: { s: SessionEvent; onClick: () => void }) {
 
 function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) {
   const [, navigate] = useLocation();
-  const day = new Date(s.scheduledDate + "T12:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const { t, format: f } = useI18n();
+  const day = f.date(new Date(s.scheduledDate + "T12:00:00"), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             <Layers className="w-5 h-5 text-violet-300" />
-            Sesión de convocatoria
+            {t("opsCalendar.session.title")}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 mt-1 text-sm">
           <div className="bg-slate-800/60 rounded-lg p-4 space-y-1">
             <p className="font-semibold text-white">{s.productTitle}</p>
             <p className="text-slate-300">{s.editionLabel}{s.title ? ` · ${s.title}` : ""}</p>
-            <p className="text-violet-300 text-xs">Sesión {s.index} de {s.total}{s.status === "done" ? " · realizada" : ""}{s.editionStatus === "draft" ? " · convocatoria en borrador" : ""}</p>
+            <p className="text-violet-300 text-xs">{t("opsCalendar.session.indexOf", { index: s.index, total: s.total })}{s.status === "done" ? t("opsCalendar.session.done") : ""}{s.editionStatus === "draft" ? t("opsCalendar.session.draft") : ""}</p>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: "Día", value: day },
-              { label: "Hora", value: s.startTime ? `${s.startTime} h` : "Por confirmar" },
-              { label: "Duración", value: s.durationMinutes ? `${s.durationMinutes} min` : "—" },
+              { label: t("opsCalendar.session.day"), value: day },
+              { label: t("opsCalendar.session.time"), value: s.startTime ? `${s.startTime} h` : t("opsCalendar.session.toConfirm") },
+              { label: t("opsCalendar.session.duration"), value: s.durationMinutes ? `${s.durationMinutes} min` : "—" },
             ].map((k) => (
               <div key={k.label} className="bg-slate-800 rounded-lg p-3 text-center">
                 <div className="text-[10px] text-slate-400 mb-1">{k.label}</div>
@@ -164,12 +167,12 @@ function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) 
           </div>
           <p className="flex items-center gap-1.5 text-slate-300">
             <Users className="w-4 h-4 text-violet-300" />
-            {s.participants} {s.participants === 1 ? "plaza confirmada" : "plazas confirmadas"} ({s.confirmedEnrollments} {s.confirmedEnrollments === 1 ? "inscripción" : "inscripciones"}) · participan en todas las sesiones
+            {t("opsCalendar.session.places", { places: s.participants, enrollments: s.confirmedEnrollments })}
           </p>
           <div className="flex gap-2 pt-2 border-t border-slate-700">
-            <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">Cerrar</Button>
+            <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">{t("opsCalendar.close")}</Button>
             <Button size="sm" onClick={() => navigate(productEditionsHref(s.experienceId))} className="bg-violet-600 hover:bg-violet-700 text-white ml-auto gap-1">
-              <ExternalLink className="w-3.5 h-3.5" /> Abrir convocatorias
+              <ExternalLink className="w-3.5 h-3.5" /> {t("opsCalendar.session.openEditions")}
             </Button>
           </div>
         </div>
@@ -187,6 +190,7 @@ function ReservationModal({
   onGoToActivities: (dateStr: string) => void;
 }) {
   const [, navigate] = useLocation();
+  const { t } = useI18n();
   const opStatus = ev.eventType === "activity" ? getOpStatus(ev) : "completa";
   const cfg = OP_STATUS_CONFIG[opStatus];
 
@@ -218,7 +222,7 @@ function ReservationModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             <CalendarDays className="w-5 h-5 text-blue-400" />
-            Resumen operativo de reserva
+            {t("opsCalendar.res.title")}
           </DialogTitle>
         </DialogHeader>
 
@@ -226,7 +230,7 @@ function ReservationModal({
           {/* Estado operativo */}
           <div className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border-l-4 ${cfg.border.replace("border-l-", "border-l-4 border-")}`}>
             <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-            <span className="text-sm text-slate-300">{cfg.label}</span>
+            <span className="text-sm text-slate-300">{t(cfg.label)}</span>
           </div>
 
           {/* Cabecera: datos del cliente y reserva */}
@@ -265,11 +269,11 @@ function ReservationModal({
               )}
               <div className="flex items-center gap-1.5 text-slate-400">
                 <CalendarDays className="w-3 h-3" />
-                <span>Actividad: {scheduledDate}</span>
+                <span>{t("opsCalendar.res.activityDate", { date: scheduledDate })}</span>
               </div>
               <div className="flex items-center gap-1.5 text-slate-400">
                 <Users className="w-3 h-3" />
-                <span>{ev.numberOfPersons} pax · {totalActivities} actividad{totalActivities !== 1 ? "es" : ""}</span>
+                <span>{t("opsCalendar.res.paxActivities", { pax: ev.numberOfPersons, n: totalActivities })}</span>
               </div>
             </div>
           </div>
@@ -277,9 +281,9 @@ function ReservationModal({
           {/* Resumen operativo general */}
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: "Monitor", value: ev.monitorName || "Sin asignar", icon: <User className="w-3 h-3" />, ok: !!ev.monitorId },
-              { label: "Hora llegada", value: ev.arrivalTime || "No asignada", icon: <Clock className="w-3 h-3" />, ok: !!ev.arrivalTime },
-              { label: "Estado", value: ev.opStatus || "pendiente", icon: <CheckCircle className="w-3 h-3" />, ok: ev.opStatus === "confirmado" || ev.opStatus === "completado" },
+              { label: t("opsCalendar.res.monitor"), value: ev.monitorName || t("opsCalendar.res.unassigned"), icon: <User className="w-3 h-3" />, ok: !!ev.monitorId },
+              { label: t("opsCalendar.res.arrival"), value: ev.arrivalTime || t("opsCalendar.res.notAssigned"), icon: <Clock className="w-3 h-3" />, ok: !!ev.arrivalTime },
+              { label: t("opsCalendar.res.state"), value: ev.opStatus ? (["pendiente", "confirmado", "completado", "incidencia", "cancelado"].includes(ev.opStatus) ? t(`opsCalendar.opState.${ev.opStatus}`) : ev.opStatus) : t("opsCalendar.opState.pendiente"), icon: <CheckCircle className="w-3 h-3" />, ok: ev.opStatus === "confirmado" || ev.opStatus === "completado" },
             ].map(item => (
               <div key={item.label} className="bg-slate-800 rounded-lg p-3 text-center">
                 <div className={`flex items-center justify-center gap-1 text-[10px] mb-1 ${item.ok ? "text-emerald-400" : "text-amber-400"}`}>
@@ -294,7 +298,7 @@ function ReservationModal({
           {/* Notas operativas generales */}
           {ev.opNotes && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-              <p className="text-xs text-amber-300 font-medium mb-1">Notas operativas</p>
+              <p className="text-xs text-amber-300 font-medium mb-1">{t("opsCalendar.res.opNotes")}</p>
               <p className="text-xs text-slate-300 italic">"{ev.opNotes}"</p>
             </div>
           )}
@@ -302,7 +306,7 @@ function ReservationModal({
           {/* Actividades de la reserva */}
           <div>
             <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              Actividades incluidas ({totalActivities})
+              {t("opsCalendar.res.activitiesIncluded", { n: totalActivities })}
             </h4>
             <div className="space-y-2">
               {/* Actividad principal */}
@@ -312,19 +316,19 @@ function ReservationModal({
                   <div className="bg-slate-800 rounded-lg p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{ev.activityTitle || "Actividad principal"}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{ev.numberOfPersons} pax</p>
+                        <p className="text-sm font-medium text-white truncate">{ev.activityTitle || t("opsCalendar.res.mainActivity")}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{ev.numberOfPersons} {t("opsCalendar.pax")}</p>
                       </div>
-                      {op.isInherited && <Badge className="text-[9px] bg-slate-600/50 text-slate-400 border-slate-600">Heredado</Badge>}
+                      {op.isInherited && <Badge className="text-[9px] bg-slate-600/50 text-slate-400 border-slate-600">{t("opsCalendar.res.inherited")}</Badge>}
                     </div>
                     <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {op.monitorId ? (ev.monitorName || `Monitor #${op.monitorId}`) : <span className="text-red-400">Sin monitor</span>}
+                        {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-red-400">{t("opsCalendar.noMonitor")}</span>}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {op.arrivalTime || <span className="text-amber-400">Sin hora</span>}
+                        {op.arrivalTime || <span className="text-amber-400">{t("opsCalendar.res.noTime")}</span>}
                       </span>
                     </div>
                     {op.opNotes && <p className="text-[10px] text-slate-500 italic mt-1">"{op.opNotes}"</p>}
@@ -339,20 +343,20 @@ function ReservationModal({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-white truncate">
-                          {ex.experienceTitle || ex.name || `Actividad ${i + 2}`}
+                          {ex.experienceTitle || ex.name || t("opsCalendar.res.activityN", { n: i + 2 })}
                         </p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{ex.participants || ex.pax || "—"} pax</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{ex.participants || ex.pax || "—"} {t("opsCalendar.pax")}</p>
                       </div>
-                      {op.isInherited && <Badge className="text-[9px] bg-slate-600/50 text-slate-400 border-slate-600">Heredado</Badge>}
+                      {op.isInherited && <Badge className="text-[9px] bg-slate-600/50 text-slate-400 border-slate-600">{t("opsCalendar.res.inherited")}</Badge>}
                     </div>
                     <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {op.monitorId ? (ev.monitorName || `Monitor #${op.monitorId}`) : <span className="text-red-400">Sin monitor</span>}
+                        {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-red-400">{t("opsCalendar.noMonitor")}</span>}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {op.arrivalTime || <span className="text-amber-400">Sin hora</span>}
+                        {op.arrivalTime || <span className="text-amber-400">{t("opsCalendar.res.noTime")}</span>}
                       </span>
                     </div>
                     {op.opNotes && <p className="text-[10px] text-slate-500 italic mt-1">"{op.opNotes}"</p>}
@@ -365,17 +369,17 @@ function ReservationModal({
           {/* Acciones */}
           <div className="flex gap-2 pt-2 border-t border-slate-700">
             <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">
-              Cerrar
+              {t("opsCalendar.close")}
             </Button>
             <Button size="sm" variant="outline"
               onClick={() => navigate(`/admin/crm?tab=reservas&id=${ev.id}`)}
               className="border-blue-600/50 text-blue-400 hover:bg-blue-600/10 gap-1">
-              <ExternalLink className="w-3.5 h-3.5" /> Ver reserva CRM
+              <ExternalLink className="w-3.5 h-3.5" /> {t("opsCalendar.res.viewCrm")}
             </Button>
             <Button size="sm"
               onClick={() => { onGoToActivities(scheduledDate); onClose(); }}
               className="bg-blue-600 hover:bg-blue-700 text-white ml-auto gap-1">
-              <CalendarDays className="w-3.5 h-3.5" /> Ver actividades del día
+              <CalendarDays className="w-3.5 h-3.5" /> {t("opsCalendar.res.viewDayActivities")}
             </Button>
           </div>
         </div>
@@ -394,7 +398,8 @@ function DayDetailModal({
   onGoToActivities: (dateStr: string) => void;
   onSelectReservation: (ev: any) => void;
 }) {
-  const label = date.toLocaleDateString("es-ES", {
+  const { t, format: f } = useI18n();
+  const label = f.date(date, {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
   const activities = events.filter(e => e.eventType === "activity");
@@ -416,10 +421,10 @@ function DayDetailModal({
           {/* KPIs */}
           <div className="grid grid-cols-4 gap-2">
             {[
-              { label: "Reservas", value: events.length, color: "text-white" },
-              { label: "Pax total", value: totalPax, color: "text-blue-300" },
-              { label: "Sin monitor", value: sinMonitor, color: sinMonitor > 0 ? "text-red-400" : "text-emerald-400" },
-              { label: "Sin hora", value: sinHora, color: sinHora > 0 ? "text-amber-400" : "text-emerald-400" },
+              { label: t("opsCalendar.day.reservations"), value: events.length, color: "text-white" },
+              { label: t("opsCalendar.paxTotal"), value: totalPax, color: "text-blue-300" },
+              { label: t("opsCalendar.noMonitor"), value: sinMonitor, color: sinMonitor > 0 ? "text-red-400" : "text-emerald-400" },
+              { label: t("opsCalendar.res.noTime"), value: sinHora, color: sinHora > 0 ? "text-amber-400" : "text-emerald-400" },
             ].map(k => (
               <div key={k.label} className="bg-slate-800 rounded-lg p-3 text-center">
                 <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
@@ -432,13 +437,13 @@ function DayDetailModal({
           {sinMonitor > 0 && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center gap-2 text-sm">
               <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-              <span className="text-red-300">{sinMonitor} reserva{sinMonitor > 1 ? "s" : ""} sin monitor asignado</span>
+              <span className="text-red-300">{t("opsCalendar.day.noMonitorAlert", { n: sinMonitor })}</span>
             </div>
           )}
           {sinHora > 0 && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-center gap-2 text-sm">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-amber-300">{sinHora} reserva{sinHora > 1 ? "s" : ""} sin hora de llegada</span>
+              <span className="text-amber-300">{t("opsCalendar.day.noTimeAlert", { n: sinHora })}</span>
             </div>
           )}
 
@@ -446,7 +451,7 @@ function DayDetailModal({
           {activities.length > 0 && (
             <div>
               <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-2 flex items-center gap-1">
-                <Waves className="w-3.5 h-3.5" /> Reservas confirmadas ({activities.length})
+                <Waves className="w-3.5 h-3.5" /> {t("opsCalendar.day.confirmed", { n: activities.length })}
               </h4>
               <div className="space-y-1.5">
                 {activities.map((ev: any, i: number) => {
@@ -464,7 +469,7 @@ function DayDetailModal({
                           <span className="flex items-center gap-1 text-xs text-slate-400">
                             <Users className="w-3 h-3" />{ev.numberOfPersons}
                           </span>
-                          <span className={`w-2 h-2 rounded-full ${cfg.dot}`} title={cfg.label} />
+                          <span className={`w-2 h-2 rounded-full ${cfg.dot}`} title={t(cfg.label)} />
                         </div>
                       </div>
                       {ev.reservationNumber && (
@@ -481,7 +486,7 @@ function DayDetailModal({
           {restaurants.length > 0 && (
             <div>
               <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2 flex items-center gap-1">
-                <Utensils className="w-3.5 h-3.5" /> Restaurante ({restaurants.length})
+                <Utensils className="w-3.5 h-3.5" /> {t("opsCalendar.day.restaurant", { n: restaurants.length })}
               </h4>
               <div className="space-y-1.5">
                 {restaurants.map((ev: any, i: number) => (
@@ -503,17 +508,17 @@ function DayDetailModal({
           )}
 
           {events.length === 0 && (
-            <p className="text-center text-slate-500 py-6">No hay reservas confirmadas este día</p>
+            <p className="text-center text-slate-500 py-6">{t("opsCalendar.day.empty")}</p>
           )}
 
           <div className="flex gap-2 justify-end pt-2 border-t border-slate-700">
             <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">
-              Cerrar
+              {t("opsCalendar.close")}
             </Button>
             <Button size="sm"
               onClick={() => { onGoToActivities(formatDate(date)); onClose(); }}
               className="bg-blue-600 hover:bg-blue-700 text-white">
-              Ir a Actividades del Día
+              {t("opsCalendar.day.goToActivities")}
             </Button>
           </div>
         </div>
@@ -525,6 +530,7 @@ function DayDetailModal({
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function CalendarView() {
   const [, navigate] = useLocation();
+  const { t, format: f } = useI18n();
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedReservation, setSelectedReservation] = useState<any>(null);
@@ -564,9 +570,9 @@ export default function CalendarView() {
   }, [data]);
 
   const today = formatDate(new Date());
-  const DOW_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const DOW_LABELS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => t(`opsCalendar.dow.${d}`));
 
-  const monthLabel = currentDate.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  const monthLabel = f.date(currentDate, { month: "long", year: "numeric" });
   const selectedDayEvents = selectedDay ? (eventsByDay[formatDate(selectedDay)] || []) : [];
 
   function goToActivities(dateStr: string) {
@@ -581,17 +587,17 @@ export default function CalendarView() {
   const sinMonitorTotal = monthActivities.filter(e => !e.monitorId).length;
 
   return (
-    <AdminLayout title="Calendario de Actividades">
+    <AdminLayout title={t("opsCalendar.pageTitle")}>
       <div className="min-h-screen bg-[#0a0f1a] text-white p-6 -m-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               <Calendar className="w-6 h-6 text-blue-400" />
-              Calendario de Reservas
+              {t("opsCalendar.heading")}
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              Solo reservas confirmadas · haz clic en una reserva para ver el detalle operativo
+              {t("opsCalendar.subtitle")}
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} className="border-slate-700 text-slate-300 hover:bg-slate-800">
@@ -603,10 +609,10 @@ export default function CalendarView() {
         {!isLoading && (
           <div className="grid grid-cols-4 gap-3 mb-4">
             {[
-              { label: "Reservas este mes", value: monthActivities.length, color: "text-blue-300" },
-              { label: "Pax total", value: monthPax, color: "text-white" },
-              { label: "Sin monitor", value: sinMonitorTotal, color: sinMonitorTotal > 0 ? "text-red-400" : "text-emerald-400" },
-              { label: "Restaurante", value: allEvents.filter(e => e.eventType === "restaurant").length, color: "text-emerald-300" },
+              { label: t("opsCalendar.month.reservations"), value: monthActivities.length, color: "text-blue-300" },
+              { label: t("opsCalendar.paxTotal"), value: monthPax, color: "text-white" },
+              { label: t("opsCalendar.noMonitor"), value: sinMonitorTotal, color: sinMonitorTotal > 0 ? "text-red-400" : "text-emerald-400" },
+              { label: t("opsCalendar.month.restaurant"), value: allEvents.filter(e => e.eventType === "restaurant").length, color: "text-emerald-300" },
             ].map(k => (
               <div key={k.label} className="bg-[#111827] rounded-lg p-3 border border-slate-800">
                 <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
@@ -626,7 +632,7 @@ export default function CalendarView() {
           <Button variant="outline" size="sm"
             onClick={() => setCurrentDate(new Date())}
             className="border-slate-700 text-slate-300 hover:bg-slate-800 text-xs">
-            Hoy
+            {t("opsCalendar.today")}
           </Button>
           <Button variant="outline" size="icon"
             onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
@@ -635,17 +641,17 @@ export default function CalendarView() {
           </Button>
           <h2 className="text-xl font-semibold text-white capitalize">{monthLabel}</h2>
           <div className="ml-auto flex items-center gap-3 text-[10px] text-slate-400">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />Operativa completa</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Sin hora llegada</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Sin monitor</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />Incidencia</span>
-            <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5 text-violet-300" />Sesión de convocatoria</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />{t("opsCalendar.legend.complete")}</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />{t("opsCalendar.legend.noTime")}</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />{t("opsCalendar.noMonitor")}</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />{t("opsCalendar.op.incidencia")}</span>
+            <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5 text-violet-300" />{t("opsCalendar.session.title")}</span>
           </div>
         </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center h-64 text-slate-400">
-            <RefreshCw className="w-6 h-6 animate-spin mr-2" />Cargando...
+            <RefreshCw className="w-6 h-6 animate-spin mr-2" />{t("opsCalendar.loading")}
           </div>
         ) : (
           <div className="bg-[#111827] rounded-xl border border-slate-800 overflow-hidden">
@@ -697,14 +703,14 @@ export default function CalendarView() {
                         <SessionPill key={`s${s.sessionId}`} s={s} onClick={() => setSelectedSession(s)} />
                       ))}
                       {(sessionsByDay[key] || []).length > 2 && (
-                        <p className="text-[10px] text-violet-300/70 pl-1">+{(sessionsByDay[key] || []).length - 2} sesiones más</p>
+                        <p className="text-[10px] text-violet-300/70 pl-1">{t("opsCalendar.moreSessions", { n: (sessionsByDay[key] || []).length - 2 })}</p>
                       )}
                       {dayEvents.length > 3 && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setSelectedDay(day); }}
                           className="text-[10px] text-slate-500 pl-1 hover:text-slate-300 transition-colors w-full text-left"
                         >
-                          +{dayEvents.length - 3} más...
+                          {t("opsCalendar.more", { n: dayEvents.length - 3 })}
                         </button>
                       )}
                     </div>

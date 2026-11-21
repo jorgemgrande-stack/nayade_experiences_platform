@@ -23,26 +23,20 @@ import { trpc } from "@/lib/trpc";
 import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n, useFormat } from "@/i18n/I18nProvider";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
 import { EditionsPanel, UpcomingEditionsView } from "./EditionsPanel";
 import { ProductTranslationsPanel } from "./ProductTranslationsPanel";
 import { isMultilingual } from "@shared/i18n";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
 import { newProductDefaults, presentialSaleAllowed } from "@shared/catalogDefaults";
-import { DEFAULT_REQUEST_CTA, MAX_REQUEST_CTA_LENGTH, OFFER_MODES, OFFER_MODE_HELP, OFFER_MODE_LABELS, offerModeOf, type OfferMode } from "@shared/offerMode";
+import { DEFAULT_REQUEST_CTA, MAX_REQUEST_CTA_LENGTH, OFFER_MODES, offerModeOf, type OfferMode } from "@shared/offerMode";
 
 const difficultyColors: Record<string, string> = {
   facil: TONE_BADGE.success,
   moderado: TONE_BADGE.warning,
   dificil: TONE_BADGE.danger,
   experto: TONE_BADGE.info,
-};
-
-const difficultyLabels: Record<string, string> = {
-  facil: "Fácil",
-  moderado: "Moderado",
-  dificil: "Difícil",
-  experto: "Experto",
 };
 
 type ExpForm = {
@@ -87,24 +81,25 @@ const emptyForm: ExpForm = {
 function ImageUploadZone({
   label, value, onChange, index,
 }: { label: string; value: string; onChange: (url: string) => void; index: number }) {
+  const { t } = useI18n();
   const imageMax = useImageUploadLimit();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     if (!file) return;
-    if (file.size > imageMax.bytes) { toast.error(`La imagen no puede superar ${imageMax.mb} MB`); return; }
+    if (file.size > imageMax.bytes) { toast.error(t("productsCatalog.image.tooBig", { mb: imageMax.mb })); return; }
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("image", file);
       const res = await fetch("/api/upload/image", { method: "POST", body: fd, credentials: "include" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al subir");
+      if (!res.ok) throw new Error(data.error || t("productsCatalog.image.uploadFailed"));
       onChange(data.url);
-      toast.success(`Imagen ${index} subida correctamente`);
+      toast.success(t("productsCatalog.image.uploaded", { n: index }));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Error al subir imagen");
+      toast.error(e instanceof Error ? e.message : t("productsCatalog.image.uploadFailedImage"));
     } finally {
       setUploading(false);
     }
@@ -142,7 +137,7 @@ function ImageUploadZone({
             ) : (
               <>
                 <ImageIcon className="w-6 h-6 opacity-40" />
-                <span className="text-xs">Haz clic o arrastra</span>
+                <span className="text-xs">{t("productsCatalog.image.dropHint")}</span>
               </>
             )}
           </div>
@@ -160,6 +155,8 @@ function ImageUploadZone({
 }
 
 export default function ExperiencesManager() {
+  const { t } = useI18n();
+  const f = useFormat();
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<ExpForm>(emptyForm);
@@ -181,10 +178,8 @@ export default function ExperiencesManager() {
   // Empresas con licencias por capacidad: vocabulario genérico y sin los campos que no aplican a su plan
   const sub = usePanelSubscription();
   const isNewCompany = sub.isLicensed;
-  const noun = isNewCompany ? "producto" : "experiencia";
-  const Noun = isNewCompany ? "Producto" : "Experiencia";
-  // Concordancia: «producto» es masculino y «experiencia», femenino
-  const g = (masculine: string, feminine: string) => (isNewCompany ? masculine : feminine);
+  // Textos que dependen de si se vende «producto» o «experiencia» (concordancia incluida)
+  const tn = (k: string) => t(`productsCatalog.${isNewCompany ? "p" : "e"}.${k}`);
   const voc = useVocabulary();
   const productTypeOptions = voc.productTypes.some((o) => o.value === form.productType)
     ? voc.productTypes
@@ -192,7 +187,7 @@ export default function ExperiencesManager() {
   const showSuppliers = sub.can("supplier-settlements");
   const showReav = sub.can("travel-net") || form.fiscalRegime === "reav";
   const showDifficulty = !isNewCompany;
-  const locationLabel = isNewCompany ? "Lugar de servicio o venta" : "Ubicación";
+  const locationLabel = isNewCompany ? t("productsCatalog.modal.locationLicensed") : t("productsCatalog.modal.locationOriginal");
 
   // Errores por campo (tras el primer intento) y error del servidor; ante un error no se cierra ni se vacía el formulario
   const [submitted, setSubmitted] = useState(false);
@@ -246,32 +241,32 @@ export default function ExperiencesManager() {
   }, [showModal, editingId, categories, locations]);
 
   const createMutation = trpc.products.create.useMutation({
-    onSuccess: () => { toast.success(`${Noun} creado`); refetch(); setShowModal(false); setForm(emptyForm); setSubmitted(false); },
-    onError: (e) => { setServerError(errorMessage(e, e.message || `No se ha podido crear el ${noun}.`)); toast.error(`No se ha podido crear el ${noun}`); },
+    onSuccess: () => { toast.success(tn("created")); refetch(); setShowModal(false); setForm(emptyForm); setSubmitted(false); },
+    onError: (e) => { setServerError(errorMessage(e, e.message || tn("createFailed"))); toast.error(tn("createFailedToast")); },
   });
   const updateMutation = trpc.products.update.useMutation({
-    onSuccess: () => { toast.success(`${Noun} actualizado`); refetch(); setShowModal(false); setEditingId(null); setSubmitted(false); },
-    onError: (e) => { setServerError(errorMessage(e, e.message || "No se han podido guardar los cambios.")); toast.error("No se han podido guardar los cambios"); },
+    onSuccess: () => { toast.success(tn("updated")); refetch(); setShowModal(false); setEditingId(null); setSubmitted(false); },
+    onError: (e) => { setServerError(errorMessage(e, e.message || t("productsCatalog.toast.updateFailedDefault"))); toast.error(t("productsCatalog.toast.updateFailed")); },
   });
   const deleteMutation = trpc.products.delete.useMutation({
-    onSuccess: () => { toast.success(`${Noun} ${g("desactivado", "desactivada")}`); refetch(); },
-    onError: () => toast.error("Error al eliminar"),
+    onSuccess: () => { toast.success(tn("deactivated")); refetch(); },
+    onError: () => toast.error(t("productsCatalog.toast.deleteFailed")),
   });
   const hardDeleteMutation = trpc.products.hardDelete.useMutation({
-    onSuccess: () => { toast.success(`${Noun} ${g("eliminado", "eliminada")} permanentemente`); refetch(); },
-    onError: () => toast.error("Error al eliminar"),
+    onSuccess: () => { toast.success(tn("hardDeleted")); refetch(); },
+    onError: () => toast.error(t("productsCatalog.toast.deleteFailed")),
   });
   const toggleActiveMutation = trpc.products.toggleActive.useMutation({
-    onSuccess: (_, vars) => { toast.success(`${Noun} ${vars.isActive ? g("activado", "activada") : g("desactivado", "desactivada")}`); refetch(); },
-    onError: () => toast.error("Error al cambiar estado"),
+    onSuccess: (_, vars) => { toast.success(vars.isActive ? tn("activated") : tn("deactivated")); refetch(); },
+    onError: () => toast.error(t("productsCatalog.toast.toggleFailed")),
   });
   const cloneMutation = trpc.products.clone.useMutation({
-    onSuccess: () => { toast.success(`${Noun} ${g("clonado", "clonada")} correctamente (${g("inactivo", "inactiva")}, ${g("listo", "lista")} para editar)`); refetch(); setCloneModal(null); setCloneName(""); },
-    onError: () => toast.error("Error al clonar"),
+    onSuccess: () => { toast.success(tn("cloned")); refetch(); setCloneModal(null); setCloneName(""); },
+    onError: () => toast.error(t("productsCatalog.toast.cloneFailed")),
   });
   const reorderMutation = trpc.products.reorder.useMutation({
     onSuccess: () => { utils.products.getAll.invalidate(); },
-    onError: () => toast.error("Error al guardar el orden"),
+    onError: () => toast.error(t("productsCatalog.toast.reorderFailed")),
   });
 
   const openCreate = () => { setEditingId(null); setForm({ ...emptyForm, ...newProductDefaults({ licensed: isNewCompany, can: sub.can }) }); setSubmitted(false); setServerError(null); setShowModal(true); };
@@ -415,9 +410,9 @@ export default function ExperiencesManager() {
   };
 
   return (
-    <AdminLayout title={isNewCompany ? "Productos y servicios" : "Gestión de Experiencias"}>
-      <div role="tablist" aria-label="Vista" className="mb-4 inline-flex rounded-lg bg-muted p-1 text-sm">
-        {([["productos", isNewCompany ? "Productos" : "Experiencias"], ["convocatorias", "Próximas convocatorias"]] as const).map(([k, label]) => (
+    <AdminLayout title={isNewCompany ? t("productsCatalog.title.licensed") : t("productsCatalog.title.original")}>
+      <div role="tablist" aria-label={t("productsCatalog.view.label")} className="mb-4 inline-flex rounded-lg bg-muted p-1 text-sm">
+        {([["productos", isNewCompany ? t("productsCatalog.view.products") : t("productsCatalog.view.experiences")], ["convocatorias", t("productsCatalog.view.editions")]] as const).map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cn("rounded-md px-3 py-1.5 font-medium transition-colors", view === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
             {label}
           </button>
@@ -429,8 +424,8 @@ export default function ExperiencesManager() {
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
             <Input
-              placeholder={isNewCompany ? "Buscar productos..." : "Buscar experiencias..."}
-              aria-label={isNewCompany ? "Buscar productos por nombre" : "Buscar experiencias por nombre"}
+              placeholder={isNewCompany ? t("productsCatalog.list.searchPlaceholderP") : t("productsCatalog.list.searchPlaceholderE")}
+              aria-label={isNewCompany ? t("productsCatalog.list.searchLabelP") : t("productsCatalog.list.searchLabelE")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 w-full"
@@ -439,7 +434,7 @@ export default function ExperiencesManager() {
         </div>
         <Button onClick={openCreate} className="font-semibold rounded-[10px]">
           <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
-          {isNewCompany ? "Nuevo producto" : "Nueva Experiencia"}
+          {isNewCompany ? t("productsCatalog.list.newP") : t("productsCatalog.list.newE")}
         </Button>
       </div>
 
@@ -447,24 +442,24 @@ export default function ExperiencesManager() {
       <div className={cn("bg-card rounded-2xl border border-border/50 overflow-hidden", view === "convocatorias" && "hidden")}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px]">
-            <caption className="sr-only">{isNewCompany ? "Listado de productos y servicios" : "Listado de experiencias"}</caption>
+            <caption className="sr-only">{isNewCompany ? t("productsCatalog.list.captionP") : t("productsCatalog.list.captionE")}</caption>
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th scope="col" className="text-center px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-16">Orden</th>
-                <th scope="col" className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{Noun}</th>
-                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio</th>
-                {showDifficulty && <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Dificultad</th>}
-                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
-                <th scope="col" className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Acciones</th>
+                <th scope="col" className="text-center px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-16">{t("productsCatalog.list.colOrder")}</th>
+                <th scope="col" className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tn("noun")}</th>
+                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colPrice")}</th>
+                {showDifficulty && <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colDifficulty")}</th>}
+                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colStatus")}</th>
+                <th scope="col" className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colActions")}</th>
               </tr>
             </thead>
             <tbody>
               {listLoading ? (
-                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground text-sm" role="status">Cargando…</td></tr>
+                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground text-sm" role="status">{t("productsCatalog.list.loading")}</td></tr>
               ) : listIsError ? (
                 <tr>
                   <td colSpan={6} className="p-6">
-                    <PanelError error={listError} onRetry={() => refetch()} title={isNewCompany ? "No se han podido cargar los productos" : "No se han podido cargar las experiencias"} />
+                    <PanelError error={listError} onRetry={() => refetch()} title={isNewCompany ? t("productsCatalog.list.loadErrorP") : t("productsCatalog.list.loadErrorE")} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
@@ -473,21 +468,21 @@ export default function ExperiencesManager() {
                     <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
                     {search.trim() ? (
                       <>
-                        <p className="text-foreground">Nada coincide con «{search.trim()}».</p>
-                        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setSearch("")}>Borrar búsqueda</Button>
+                        <p className="text-foreground">{t("productsCatalog.list.noMatch", { q: search.trim() })}</p>
+                        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setSearch("")}>{t("productsCatalog.list.clearSearch")}</Button>
                       </>
                     ) : (
                       <>
-                        <p className="text-foreground font-medium">{isNewCompany ? "Todavía no tienes productos ni servicios" : "No hay experiencias. Crea la primera."}</p>
+                        <p className="text-foreground font-medium">{isNewCompany ? t("productsCatalog.list.emptyP") : t("productsCatalog.list.emptyE")}</p>
                         {isNewCompany && (
                           <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-                            Crea lo que vendes para poder añadirlo a presupuestos, pedidos y a tu tienda online.
-                            {(categories?.length ?? 0) === 0 && <> Antes necesitarás al menos una <Link href="/admin/productos/categorias" className="underline underline-offset-4">categoría</Link>.</>}
+                            {t("productsCatalog.list.emptyHelpPre")}
+                            {(categories?.length ?? 0) === 0 && <>{t("productsCatalog.list.emptyNeedCategoryPre")}<Link href="/admin/productos/categorias" className="underline underline-offset-4">{t("productsCatalog.list.emptyNeedCategoryLink")}</Link>{t("productsCatalog.list.emptyNeedCategoryPost")}</>}
                           </p>
                         )}
                         <Button type="button" size="sm" className="mt-4" onClick={openCreate}>
                           <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                          {isNewCompany ? "Crear el primer producto" : "Crear experiencia"}
+                          {isNewCompany ? t("productsCatalog.list.createFirstP") : t("productsCatalog.list.createFirstE")}
                         </Button>
                       </>
                     )}
@@ -502,7 +497,7 @@ export default function ExperiencesManager() {
                           onClick={() => moveItem(idx, "up")}
                           disabled={idx === 0 || reorderMutation.isPending}
                           className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title="Subir"
+                          title={t("productsCatalog.list.moveUp")}
                         >
                           <ChevronUp className="w-4 h-4 text-muted-foreground" />
                         </button>
@@ -511,7 +506,7 @@ export default function ExperiencesManager() {
                           onClick={() => moveItem(idx, "down")}
                           disabled={idx === filtered.length - 1 || reorderMutation.isPending}
                           className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title="Bajar"
+                          title={t("productsCatalog.list.moveDown")}
                         >
                           <ChevronDown className="w-4 h-4 text-muted-foreground" />
                         </button>
@@ -539,14 +534,14 @@ export default function ExperiencesManager() {
                     </td>
                     <td className="px-4 py-4">
                       {offerModeOf(exp) === "fixed"
-                        ? <span className="font-semibold text-foreground">{parseFloat(exp.basePrice).toFixed(0)}€</span>
-                        : <Badge variant="outline" className={TONE_BADGE.info}>{OFFER_MODE_LABELS[offerModeOf(exp)]}</Badge>}
+                        ? <span className="font-semibold text-foreground">{f.currency(parseFloat(exp.basePrice), "EUR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                        : <Badge variant="outline" className={TONE_BADGE.info}>{t(`productsCatalog.offerMode.${offerModeOf(exp)}.label`)}</Badge>}
                     </td>
                     {showDifficulty && (
                       <td className="px-4 py-4">
                         {exp.difficulty && (
                           <Badge className={cn("text-xs", difficultyColors[exp.difficulty] ?? "")}>
-                            {difficultyLabels[exp.difficulty] ?? exp.difficulty}
+                            {["facil", "moderado", "dificil", "experto"].includes(exp.difficulty) ? t(`productsCatalog.difficulty.${exp.difficulty}`) : exp.difficulty}
                           </Badge>
                         )}
                       </td>
@@ -554,10 +549,10 @@ export default function ExperiencesManager() {
                     <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
                         <Badge variant="outline" className={exp.isActive ? TONE_BADGE.success : TONE_BADGE.neutral}>
-                          {voc.licensed ? (exp.isActive ? "A la venta" : "Agotado") : exp.isActive ? "Activo" : "Inactivo"}
+                          {voc.licensed ? (exp.isActive ? t("productsCatalog.list.onSale") : t("productsCatalog.list.soldOut")) : exp.isActive ? t("productsCatalog.list.active") : t("productsCatalog.list.inactive")}
                         </Badge>
                         <Badge variant="outline" className={(exp as Record<string,unknown>).isPublished !== false ? TONE_BADGE.info : TONE_BADGE.warning}>
-                          {(exp as Record<string,unknown>).isPublished !== false ? "Publicado" : "No publicado"}
+                          {(exp as Record<string,unknown>).isPublished !== false ? t("productsCatalog.list.published") : t("productsCatalog.list.notPublished")}
                         </Badge>
                       </div>
                     </td>
@@ -565,28 +560,28 @@ export default function ExperiencesManager() {
                       <div className="flex items-center gap-1 justify-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="w-8 h-8" aria-label={`Acciones de ${exp.title}`}>
+                            <Button variant="ghost" size="icon" className="w-8 h-8" aria-label={t("productsCatalog.list.rowActions", { title: exp.title })}>
                               <MoreVertical className="w-3.5 h-3.5" aria-hidden="true" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
                             <DropdownMenuItem onClick={() => openEdit(exp)}>
-                              <Pencil className="w-3.5 h-3.5 mr-2" /> Editar
+                              <Pencil className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => toggleActiveMutation.mutate({ id: exp.id, isActive: !exp.isActive })}>
                               {exp.isActive
-                                ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? "Marcar agotado" : "Desactivar"}</>
-                                : <><Power className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? "Poner a la venta" : "Activar"}</>}
+                                ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? t("productsCatalog.list.markSoldOut") : t("productsCatalog.list.deactivate")}</>
+                                : <><Power className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? t("productsCatalog.list.putOnSale") : t("productsCatalog.list.activate")}</>}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { setCloneModal({ id: exp.id, originalName: exp.title }); setCloneName(""); }}>
-                              <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
+                              <Copy className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.clone")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setEditionsFor({ id: exp.id, title: exp.title })}>
-                              <CalendarDays className="w-3.5 h-3.5 mr-2" /> Convocatorias
+                              <CalendarDays className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.editions")}
                             </DropdownMenuItem>
                             {multilingual && (
                               <DropdownMenuItem onClick={() => setTranslationsFor({ id: exp.id, title: exp.title })}>
-                                <Languages className="w-3.5 h-3.5 mr-2" /> Idiomas
+                                <Languages className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.languages")}
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
@@ -594,7 +589,7 @@ export default function ExperiencesManager() {
                               className="text-danger focus:text-danger"
                               onClick={() => setDeleteTarget({ id: exp.id, title: exp.title })}
                             >
-                              <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                              <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -615,88 +610,88 @@ export default function ExperiencesManager() {
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display">{editingId ? `Editar ${noun}` : isNewCompany ? "Nuevo producto o servicio" : "Nueva Experiencia"}</DialogTitle>
+            <DialogTitle className="font-display">{editingId ? tn("editTitle") : isNewCompany ? t("productsCatalog.modal.newTitleP") : t("productsCatalog.modal.newTitleE")}</DialogTitle>
           </DialogHeader>
           {editingId && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">¿Tiene fechas y plazas, como una formación o un retiro?</span>
+              <span className="text-muted-foreground">{t("productsCatalog.modal.editionsHint")}</span>
               <Button type="button" size="sm" variant="outline" onClick={() => setEditionsFor({ id: editingId, title: form.title })}>
-                <CalendarDays className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Convocatorias
+                <CalendarDays className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> {t("productsCatalog.list.editions")}
               </Button>
             </div>
           )}
           {editingId && multilingual && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">Tu web tiene varios idiomas: traduce el nombre, las descripciones y la dirección de {g("este", "esta")} {noun}.</span>
+              <span className="text-muted-foreground">{tn("translationsHint")}</span>
               <Button type="button" size="sm" variant="outline" onClick={() => setTranslationsFor({ id: editingId, title: form.title })}>
-                <Languages className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Idiomas
+                <Languages className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> {t("productsCatalog.list.languages")}
               </Button>
             </div>
           )}
           <form onSubmit={handleSubmit} noValidate className="space-y-5 mt-2">
-            <p className="text-xs text-muted-foreground">Los campos marcados con * son obligatorios.</p>
+            <p className="text-xs text-muted-foreground">{t("productsCatalog.modal.requiredNote")}</p>
             {serverError && (
               <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-foreground">
-                {serverError} Tus datos siguen en el formulario: corrígelos y vuelve a intentarlo.
+                {serverError} {t("productsCatalog.modal.serverErrorTail")}
               </div>
             )}
             {submitted && Object.keys(formErrors).length > 0 && (
-              <p role="alert" className="text-sm text-destructive">Revisa los campos marcados antes de guardar.</p>
+              <p role="alert" className="text-sm text-destructive">{t("productsCatalog.modal.reviewFields")}</p>
             )}
             {/* 4 zonas de upload de imágenes */}
             <div>
-              <Label className="text-sm font-semibold mb-2 block">Imágenes del carrusel (hasta 4)</Label>
+              <Label className="text-sm font-semibold mb-2 block">{t("productsCatalog.modal.imagesTitle")}</Label>
               <div className="grid grid-cols-2 gap-3">
-                <ImageUploadZone label="Imagen 1 (principal)" value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
-                <ImageUploadZone label="Imagen 2" value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
-                <ImageUploadZone label="Imagen 3" value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
-                <ImageUploadZone label="Imagen 4" value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
+                <ImageUploadZone label={t("productsCatalog.image.n1")} value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
+                <ImageUploadZone label={t("productsCatalog.image.n2")} value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
+                <ImageUploadZone label={t("productsCatalog.image.n3")} value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
+                <ImageUploadZone label={t("productsCatalog.image.n4")} value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-                <Label htmlFor="title">{isNewCompany ? "Nombre" : "Título"} *</Label>
+                <Label htmlFor="title">{isNewCompany ? t("productsCatalog.modal.name") : t("productsCatalog.modal.titleField")} *</Label>
                 <Input id="title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-required="true" className="mt-1" {...errProps("title", "title")} />
                 <ErrorText k="title" id="title" />
               </div>
               <div>
-                <Label htmlFor="slug">{isNewCompany ? "Dirección en la web" : "Slug (URL)"}</Label>
-                <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="mt-1" placeholder="Se genera a partir del nombre" aria-describedby="slug-hint" />
-                <p id="slug-hint" className="text-xs text-muted-foreground mt-1">Opcional. Solo letras minúsculas, números y guiones.</p>
+                <Label htmlFor="slug">{isNewCompany ? t("productsCatalog.modal.slugWebAddress") : t("productsCatalog.modal.slugLabel")}</Label>
+                <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="mt-1" placeholder={t("productsCatalog.modal.slugPlaceholder")} aria-describedby="slug-hint" />
+                <p id="slug-hint" className="text-xs text-muted-foreground mt-1">{t("productsCatalog.modal.slugHint")}</p>
               </div>
               <div className="sm:col-span-2">
-                <Label htmlFor="offerMode">Cómo se ofrece</Label>
+                <Label htmlFor="offerMode">{t("productsCatalog.modal.offerMode")}</Label>
                 <Select value={form.offerMode} onValueChange={(v) => setForm({ ...form, offerMode: v as OfferMode })}>
                   <SelectTrigger id="offerMode" className="mt-1" aria-describedby="offerMode-hint"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {OFFER_MODES.map((m) => <SelectItem key={m} value={m}>{OFFER_MODE_LABELS[m]}</SelectItem>)}
+                    {OFFER_MODES.map((m) => <SelectItem key={m} value={m}>{t(`productsCatalog.offerMode.${m}.label`)}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{OFFER_MODE_HELP[form.offerMode]}</p>
+                <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{t(`productsCatalog.offerMode.${form.offerMode}.help`)}</p>
               </div>
               {form.offerMode === "fixed" || form.offerMode === "priced_request" ? (
                 <div>
-                  <Label htmlFor="basePrice">{isNewCompany ? "Precio (€, impuestos incluidos)" : "Precio Base (€)"} *</Label>
+                  <Label htmlFor="basePrice">{isNewCompany ? t("productsCatalog.modal.priceLicensed") : t("productsCatalog.modal.priceOriginal")} *</Label>
                   <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
                   <ErrorText k="basePrice" id="basePrice" />
                   {form.offerMode === "priced_request" && (
                     <div className="mt-3">
-                      <Label htmlFor="requestCtaLabel">Texto del botón de la web</Label>
+                      <Label htmlFor="requestCtaLabel">{t("productsCatalog.modal.ctaLabel")}</Label>
                       <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} />
                     </div>
                   )}
                 </div>
               ) : (
                 <div>
-                  <Label htmlFor="requestCtaLabel">Texto del botón de la web</Label>
+                  <Label htmlFor="requestCtaLabel">{t("productsCatalog.modal.ctaLabel")}</Label>
                   <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} aria-describedby="requestCta-hint" />
-                  <p id="requestCta-hint" className="text-xs text-muted-foreground mt-1">Opcional. Sin precio ni compra: quien pulse el botón te deja sus datos y te llega a tu CRM.</p>
+                  <p id="requestCta-hint" className="text-xs text-muted-foreground mt-1">{t("productsCatalog.modal.ctaHint")}</p>
                 </div>
               )}
               <div>
-                <Label htmlFor="categoryId">Categoría *</Label>
+                <Label htmlFor="categoryId">{t("productsCatalog.modal.category")} *</Label>
                 <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
-                  <SelectTrigger id="categoryId" className="mt-1" aria-required="true" {...errProps("categoryId", "categoryId")}><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectTrigger id="categoryId" className="mt-1" aria-required="true" {...errProps("categoryId", "categoryId")}><SelectValue placeholder={t("productsCatalog.modal.select")} /></SelectTrigger>
                   <SelectContent>
                     {(categories ?? []).map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
                   </SelectContent>
@@ -704,14 +699,14 @@ export default function ExperiencesManager() {
                 <ErrorText k="categoryId" id="categoryId" />
                 {(categories?.length ?? 0) === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    No hay categorías. <Link href="/admin/productos/categorias" className="underline underline-offset-4">Crea una categoría</Link> y vuelve aquí.
+                    {t("productsCatalog.modal.noCategories")}<Link href="/admin/productos/categorias" className="underline underline-offset-4">{t("productsCatalog.modal.createCategory")}</Link>{t("productsCatalog.modal.createCategoryTail")}
                   </p>
                 )}
               </div>
               <div>
                 <Label htmlFor="locationId">{locationLabel} *</Label>
                 <Select value={form.locationId} onValueChange={(v) => setForm({ ...form, locationId: v })}>
-                  <SelectTrigger id="locationId" className="mt-1" aria-required="true" {...errProps("locationId", "locationId")}><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectTrigger id="locationId" className="mt-1" aria-required="true" {...errProps("locationId", "locationId")}><SelectValue placeholder={t("productsCatalog.modal.select")} /></SelectTrigger>
                   <SelectContent>
                     {(locations ?? []).map((l) => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
                   </SelectContent>
@@ -719,36 +714,36 @@ export default function ExperiencesManager() {
                 <ErrorText k="locationId" id="locationId" />
                 {(locations?.length ?? 0) === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    No hay ninguno. <Link href="/admin/productos/ubicaciones" className="underline underline-offset-4">Añade uno</Link> (por ejemplo, tu tienda u oficina).
+                    {t("productsCatalog.modal.noLocations")}<Link href="/admin/productos/ubicaciones" className="underline underline-offset-4">{t("productsCatalog.modal.addLocation")}</Link>{t("productsCatalog.modal.addLocationTail")}
                   </p>
                 )}
               </div>
               <div>
-                <Label htmlFor="duration">Duración</Label>
-                <Input id="duration" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="mt-1" placeholder={isNewCompany ? "Opcional. Ej: 1 hora" : "Ej: 1 día"} />
+                <Label htmlFor="duration">{t("productsCatalog.modal.duration")}</Label>
+                <Input id="duration" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="mt-1" placeholder={isNewCompany ? t("productsCatalog.modal.durationPlaceholderP") : t("productsCatalog.modal.durationPlaceholderE")} />
               </div>
               {showDifficulty && (
                 <div>
-                  <Label htmlFor="difficulty">Dificultad</Label>
+                  <Label htmlFor="difficulty">{t("productsCatalog.modal.difficulty")}</Label>
                   <Select value={form.difficulty} onValueChange={(v) => setForm({ ...form, difficulty: v })}>
                     <SelectTrigger id="difficulty" className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="facil">Fácil</SelectItem>
-                      <SelectItem value="moderado">Moderado</SelectItem>
-                      <SelectItem value="dificil">Difícil</SelectItem>
-                      <SelectItem value="experto">Experto</SelectItem>
+                      <SelectItem value="facil">{t("productsCatalog.difficulty.facil")}</SelectItem>
+                      <SelectItem value="moderado">{t("productsCatalog.difficulty.moderado")}</SelectItem>
+                      <SelectItem value="dificil">{t("productsCatalog.difficulty.dificil")}</SelectItem>
+                      <SelectItem value="experto">{t("productsCatalog.difficulty.experto")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               )}
               <div>
-                <Label htmlFor="minPersons">{isNewCompany ? "Cantidad mínima" : "Mín. Personas"}</Label>
+                <Label htmlFor="minPersons">{isNewCompany ? t("productsCatalog.modal.minP") : t("productsCatalog.modal.minE")}</Label>
                 <Input id="minPersons" type="number" inputMode="numeric" min="1" value={form.minPersons} onChange={(e) => setForm({ ...form, minPersons: e.target.value })} className="mt-1" {...errProps("minPersons", "minPersons")} />
                 <ErrorText k="minPersons" id="minPersons" />
               </div>
               <div>
-                <Label htmlFor="maxPersons">{isNewCompany ? "Cantidad máxima" : "Máx. Personas"}</Label>
-                <Input id="maxPersons" type="number" inputMode="numeric" min="1" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" placeholder={isNewCompany ? "Sin límite" : undefined} {...errProps("maxPersons", "maxPersons")} />
+                <Label htmlFor="maxPersons">{isNewCompany ? t("productsCatalog.modal.maxP") : t("productsCatalog.modal.maxE")}</Label>
+                <Input id="maxPersons" type="number" inputMode="numeric" min="1" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" placeholder={isNewCompany ? t("productsCatalog.modal.noLimit") : undefined} {...errProps("maxPersons", "maxPersons")} />
                 <ErrorText k="maxPersons" id="maxPersons" />
               </div>
 
@@ -757,18 +752,18 @@ export default function ExperiencesManager() {
                 <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className={cn("inline-flex items-center justify-center w-6 h-6 rounded-lg border text-xs font-bold", TONE_BADGE.brand)} aria-hidden="true">€</span>
-                    <span className="text-sm font-semibold text-foreground">Modelo de cobro</span>
+                    <span className="text-sm font-semibold text-foreground">{t("productsCatalog.modal.pricingModel")}</span>
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Tipo de precio</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">{t("productsCatalog.modal.pricingType")}</Label>
                     <Select value={form.pricingType} onValueChange={(v) => setForm({ ...form, pricingType: v, unitCapacity: "", maxUnits: "" })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {/* En una pyme, «per_person» es el precio de cada unidad que se compra (precio × cantidad) */}
-                        <SelectItem value="per_person">{isNewCompany ? "Por unidad" : "Por persona"}</SelectItem>
+                        <SelectItem value="per_person">{isNewCompany ? t("productsCatalog.modal.perUnitLicensed") : t("productsCatalog.modal.perPerson")}</SelectItem>
                         {/* Precio por unidad con capacidad (varias personas por unidad): solo con reservas o si ya lo usa */}
                         {(!isNewCompany || sub.can("bookings-generic") || form.pricingType === "per_unit") && (
-                          <SelectItem value="per_unit">{isNewCompany ? "Por grupo (varias personas por unidad)" : "Por unidad (canoa, moto de agua, etc.)"}</SelectItem>
+                          <SelectItem value="per_unit">{isNewCompany ? t("productsCatalog.modal.perGroup") : t("productsCatalog.modal.perUnitOriginal")}</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
@@ -777,21 +772,21 @@ export default function ExperiencesManager() {
                     <>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <Label htmlFor="unitCapacity" className="text-xs text-muted-foreground mb-1 block">Personas por unidad *</Label>
+                          <Label htmlFor="unitCapacity" className="text-xs text-muted-foreground mb-1 block">{t("productsCatalog.modal.personsPerUnit")} *</Label>
                           <Input id="unitCapacity" type="number" min="1" value={form.unitCapacity}
-                            onChange={(e) => setForm({ ...form, unitCapacity: e.target.value })} placeholder="Ej: 2" {...errProps("unitCapacity", "unitCapacity")} />
+                            onChange={(e) => setForm({ ...form, unitCapacity: e.target.value })} placeholder={t("productsCatalog.modal.example2")} {...errProps("unitCapacity", "unitCapacity")} />
                           <ErrorText k="unitCapacity" id="unitCapacity" />
                         </div>
                         <div>
-                          <Label htmlFor="maxUnits" className="text-xs text-muted-foreground mb-1 block">Máx. unidades disponibles</Label>
+                          <Label htmlFor="maxUnits" className="text-xs text-muted-foreground mb-1 block">{t("productsCatalog.modal.maxUnits")}</Label>
                           <Input id="maxUnits" type="number" min="1" value={form.maxUnits}
-                            onChange={(e) => setForm({ ...form, maxUnits: e.target.value })} placeholder="Sin límite" />
+                            onChange={(e) => setForm({ ...form, maxUnits: e.target.value })} placeholder={t("productsCatalog.modal.noLimit")} />
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground bg-background/60 border border-border/60 rounded-lg px-3 py-2">
-                        El precio base es <strong className="text-foreground">por unidad</strong>.
-                        {form.unitCapacity ? <> Cada unidad admite <strong className="text-foreground">{form.unitCapacity} persona{parseInt(form.unitCapacity) !== 1 ? "s" : ""}</strong>.</> : ""}
-                        {" "}El sistema calcula automáticamente cuántas unidades necesita el grupo.
+                        {t("productsCatalog.modal.unitNoteBasePre")}<strong className="text-foreground">{t("productsCatalog.modal.unitNoteBaseBold")}</strong>.
+                        {form.unitCapacity ? <>{t("productsCatalog.modal.unitNoteAdmitsPre")}<strong className="text-foreground">{t("productsCatalog.modal.unitNotePersons", { n: parseInt(form.unitCapacity) })}</strong>.</> : ""}
+                        {" "}{t("productsCatalog.modal.unitNoteAuto")}
                       </p>
                     </>
                   )}
@@ -799,11 +794,11 @@ export default function ExperiencesManager() {
               </div>
 
               <div className="sm:col-span-2">
-                <Label htmlFor="shortDescription">Descripción corta</Label>
+                <Label htmlFor="shortDescription">{t("productsCatalog.modal.shortDescription")}</Label>
                 <Input id="shortDescription" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} className="mt-1" />
               </div>
               <div className="sm:col-span-2">
-                <Label htmlFor="description">Descripción completa</Label>
+                <Label htmlFor="description">{t("productsCatalog.modal.fullDescription")}</Label>
                 <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" rows={4} />
               </div>
               <div className="flex items-center gap-3">
@@ -812,9 +807,9 @@ export default function ExperiencesManager() {
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
-                <Label>{voc.licensed ? "A la venta" : "Activo"}</Label>
+                <Label>{voc.licensed ? t("productsCatalog.list.onSale") : t("productsCatalog.list.active")}</Label>
               </div>
-              {voc.licensed && <p className="-mt-2 text-xs text-muted-foreground">Desmárcalo cuando se agote: si está publicado, sigue en la tienda como «Agotado» y no se puede comprar.</p>}
+              {voc.licensed && <p className="-mt-2 text-xs text-muted-foreground">{t("productsCatalog.modal.soldOutHint")}</p>}
               <div className="flex items-center gap-3">
                 <Switch
                   checked={form.isPublished}
@@ -823,13 +818,13 @@ export default function ExperiencesManager() {
                 />
                 <Label className="flex items-center gap-1.5">
                   <span className={`inline-block w-2 h-2 rounded-full ${form.isPublished ? 'bg-success' : 'bg-muted-foreground'}`} />
-                  {form.isPublished ? 'Publicado' : 'No publicado'}
-                  <span className="text-xs text-muted-foreground font-normal">(visible en la web pública)</span>
+                  {form.isPublished ? t("productsCatalog.list.published") : t("productsCatalog.list.notPublished")}
+                  <span className="text-xs text-muted-foreground font-normal">{t("productsCatalog.modal.publicVisible")}</span>
                 </Label>
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={form.isPresentialSale && presentialSaleAllowed(form.productType)} disabled={!presentialSaleAllowed(form.productType)} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
-                <Label className="flex items-center gap-1.5"><span className="text-primary font-bold" aria-hidden="true">&#9679;</span> {voc.licensed ? "Vendible en caja" : "Vendible en TPV"}</Label>
+                <Label className="flex items-center gap-1.5"><span className="text-primary font-bold" aria-hidden="true">&#9679;</span> {voc.licensed ? t("productsCatalog.modal.sellableCashier") : t("productsCatalog.modal.sellableTpv")}</Label>
               </div>
 
               {/* Descuento */}
@@ -837,11 +832,11 @@ export default function ExperiencesManager() {
                 <div className={cn("border rounded-xl p-4", TONE_SURFACE.warning)}>
                   <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
                     <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold", TONE_BADGE.warning)} aria-hidden="true">%</span>
-                    Descuento promocional
+                    {t("productsCatalog.modal.promoDiscount")}
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label htmlFor="discountPercent" className="text-xs text-foreground">Descuento (%)</Label>
+                      <Label htmlFor="discountPercent" className="text-xs text-foreground">{t("productsCatalog.modal.discountPercent")}</Label>
                       <div className="relative mt-1">
                         <Input
                           id="discountPercent"
@@ -851,7 +846,7 @@ export default function ExperiencesManager() {
                           step="0.5"
                           value={form.discountPercent}
                           onChange={(e) => setForm({ ...form, discountPercent: e.target.value })}
-                          placeholder="Ej: 10"
+                          placeholder={t("productsCatalog.modal.discountExample")}
                           className="pr-8"
                           {...errProps("discountPercent", "discountPercent")}
                         />
@@ -860,7 +855,7 @@ export default function ExperiencesManager() {
                       <ErrorText k="discountPercent" id="discountPercent" />
                     </div>
                     <div>
-                      <Label htmlFor="discountExpiresAt" className="text-xs text-foreground">Válido hasta</Label>
+                      <Label htmlFor="discountExpiresAt" className="text-xs text-foreground">{t("productsCatalog.modal.validUntil")}</Label>
                       <Input
                         id="discountExpiresAt"
                         type="date"
@@ -872,8 +867,8 @@ export default function ExperiencesManager() {
                   </div>
                   {form.discountPercent && (
                     <p className="text-xs text-foreground mt-2">
-                      El precio con descuento se calculará automáticamente y se mostrará en la ficha pública.
-                      {!form.discountExpiresAt && " Sin fecha de caducidad: el descuento estará activo indefinidamente."}
+                      {t("productsCatalog.modal.discountAuto")}
+                      {!form.discountExpiresAt && t("productsCatalog.modal.discountNoExpiry")}
                     </p>
                   )}
                 </div>
@@ -883,11 +878,11 @@ export default function ExperiencesManager() {
               <div className="col-span-2">
                 <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
                   <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold", TONE_BADGE.info)} aria-hidden="true">€</span>
-                  Impuestos
+                  {t("productsCatalog.modal.taxes")}
                 </Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-xs text-muted-foreground">Régimen fiscal</Label>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.taxRegime")}</Label>
                     <select
                       className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.fiscalRegime === "reav" ? "reav" : ({ "10": "iva10", "4": "iva4", "0": "iva0" } as Record<string, string>)[String(Number(form.taxRate))] ?? "iva21"}
@@ -900,16 +895,16 @@ export default function ExperiencesManager() {
                         else setForm({ ...form, fiscalRegime: "general", taxRate: "21" });
                       }}
                     >
-                      <option value="iva21">IVA 21%</option>
-                      <option value="iva10">IVA 10%</option>
-                      <option value="iva4">IVA 4%</option>
-                      <option value="iva0">IVA 0%</option>
-                      {showReav && <option value="reav">REAV — Régimen Especial Agencias de Viaje</option>}
+                      <option value="iva21">{t("productsCatalog.modal.vat21")}</option>
+                      <option value="iva10">{t("productsCatalog.modal.vat10")}</option>
+                      <option value="iva4">{t("productsCatalog.modal.vat4")}</option>
+                      <option value="iva0">{t("productsCatalog.modal.vat0")}</option>
+                      {showReav && <option value="reav">{t("productsCatalog.modal.reav")}</option>}
                     </select>
-                    <p className="text-[10px] text-muted-foreground mt-1">El PVP se entiende como precio final con impuestos incluidos.</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">{t("productsCatalog.modal.pvpNote")}</p>
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Tipo de producto</Label>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.productType")}</Label>
                     <select
                       className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.productType}
@@ -922,20 +917,20 @@ export default function ExperiencesManager() {
                 {form.fiscalRegime === "reav" && (
                   <div className="grid grid-cols-2 gap-4 mt-3">
                     <div>
-                      <Label className="text-xs text-muted-foreground">Coste proveedor (% sobre PVP)</Label>
+                      <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.providerCost")}</Label>
                       <Input
                         type="number" min="0" max="100" step="0.01"
-                        placeholder="Ej: 70"
+                        placeholder={t("productsCatalog.modal.example70")}
                         value={form.providerPercent}
                         onChange={(e) => setForm({ ...form, providerPercent: e.target.value })}
                         className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label className="text-xs text-muted-foreground">Margen agencia (% sobre PVP)</Label>
+                      <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.agencyMargin")}</Label>
                       <Input
                         type="number" min="0" max="100" step="0.01"
-                        placeholder="Ej: 30"
+                        placeholder={t("productsCatalog.modal.example30")}
                         value={form.agencyMarginPercent}
                         onChange={(e) => setForm({ ...form, agencyMarginPercent: e.target.value })}
                         className="mt-1"
@@ -945,7 +940,7 @@ export default function ExperiencesManager() {
                 )}
                 {form.fiscalRegime === "reav" && (
                   <p className={cn("text-xs text-foreground mt-2 border rounded-lg px-3 py-2", TONE_SURFACE.info)}>
-                    ⚠️ Este producto tributa bajo REAV. La factura no mostrará IVA al cliente. Se generará un expediente REAV automáticamente al facturar.
+                    {t("productsCatalog.modal.reavWarning")}
                   </p>
                 )}
               </div>
@@ -955,50 +950,50 @@ export default function ExperiencesManager() {
               <div className="sm:col-span-2">
                 <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
                   <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.brand)} aria-hidden="true">🏢</span>
-                  Proveedor y liquidaciones
+                  {t("productsCatalog.modal.supplierSection")}
                 </Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-xs text-muted-foreground">Proveedor</Label>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.supplier")}</Label>
                     <SupplierSelect
                       value={form.supplierId}
                       onChange={(v) => setForm({ ...form, supplierId: v != null ? String(v) : "" })}
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Tipo de coste</Label>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.costType")}</Label>
                     <select
                       className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.supplierCostType}
                       onChange={(e) => setForm({ ...form, supplierCostType: e.target.value })}
                     >
-                      <option value="comision_sobre_venta">Comisión sobre venta (%)</option>
-                      <option value="precio_neto">Precio neto fijo</option>
-                      <option value="precio_neto_variable">Precio neto variable</option>
+                      <option value="comision_sobre_venta">{t("productsCatalog.modal.costCommission")}</option>
+                      <option value="precio_neto">{t("productsCatalog.modal.costNet")}</option>
+                      <option value="precio_neto_variable">{t("productsCatalog.modal.costNetVariable")}</option>
                     </select>
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Comisión / margen (%)</Label>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.commission")}</Label>
                     <Input
                       type="number" min="0" max="100" step="0.01"
-                      placeholder="Ej: 20"
+                      placeholder={t("productsCatalog.modal.example20")}
                       value={form.supplierCommissionPercent}
                       onChange={(e) => setForm({ ...form, supplierCommissionPercent: e.target.value })}
                       className="mt-1"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Frecuencia de liquidación</Label>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.settlementFrequency")}</Label>
                     <select
                       className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.settlementFrequency}
                       onChange={(e) => setForm({ ...form, settlementFrequency: e.target.value })}
                     >
-                      <option value="mensual">Mensual</option>
-                      <option value="quincenal">Quincenal</option>
-                      <option value="semanal">Semanal</option>
-                      <option value="por_reserva">Por reserva</option>
-                      <option value="manual">Manual</option>
+                      <option value="mensual">{t("productsCatalog.modal.freqMonthly")}</option>
+                      <option value="quincenal">{t("productsCatalog.modal.freqBiweekly")}</option>
+                      <option value="semanal">{t("productsCatalog.modal.freqWeekly")}</option>
+                      <option value="por_reserva">{t("productsCatalog.modal.freqPerBooking")}</option>
+                      <option value="manual">{t("productsCatalog.modal.freqManual")}</option>
                     </select>
                   </div>
                 </div>
@@ -1007,7 +1002,7 @@ export default function ExperiencesManager() {
                     checked={form.isSettlable}
                     onCheckedChange={(v) => setForm({ ...form, isSettlable: v })}
                   />
-                  <Label className="text-sm text-slate-600">Incluir en liquidaciones automáticas</Label>
+                  <Label className="text-sm text-slate-600">{t("productsCatalog.modal.autoSettle")}</Label>
                 </div>
               </div>
               )}
@@ -1025,7 +1020,7 @@ export default function ExperiencesManager() {
               <div className="col-span-2">
                 <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
                   <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.success)} aria-hidden="true">✓</span>
-                  Incluye
+                  {t("productsCatalog.modal.includes")}
                 </Label>
                 <div className="space-y-2">
                   {form.includes.map((item, i) => (
@@ -1037,7 +1032,7 @@ export default function ExperiencesManager() {
                           next[i] = e.target.value;
                           setForm(f => ({ ...f, includes: next }));
                         }}
-                        placeholder={`Línea ${i + 1}`}
+                        placeholder={t("productsCatalog.modal.line", { n: i + 1 })}
                         className="flex-1 text-sm"
                       />
                       <Button
@@ -1058,7 +1053,7 @@ export default function ExperiencesManager() {
                     className="w-full border-dashed border-success/40 text-foreground hover:bg-success/10"
                     onClick={() => setForm(f => ({ ...f, includes: [...f.includes, ""] }))}
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir línea
+                    <Plus className="w-3.5 h-3.5 mr-1" /> {t("productsCatalog.modal.addLine")}
                   </Button>
                 </div>
               </div>
@@ -1067,7 +1062,7 @@ export default function ExperiencesManager() {
               <div className="col-span-2">
                 <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
                   <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.danger)} aria-hidden="true">✕</span>
-                  No incluye
+                  {t("productsCatalog.modal.excludes")}
                 </Label>
                 <div className="space-y-2">
                   {form.excludes.map((item, i) => (
@@ -1079,7 +1074,7 @@ export default function ExperiencesManager() {
                           next[i] = e.target.value;
                           setForm(f => ({ ...f, excludes: next }));
                         }}
-                        placeholder={`Línea ${i + 1}`}
+                        placeholder={t("productsCatalog.modal.line", { n: i + 1 })}
                         className="flex-1 text-sm"
                       />
                       <Button
@@ -1100,15 +1095,15 @@ export default function ExperiencesManager() {
                     className="w-full border-dashed border-danger/40 text-foreground hover:bg-danger/10"
                     onClick={() => setForm(f => ({ ...f, excludes: [...f.excludes, ""] }))}
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir línea
+                    <Plus className="w-3.5 h-3.5 mr-1" /> {t("productsCatalog.modal.addLine")}
                   </Button>
                 </div>
               </div>
             </div>
             <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">{t("productsCatalog.modal.cancel")}</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="flex-1 font-semibold">
-                {editingId ? "Guardar cambios" : isNewCompany ? "Crear producto" : "Crear Experiencia"}
+                {editingId ? t("productsCatalog.modal.saveChanges") : isNewCompany ? t("productsCatalog.modal.createP") : t("productsCatalog.modal.createE")}
               </Button>
             </div>
           </form>
@@ -1120,15 +1115,15 @@ export default function ExperiencesManager() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Copy className="w-5 h-5 text-primary" /> Clonar {noun}
+              <Copy className="w-5 h-5 text-primary" /> {tn("cloneTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Clonando: <strong>{cloneModal?.originalName}</strong>
+              {t("productsCatalog.clone.cloning")}<strong>{cloneModal?.originalName}</strong>
             </p>
             <div>
-              <Label htmlFor="cloneName">Nombre {g("del nuevo", "de la nueva")} {noun}</Label>
+              <Label htmlFor="cloneName">{tn("cloneNameLabel")}</Label>
               <Input
                 id="cloneName"
                 autoFocus
@@ -1138,24 +1133,24 @@ export default function ExperiencesManager() {
                   if (e.key === "Enter" && cloneName.trim() && cloneModal)
                     cloneMutation.mutate({ id: cloneModal.id, newName: cloneName.trim() });
                 }}
-                placeholder={isNewCompany ? "Ej: Revisión anual" : "Ej: Donuts Ski"}
+                placeholder={isNewCompany ? t("productsCatalog.clone.namePlaceholderP") : t("productsCatalog.clone.namePlaceholderE")}
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                El slug y la URL se generan automáticamente desde este nombre.
+                {t("productsCatalog.clone.slugHint")}
               </p>
             </div>
           </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => { setCloneModal(null); setCloneName(""); }} className="flex-1">
-              Cancelar
+              {t("productsCatalog.clone.cancel")}
             </Button>
             <Button
               onClick={() => { if (cloneModal && cloneName.trim()) cloneMutation.mutate({ id: cloneModal.id, newName: cloneName.trim() }); }}
               disabled={!cloneName.trim() || cloneMutation.isPending}
               className="flex-1 font-semibold"
             >
-              {cloneMutation.isPending ? "Clonando..." : "Clonar"}
+              {cloneMutation.isPending ? t("productsCatalog.clone.busy") : t("productsCatalog.clone.action")}
             </Button>
           </div>
         </DialogContent>
@@ -1164,18 +1159,18 @@ export default function ExperiencesManager() {
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar permanentemente {g("este", "esta")} {noun}?</AlertDialogTitle>
+            <AlertDialogTitle>{tn("deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget?.title ? <>Se eliminará «{deleteTarget.title}». </> : null}Esta acción no se puede deshacer.
+              {deleteTarget?.title ? <>{t("productsCatalog.delete.willDeletePre", { title: deleteTarget.title })}</> : null}{t("productsCatalog.delete.irreversible")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t("productsCatalog.delete.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
               onClick={() => { if (deleteTarget) hardDeleteMutation.mutate({ id: deleteTarget.id }); setDeleteTarget(null); }}
             >
-              Eliminar
+              {t("productsCatalog.delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

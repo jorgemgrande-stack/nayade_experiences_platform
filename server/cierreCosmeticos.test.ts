@@ -24,7 +24,8 @@ const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((
 
 describe("textos", () => {
   it("variantes de precio en minúscula salvo la inicial", () => {
-    const src = read("client/src/pages/admin/products/VariantsManager.tsx");
+    // El texto vive en el diccionario español de la pantalla (i18n del panel)
+    const src = read("client/src/pages/admin/products/VariantsManager.tsx") + read("shared/i18n/locales/es/productsVariants.ts");
     expect(src).toContain('"Nueva variante de precio"');
     expect(src).toContain('"Crear variante"');
     expect(src).not.toMatch(/Nueva Variante de Precio|Crear Variante/);

@@ -217,8 +217,11 @@ describe("productos: textos y convención de precio unificados (Essential)", () 
   it("gestor y asistente: «Crear producto» y precio con impuestos incluidos en ambos", () => {
     const manager = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/products/ExperiencesManager.tsx"), "utf8");
     const wizard = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/setup/PrimerosPasosSteps.tsx"), "utf8");
-    expect(manager).toContain(`isNewCompany ? "Crear producto" : "Crear Experiencia"`);
-    expect(manager).toContain(`"Precio (€, impuestos incluidos)"`);
+    expect(manager).toContain(`isNewCompany ? t("productsCatalog.modal.createP") : t("productsCatalog.modal.createE")`);
+    const dict = fs.readFileSync(path.join(__dirname, "../shared/i18n/locales/es/productsCatalog.ts"), "utf8");
+    expect(dict).toContain(`createP: "Crear producto"`);
+    expect(dict).toContain(`createE: "Crear Experiencia"`);
+    expect(dict).toContain(`"Precio (€, impuestos incluidos)"`);
     // En el asistente, con la moneda elegida en «Empresa» (€ para el euro)
     expect(wizard).toContain('label={`Precio (${currency === "EUR" ? "€" : currency}, impuestos incluidos)`}');
     expect(wizard).not.toContain("sin impuestos");

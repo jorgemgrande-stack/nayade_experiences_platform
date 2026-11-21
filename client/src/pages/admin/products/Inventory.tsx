@@ -21,15 +21,25 @@ import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelSt
 import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
 import { errorMessage, toastError } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { Translate } from "@shared/i18n/core";
 import { randomId } from "@shared/randomId";
-import { MOVEMENT_KINDS, MOVEMENT_LABELS, OVERSELL_LABELS, OVERSELL_POLICIES, type MovementKind, type OversellPolicy } from "@shared/inventory";
+import { MOVEMENT_KINDS, OVERSELL_POLICIES, type MovementKind, type OversellPolicy } from "@shared/inventory";
 
 type Overview = inferRouterOutputs<AppRouter>["inventory"]["overview"];
 type Item = Overview["items"][number];
 type Site = Overview["sites"][number];
 
 const newKey = () => randomId().replace(/[^A-Za-z0-9]/g, "");
-const fmtDateTime = (ms: number) => new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short" }).format(new Date(ms));
+const movementLabel = (t: Translate, k: MovementKind) => ({
+  entrada: t("productsInventory.movement.entrada"),
+  venta: t("productsInventory.movement.venta"),
+  devolucion: t("productsInventory.movement.devolucion"),
+  ajuste: t("productsInventory.movement.ajuste"),
+  traspaso_salida: t("productsInventory.movement.traspaso_salida"),
+  traspaso_entrada: t("productsInventory.movement.traspaso_entrada"),
+})[k];
+const oversellLabel = (t: Translate, p: OversellPolicy) => (p === "block" ? t("productsInventory.oversell.block") : t("productsInventory.oversell.allow"));
 const intOf = (s: string) => (/^-?\d+$/.test(s.trim()) ? Number(s.trim()) : NaN);
 
 function downloadCsv(filename: string, csv: string) {
@@ -57,6 +67,7 @@ function SiteSelect({ id, sites, value, onChange, label }: { id: string; sites: 
 // ─── Alta de artículo ────────────────────────────────────────────────────────
 
 function TrackDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const catalog = trpc.inventory.catalog.useQuery(undefined, { enabled: open });
   const [productId, setProductId] = useState("");
@@ -65,7 +76,7 @@ function TrackDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
   const [min, setMin] = useState("0");
   const track = trpc.inventory.track.useMutation({
     onSuccess: () => {
-      toast.success("Artículo añadido al inventario");
+      toast.success(t("productsInventory.track.done"));
       utils.inventory.invalidate();
       onClose();
     },
@@ -75,44 +86,44 @@ function TrackDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const m = intOf(min);
-    if (!product) return toast.error("Elige un producto");
-    if (!(m >= 0)) return toast.error("El mínimo debe ser un número entero, 0 o más");
+    if (!product) return toast.error(t("productsInventory.track.pickProduct"));
+    if (!(m >= 0)) return toast.error(t("productsInventory.common.minInt"));
     track.mutate({ productId: product.id, variantId: Number(variantId), policy, minStock: m });
   };
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Controlar existencias de un producto</DialogTitle>
-          <DialogDescription>Elige el producto entero o una de sus variantes (por ejemplo, una talla). Lo que no controles se vende como siempre.</DialogDescription>
+          <DialogTitle>{t("productsInventory.track.title")}</DialogTitle>
+          <DialogDescription>{t("productsInventory.track.description")}</DialogDescription>
         </DialogHeader>
-        {catalog.isLoading ? <PanelLoading label="Cargando el catálogo…" /> : catalog.isError ? <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title="No se ha podido cargar el catálogo" /> : (
+        {catalog.isLoading ? <PanelLoading label={t("productsInventory.track.loadingCatalog")} /> : catalog.isError ? <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("productsInventory.track.catalogError")} /> : (
           <form onSubmit={submit} className="space-y-4">
-            <FormField id="inv-product" label="Producto" required>
+            <FormField id="inv-product" label={t("productsInventory.common.product")} required>
               <select id="inv-product" className={selectClass} value={productId} onChange={(e) => { setProductId(e.target.value); setVariantId("0"); }}>
-                <option value="">Elige un producto…</option>
-                {catalog.data?.map((p) => <option key={p.id} value={p.id}>{p.title}{p.active ? "" : " (no activo)"}</option>)}
+                <option value="">{t("productsInventory.track.pickOption")}</option>
+                {catalog.data?.map((p) => <option key={p.id} value={p.id}>{p.title}{p.active ? "" : t("productsInventory.track.inactive")}</option>)}
               </select>
             </FormField>
             {product && product.variants.length > 0 && (
-              <FormField id="inv-variant" label="Qué controlar" hint="Por variante, cada opción tiene sus propias existencias.">
+              <FormField id="inv-variant" label={t("productsInventory.track.whatToTrack")} hint={t("productsInventory.track.whatToTrackHint")}>
                 <select id="inv-variant" className={selectClass} value={variantId} onChange={(e) => setVariantId(e.target.value)}>
-                  <option value="0">El producto entero{product.tracked ? " (ya controlado)" : ""}</option>
-                  {product.variants.map((v) => <option key={v.id} value={v.id}>Variante: {v.name}{v.tracked ? " (ya controlada)" : ""}</option>)}
+                  <option value="0">{t("productsInventory.track.wholeProduct")}{product.tracked ? t("productsInventory.track.alreadyTracked") : ""}</option>
+                  {product.variants.map((v) => <option key={v.id} value={v.id}>{t("productsInventory.track.variantPrefix", { name: v.name })}{v.tracked ? t("productsInventory.track.variantAlreadyTracked") : ""}</option>)}
                 </select>
               </FormField>
             )}
-            <FormField id="inv-policy" label="Venta sin existencias">
+            <FormField id="inv-policy" label={t("productsInventory.common.oversellLabel")}>
               <select id="inv-policy" className={selectClass} value={policy} onChange={(e) => setPolicy(e.target.value as OversellPolicy)}>
-                {OVERSELL_POLICIES.map((p) => <option key={p} value={p}>{OVERSELL_LABELS[p]}</option>)}
+                {OVERSELL_POLICIES.map((p) => <option key={p} value={p}>{oversellLabel(t, p)}</option>)}
               </select>
             </FormField>
-            <FormField id="inv-min" label="Mínimo de alerta" hint="Avisa cuando las existencias de una sede bajan a este número o menos (0 = sin aviso).">
+            <FormField id="inv-min" label={t("productsInventory.common.minAlert")} hint={t("productsInventory.track.minHint")}>
               <Input id="inv-min" inputMode="numeric" value={min} onChange={(e) => setMin(e.target.value)} />
             </FormField>
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-              <Button type="submit" disabled={track.isPending}>Añadir</Button>
+              <Button type="button" variant="ghost" onClick={onClose}>{t("productsInventory.common.cancel")}</Button>
+              <Button type="submit" disabled={track.isPending}>{t("productsInventory.track.add")}</Button>
             </DialogFooter>
           </form>
         )}
@@ -126,6 +137,7 @@ function TrackDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
 type Action = { kind: "receive" | "adjust" | "transfer" | "edit"; item: Item };
 
 function ActionDialog({ action, sites, primarySiteId, onClose }: { action: Action; sites: Site[]; primarySiteId: string; onClose: () => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const { item, kind } = action;
   const [key] = useState(newKey);
@@ -144,9 +156,9 @@ function ActionDialog({ action, sites, primarySiteId, onClose }: { action: Actio
     onClose();
   };
   const opts = { onError: (e: unknown) => toastError(e) };
-  const receive = trpc.inventory.receive.useMutation({ ...opts, onSuccess: (r) => done(r.applied ? `Entrada registrada. Existencias: ${r.onHand}` : "Esta entrada ya estaba registrada") });
-  const adjust = trpc.inventory.adjust.useMutation({ ...opts, onSuccess: (r) => done(r.applied ? `Ajuste registrado. Existencias: ${r.onHand}` : "Este ajuste ya estaba registrado") });
-  const transfer = trpc.inventory.transfer.useMutation({ ...opts, onSuccess: (r) => done(r.applied ? `Traspaso registrado. Origen: ${r.fromOnHand} · destino: ${r.toOnHand}` : "Este traspaso ya estaba registrado") });
+  const receive = trpc.inventory.receive.useMutation({ ...opts, onSuccess: (r) => done(r.applied ? t("productsInventory.action.receiveDone", { n: r.onHand }) : t("productsInventory.action.receiveDup")) });
+  const adjust = trpc.inventory.adjust.useMutation({ ...opts, onSuccess: (r) => done(r.applied ? t("productsInventory.action.adjustDone", { n: r.onHand }) : t("productsInventory.action.adjustDup")) });
+  const transfer = trpc.inventory.transfer.useMutation({ ...opts, onSuccess: (r) => done(r.applied ? t("productsInventory.action.transferDone", { from: r.fromOnHand, to: r.toOnHand }) : t("productsInventory.action.transferDup")) });
   const update = trpc.inventory.update.useMutation(opts);
   const setSiteMin = trpc.inventory.setSiteMin.useMutation(opts);
   const pending = receive.isPending || adjust.isPending || transfer.isPending || update.isPending || setSiteMin.isPending;
@@ -157,33 +169,33 @@ function ActionDialog({ action, sites, primarySiteId, onClose }: { action: Actio
     const q = intOf(quantity);
     if (kind === "edit") {
       const m = intOf(min);
-      if (!(m >= 0)) return toast.error("El mínimo debe ser un número entero, 0 o más");
+      if (!(m >= 0)) return toast.error(t("productsInventory.common.minInt"));
       try {
         await update.mutateAsync({ itemId: item.id, policy, minStock: m });
         for (const l of item.levels) {
           const raw = (siteMins[l.siteId] ?? "").trim();
           const next = raw === "" ? null : intOf(raw);
-          if (next !== null && !(next >= 0)) return toast.error("Los mínimos por sede deben ser números enteros, 0 o más");
+          if (next !== null && !(next >= 0)) return toast.error(t("productsInventory.action.siteMinsInt"));
           if (next !== l.minStock) await setSiteMin.mutateAsync({ itemId: item.id, siteId: siteArg(l.siteId), minStock: next });
         }
-        done("Artículo guardado");
+        done(t("productsInventory.action.saved"));
       } catch {
         /* el error ya se ha mostrado */
       }
       return;
     }
     if (kind === "adjust") {
-      if (!Number.isInteger(q) || (mode === "set" ? q < 0 : q === 0)) return toast.error(mode === "set" ? "Indica el recuento (0 o más)" : "Indica cuántas unidades sumar (+) o restar (-)");
-      if (reason.trim().length < 3) return toast.error("Indica el motivo del ajuste");
+      if (!Number.isInteger(q) || (mode === "set" ? q < 0 : q === 0)) return toast.error(mode === "set" ? t("productsInventory.action.countRequired") : t("productsInventory.action.deltaRequired"));
+      if (reason.trim().length < 3) return toast.error(t("productsInventory.action.reasonRequired"));
       return adjust.mutate({ itemId: item.id, siteId: siteArg(site), mode, quantity: q, reason: reason.trim(), key });
     }
-    if (!(q > 0)) return toast.error("Indica un número entero de unidades, mayor que 0");
+    if (!(q > 0)) return toast.error(t("productsInventory.action.qtyRequired"));
     if (kind === "receive") return receive.mutate({ itemId: item.id, siteId: siteArg(site), quantity: q, reason: reason.trim() || undefined, reference: reference.trim() || undefined, key });
-    if (site === toSite) return toast.error("Elige dos sedes distintas");
+    if (site === toSite) return toast.error(t("productsInventory.action.twoSites"));
     transfer.mutate({ itemId: item.id, fromSiteId: site, toSiteId: toSite, quantity: q, reason: reason.trim() || undefined, key });
   };
 
-  const title = { receive: "Entrada de unidades", adjust: "Ajuste de existencias", transfer: "Traspaso entre sedes", edit: "Editar artículo" }[kind];
+  const title = { receive: t("productsInventory.action.titleReceive"), adjust: t("productsInventory.action.titleAdjust"), transfer: t("productsInventory.action.titleTransfer"), edit: t("productsInventory.action.titleEdit") }[kind];
   const onHandAt = (s: string) => item.levels.find((l) => l.siteId === s)?.onHand ?? 0;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -195,49 +207,49 @@ function ActionDialog({ action, sites, primarySiteId, onClose }: { action: Actio
         <form onSubmit={submit} className="space-y-4">
           {kind === "edit" ? (
             <>
-              <FormField id="act-policy" label="Venta sin existencias">
+              <FormField id="act-policy" label={t("productsInventory.common.oversellLabel")}>
                 <select id="act-policy" className={selectClass} value={policy} onChange={(e) => setPolicy(e.target.value as OversellPolicy)}>
-                  {OVERSELL_POLICIES.map((p) => <option key={p} value={p}>{OVERSELL_LABELS[p]}</option>)}
+                  {OVERSELL_POLICIES.map((p) => <option key={p} value={p}>{oversellLabel(t, p)}</option>)}
                 </select>
               </FormField>
-              <FormField id="act-min" label="Mínimo de alerta" hint="0 = sin aviso. Cada sede puede tener el suyo.">
+              <FormField id="act-min" label={t("productsInventory.common.minAlert")} hint={t("productsInventory.action.minHint")}>
                 <Input id="act-min" inputMode="numeric" value={min} onChange={(e) => setMin(e.target.value)} />
               </FormField>
               {sites.length > 1 && item.levels.map((l) => (
-                <FormField key={l.siteId} id={`act-min-${l.siteId}`} label={`Mínimo en ${sites.find((s) => s.siteId === l.siteId)?.name ?? l.siteId}`} hint="Vacío = el del artículo.">
+                <FormField key={l.siteId} id={`act-min-${l.siteId}`} label={t("productsInventory.action.minAt", { site: sites.find((s) => s.siteId === l.siteId)?.name ?? l.siteId })} hint={t("productsInventory.action.minAtHint")}>
                   <Input id={`act-min-${l.siteId}`} inputMode="numeric" value={siteMins[l.siteId] ?? ""} onChange={(e) => setSiteMins((m) => ({ ...m, [l.siteId]: e.target.value }))} />
                 </FormField>
               ))}
             </>
           ) : (
             <>
-              <SiteSelect id="act-site" sites={sites} value={site} onChange={setSite} label={kind === "transfer" ? "Desde la sede" : "Sede"} />
-              {kind === "transfer" && <SiteSelect id="act-to" sites={sites} value={toSite} onChange={setToSite} label="A la sede" />}
-              <p className="text-sm text-muted-foreground">Existencias actuales{sites.length > 1 ? " en esta sede" : ""}: <strong className="tabular-nums text-foreground">{onHandAt(site)}</strong></p>
+              <SiteSelect id="act-site" sites={sites} value={site} onChange={setSite} label={kind === "transfer" ? t("productsInventory.action.fromSite") : t("productsInventory.common.site")} />
+              {kind === "transfer" && <SiteSelect id="act-to" sites={sites} value={toSite} onChange={setToSite} label={t("productsInventory.action.toSite")} />}
+              <p className="text-sm text-muted-foreground">{sites.length > 1 ? t("productsInventory.action.currentStockSite") : t("productsInventory.action.currentStock")}: <strong className="tabular-nums text-foreground">{onHandAt(site)}</strong></p>
               {kind === "adjust" && (
-                <FormField id="act-mode" label="Tipo de ajuste">
+                <FormField id="act-mode" label={t("productsInventory.action.adjustType")}>
                   <select id="act-mode" className={selectClass} value={mode} onChange={(e) => setMode(e.target.value as "delta" | "set")}>
-                    <option value="delta">Sumar o restar unidades</option>
-                    <option value="set">Fijar el recuento</option>
+                    <option value="delta">{t("productsInventory.action.modeDelta")}</option>
+                    <option value="set">{t("productsInventory.action.modeSet")}</option>
                   </select>
                 </FormField>
               )}
-              <FormField id="act-qty" label={kind === "adjust" ? (mode === "set" ? "Recuento" : "Unidades (+ o -)") : "Unidades"} required>
+              <FormField id="act-qty" label={kind === "adjust" ? (mode === "set" ? t("productsInventory.action.count") : t("productsInventory.action.unitsPlusMinus")) : t("productsInventory.action.units")} required>
                 <Input id="act-qty" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder={kind === "adjust" && mode === "delta" ? "-2" : "10"} />
               </FormField>
               {kind === "receive" && (
-                <FormField id="act-ref" label="Documento" hint="Albarán, factura del proveedor o pedido (opcional).">
+                <FormField id="act-ref" label={t("productsInventory.action.document")} hint={t("productsInventory.action.documentHint")}>
                   <Input id="act-ref" value={reference} maxLength={100} onChange={(e) => setReference(e.target.value)} />
                 </FormField>
               )}
-              <FormField id="act-reason" label="Motivo" required={kind === "adjust"} hint={kind === "adjust" ? "Por ejemplo: rotura, recuento, merma." : undefined}>
+              <FormField id="act-reason" label={t("productsInventory.action.reason")} required={kind === "adjust"} hint={kind === "adjust" ? t("productsInventory.action.reasonHint") : undefined}>
                 <Input id="act-reason" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} />
               </FormField>
             </>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={pending}>Guardar</Button>
+            <Button type="button" variant="ghost" onClick={onClose}>{t("productsInventory.common.cancel")}</Button>
+            <Button type="submit" disabled={pending}>{t("productsInventory.action.save")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -248,6 +260,8 @@ function ActionDialog({ action, sites, primarySiteId, onClose }: { action: Actio
 // ─── Historial ───────────────────────────────────────────────────────────────
 
 function History({ data }: { data: Overview }) {
+  const { t, format } = useI18n();
+  const fmtDateTime = (ms: number) => format.dateTime(new Date(ms), { dateStyle: "short", timeStyle: "short" });
   const utils = trpc.useUtils();
   const [itemId, setItemId] = useState("");
   const [siteId, setSiteId] = useState("");
@@ -265,7 +279,7 @@ function History({ data }: { data: Overview }) {
   };
   const limit = 50;
   const list = trpc.inventory.movements.useQuery({ ...filter, page, limit });
-  const siteName = (stored: string | null) => data.sites.find((s) => s.siteId === (stored ?? data.primarySiteId))?.name ?? stored ?? "Sede principal";
+  const siteName = (stored: string | null) => data.sites.find((s) => s.siteId === (stored ?? data.primarySiteId))?.name ?? stored ?? t("productsInventory.history.mainSite");
   const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / limit));
   const exportCsv = async () => {
     setExporting(true);
@@ -273,7 +287,7 @@ function History({ data }: { data: Overview }) {
       const r = await utils.inventory.exportCsv.fetch({ ...filter, what: "movimientos" });
       downloadCsv(r.filename, r.csv);
     } catch (e) {
-      toast.error(errorMessage(e, "No se ha podido exportar el historial."));
+      toast.error(errorMessage(e, t("productsInventory.history.exportError")));
     } finally {
       setExporting(false);
     }
@@ -281,55 +295,55 @@ function History({ data }: { data: Overview }) {
   const reset = () => setPage(1);
   return (
     <section aria-labelledby="hist-title" className="space-y-3">
-      <h2 id="hist-title" className="sr-only">Historial de movimientos</h2>
+      <h2 id="hist-title" className="sr-only">{t("productsInventory.history.title")}</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <FormField id="h-item" label="Artículo">
+        <FormField id="h-item" label={t("productsInventory.common.item")}>
           <select id="h-item" className={selectClass} value={itemId} onChange={(e) => { setItemId(e.target.value); reset(); }}>
-            <option value="">Todos</option>
+            <option value="">{t("productsInventory.common.all")}</option>
             {data.items.map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
           </select>
         </FormField>
         {data.sites.length > 1 && (
-          <FormField id="h-site" label="Sede">
+          <FormField id="h-site" label={t("productsInventory.common.site")}>
             <select id="h-site" className={selectClass} value={siteId} onChange={(e) => { setSiteId(e.target.value); reset(); }}>
-              <option value="">Todas</option>
+              <option value="">{t("productsInventory.common.allFem")}</option>
               {data.sites.map((s) => <option key={s.siteId} value={s.siteId}>{s.name}</option>)}
             </select>
           </FormField>
         )}
-        <FormField id="h-kind" label="Movimiento">
+        <FormField id="h-kind" label={t("productsInventory.history.movement")}>
           <select id="h-kind" className={selectClass} value={kind} onChange={(e) => { setKind(e.target.value); reset(); }}>
-            <option value="">Todos</option>
-            {MOVEMENT_KINDS.map((k) => <option key={k} value={k}>{MOVEMENT_LABELS[k]}</option>)}
+            <option value="">{t("productsInventory.common.all")}</option>
+            {MOVEMENT_KINDS.map((k) => <option key={k} value={k}>{movementLabel(t, k)}</option>)}
           </select>
         </FormField>
-        <FormField id="h-from" label="Desde">
+        <FormField id="h-from" label={t("productsInventory.history.from")}>
           <Input id="h-from" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); reset(); }} />
         </FormField>
-        <FormField id="h-to" label="Hasta">
+        <FormField id="h-to" label={t("productsInventory.history.to")}>
           <Input id="h-to" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); reset(); }} />
         </FormField>
         <div className="flex items-end">
           <Button variant="outline" onClick={exportCsv} disabled={exporting} className="w-full">
-            <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> Exportar CSV
+            <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("productsInventory.common.exportCsv")}
           </Button>
         </div>
       </div>
-      {list.isLoading ? <PanelLoading label="Cargando el historial…" /> : list.isError ? <PanelError error={list.error} onRetry={() => list.refetch()} title="No se ha podido cargar el historial" /> : !list.data?.items.length ? (
-        <PanelEmpty icon={<Boxes className="h-6 w-6" />} title="Sin movimientos" description="Las entradas, ventas, devoluciones, ajustes y traspasos aparecerán aquí." />
+      {list.isLoading ? <PanelLoading label={t("productsInventory.history.loading")} /> : list.isError ? <PanelError error={list.error} onRetry={() => list.refetch()} title={t("productsInventory.history.loadError")} /> : !list.data?.items.length ? (
+        <PanelEmpty icon={<Boxes className="h-6 w-6" />} title={t("productsInventory.history.emptyTitle")} description={t("productsInventory.history.emptyText")} />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-border bg-card">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr className="border-b border-border">
-                <th scope="col" className="px-3 py-2 font-medium">Fecha</th>
-                <th scope="col" className="px-3 py-2 font-medium">Artículo</th>
-                {data.sites.length > 1 && <th scope="col" className="px-3 py-2 font-medium">Sede</th>}
-                <th scope="col" className="px-3 py-2 font-medium">Movimiento</th>
-                <th scope="col" className="px-3 py-2 text-right font-medium">Cantidad</th>
-                <th scope="col" className="px-3 py-2 text-right font-medium">Después</th>
-                <th scope="col" className="px-3 py-2 font-medium">Motivo y documento</th>
-                <th scope="col" className="px-3 py-2 font-medium">Usuario</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.history.colDate")}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.common.item")}</th>
+                {data.sites.length > 1 && <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.common.site")}</th>}
+                <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.history.movement")}</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">{t("productsInventory.history.colQty")}</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">{t("productsInventory.history.colAfter")}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.history.colReason")}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.history.colUser")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -339,8 +353,8 @@ function History({ data }: { data: Overview }) {
                   <td className="px-3 py-2">{m.label}</td>
                   {data.sites.length > 1 && <td className="px-3 py-2">{siteName(m.siteId)}</td>}
                   <td className="px-3 py-2">
-                    {MOVEMENT_LABELS[m.kind as MovementKind] ?? m.kind}
-                    {m.shortfall && <span className="ml-1.5 rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">sin existencias</span>}
+                    {MOVEMENT_KINDS.includes(m.kind as MovementKind) ? movementLabel(t, m.kind as MovementKind) : m.kind}
+                    {m.shortfall && <span className="ml-1.5 rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">{t("productsInventory.history.shortfall")}</span>}
                   </td>
                   <td className={cn("px-3 py-2 text-right tabular-nums", m.quantity < 0 ? "text-destructive" : "text-success")}>{m.quantity > 0 ? `+${m.quantity}` : m.quantity}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{m.balanceAfter ?? "—"}</td>
@@ -351,11 +365,11 @@ function History({ data }: { data: Overview }) {
             </tbody>
           </table>
           <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
-            <span>{list.data.total} {list.data.total === 1 ? "movimiento" : "movimientos"}</span>
+            <span>{t("productsInventory.history.count", { n: list.data.total })}</span>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
-              <span>Página {page} de {pages}</span>
-              <Button size="sm" variant="ghost" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Siguiente</Button>
+              <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>{t("productsInventory.history.prev")}</Button>
+              <span>{t("productsInventory.history.page", { page, pages })}</span>
+              <Button size="sm" variant="ghost" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>{t("productsInventory.history.next")}</Button>
             </div>
           </div>
         </div>
@@ -367,6 +381,7 @@ function History({ data }: { data: Overview }) {
 // ─── Pantalla ────────────────────────────────────────────────────────────────
 
 export default function Inventory() {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const overview = trpc.inventory.overview.useQuery();
   const [adding, setAdding] = useState(false);
@@ -377,7 +392,7 @@ export default function Inventory() {
   const [exporting, setExporting] = useState(false);
   const untrack = trpc.inventory.untrack.useMutation({
     onSuccess: () => {
-      toast.success("El artículo ya no controla existencias. Se vende como siempre.");
+      toast.success(t("productsInventory.page.untracked"));
       utils.inventory.invalidate();
       setRemoving(null);
     },
@@ -395,7 +410,7 @@ export default function Inventory() {
       const r = await utils.inventory.exportCsv.fetch({ what: "existencias" });
       downloadCsv(r.filename, r.csv);
     } catch (e) {
-      toast.error(errorMessage(e, "No se han podido exportar las existencias."));
+      toast.error(errorMessage(e, t("productsInventory.page.exportError")));
     } finally {
       setExporting(false);
     }
@@ -406,57 +421,56 @@ export default function Inventory() {
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Inventario</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("productsInventory.title")}</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Existencias en unidades de tus productos y artículos, por sede. Las ventas del TPV y los pedidos pagados de la tienda online descuentan solos; las
-              anulaciones y devoluciones reponen. Lo que no marques como inventariable se vende como siempre.
+              {t("productsInventory.intro")}
             </p>
           </div>
           {data?.canManage && (
             <Button onClick={() => setAdding(true)}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Añadir producto
+              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("productsInventory.addProduct")}
             </Button>
           )}
         </div>
 
-        {overview.isLoading ? <PanelLoading label="Cargando el inventario…" /> : overview.isError || !data ? <PanelError error={overview.error} onRetry={() => overview.refetch()} title="No se ha podido cargar el inventario" /> : (
+        {overview.isLoading ? <PanelLoading label={t("productsInventory.loading")} /> : overview.isError || !data ? <PanelError error={overview.error} onRetry={() => overview.refetch()} title={t("productsInventory.loadError")} /> : (
           <Tabs defaultValue="existencias">
             <TabsList>
-              <TabsTrigger value="existencias">Existencias</TabsTrigger>
-              <TabsTrigger value="historial">Historial</TabsTrigger>
+              <TabsTrigger value="existencias">{t("productsInventory.tabStock")}</TabsTrigger>
+              <TabsTrigger value="historial">{t("productsInventory.tabHistory")}</TabsTrigger>
             </TabsList>
             <TabsContent value="existencias" className="space-y-3">
               {lowCount > 0 && (
                 <div role="status" className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
-                  {lowCount === 1 ? "1 artículo está" : `${lowCount} artículos están`} en el mínimo de alerta o por debajo en alguna sede.
+                  {lowCount === 1 ? t("productsInventory.page.lowOne") : t("productsInventory.page.lowMany", { n: lowCount })}
                 </div>
               )}
               <div className="flex flex-wrap items-end gap-3">
                 <div className="w-full max-w-xs">
-                  <FormField id="inv-search" label="Buscar">
-                    <Input id="inv-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre del producto" />
+                  <FormField id="inv-search" label={t("productsInventory.page.search")}>
+                    <Input id="inv-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("productsInventory.page.searchPlaceholder")} />
                   </FormField>
                 </div>
                 <label className="flex items-center gap-2 pb-2 text-sm text-foreground">
-                  <input type="checkbox" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} /> Solo alertas
+                  <input type="checkbox" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} /> {t("productsInventory.page.onlyAlerts")}
                 </label>
                 <Button variant="outline" className="ml-auto" onClick={exportStock} disabled={exporting}>
-                  <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> Exportar CSV
+                  <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("productsInventory.common.exportCsv")}
                 </Button>
               </div>
               {data.items.length === 0 ? (
-                <PanelEmpty icon={<Boxes className="h-6 w-6" />} title="Todavía no controlas existencias" description={data.canManage ? "Añade los productos o variantes de los que quieras llevar existencias. El resto del catálogo se vende como siempre." : "Administración decide qué productos llevan control de existencias."} />
+                <PanelEmpty icon={<Boxes className="h-6 w-6" />} title={t("productsInventory.page.emptyTitle")} description={data.canManage ? t("productsInventory.page.emptyManage") : t("productsInventory.page.emptyReadonly")} />
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-border bg-card">
                   <table className="w-full text-sm">
                     <thead className="text-left text-xs text-muted-foreground">
                       <tr className="border-b border-border">
-                        <th scope="col" className="px-3 py-2 font-medium">Artículo</th>
-                        {data.sites.map((s) => <th key={s.siteId} scope="col" className="px-3 py-2 text-right font-medium">{data.sites.length > 1 ? s.name : "Existencias"}</th>)}
-                        {data.sites.length > 1 && <th scope="col" className="px-3 py-2 text-right font-medium">Total</th>}
-                        <th scope="col" className="px-3 py-2 font-medium">Sin existencias</th>
-                        {data.canManage && <th scope="col" className="px-3 py-2 text-right font-medium"><span className="sr-only">Acciones</span></th>}
+                        <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.common.item")}</th>
+                        {data.sites.map((s) => <th key={s.siteId} scope="col" className="px-3 py-2 text-right font-medium">{data.sites.length > 1 ? s.name : t("productsInventory.page.colStock")}</th>)}
+                        {data.sites.length > 1 && <th scope="col" className="px-3 py-2 text-right font-medium">{t("productsInventory.page.colTotal")}</th>}
+                        <th scope="col" className="px-3 py-2 font-medium">{t("productsInventory.page.colOversell")}</th>
+                        {data.canManage && <th scope="col" className="px-3 py-2 text-right font-medium"><span className="sr-only">{t("productsInventory.page.colActions")}</span></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -466,27 +480,27 @@ export default function Inventory() {
                           {i.levels.map((l) => (
                             <td key={l.siteId} className={cn("px-3 py-2 text-right tabular-nums", l.low && "font-semibold text-destructive")}>
                               {l.onHand}
-                              {l.effectiveMin > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">/ mín. {l.effectiveMin}</span>}
-                              {l.low && <span className="sr-only"> (en alerta)</span>}
+                              {l.effectiveMin > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">{t("productsInventory.page.minShort", { n: l.effectiveMin })}</span>}
+                              {l.low && <span className="sr-only">{t("productsInventory.page.inAlert")}</span>}
                             </td>
                           ))}
                           {data.sites.length > 1 && <td className="px-3 py-2 text-right tabular-nums">{i.total}</td>}
-                          <td className="px-3 py-2 text-muted-foreground">{i.policy === "block" ? "Bloquea" : "Permite con aviso"}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{i.policy === "block" ? t("productsInventory.page.policyBlock") : t("productsInventory.page.policyAllow")}</td>
                           {data.canManage && (
                             <td className="px-3 py-2">
                               <div className="flex justify-end gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "receive", item: i })} aria-label={`Entrada de ${i.label}`}><PackagePlus className="h-4 w-4" aria-hidden="true" /></Button>
-                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "adjust", item: i })} aria-label={`Ajustar ${i.label}`}><Minus className="h-4 w-4" aria-hidden="true" /></Button>
-                                {data.canTransfer && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "transfer", item: i })} aria-label={`Traspasar ${i.label}`}><ArrowLeftRight className="h-4 w-4" aria-hidden="true" /></Button>}
-                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "edit", item: i })} aria-label={`Editar ${i.label}`}><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
-                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setRemoving(i)} aria-label={`Dejar de controlar ${i.label}`}><XCircle className="h-4 w-4" aria-hidden="true" /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "receive", item: i })} aria-label={t("productsInventory.page.ariaReceive", { label: i.label })}><PackagePlus className="h-4 w-4" aria-hidden="true" /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "adjust", item: i })} aria-label={t("productsInventory.page.ariaAdjust", { label: i.label })}><Minus className="h-4 w-4" aria-hidden="true" /></Button>
+                                {data.canTransfer && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "transfer", item: i })} aria-label={t("productsInventory.page.ariaTransfer", { label: i.label })}><ArrowLeftRight className="h-4 w-4" aria-hidden="true" /></Button>}
+                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "edit", item: i })} aria-label={t("productsInventory.page.ariaEdit", { label: i.label })}><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
+                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setRemoving(i)} aria-label={t("productsInventory.page.ariaUntrack", { label: i.label })}><XCircle className="h-4 w-4" aria-hidden="true" /></Button>
                               </div>
                             </td>
                           )}
                         </tr>
                       ))}
                       {items.length === 0 && (
-                        <tr><td colSpan={99} className="px-3 py-6 text-center text-muted-foreground">Ningún artículo coincide con el filtro.</td></tr>
+                        <tr><td colSpan={99} className="px-3 py-6 text-center text-muted-foreground">{t("productsInventory.page.noMatch")}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -506,12 +520,12 @@ export default function Inventory() {
       <AlertDialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Dejar de controlar «{removing?.label}»?</AlertDialogTitle>
-            <AlertDialogDescription>Se venderá como siempre, sin descontar ni bloquear. Las existencias y el historial se conservan por si vuelves a activarlo.</AlertDialogDescription>
+            <AlertDialogTitle>{t("productsInventory.page.untrackTitle", { label: removing?.label })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("productsInventory.page.untrackText")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={(e) => { e.preventDefault(); if (removing) untrack.mutate({ itemId: removing.id }); }} disabled={untrack.isPending}>Dejar de controlar</AlertDialogAction>
+            <AlertDialogCancel>{t("productsInventory.common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); if (removing) untrack.mutate({ itemId: removing.id }); }} disabled={untrack.isPending}>{t("productsInventory.page.untrackConfirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

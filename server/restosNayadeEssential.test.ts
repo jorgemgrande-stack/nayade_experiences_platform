@@ -36,13 +36,16 @@ describe("indicadores de la cabecera de Ventas", () => {
 
 describe("textos del panel de una empresa Essential", () => {
   it("caja en lugar de TPV y vales en lugar de bonos", () => {
-    expect(code("client/src/pages/admin/products/ExperiencesManager.tsx")).toContain('{voc.licensed ? "Vendible en caja" : "Vendible en TPV"}');
+    expect(code("client/src/pages/admin/products/ExperiencesManager.tsx")).toContain('{voc.licensed ? t("productsCatalog.modal.sellableCashier") : t("productsCatalog.modal.sellableTpv")}');
+    expect(code("shared/i18n/locales/es/productsCatalog.ts")).toContain('sellableCashier: "Vendible en caja"');
     expect(code("client/src/pages/admin/tpv/TpvScreen.tsx")).toContain("Activa «Vendible en caja»");
     expect(code("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")');
     expect(code("client/src/pages/admin/crm/CancellationsManager.tsx")).toContain('voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")');
     const discounts = code("client/src/pages/DiscountCodesManager.tsx");
-    expect(discounts).toContain("en la caja y en la tienda online");
-    expect(discounts).toMatch(/voc\.licensed\s*\?\s*"Gestiona los códigos promocionales que tus clientes/);
+    const discountsEs = code("shared/i18n/locales/es/discounts.ts");
+    expect(discountsEs).toContain("en la caja y en la tienda online");
+    expect(discountsEs).toMatch(/descriptionLicensed:\s*"Gestiona los códigos promocionales que tus clientes/);
+    expect(discounts).toMatch(/voc\.licensed\s*\?\s*t\("discounts\.descriptionLicensed"\)/);
   });
 
   it("la base de conocimiento pública lleva el nombre de la empresa, no el de la instalación original", () => {

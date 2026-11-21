@@ -20,10 +20,10 @@ import { localeAutonym } from "@/hooks/useSiteLocale";
 import { TONE_BADGE } from "@/lib/panelTones";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   ENTITY_HAS_SLUG,
   TRANSLATION_FIELD_SETS,
-  TRANSLATION_STATE_LABELS,
   canValidate,
   draftErrors,
   draftFromRow,
@@ -45,7 +45,8 @@ const STATE_TONE: Record<TranslationState, string> = {
 };
 
 export function TranslationStateBadge({ state }: { state: TranslationState }) {
-  return <Badge variant="outline" className={cn("text-[11px]", STATE_TONE[state])}>{TRANSLATION_STATE_LABELS[state]}</Badge>;
+  const { t } = useI18n();
+  return <Badge variant="outline" className={cn("text-[11px]", STATE_TONE[state])}>{t(`productsTranslations.state.${state}`)}</Badge>;
 }
 
 /** Formulario de la traducción de un contenido en un idioma, con el original al lado. */
@@ -62,21 +63,36 @@ export function ContentTranslationForm({
   row: StoredTranslation | null;
   onChanged: () => void;
 }) {
+  const { t, locale: uiLocale } = useI18n();
   const withSlug = ENTITY_HAS_SLUG[entityType];
+  /** Etiqueta del campo en el idioma de la interfaz (si el tipo no está en el diccionario, la del módulo compartido). */
+  const labelOf = (d: TranslationFieldDef) => {
+    const key = `productsTranslations.fields.${entityType}.${d.key}`;
+    const txt = t(key);
+    return txt === key ? d.label : txt;
+  };
   const [draft, setDraft] = useState<TranslationDraft>(() => draftFromRow(defs, row));
   const [tried, setTried] = useState(false);
   // Al cambiar de idioma o al recargar lo guardado, el formulario vuelve a lo guardado
   useEffect(() => { setDraft(draftFromRow(defs, row)); setTried(false); }, [row, locale, defs]);
 
-  const save = trpc.cms.saveContentTranslation.useMutation({ onSuccess: () => { toast.success("Borrador guardado"); onChanged(); }, onError: (e) => toastError(e) });
-  const validate = trpc.cms.validateContentTranslation.useMutation({ onSuccess: () => { toast.success("Traducción validada: ya se ve en la web en este idioma"); onChanged(); }, onError: (e) => toastError(e) });
-  const unvalidate = trpc.cms.unvalidateContentTranslation.useMutation({ onSuccess: () => { toast.success("Traducción retirada de la web (queda como borrador)"); onChanged(); }, onError: (e) => toastError(e) });
+  const save = trpc.cms.saveContentTranslation.useMutation({ onSuccess: () => { toast.success(t("productsTranslations.form.savedDraft")); onChanged(); }, onError: (e) => toastError(e) });
+  const validate = trpc.cms.validateContentTranslation.useMutation({ onSuccess: () => { toast.success(t("productsTranslations.form.validated")); onChanged(); }, onError: (e) => toastError(e) });
+  const unvalidate = trpc.cms.unvalidateContentTranslation.useMutation({ onSuccess: () => { toast.success(t("productsTranslations.form.unvalidated")); onChanged(); }, onError: (e) => toastError(e) });
 
   const state = translationState(row);
   const dirty = isDraftDirty(defs, draft, row, withSlug);
   const errors = draftErrors(defs, draft, withSlug);
   const pending = new Set(pendingFieldKeys(defs, principal, draft));
   const busy = save.isPending || validate.isPending || unvalidate.isPending;
+  /** Los errores de validación vienen del módulo compartido en español: se muestran en el idioma de la interfaz. */
+  const errText = (k: string, raw: string) => {
+    if (k === "slug") return t("productsTranslations.errors.slugRule");
+    const d = defs.find((x) => x.key === k);
+    if (raw.startsWith("Admite hasta") && d) return t("productsTranslations.errors.maxChars", { max: d.max });
+    if (d) return t("productsTranslations.errors.writeFirst", { label: uiLocale === "es" ? labelOf(d).toLowerCase() : labelOf(d) });
+    return raw;
+  };
 
   const doSave = () => {
     setTried(true);
@@ -94,17 +110,17 @@ export function ContentTranslationForm({
       <div key={d.key} className="grid gap-2 rounded-md border p-3 md:grid-cols-2">
         <div>
           <p className="text-xs font-medium text-muted-foreground">
-            {d.label} · original
-            {pending.has(d.key) && <span className="ml-2 text-amber-700 dark:text-amber-400">sin traducir</span>}
+            {t("productsTranslations.form.original", { label: labelOf(d) })}
+            {pending.has(d.key) && <span className="ml-2 text-amber-700 dark:text-amber-400">{t("productsTranslations.form.untranslatedField")}</span>}
           </p>
-          <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-sm" lang={defaultLocale}>{orig || <span className="italic text-muted-foreground">(vacío)</span>}</p>
+          <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-sm" lang={defaultLocale}>{orig || <span className="italic text-muted-foreground">{t("productsTranslations.form.empty")}</span>}</p>
         </div>
         <div>
-          <Label htmlFor={id}>{d.label} en {localeAutonym(locale)}</Label>
+          <Label htmlFor={id}>{t("productsTranslations.form.fieldIn", { label: labelOf(d), language: localeAutonym(locale) })}</Label>
           {d.long
             ? <Textarea id={id} lang={locale} rows={d.key === "description" ? 6 : 3} value={draft.fields[d.key] ?? ""} onChange={(e) => setField(d.key, e.target.value)} maxLength={d.max} aria-invalid={!!err} aria-describedby={err ? `${id}-err` : undefined} className="mt-1" />
             : <Input id={id} lang={locale} value={draft.fields[d.key] ?? ""} onChange={(e) => setField(d.key, e.target.value)} maxLength={d.max} aria-invalid={!!err} aria-describedby={err ? `${id}-err` : undefined} className="mt-1" />}
-          {err && <p id={`${id}-err`} className="mt-1 text-xs text-destructive">{err}</p>}
+          {err && <p id={`${id}-err`} className="mt-1 text-xs text-destructive">{errText(d.key, err)}</p>}
         </div>
       </div>
     );
@@ -114,42 +130,41 @@ export function ContentTranslationForm({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground">Estado:</span>
+        <span className="text-muted-foreground">{t("productsTranslations.form.status")}</span>
         <TranslationStateBadge state={state} />
-        {state === "validated" && row?.validatedBy && <span className="text-xs text-muted-foreground">por {row.validatedBy}</span>}
-        {dirty && <span className="text-xs text-amber-700 dark:text-amber-400">Cambios sin guardar</span>}
-        {pending.size > 0 && <span className="text-xs text-muted-foreground">{pending.size === 1 ? "1 campo sigue" : `${pending.size} campos siguen`} sin traducir.</span>}
+        {state === "validated" && row?.validatedBy && <span className="text-xs text-muted-foreground">{t("productsTranslations.form.validatedBy", { name: row.validatedBy })}</span>}
+        {dirty && <span className="text-xs text-amber-700 dark:text-amber-400">{t("productsTranslations.form.unsaved")}</span>}
+        {pending.size > 0 && <span className="text-xs text-muted-foreground">{pending.size === 1 ? t("productsTranslations.form.pendingOne") : t("productsTranslations.form.pendingMany", { n: pending.size })}</span>}
       </div>
       {defs.filter((d) => !d.seo).map(field)}
-      <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Buscadores y dirección</p>
+      <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsTranslations.form.seoAndAddress")}</p>
       {defs.filter((d) => d.seo).map(field)}
       {withSlug && (
         <div className="grid gap-2 rounded-md border p-3 md:grid-cols-2">
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Dirección · original</p>
+            <p className="text-xs font-medium text-muted-foreground">{t("productsTranslations.form.addressOriginal")}</p>
             <p className="mt-1 text-sm">{principalSlug || "—"}</p>
           </div>
           <div>
-            <Label htmlFor={slugId}>Dirección en {localeAutonym(locale)}</Label>
+            <Label htmlFor={slugId}>{t("productsTranslations.form.addressIn", { language: localeAutonym(locale) })}</Label>
             <Input id={slugId} value={draft.slug} placeholder={principalSlug} onChange={(e) => setDraft((d) => ({ ...d, slug: e.target.value }))} maxLength={64} aria-invalid={tried && !!errors.slug} aria-describedby={`${slugId}-hint`} className="mt-1" />
             <p id={`${slugId}-hint`} className={cn("mt-1 text-xs", tried && errors.slug ? "text-destructive" : "text-muted-foreground")}>
-              {tried && errors.slug ? errors.slug : "Opcional. Minúsculas sin acentos, números y guiones; vacía, se usa la del original."}
+              {tried && errors.slug ? errText("slug", errors.slug) : t("productsTranslations.form.addressHint")}
             </p>
           </div>
         </div>
       )}
       <div className="flex flex-wrap gap-2 pt-1">
-        <Button type="button" onClick={doSave} disabled={busy || !dirty}>Guardar borrador</Button>
+        <Button type="button" onClick={doSave} disabled={busy || !dirty}>{t("productsTranslations.form.saveDraft")}</Button>
         <Button type="button" variant="outline" disabled={busy || !canValidate(row, dirty)} onClick={() => validate.mutate({ entityType, entityKey, locale })}>
-          Validar y publicar
+          {t("productsTranslations.form.validate")}
         </Button>
         {state === "validated" && (
-          <Button type="button" variant="ghost" disabled={busy} onClick={() => unvalidate.mutate({ entityType, entityKey, locale })}>Retirar de la web</Button>
+          <Button type="button" variant="ghost" disabled={busy} onClick={() => unvalidate.mutate({ entityType, entityKey, locale })}>{t("productsTranslations.form.withdraw")}</Button>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Guarda antes de validar: se publica el último borrador guardado. Editar una traducción validada la devuelve a borrador hasta que la vuelvas a validar.
-        El precio, las modalidades y la disponibilidad no se traducen: salen siempre del producto.
+        {t("productsTranslations.form.footnote")}
       </p>
     </div>
   );
@@ -157,6 +172,7 @@ export function ContentTranslationForm({
 
 /** Ventana «Idiomas» de un producto. Solo tiene sentido con idiomas adicionales dados de alta en Web › Idiomas. */
 export function ProductTranslationsPanel({ experienceId, title, open, onOpenChange }: { experienceId: number | null; title: string; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const q = trpc.cms.productTranslationEditor.useQuery({ experienceId: experienceId ?? 0 }, { enabled: open && !!experienceId });
   const data = q.data;
@@ -177,24 +193,24 @@ export function ProductTranslationsPanel({ experienceId, title, open, onOpenChan
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-display">Idiomas · {title}</DialogTitle>
+          <DialogTitle className="font-display">{t("productsTranslations.product.title", { title })}</DialogTitle>
           <DialogDescription>
-            Traduce la ficha a cada idioma de tu web. El texto original está a la izquierda. Una traducción solo se ve en la web cuando la validas.
+            {t("productsTranslations.product.description")}
           </DialogDescription>
         </DialogHeader>
         {q.isLoading ? (
-          <p className="text-sm text-muted-foreground">Cargando…</p>
+          <p className="text-sm text-muted-foreground">{t("productsTranslations.product.loading")}</p>
         ) : q.isError ? (
-          <p role="alert" className="text-sm text-destructive">No se han podido cargar las traducciones. {q.error.message}</p>
+          <p role="alert" className="text-sm text-destructive">{t("productsTranslations.product.loadError", { error: q.error.message })}</p>
         ) : !data?.principal ? (
-          <p className="text-sm text-muted-foreground">Este producto ya no existe.</p>
+          <p className="text-sm text-muted-foreground">{t("productsTranslations.product.gone")}</p>
         ) : !data.multilingual ? (
           <p className="text-sm text-muted-foreground">
-            Tu web está en un solo idioma. Añade otro en <Link href="/admin/cms/idiomas" className="underline underline-offset-4">Web › Idiomas</Link> para traducir tus productos.
+            {t("productsTranslations.product.singleBefore")}<Link href="/admin/cms/idiomas" className="underline underline-offset-4">{t("productsTranslations.product.languagesLink")}</Link>{t("productsTranslations.product.singleAfter")}
           </p>
         ) : (
           <div className="space-y-4">
-            <div role="tablist" aria-label="Idioma de la traducción" className="flex flex-wrap gap-2">
+            <div role="tablist" aria-label={t("productsTranslations.product.languageTab")} className="flex flex-wrap gap-2">
               {data.locales.map((l) => {
                 const st = translationState(data.translations[l.locale] ?? null);
                 const active = l.locale === locale;
@@ -217,7 +233,7 @@ export function ProductTranslationsPanel({ experienceId, title, open, onOpenChan
               <>
                 {data.locales.find((l) => l.locale === locale)?.status !== "validated" && (
                   <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                    El idioma {localeAutonym(locale)} aún no está publicado en tu web: puedes ir traduciendo y se verá cuando valides el idioma en Web › Idiomas.
+                    {t("productsTranslations.product.notPublished", { language: localeAutonym(locale) })}
                   </p>
                 )}
                 <ContentTranslationForm
@@ -234,8 +250,8 @@ export function ProductTranslationsPanel({ experienceId, title, open, onOpenChan
                 />
                 {/* Opciones y convocatorias del producto: sus nombres y notas en el mismo idioma */}
                 {[
-                  { type: "variant" as const, title: "Opciones", items: data.variants, label: (i: { principal: Record<string, string> }) => i.principal.name },
-                  { type: "edition" as const, title: "Convocatorias", items: data.editions, label: (i: { principal: Record<string, string> }) => i.principal.label },
+                  { type: "variant" as const, title: t("productsTranslations.product.options"), items: data.variants, label: (i: { principal: Record<string, string> }) => i.principal.name },
+                  { type: "edition" as const, title: t("productsTranslations.product.editions"), items: data.editions, label: (i: { principal: Record<string, string> }) => i.principal.label },
                 ].map((g) =>
                   g.items.length ? (
                     <section key={g.type} className="space-y-3 border-t border-border pt-4">

@@ -73,7 +73,8 @@ describe("productos nuevos (M5)", () => {
   });
   it("el formulario usa «Por unidad» en una pyme y el botón «Nuevo producto» usa el color de la marca (AA)", () => {
     const src = read("client/src/pages/admin/products/ExperiencesManager.tsx");
-    expect(src).toContain('{isNewCompany ? "Por unidad" : "Por persona"}');
+    expect(src).toContain('{isNewCompany ? t("productsCatalog.modal.perUnitLicensed") : t("productsCatalog.modal.perPerson")}');
+    expect(read("shared/i18n/locales/es/productsCatalog.ts")).toContain('perUnitLicensed: "Por unidad"');
     expect(code(src)).not.toMatch(/linear-gradient\(135deg,#f97316,#f59e0b\)/);
   });
 });
@@ -167,8 +168,8 @@ describe("contraste AA en Facturas, formulario de producto y web pública", () =
   });
   it("formulario de producto: las etiquetas del descuento se leen en oscuro (texto principal)", () => {
     const src = read("client/src/pages/admin/products/ExperiencesManager.tsx");
-    expect(src).toContain('<Label htmlFor="discountPercent" className="text-xs text-foreground">Descuento (%)</Label>');
-    expect(src).toContain('<Label htmlFor="discountExpiresAt" className="text-xs text-foreground">Válido hasta</Label>');
+    expect(src).toContain('<Label htmlFor="discountPercent" className="text-xs text-foreground">{t("productsCatalog.modal.discountPercent")}</Label>');
+    expect(src).toContain('<Label htmlFor="discountExpiresAt" className="text-xs text-foreground">{t("productsCatalog.modal.validUntil")}</Label>');
     expect(src).not.toMatch(/bg-amber-50/);
   });
   it("web pública: «Escribir una opinión» en el color de lectura de la web", () => {

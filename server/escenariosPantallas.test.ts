@@ -21,7 +21,8 @@ describe("pantallas de un usuario nuevo", () => {
 
   it("el TPV vacío nombra la opción tal como aparece en la ficha del producto", () => {
     // Pyme: «Vendible en caja» en la ficha y en el aviso de la caja vacía (la instalación propia conserva «TPV»)
-    expect(read("client/src/pages/admin/products/ExperiencesManager.tsx")).toContain('voc.licensed ? "Vendible en caja" : "Vendible en TPV"');
+    expect(read("client/src/pages/admin/products/ExperiencesManager.tsx")).toContain('voc.licensed ? t("productsCatalog.modal.sellableCashier") : t("productsCatalog.modal.sellableTpv")');
+    expect(read("shared/i18n/locales/es/productsCatalog.ts")).toContain('sellableCashier: "Vendible en caja"');
     const tpv = read("client/src/pages/admin/tpv/TpvScreen.tsx");
     expect(tpv).toContain("«Vendible en caja»");
     expect(tpv).not.toContain("«venta presencial»");
