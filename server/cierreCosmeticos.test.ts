@@ -68,10 +68,9 @@ describe("contraste AA", () => {
 
   it("textos marcados por la prueba integral con tokens del panel", () => {
     expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('<span className="text-info">Env. ');
-    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toContain('<span className="text-info">Env. ');
-    for (const f of ["client/src/pages/admin/crm/CRMDashboard.tsx", "client/src/pages/admin/crm/ProposalsManager.tsx"]) {
-      expect(read(f)).toMatch(/aceptado: +\{ label: "Aceptado", +className: TONE_BADGE\.success \}/);
-    }
+    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toContain('<span className="text-info">{t("crmProposals.list.sentOn"');
+    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toMatch(/aceptado: +{ label: "Aceptado", +className: TONE_BADGE.success }/);
+    expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toMatch(/aceptado: +{ className: TONE_BADGE.success }/);
     const reports = read("client/src/pages/admin/accounting/AccountingReports.tsx");
     expect(reports).toContain('className="gap-2 text-foreground">');
     expect(reports).toContain("font-semibold text-success\">{fmtEurLocal(r.amount)}");

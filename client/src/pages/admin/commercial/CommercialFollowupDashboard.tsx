@@ -31,40 +31,44 @@ import PendingJobsTab from "./PendingJobsTab";
 import { toastError } from "@/lib/errorMessage";
 import { PanelError } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { useI18n } from "@/i18n/I18nProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = "dashboard" | "open" | "history" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
 
-const COMMERCIAL_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  pending_followup: { label: "Pendiente",       color: "text-slate-300",   bg: "bg-slate-500/15",   border: "border-slate-500/30" },
-  reminder_1_sent:  { label: "Recordatorio 1",  color: "text-purple-300",  bg: "bg-purple-500/15",  border: "border-purple-500/30" },
-  reminder_2_sent:  { label: "Recordatorio 2",  color: "text-violet-300",  bg: "bg-violet-500/15",  border: "border-violet-500/30" },
-  reminder_3_sent:  { label: "Rec. 3",          color: "text-indigo-300",  bg: "bg-indigo-500/15",  border: "border-indigo-500/30" },
-  interested:       { label: "Interesado",       color: "text-emerald-300", bg: "bg-emerald-500/15", border: "border-emerald-500/30" },
-  paused:           { label: "Pausado",          color: "text-amber-300",   bg: "bg-amber-500/15",   border: "border-amber-500/30" },
-  lost:             { label: "Perdido",          color: "text-red-300",     bg: "bg-red-500/15",     border: "border-red-500/30" },
-  converted:        { label: "Convertido",       color: "text-green-300",   bg: "bg-green-500/15",   border: "border-green-500/30" },
-  discarded:        { label: "Descartado",       color: "text-zinc-400",    bg: "bg-zinc-500/15",    border: "border-zinc-500/30" },
+const COMMERCIAL_STATUS_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
+  pending_followup: { color: "text-slate-300",   bg: "bg-slate-500/15",   border: "border-slate-500/30" },
+  reminder_1_sent:  { color: "text-purple-300",  bg: "bg-purple-500/15",  border: "border-purple-500/30" },
+  reminder_2_sent:  { color: "text-violet-300",  bg: "bg-violet-500/15",  border: "border-violet-500/30" },
+  reminder_3_sent:  { color: "text-indigo-300",  bg: "bg-indigo-500/15",  border: "border-indigo-500/30" },
+  interested:       { color: "text-emerald-300", bg: "bg-emerald-500/15", border: "border-emerald-500/30" },
+  paused:           { color: "text-amber-300",   bg: "bg-amber-500/15",   border: "border-amber-500/30" },
+  lost:             { color: "text-red-300",     bg: "bg-red-500/15",     border: "border-red-500/30" },
+  converted:        { color: "text-green-300",   bg: "bg-green-500/15",   border: "border-green-500/30" },
+  discarded:        { color: "text-zinc-400",    bg: "bg-zinc-500/15",    border: "border-zinc-500/30" },
 };
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
+  const { t } = useI18n();
   const cfg = COMMERCIAL_STATUS_CONFIG[status ?? "pending_followup"] ?? COMMERCIAL_STATUS_CONFIG.pending_followup;
   return (
     <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${cfg.color} ${cfg.bg} ${cfg.border}`}>
-      {cfg.label}
+      {t(`crmFollowup.status.${COMMERCIAL_STATUS_CONFIG[status ?? "pending_followup"] ? (status ?? "pending_followup") : "pending_followup"}`)}
     </span>
   );
 }
 
-function fmtDate(d: Date | string | null | undefined): string {
+type Fmt = ReturnType<typeof useI18n>["format"];
+
+function fmtDate(format: Fmt, d: Date | string | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return format.date(d, { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function fmtDateTime(d: Date | string | null | undefined): string {
+function fmtDateTime(format: Fmt, d: Date | string | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return format.dateTime(d, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 function daysSince(d: Date | string | null | undefined): number | null {
@@ -95,6 +99,7 @@ function QuoteActionRow({ quote, onAction }: {
   quote: any;
   onAction: (action: string, quote: any) => void;
 }) {
+  const { t, format } = useI18n();
   const days = daysSince(quote.sentAt);
   const cfg = COMMERCIAL_STATUS_CONFIG[quote.commercialStatus ?? "pending_followup"] ?? COMMERCIAL_STATUS_CONFIG.pending_followup;
   return (
@@ -108,19 +113,19 @@ function QuoteActionRow({ quote, onAction }: {
         <div className="text-[10px] text-foreground/40 truncate max-w-[120px]">{quote.clientEmail ?? ""}</div>
       </td>
       <td className="px-3 py-2.5 hidden md:table-cell">
-        <div className="text-xs text-foreground/60">{fmtDate(quote.sentAt)}</div>
-        {days !== null && <div className="text-[10px] text-foreground/35">Hace {days}d</div>}
+        <div className="text-xs text-foreground/60">{fmtDate(format, quote.sentAt)}</div>
+        {days !== null && <div className="text-[10px] text-foreground/35">{t("crmFollowup.daysAgo", { days })}</div>}
       </td>
       <td className="px-3 py-2.5 hidden lg:table-cell">
-        <span className="text-xs font-bold text-orange-400">{Number(quote.total ?? 0).toFixed(2)} €</span>
+        <span className="text-xs font-bold text-orange-400">{format.currency(Number(quote.total ?? 0))}</span>
       </td>
       <td className="px-3 py-2.5">
         <StatusBadge status={quote.commercialStatus} />
       </td>
       <td className="px-3 py-2.5 hidden xl:table-cell">
         {quote.viewedAt
-          ? <span className="inline-flex items-center gap-1 text-[10px] text-sky-400"><Eye className="w-3 h-3" /> {fmtDate(quote.viewedAt)}</span>
-          : <span className="inline-flex items-center gap-1 text-[10px] text-foreground/30"><EyeOff className="w-3 h-3" /> No visto</span>
+          ? <span className="inline-flex items-center gap-1 text-[10px] text-sky-400"><Eye className="w-3 h-3" /> {fmtDate(format, quote.viewedAt)}</span>
+          : <span className="inline-flex items-center gap-1 text-[10px] text-foreground/30"><EyeOff className="w-3 h-3" /> {t("crmFollowup.notSeen")}</span>
         }
       </td>
       <td className="px-3 py-2.5 hidden xl:table-cell">
@@ -129,7 +134,7 @@ function QuoteActionRow({ quote, onAction }: {
       <td className="px-3 py-2.5 hidden xl:table-cell">
         {quote.nextScheduledAt ? (
           <div>
-            <div className="text-[10px] text-foreground/70">{fmtDateTime(quote.nextScheduledAt)}</div>
+            <div className="text-[10px] text-foreground/70">{fmtDateTime(format, quote.nextScheduledAt)}</div>
             {quote.nextScheduledRule && (
               <div className="text-[10px] text-foreground/40 truncate max-w-[120px]">{quote.nextScheduledRule}</div>
             )}
@@ -142,33 +147,33 @@ function QuoteActionRow({ quote, onAction }: {
         <div className="flex items-center gap-0.5 justify-end">
           {quote.paymentLinkUrl && (
             <a href={quote.paymentLinkUrl} target="_blank" rel="noopener noreferrer"
-              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-sky-400 transition-colors" title="Ver presupuesto">
+              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-sky-400 transition-colors" title={t("crmFollowup.viewQuote")}>
               <Eye className="w-3.5 h-3.5" />
             </a>
           )}
-          <button onClick={() => onAction("remind", quote)} title="Enviar recordatorio manual"
+          <button onClick={() => onAction("remind", quote)} title={t("crmFollowup.sendReminder")}
             className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-purple-400 transition-colors">
             <Send className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => onAction("note", quote)} title="Añadir nota"
+          <button onClick={() => onAction("note", quote)} title={t("crmFollowup.addNote")}
             className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-amber-400 transition-colors">
             <StickyNote className="w-3.5 h-3.5" />
           </button>
           {quote.reminderPaused
-            ? <button onClick={() => onAction("resume", quote)} title="Reanudar recordatorios"
+            ? <button onClick={() => onAction("resume", quote)} title={t("crmFollowup.resume")}
                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-amber-400 hover:text-emerald-400 transition-colors">
                 <Play className="w-3.5 h-3.5" />
               </button>
-            : <button onClick={() => onAction("pause", quote)} title="Pausar recordatorios"
+            : <button onClick={() => onAction("pause", quote)} title={t("crmFollowup.pause")}
                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-amber-400 transition-colors">
                 <Pause className="w-3.5 h-3.5" />
               </button>
           }
-          <button onClick={() => onAction("interested", quote)} title="Marcar como interesado"
+          <button onClick={() => onAction("interested", quote)} title={t("crmFollowup.markInterested")}
             className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-emerald-400 transition-colors">
             <CheckCircle2 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => onAction("lost", quote)} title="Marcar como perdido"
+          <button onClick={() => onAction("lost", quote)} title={t("crmFollowup.markLost")}
             className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-red-400 transition-colors">
             <XCircle className="w-3.5 h-3.5" />
           </button>
@@ -181,6 +186,7 @@ function QuoteActionRow({ quote, onAction }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CommercialFollowupDashboard() {
+  const { t, format } = useI18n();
   const searchStr = useSearch();
   const tabFromUrl = (): Tab => {
     try {
@@ -255,27 +261,27 @@ export default function CommercialFollowupDashboard() {
   // ─── Mutations ────────────────────────────────────────────────────────────
 
   const sendManualReminder = trpc.commercialFollowup.sendManualReminder.useMutation({
-    onSuccess: () => { toast.success("Recordatorio enviado"); setRemindQuote(null); refetchDash(); refetchOpen(); },
+    onSuccess: () => { toast.success(t("crmFollowup.reminderSent")); setRemindQuote(null); refetchDash(); refetchOpen(); },
     onError: (e) => toastError(e),
   });
 
   const addNote = trpc.commercialFollowup.addNote.useMutation({
-    onSuccess: () => { toast.success("Nota añadida"); setNoteQuote(null); setNoteText(""); },
+    onSuccess: () => { toast.success(t("crmFollowup.noteSaved")); setNoteQuote(null); setNoteText(""); },
     onError: (e) => toastError(e),
   });
 
   const updateStatus = trpc.commercialFollowup.updateCommercialStatus.useMutation({
-    onSuccess: () => { toast.success("Estado actualizado"); setLostQuote(null); setLostReason(""); refetchDash(); refetchOpen(); },
+    onSuccess: () => { toast.success(t("crmFollowup.statusUpdated")); setLostQuote(null); setLostReason(""); refetchDash(); refetchOpen(); },
     onError: (e) => toastError(e),
   });
 
   const pauseReminders = trpc.commercialFollowup.pauseReminders.useMutation({
-    onSuccess: () => { toast.success("Recordatorios pausados"); setPauseQuote(null); setPauseReason(""); refetchDash(); refetchOpen(); },
+    onSuccess: () => { toast.success(t("crmFollowup.remindersPaused")); setPauseQuote(null); setPauseReason(""); refetchDash(); refetchOpen(); },
     onError: (e) => toastError(e),
   });
 
   const resumeReminders = trpc.commercialFollowup.resumeReminders.useMutation({
-    onSuccess: () => { toast.success("Recordatorios reanudados"); refetchDash(); refetchOpen(); },
+    onSuccess: () => { toast.success(t("crmFollowup.remindersResumed")); refetchDash(); refetchOpen(); },
     onError: (e) => toastError(e),
   });
 
@@ -297,14 +303,14 @@ export default function CommercialFollowupDashboard() {
   // ─── Tab Navigation ───────────────────────────────────────────────────────
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "dashboard", label: "Panel", icon: BarChart3 },
-    { id: "open", label: "Presupuestos abiertos", icon: List },
-    { id: "history", label: "Historial", icon: History },
-    { id: "mapa", label: "Mapa de emails", icon: Map },
-    { id: "plantillas", label: "Plantillas", icon: Settings },
-    { id: "cola", label: "Cola de envíos", icon: Bell },
-    { id: "automatizaciones", label: "Automatizaciones", icon: Zap },
-    { id: "auditoria", label: "Auditoría", icon: ClipboardCheck },
+    { id: "dashboard", label: t("crmFollowup.tab.dashboard"), icon: BarChart3 },
+    { id: "open", label: t("crmFollowup.tab.open"), icon: List },
+    { id: "history", label: t("crmFollowup.tab.history"), icon: History },
+    { id: "mapa", label: t("crmFollowup.tab.mapa"), icon: Map },
+    { id: "plantillas", label: t("crmFollowup.tab.plantillas"), icon: Settings },
+    { id: "cola", label: t("crmFollowup.tab.cola"), icon: Bell },
+    { id: "automatizaciones", label: t("crmFollowup.tab.automatizaciones"), icon: Zap },
+    { id: "auditoria", label: t("crmFollowup.tab.auditoria"), icon: ClipboardCheck },
   ];
 
   const kpis = dashboard?.kpis;
@@ -319,8 +325,8 @@ export default function CommercialFollowupDashboard() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Atención Comercial</h1>
-            <p className="text-sm text-foreground/50">Seguimiento de presupuestos no convertidos</p>
+            <h1 className="text-xl font-bold text-foreground">{t("crmFollowup.title")}</h1>
+            <p className="text-sm text-foreground/50">{t("crmFollowup.subtitle")}</p>
           </div>
           <button onClick={() => { refetchDash(); refetchOpen(); }}
             className="p-2 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-foreground transition-colors">
@@ -331,15 +337,15 @@ export default function CommercialFollowupDashboard() {
 
         {/* Tab nav */}
         <div className="flex gap-1 mb-6 border-b border-foreground/[0.08] pb-0">
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
+          {tabs.map(tb => (
+            <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
-                tab === t.id
+                tab === tb.id
                   ? "border-orange-400 text-orange-400"
                   : "border-transparent text-foreground/50 hover:text-foreground hover:border-foreground/20"
               }`}>
-              <t.icon className="w-3.5 h-3.5" />
-              {t.label}
+              <tb.icon className="w-3.5 h-3.5" />
+              {tb.label}
             </button>
           ))}
         </div>
@@ -348,7 +354,7 @@ export default function CommercialFollowupDashboard() {
         {tab === "dashboard" && (
           <div className="space-y-6">
             {dashError ? (
-              <PanelError title="No se ha podido cargar el seguimiento comercial" error={dashError} onRetry={() => void refetchDash()} />
+              <PanelError title={t("crmFollowup.loadError")} error={dashError} onRetry={() => void refetchDash()} />
             ) : dashLoading ? (
               <div className="flex items-center justify-center h-40">
                 <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
@@ -357,14 +363,14 @@ export default function CommercialFollowupDashboard() {
               <>
                 {/* KPIs */}
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  <KpiCard label="Necesitan atención" value={kpis?.needsAttention ?? 0} color="text-orange-400" icon={AlertTriangle} sub="presupuestos activos" />
-                  <KpiCard label="No vistos" value={kpis?.notViewed ?? 0} color="text-slate-400" icon={EyeOff} />
-                  <KpiCard label="Vistos sin pagar" value={kpis?.viewed ?? 0} color="text-sky-400" icon={Eye} />
-                  <KpiCard label="Pausados" value={kpis?.paused ?? 0} color="text-amber-400" icon={Pause} />
-                  <KpiCard label="Enviados hoy" value={kpis?.sentToday ?? 0} color="text-purple-400" icon={Send} sub="recordatorios automáticos" />
-                  <KpiCard label="Fríos (+7 días)" value={kpis?.cold ?? 0} color="text-zinc-400" icon={Clock} />
-                  <KpiCard label="Convertidos" value={kpis?.converted ?? 0} color="text-emerald-400" icon={CheckCircle2} />
-                  <KpiCard label="Perdidos" value={kpis?.lost ?? 0} color="text-red-400" icon={XCircle} />
+                  <KpiCard label={t("crmFollowup.kpi.needsAttention")} value={kpis?.needsAttention ?? 0} color="text-orange-400" icon={AlertTriangle} sub={t("crmFollowup.kpi.activeQuotes")} />
+                  <KpiCard label={t("crmFollowup.kpi.notViewed")} value={kpis?.notViewed ?? 0} color="text-slate-400" icon={EyeOff} />
+                  <KpiCard label={t("crmFollowup.kpi.viewedUnpaid")} value={kpis?.viewed ?? 0} color="text-sky-400" icon={Eye} />
+                  <KpiCard label={t("crmFollowup.kpi.paused")} value={kpis?.paused ?? 0} color="text-amber-400" icon={Pause} />
+                  <KpiCard label={t("crmFollowup.kpi.sentToday")} value={kpis?.sentToday ?? 0} color="text-purple-400" icon={Send} sub={t("crmFollowup.kpi.autoReminders")} />
+                  <KpiCard label={t("crmFollowup.kpi.cold")} value={kpis?.cold ?? 0} color="text-zinc-400" icon={Clock} />
+                  <KpiCard label={t("crmFollowup.kpi.converted")} value={kpis?.converted ?? 0} color="text-emerald-400" icon={CheckCircle2} />
+                  <KpiCard label={t("crmFollowup.kpi.lost")} value={kpis?.lost ?? 0} color="text-red-400" icon={XCircle} />
                 </div>
 
                 {/* ─── KPIs WhatsApp + llamadas (solo con su módulo contratado) ─ */}
@@ -379,7 +385,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-emerald-400">
                         {whatsappStats?.conversations?.newToday ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">WhatsApp hoy</div>
+                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.whatsappToday")}</div>
                     </div>
                   </div>
                   <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 flex items-center gap-3">
@@ -390,7 +396,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-sky-400">
                         {whatsappStats?.conversations?.unread ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">WhatsApp no leídas</div>
+                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.whatsappUnread")}</div>
                     </div>
                   </div>
                   </>)}
@@ -403,7 +409,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-violet-400">
                         {vapiStats?.today ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">Llamadas hoy</div>
+                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.callsToday")}</div>
                     </div>
                   </div>
                   <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-center gap-3">
@@ -414,7 +420,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-amber-400">
                         {vapiStats?.unreviewed ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">Llamadas sin revisar</div>
+                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.callsUnreviewed")}</div>
                     </div>
                   </div>
                   </>)}
@@ -431,7 +437,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-sky-400">
                         {emailStats?.receivedToday ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">Emails de hoy</div>
+                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.emailsToday")}</div>
                     </div>
                   </a>
                   <a href="/admin/atencion-comercial/email" className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4 flex items-center gap-3 hover:bg-orange-500/10 transition-colors">
@@ -442,7 +448,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-orange-400">
                         {emailStats?.unreadInbox ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">Emails no leídos</div>
+                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.emailsUnread")}</div>
                     </div>
                   </a>
                   <a href="/admin/atencion-comercial/email?folder=sent" className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-4 flex items-center gap-3 hover:bg-teal-500/10 transition-colors">
@@ -453,7 +459,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-teal-400">
                         {emailStats?.sent ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">Emails enviados</div>
+                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.emailsSent")}</div>
                     </div>
                   </a>
                 </div>
@@ -463,7 +469,7 @@ export default function CommercialFollowupDashboard() {
                 <div className="rounded-xl border border-border/50 bg-card p-4">
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground/70">
                     <Bell className="w-4 h-4 text-sky-400" />
-                    Notificaciones WhatsApp — ventana emergente
+                    {t("crmFollowup.notif.title")}
                   </h3>
                   <div className="flex flex-wrap gap-4">
                     <label className="flex items-center gap-2.5 cursor-pointer select-none group">
@@ -476,8 +482,8 @@ export default function CommercialFollowupDashboard() {
                       <div>
                         <div className="text-sm flex items-center gap-1.5">
                           {popupDisabled
-                            ? <><BellOff className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">Ventana emergente desactivada</span></>
-                            : <><Bell className="w-3.5 h-3.5 text-sky-400" /> <span>Ventana emergente activada</span></>
+                            ? <><BellOff className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">{t("crmFollowup.notif.popupOff")}</span></>
+                            : <><Bell className="w-3.5 h-3.5 text-sky-400" /> <span>{t("crmFollowup.notif.popupOn")}</span></>
                           }
                         </div>
                       </div>
@@ -492,8 +498,8 @@ export default function CommercialFollowupDashboard() {
                       <div>
                         <div className="text-sm flex items-center gap-1.5">
                           {soundDisabled
-                            ? <><VolumeX className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">Sonido desactivado</span></>
-                            : <><Volume2 className="w-3.5 h-3.5 text-emerald-400" /> <span>Sonido activado</span></>
+                            ? <><VolumeX className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">{t("crmFollowup.notif.soundOff")}</span></>
+                            : <><Volume2 className="w-3.5 h-3.5 text-emerald-400" /> <span>{t("crmFollowup.notif.soundOn")}</span></>
                           }
                         </div>
                       </div>
@@ -507,31 +513,31 @@ export default function CommercialFollowupDashboard() {
                   <div className="px-4 py-3 border-b border-foreground/[0.08] flex items-center justify-between">
                     <h2 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-amber-400" />
-                      Presupuestos que requieren atención
+                      {t("crmFollowup.attention.title")}
                     </h2>
                     <button onClick={() => setTab("open")}
                       className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1">
-                      Ver todos <ArrowRight className="w-3 h-3" />
+                      {t("crmFollowup.attention.seeAll")} <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-foreground/[0.08] text-foreground/40">
-                          <th className="px-3 py-2 text-left font-medium">Presupuesto</th>
-                          <th className="px-3 py-2 text-left font-medium">Cliente</th>
-                          <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Enviado</th>
-                          <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">Importe</th>
-                          <th className="px-3 py-2 text-left font-medium">Estado</th>
-                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Visto</th>
-                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Recs.</th>
-                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Próximo envío</th>
-                          <th className="px-3 py-2 text-right font-medium">Acciones</th>
+                          <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.quote")}</th>
+                          <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.client")}</th>
+                          <th className="px-3 py-2 text-left font-medium hidden md:table-cell">{t("crmFollowup.col.sent")}</th>
+                          <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">{t("crmFollowup.col.amount")}</th>
+                          <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.status")}</th>
+                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.seen")}</th>
+                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.recs")}</th>
+                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.nextSend")}</th>
+                          <th className="px-3 py-2 text-right font-medium">{t("crmFollowup.col.actions")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(dashboard?.attentionList ?? []).length === 0 && (
-                          <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">Sin presupuestos pendientes</td></tr>
+                          <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">{t("crmFollowup.attention.empty")}</td></tr>
                         )}
                         {(dashboard?.attentionList ?? []).map(q => (
                           <QuoteActionRow key={q.id} quote={q} onAction={handleAction} />
@@ -550,16 +556,16 @@ export default function CommercialFollowupDashboard() {
           <div className="space-y-4">
             {/* Filters */}
             <div className="flex flex-wrap gap-3">
-              <Input placeholder="Buscar cliente, email, nº presupuesto..." value={openSearch}
+              <Input placeholder={t("crmFollowup.open.search")} value={openSearch}
                 onChange={e => setOpenSearch(e.target.value)} className="h-8 text-xs w-64" />
               <Select value={openStatus} onValueChange={setOpenStatus}>
                 <SelectTrigger className="h-8 text-xs w-44">
-                  <SelectValue placeholder="Estado comercial" />
+                  <SelectValue placeholder={t("crmFollowup.open.statusPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los estados</SelectItem>
-                  {Object.entries(COMMERCIAL_STATUS_CONFIG).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                  <SelectItem value="all">{t("crmFollowup.open.allStatuses")}</SelectItem>
+                  {Object.keys(COMMERCIAL_STATUS_CONFIG).map((k) => (
+                    <SelectItem key={k} value={k}>{t(`crmFollowup.status.${k}`)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -568,16 +574,16 @@ export default function CommercialFollowupDashboard() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="yes">Vistos</SelectItem>
-                  <SelectItem value="no">No vistos</SelectItem>
+                  <SelectItem value="all">{t("crmFollowup.open.all")}</SelectItem>
+                  <SelectItem value="yes">{t("crmFollowup.open.viewed")}</SelectItem>
+                  <SelectItem value="no">{t("crmFollowup.open.notViewed")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
               <div className="px-4 py-2.5 border-b border-foreground/[0.08] flex items-center justify-between">
-                <span className="text-xs text-foreground/50">{openData?.total ?? 0} presupuestos</span>
+                <span className="text-xs text-foreground/50">{t("crmFollowup.open.count", { n: openData?.total ?? 0 })}</span>
               </div>
               {openLoading ? (
                 <div className="flex items-center justify-center h-32"><RefreshCw className="w-5 h-5 animate-spin text-orange-400" /></div>
@@ -586,19 +592,19 @@ export default function CommercialFollowupDashboard() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-foreground/[0.08] text-foreground/40">
-                        <th className="px-3 py-2 text-left font-medium">Presupuesto</th>
-                        <th className="px-3 py-2 text-left font-medium">Cliente</th>
-                        <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Enviado</th>
-                        <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">Importe</th>
-                        <th className="px-3 py-2 text-left font-medium">Estado</th>
-                        <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Visto</th>
-                        <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Recs.</th>
-                        <th className="px-3 py-2 text-right font-medium">Acciones</th>
+                        <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.quote")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.client")}</th>
+                        <th className="px-3 py-2 text-left font-medium hidden md:table-cell">{t("crmFollowup.col.sent")}</th>
+                        <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">{t("crmFollowup.col.amount")}</th>
+                        <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.status")}</th>
+                        <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.seen")}</th>
+                        <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.recs")}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t("crmFollowup.col.actions")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(openData?.rows ?? []).length === 0 && (
-                        <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">Sin resultados</td></tr>
+                        <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">{t("crmFollowup.open.empty")}</td></tr>
                       )}
                       {(openData?.rows ?? []).map(q => (
                         <QuoteActionRow key={q.id} quote={q} onAction={handleAction} />
@@ -620,7 +626,7 @@ export default function CommercialFollowupDashboard() {
         {tab === "history" && (
           <div className="rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
             <div className="px-4 py-2.5 border-b border-foreground/[0.08]">
-              <span className="text-xs text-foreground/50">{historyData?.total ?? 0} comunicaciones</span>
+              <span className="text-xs text-foreground/50">{t("crmFollowup.history.count", { n: historyData?.total ?? 0 })}</span>
             </div>
             {histLoading ? (
               <div className="flex items-center justify-center h-32"><RefreshCw className="w-5 h-5 animate-spin text-orange-400" /></div>
@@ -629,21 +635,21 @@ export default function CommercialFollowupDashboard() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-foreground/[0.08] text-foreground/40">
-                      <th className="px-3 py-2 text-left font-medium">Fecha</th>
-                      <th className="px-3 py-2 text-left font-medium">Presupuesto</th>
-                      <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Cliente</th>
-                      <th className="px-3 py-2 text-left font-medium">Tipo</th>
-                      <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">Asunto</th>
-                      <th className="px-3 py-2 text-left font-medium">Estado</th>
+                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.date")}</th>
+                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.quote")}</th>
+                      <th className="px-3 py-2 text-left font-medium hidden md:table-cell">{t("crmFollowup.col.client")}</th>
+                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.type")}</th>
+                      <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">{t("crmFollowup.col.subject")}</th>
+                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.status")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(historyData?.rows ?? []).length === 0 && (
-                      <tr><td colSpan={6} className="px-3 py-8 text-center text-foreground/30">Sin historial</td></tr>
+                      <tr><td colSpan={6} className="px-3 py-8 text-center text-foreground/30">{t("crmFollowup.history.empty")}</td></tr>
                     )}
                     {(historyData?.rows ?? []).map(c => (
                       <tr key={c.id} className="border-b border-foreground/[0.05] hover:bg-foreground/[0.02]">
-                        <td className="px-3 py-2.5 text-foreground/50">{fmtDateTime(c.sentAt)}</td>
+                        <td className="px-3 py-2.5 text-foreground/50">{fmtDateTime(format, c.sentAt)}</td>
                         <td className="px-3 py-2.5">
                           <span className="font-mono text-orange-400 font-bold">{c.quoteNumber ?? `#${c.quoteId}`}</span>
                         </td>
@@ -656,10 +662,10 @@ export default function CommercialFollowupDashboard() {
                             c.type === "lost_reason" ? "text-red-300 bg-red-500/15 border-red-500/30" :
                             "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
                           }`}>
-                            {c.type === "automatic_reminder" ? "Auto" :
-                             c.type === "manual_reminder" ? "Manual" :
-                             c.type === "internal_note" ? "Nota" :
-                             c.type === "lost_reason" ? "Perdido" :
+                            {c.type === "automatic_reminder" ? t("crmFollowup.history.typeAuto") :
+                             c.type === "manual_reminder" ? t("crmFollowup.history.typeManual") :
+                             c.type === "internal_note" ? t("crmFollowup.history.typeNote") :
+                             c.type === "lost_reason" ? t("crmFollowup.history.typeLost") :
                              c.type}
                           </span>
                         </td>
@@ -670,7 +676,7 @@ export default function CommercialFollowupDashboard() {
                             c.status === "failed" ? "text-red-300 bg-red-500/15" :
                             "text-zinc-300 bg-zinc-500/15"
                           }`}>
-                            {c.status === "sent" ? "Enviado" : c.status === "failed" ? "Fallido" : "Omitido"}
+                            {c.status === "sent" ? t("crmFollowup.history.sent") : c.status === "failed" ? t("crmFollowup.history.failed") : t("crmFollowup.history.skipped")}
                           </span>
                         </td>
                       </tr>
@@ -707,7 +713,7 @@ export default function CommercialFollowupDashboard() {
       <Dialog open={!!remindQuote} onOpenChange={() => setRemindQuote(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Enviar recordatorio manual</DialogTitle>
+            <DialogTitle>{t("crmFollowup.remind.title")}</DialogTitle>
           </DialogHeader>
           {remindQuote && (
             <div className="space-y-4">
@@ -715,19 +721,19 @@ export default function CommercialFollowupDashboard() {
                 <span className="font-mono text-orange-400">{remindQuote.quoteNumber}</span> · {remindQuote.clientName} · {remindQuote.clientEmail}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Asunto (opcional)</Label>
+                <Label className="text-xs">{t("crmFollowup.remind.subject")}</Label>
                 <Input value={remindSubject} onChange={e => setRemindSubject(e.target.value)} className="text-xs h-8"
-                  placeholder="Se usará la plantilla automática si está vacío" />
+                  placeholder={t("crmFollowup.remind.subjectPlaceholder")} />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Cuerpo personalizado (opcional)</Label>
+                <Label className="text-xs">{t("crmFollowup.remind.body")}</Label>
                 <Textarea value={remindBody} onChange={e => setRemindBody(e.target.value)} rows={4} className="text-xs"
-                  placeholder="Si lo dejas vacío se usará la plantilla según el número de recordatorio" />
+                  placeholder={t("crmFollowup.remind.bodyPlaceholder")} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setRemindQuote(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setRemindQuote(null)}>{t("crmFollowup.remind.cancel")}</Button>
             <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white"
               disabled={sendManualReminder.isPending}
               onClick={() => sendManualReminder.mutate({
@@ -736,7 +742,7 @@ export default function CommercialFollowupDashboard() {
                 customBody: remindBody || undefined,
               })}>
               {sendManualReminder.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1" />}
-              Enviar
+              {t("crmFollowup.remind.send")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -746,7 +752,7 @@ export default function CommercialFollowupDashboard() {
       <Dialog open={!!noteQuote} onOpenChange={() => setNoteQuote(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Añadir nota comercial</DialogTitle>
+            <DialogTitle>{t("crmFollowup.note.title")}</DialogTitle>
           </DialogHeader>
           {noteQuote && (
             <div className="space-y-4">
@@ -754,29 +760,29 @@ export default function CommercialFollowupDashboard() {
                 <span className="font-mono text-orange-400">{noteQuote.quoteNumber}</span> · {noteQuote.clientName}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Canal</Label>
+                <Label className="text-xs">{t("crmFollowup.note.channel")}</Label>
                 <Select value={noteChannel} onValueChange={v => setNoteChannel(v as any)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="internal">Nota interna</SelectItem>
-                    <SelectItem value="phone">Llamada telefónica</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="internal">{t("crmFollowup.note.internal")}</SelectItem>
+                    <SelectItem value="phone">{t("crmFollowup.note.phone")}</SelectItem>
+                    <SelectItem value="whatsapp">{t("crmFollowup.note.whatsapp")}</SelectItem>
+                    <SelectItem value="email">{t("crmFollowup.note.email")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Nota</Label>
+                <Label className="text-xs">{t("crmFollowup.note.note")}</Label>
                 <Textarea value={noteText} onChange={e => setNoteText(e.target.value)} rows={3} className="text-xs" />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setNoteQuote(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setNoteQuote(null)}>{t("crmFollowup.note.cancel")}</Button>
             <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white"
               disabled={addNote.isPending || !noteText.trim()}
               onClick={() => addNote.mutate({ quoteId: noteQuote.id, note: noteText, channel: noteChannel })}>
-              Guardar nota
+              {t("crmFollowup.note.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -786,7 +792,7 @@ export default function CommercialFollowupDashboard() {
       <Dialog open={!!lostQuote} onOpenChange={() => setLostQuote(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-red-400">Marcar como perdido</DialogTitle>
+            <DialogTitle className="text-red-400">{t("crmFollowup.lost.title")}</DialogTitle>
           </DialogHeader>
           {lostQuote && (
             <div className="space-y-4">
@@ -794,18 +800,18 @@ export default function CommercialFollowupDashboard() {
                 <span className="font-mono text-orange-400">{lostQuote.quoteNumber}</span> · {lostQuote.clientName}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Motivo (opcional)</Label>
+                <Label className="text-xs">{t("crmFollowup.lost.reason")}</Label>
                 <Textarea value={lostReason} onChange={e => setLostReason(e.target.value)} rows={2} className="text-xs"
-                  placeholder="Precio, competencia, cambio de planes..." />
+                  placeholder={t("crmFollowup.lost.placeholder")} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setLostQuote(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setLostQuote(null)}>{t("crmFollowup.lost.cancel")}</Button>
             <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white"
               disabled={updateStatus.isPending}
               onClick={() => updateStatus.mutate({ quoteId: lostQuote.id, status: "lost", lostReason })}>
-              Marcar como perdido
+              {t("crmFollowup.lost.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -815,7 +821,7 @@ export default function CommercialFollowupDashboard() {
       <Dialog open={!!pauseQuote} onOpenChange={() => setPauseQuote(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Pausar recordatorios</DialogTitle>
+            <DialogTitle>{t("crmFollowup.pauseDialog.title")}</DialogTitle>
           </DialogHeader>
           {pauseQuote && (
             <div className="space-y-4">
@@ -823,18 +829,18 @@ export default function CommercialFollowupDashboard() {
                 <span className="font-mono text-orange-400">{pauseQuote.quoteNumber}</span> · {pauseQuote.clientName}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Motivo de pausa (opcional)</Label>
+                <Label className="text-xs">{t("crmFollowup.pauseDialog.reason")}</Label>
                 <Input value={pauseReason} onChange={e => setPauseReason(e.target.value)} className="text-xs h-8"
-                  placeholder="Cliente pidió más tiempo..." />
+                  placeholder={t("crmFollowup.pauseDialog.placeholder")} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setPauseQuote(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setPauseQuote(null)}>{t("crmFollowup.pauseDialog.cancel")}</Button>
             <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white"
               disabled={pauseReminders.isPending}
               onClick={() => pauseReminders.mutate({ quoteId: pauseQuote.id, reason: pauseReason || undefined })}>
-              <Pause className="w-3.5 h-3.5 mr-1" /> Pausar
+              <Pause className="w-3.5 h-3.5 mr-1" /> {t("crmFollowup.pauseDialog.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
