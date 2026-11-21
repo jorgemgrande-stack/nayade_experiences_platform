@@ -10,7 +10,12 @@
  * Solo presentación: no autoriza nada (la autorización sigue en el servidor).
  */
 
+import type { Locale } from "./i18n/core";
+import { localizeVocabularyText } from "./i18n/vocabularyDe";
+
 export interface VocabularyInput {
+  /** Idioma de la interfaz; sin él (o en español) se devuelve el texto de siempre. */
+  locale?: Locale;
   /** true si la empresa usa licencias por capacidad (pyme). */
   licensed: boolean;
   /** Capacidad visible (activa o en solo lectura). Sin licencias por capacidad, todas. */
@@ -146,7 +151,26 @@ function smeProductTypes(can: (id: string) => boolean): ProductTypeOption[] {
   return out;
 }
 
+/** Campos de `catalog` que son valores internos (se guardan), no textos visibles. */
+const CATALOG_VALUE_FIELDS = new Set(["defaultProductType", "defaultVariantPriceType"]);
+
+function localizeVocabulary(v: Vocabulary, locale: Locale): Vocabulary {
+  const out: Record<string, unknown> = { ...v };
+  for (const [k, val] of Object.entries(v)) if (typeof val === "string") out[k] = localizeVocabularyText(val, locale);
+  const catalog: Record<string, unknown> = { ...v.catalog };
+  for (const [k, val] of Object.entries(v.catalog)) if (typeof val === "string" && !CATALOG_VALUE_FIELDS.has(k)) catalog[k] = localizeVocabularyText(val, locale);
+  out.catalog = catalog;
+  // Solo la etiqueta: el valor se envía al servidor
+  out.productTypes = v.productTypes.map((p) => ({ value: p.value, label: localizeVocabularyText(p.label, locale) }));
+  return out as unknown as Vocabulary;
+}
+
 export function buildVocabulary(input: VocabularyInput): Vocabulary {
+  const base = buildSpanishVocabulary(input);
+  return input.locale && input.locale !== "es" ? localizeVocabulary(base, input.locale) : base;
+}
+
+function buildSpanishVocabulary(input: VocabularyInput): Vocabulary {
   const can = input.can ?? (() => true);
   if (!input.licensed) {
     return {

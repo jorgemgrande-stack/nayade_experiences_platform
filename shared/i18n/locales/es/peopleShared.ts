@@ -1,0 +1,41 @@
+/** Personal: primeros pasos y editor de horario semanal. */
+export default {
+  firstSteps: {
+    title: "Primeros pasos con Personal",
+    count: "{done} de {total}",
+    done: "Hecho",
+    pending: "Pendiente",
+  },
+  schedule: {
+    saved: "Horario guardado",
+    intro: "Horario previsto de cada semana. Se usa para comparar las horas fichadas con las previstas. Puedes añadir varios tramos en un mismo día (jornada partida).",
+    none: "Este empleado todavía no tiene horario.",
+    fill: "Rellenar de lunes a viernes, 9:00 a 17:00",
+    free: "Libre",
+    entry: "{day}: entrada",
+    exit: "{day}: salida",
+    to: "a",
+    removeSlot: "Quitar tramo",
+    addSlot: "Tramo",
+    hoursWeek: "{hours} h a la semana",
+    saving: "Guardando…",
+    save: "Guardar horario",
+    weekday: {
+      sun: "Domingo",
+      mon: "Lunes",
+      tue: "Martes",
+      wed: "Miércoles",
+      thu: "Jueves",
+      fri: "Viernes",
+      sat: "Sábado",
+    },
+    err: {
+      maxSlots: "Como máximo 4 tramos por día.",
+      invalidDay: "Día de la semana no válido.",
+      format: "{day}: las horas deben tener el formato HH:MM.",
+      order: "{day}: la hora de salida debe ser posterior a la de entrada.",
+      maxDay: "{day}: como máximo 4 tramos.",
+      overlap: "{day}: hay tramos que se solapan.",
+    },
+  },
+};

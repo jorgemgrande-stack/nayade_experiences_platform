@@ -5,10 +5,12 @@
 import { Link } from "wouter";
 import { Rocket } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export const SETUP_WIZARD_PATH = "/admin/primeros-pasos";
 
 export function SetupWizardLink({ className = "" }: { className?: string }) {
+  const { t } = useI18n();
   const { data } = trpc.setupWizard.status.useQuery(undefined, { retry: false, staleTime: 60_000 });
   if (!data || data.progress.completedAt) return null;
   return (
@@ -17,8 +19,8 @@ export function SetupWizardLink({ className = "" }: { className?: string }) {
       className={`inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${className}`}
     >
       <Rocket className="h-4 w-4" aria-hidden="true" />
-      <span>Primeros pasos</span>
-      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs" aria-label={`${data.percent}% completado`}>
+      <span>{t("onboardingShared.link.label")}</span>
+      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs" aria-label={t("onboardingShared.status.completed", { percent: data.percent })}>
         {data.percent}%
       </span>
     </Link>

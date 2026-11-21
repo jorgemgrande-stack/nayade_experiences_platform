@@ -6,7 +6,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { ArrowRight, CheckCircle2, Circle, X } from "lucide-react";
-import { FIRST_STEPS_HIDDEN_KEY, trialFirstSteps, type FirstStepFacts } from "@shared/trialFirstSteps";
+import { FIRST_STEPS_HIDDEN_KEY, trialFirstSteps, type FirstStepFacts, type FirstStepId } from "@shared/trialFirstSteps";
+import { useI18n } from "@/i18n/I18nProvider";
 
 const readHidden = () => {
   try {
@@ -25,8 +26,14 @@ const writeHidden = (v: boolean) => {
 };
 
 export function TrialFirstSteps({ facts, can }: { facts: FirstStepFacts; can: { clients: boolean; quotes: boolean } }) {
+  const { t } = useI18n();
   const [hidden, setHidden] = useState(readHidden);
   const steps = trialFirstSteps(facts, can);
+  const copy: Record<FirstStepId, { title: string; text: string; cta: string }> = {
+    company: { title: t("onboardingShared.trial.company.title"), text: t("onboardingShared.trial.company.text"), cta: t("onboardingShared.trial.company.cta") },
+    client: { title: t("onboardingShared.trial.client.title"), text: t("onboardingShared.trial.client.text"), cta: t("onboardingShared.trial.client.cta") },
+    quote: { title: t("onboardingShared.trial.quote.title"), text: t("onboardingShared.trial.quote.text"), cta: t("onboardingShared.trial.quote.cta") },
+  };
   const done = steps.filter((s) => s.done).length;
   if (done === steps.length) return null;
   const toggle = (v: boolean) => {
@@ -36,9 +43,9 @@ export function TrialFirstSteps({ facts, can }: { facts: FirstStepFacts; can: { 
   if (hidden) {
     return (
       <p className="text-sm text-muted-foreground" data-trial-first-steps="hidden">
-        Guía de primeros pasos oculta ({done} de {steps.length} hechos).{" "}
+        {t("onboardingShared.trial.hiddenGuide", { done, total: steps.length })}{" "}
         <button type="button" onClick={() => toggle(false)} className="font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-          Mostrarla
+          {t("onboardingShared.trial.show")}
         </button>
       </p>
     );
@@ -47,9 +54,9 @@ export function TrialFirstSteps({ facts, can }: { facts: FirstStepFacts; can: { 
     <section aria-labelledby="trial-first-steps" className="rounded-2xl border border-primary/30 bg-primary/5 p-5" data-trial-first-steps="open">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 id="trial-first-steps" className="font-semibold text-foreground">Empieza en tres pasos</h2>
+          <h2 id="trial-first-steps" className="font-semibold text-foreground">{t("onboardingShared.trial.title")}</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {done} de {steps.length} hechos. Puedes hacerlos en el orden que quieras y retomarlos cuando vuelvas.
+            {t("onboardingShared.trial.intro", { done, total: steps.length })}
           </p>
         </div>
         <button
@@ -57,7 +64,7 @@ export function TrialFirstSteps({ facts, can }: { facts: FirstStepFacts; can: { 
           onClick={() => toggle(true)}
           className="inline-flex shrink-0 items-center gap-1 rounded text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <X className="h-4 w-4" aria-hidden="true" /> Ocultar
+          <X className="h-4 w-4" aria-hidden="true" /> {t("onboardingShared.trial.hide")}
         </button>
       </div>
       <ol className="mt-4 grid gap-3 md:grid-cols-3">
@@ -66,14 +73,14 @@ export function TrialFirstSteps({ facts, can }: { facts: FirstStepFacts; can: { 
             <p className="flex items-center gap-2 font-medium text-foreground">
               {s.done ? <CheckCircle2 className="h-5 w-5 shrink-0 text-success" aria-hidden="true" /> : <Circle className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />}
               <span className="min-w-0">
-                {i + 1}. {s.title}
-                <span className="sr-only">{s.done ? " (hecho)" : " (pendiente)"}</span>
+                {i + 1}. {copy[s.id].title}
+                <span className="sr-only">{s.done ? t("onboardingShared.trial.doneSr") : t("onboardingShared.trial.pendingSr")}</span>
               </span>
             </p>
-            <p className="mt-1 text-sm text-muted-foreground">{s.text}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{copy[s.id].text}</p>
             {!s.done && (
               <Link href={s.href} className="mt-auto pt-3 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-                {s.cta} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                {copy[s.id].cta} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
             )}
           </li>
