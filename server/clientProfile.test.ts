@@ -144,9 +144,9 @@ describe("textos del listado, la ficha y el formulario", () => {
   });
   it("las acciones del listado llevan texto y el nombre abre la ficha", () => {
     const src = read(files[0]);
-    expect(src).toMatch(/>Ver ficha</);
-    expect(src).toMatch(/\s+Editar\s+/);
-    expect(src).toMatch(/\s+Eliminar\s+/);
+    expect(src).toMatch(/crmClients.viewCard/);
+    expect(src).toMatch(/crmClients\.edit"/);
+    expect(src).toMatch(/crmClients\.delete"/);
     expect(src).toMatch(/href=\{fichaHref\(client\)\}/);
   });
   it("la ruta de la ficha está registrada", () => {

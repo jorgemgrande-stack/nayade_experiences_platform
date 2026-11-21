@@ -16,7 +16,8 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { TagChip, selectClass, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { ClientFormDialog } from "@/components/admin/crm/ClientFormDialog";
 import { toastError } from "@/lib/errorMessage";
-import { CLIENT_KIND_LABELS, clientDisplayName, clientKind, type ClientKind } from "@shared/clientProfile";
+import { useI18n } from "@/i18n/I18nProvider";
+import { clientDisplayName, clientKind, type ClientKind } from "@shared/clientProfile";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ const PAGE_SIZE = 50;
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function ClientsManager() {
+  const { t } = useI18n();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ClientKind | "">("");
@@ -98,8 +100,8 @@ export default function ClientsManager() {
     setExporting(true);
     try {
       const r = await utils.crm.clients.exportCsv.fetch(hasFilters ? filters : undefined);
-      downloadTextFile(`clientes-${new Date().toISOString().slice(0, 10)}.csv`, r.csv);
-      toast.success(`${r.count} ${r.count === 1 ? "cliente exportado" : "clientes exportados"}`);
+      downloadTextFile(t("crmClients.csvName", { date: new Date().toISOString().slice(0, 10) }), r.csv);
+      toast.success(t("crmClients.exported", { n: r.count }));
     } catch (e) {
       toastError(e);
     } finally {
@@ -108,7 +110,7 @@ export default function ClientsManager() {
   };
 
   const removeClient = trpc.crm.clients.delete.useMutation({
-    onSuccess: () => { toast.success("Cliente eliminado"); utils.crm.clients.list.invalidate(); utils.crm.clients.stats.invalidate(); setDeleteClient(null); },
+    onSuccess: () => { toast.success(t("crmClients.deleted")); utils.crm.clients.list.invalidate(); utils.crm.clients.stats.invalidate(); setDeleteClient(null); },
     onError: (e) => toastError(e),
   });
 
@@ -118,16 +120,16 @@ export default function ClientsManager() {
   const actions = (client: ClientRow) => (
     <div className="flex flex-wrap items-center justify-end gap-1">
       <Button size="sm" variant="ghost" asChild className="h-8 px-2 text-primary">
-        <Link href={fichaHref(client)} aria-label={`Ver la ficha de ${clientDisplayName(client)}`}>Ver ficha</Link>
+        <Link href={fichaHref(client)} aria-label={t("crmClients.viewCardAria", { name: clientDisplayName(client) })}>{t("crmClients.viewCard")}</Link>
       </Button>
       {canEdit && (
-        <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditClient(client)} aria-label={`Editar ${clientDisplayName(client)}`}>
-          Editar
+        <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditClient(client)} aria-label={t("crmClients.editAria", { name: clientDisplayName(client) })}>
+          {t("crmClients.edit")}
         </Button>
       )}
       {canEdit && (
-        <Button size="sm" variant="ghost" className="h-8 px-2 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)} aria-label={`Eliminar ${clientDisplayName(client)}`}>
-          Eliminar
+        <Button size="sm" variant="ghost" className="h-8 px-2 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)} aria-label={t("crmClients.deleteAria", { name: clientDisplayName(client) })}>
+          {t("crmClients.delete")}
         </Button>
       )}
     </div>
@@ -145,7 +147,7 @@ export default function ClientsManager() {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-foreground">
         {k === "empresa" ? <Building2 className="h-3 w-3" aria-hidden="true" /> : <User className="h-3 w-3" aria-hidden="true" />}
-        {CLIENT_KIND_LABELS[k]}
+        {t(`crmForm.kind.${k}`)}
       </span>
     );
   };
@@ -154,20 +156,20 @@ export default function ClientsManager() {
     <PanelEmpty
       className="border-0"
       icon={<Users />}
-      title={search.trim() ? `Ningún cliente coincide con «${search.trim()}»` : tagFilter && canTags ? `Ningún cliente tiene la etiqueta ${tagFilterName ? `«${tagFilterName}»` : "elegida"}` : "Ningún cliente coincide con los filtros"}
+      title={search.trim() ? t("crmClients.emptyNoMatch", { q: search.trim() }) : tagFilter && canTags ? t("crmClients.emptyNoTag", { tag: tagFilterName ? `«${tagFilterName}»` : t("crmClients.emptyNoTagChosen") }) : t("crmClients.emptyNoFilters")}
     >
-      <Button size="sm" variant="outline" onClick={clearFilters}>Quitar filtros</Button>
+      <Button size="sm" variant="outline" onClick={clearFilters}>{t("crmClients.clearFilters")}</Button>
     </PanelEmpty>
   ) : (
     <PanelEmpty
       className="border-0"
       icon={<Users />}
-      title="Todavía no tienes clientes"
-      description="Da de alta tu primer cliente para preparar presupuestos, registrar ventas y emitir facturas. También se crean solos cuando alguien te escribe desde tu web."
+      title={t("crmClients.emptyTitle")}
+      description={t("crmClients.emptyDesc")}
     >
       {canEdit && (
         <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Crear el primer cliente
+          <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClients.createFirst")}
         </Button>
       )}
     </PanelEmpty>
@@ -179,21 +181,21 @@ export default function ClientsManager() {
         {/* Header */}
         <PanelPageHeader
           icon={<Users />}
-          title="Clientes"
-          description="Tus clientes, particulares y empresas. Pulsa un nombre para ver su ficha."
+          title={t("crmClients.title")}
+          description={t("crmClients.description")}
           actions={<>
             <Button variant="outline" onClick={exportClients} disabled={exporting}>
               {exporting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="mr-2 h-4 w-4" aria-hidden="true" />}
-              {hasFilters ? "Exportar filtrados" : "Exportar"}
+              {hasFilters ? t("crmClients.exportFiltered") : t("crmClients.export")}
             </Button>
             {canImportClients && (
               <Button variant="outline" onClick={() => setImportOpen(true)}>
-                <Upload className="mr-2 h-4 w-4" aria-hidden="true" /> Importar
+                <Upload className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClients.import")}
               </Button>
             )}
             {canEdit && (
               <Button onClick={() => setCreating(true)}>
-                <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Nuevo cliente
+                <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClients.newClient")}
               </Button>
             )}
           </>}
@@ -202,10 +204,10 @@ export default function ClientsManager() {
         {/* Stats strip */}
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            { label: "Total clientes", value: stats.data?.total },
-            { label: "Empresas", value: stats.data?.companies },
-            { label: "Particulares", value: stats.data?.individuals },
-            { label: "Altas este mes", value: stats.data?.newThisMonth },
+            { label: t("crmClients.stats.total"), value: stats.data?.total },
+            { label: t("crmClients.stats.companies"), value: stats.data?.companies },
+            { label: t("crmClients.stats.individuals"), value: stats.data?.individuals },
+            { label: t("crmClients.stats.newThisMonth"), value: stats.data?.newThisMonth },
           ].map((s) => (
             <div key={s.label} className="rounded-xl border border-border bg-card p-4">
               <div className="text-2xl font-bold tabular-nums text-foreground">{s.value ?? "—"}</div>
@@ -221,23 +223,23 @@ export default function ClientsManager() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, email, empresa o NIF..."
-              aria-label="Buscar clientes por nombre, email, empresa o NIF"
+              placeholder={t("crmClients.searchPlaceholder")}
+              aria-label={t("crmClients.searchAria")}
               className="pl-9"
             />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:flex">
             <div className="md:w-44">
-              <label htmlFor="clients-type-filter" className="sr-only">Filtrar por tipo</label>
+              <label htmlFor="clients-type-filter" className="sr-only">{t("crmClients.filterType")}</label>
               <select id="clients-type-filter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ClientKind | "")} className={selectClass}>
-                <option value="">Todos los tipos</option>
-                <option value="empresa">Empresas</option>
-                <option value="particular">Particulares</option>
+                <option value="">{t("crmClients.allTypes")}</option>
+                <option value="empresa">{t("crmClients.companies")}</option>
+                <option value="particular">{t("crmClients.individuals")}</option>
               </select>
             </div>
             {canTags && (
               <div className="flex items-center gap-2 md:w-56">
-                <label htmlFor="clients-tag-filter" className="sr-only">Filtrar por etiqueta</label>
+                <label htmlFor="clients-tag-filter" className="sr-only">{t("crmClients.filterTag")}</label>
                 <Tag className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <select
                   id="clients-tag-filter"
@@ -245,7 +247,7 @@ export default function ClientsManager() {
                   onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
                   className={selectClass}
                 >
-                  <option value="">Todas las etiquetas</option>
+                  <option value="">{t("crmClients.allTags")}</option>
                   {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
@@ -256,13 +258,13 @@ export default function ClientsManager() {
         {/* Listado */}
         <div className="rounded-xl border border-border bg-card">
           {isLoading ? (
-            <p className="py-12 text-center text-muted-foreground" role="status">Cargando clientes…</p>
+            <p className="py-12 text-center text-muted-foreground" role="status">{t("crmClients.loading")}</p>
           ) : isError ? (
             <div role="alert" className="flex flex-col items-center gap-3 py-12">
               <AlertCircle className="h-7 w-7 text-destructive" aria-hidden="true" />
-              <p className="text-sm text-foreground">{errorMessage(listError, "No se han podido cargar los clientes.")}</p>
+              <p className="text-sm text-foreground">{errorMessage(listError, t("crmClients.loadError"))}</p>
               <Button size="sm" variant="outline" onClick={() => refetch()}>
-                <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> Reintentar
+                <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClients.retry")}
               </Button>
             </div>
           ) : !clientsList || clientsList.length === 0 ? (
@@ -271,14 +273,14 @@ export default function ClientsManager() {
             <>
               {/* Escritorio: tabla */}
               <table className="hidden w-full text-sm md:table">
-                <caption className="sr-only">Listado de clientes</caption>
+                <caption className="sr-only">{t("crmClients.listCaption")}</caption>
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
-                    <th scope="col" className="px-4 py-3 font-medium">Cliente</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Tipo</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Contacto</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Población</th>
-                    <th scope="col" className="px-4 py-3 text-right font-medium">Acciones</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colClient")}</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colType")}</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colContact")}</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colCity")}</th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmClients.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -289,7 +291,7 @@ export default function ClientsManager() {
                           {clientDisplayName(client)}
                         </Link>
                         {clientKind(client) === "empresa" && client.name !== client.company && <div className="text-xs text-muted-foreground">{client.name}</div>}
-                        {client.nif && <div className="text-xs text-muted-foreground">NIF: {client.nif}</div>}
+                        {client.nif && <div className="text-xs text-muted-foreground">{t("crmClients.nif", { nif: client.nif })}</div>}
                         {tagsOf(client)}
                       </td>
                       <td className="px-4 py-3 align-top">{kindBadge(client)}</td>
@@ -305,7 +307,7 @@ export default function ClientsManager() {
               </table>
 
               {/* Móvil: tarjetas */}
-              <ul className="divide-y divide-border md:hidden" aria-label="Listado de clientes">
+              <ul className="divide-y divide-border md:hidden" aria-label={t("crmClients.listCaption")}>
                 {clientsList.map((client) => (
                   <li key={client.id} className="space-y-1.5 p-4" data-client-row>
                     <div className="flex items-start justify-between gap-2">
@@ -325,10 +327,10 @@ export default function ClientsManager() {
 
               {total > PAGE_SIZE && (
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-                  <span>Mostrando {page * PAGE_SIZE + 1}–{Math.min(total, (page + 1) * PAGE_SIZE)} de {total}</span>
+                  <span>{t("crmClients.showing", { from: page * PAGE_SIZE + 1, to: Math.min(total, (page + 1) * PAGE_SIZE), total })}</span>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
-                    <Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)}>Siguiente</Button>
+                    <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>{t("crmClients.prev")}</Button>
+                    <Button size="sm" variant="outline" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage((p) => p + 1)}>{t("crmClients.next")}</Button>
                   </div>
                 </div>
               )}
@@ -354,15 +356,15 @@ export default function ClientsManager() {
       <Dialog open={deleteClient !== null} onOpenChange={(o) => !o && setDeleteClient(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Eliminar cliente</DialogTitle>
+            <DialogTitle>{t("crmClients.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              ¿Seguro que quieres eliminar a {deleteClient ? clientDisplayName(deleteClient) : "este cliente"}? Sus facturas y presupuestos se conservan. Esta acción no se puede deshacer.
+              {t("crmClients.deleteConfirm", { name: deleteClient ? clientDisplayName(deleteClient) : t("crmClients.deleteThisClient") })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteClient(null)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setDeleteClient(null)}>{t("crmClients.cancel")}</Button>
             <Button variant="destructive" onClick={() => deleteClient && removeClient.mutate({ id: deleteClient.id })} disabled={removeClient.isPending}>
-              {removeClient.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} Eliminar
+              {removeClient.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} {t("crmClients.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
