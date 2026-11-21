@@ -23,6 +23,7 @@ import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
 import { sql } from "drizzle-orm";
+import { describeRule } from "../../shared/learningRules";
 import { discardDraft, getEditorState, publishDraft, restoreVersion, saveDraft } from "../learningEditor";
 
 const id = z.number().int().positive();
@@ -108,14 +109,7 @@ const admin = router({
     const exp = await rowsOf(sql`SELECT id, title FROM experiences`).catch(() => []);
     const vars = await rowsOf(sql`SELECT id, name FROM experience_variants`).catch(() => []);
     const mods = await rowsOf(sql`SELECT m.id, m.title, c.title AS course_title FROM learning_modules m JOIN learning_courses c ON c.id = m.course_id`).catch(() => []);
-    const name = (list: Array<Record<string, any>>, id: number | null, col: string) => (id == null ? null : (list.find((x) => Number(x.id) === id)?.[col] as string | undefined) ?? null);
-    return rules.map((r) => ({
-      ...r,
-      experienceName: name(exp, r.experienceId, "title"),
-      variantName: name(vars, r.variantId, "name"),
-      courseTitle: mods.find((m) => r.moduleIds.includes(Number(m.id)))?.course_title ?? null,
-      moduleTitles: r.moduleIds.map((id) => name(mods, id, "title") ?? `Módulo ${id}`),
-    }));
+    return rules.map((r) => describeRule(r, { experiences: exp, variants: vars, modules: mods }));
   })),
   saveRule: adminProcedure
     .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean() }))

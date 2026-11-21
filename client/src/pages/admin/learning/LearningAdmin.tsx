@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
 import { effectiveStatus } from "@shared/learning";
+import { experienceLabel, variantLabel, modulesLabel } from "@shared/learningRules";
 import { FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
 import CourseEditor from "./CourseEditor";
 
@@ -180,13 +181,13 @@ function Rules() {
           <li key={r.id} className="rounded-xl border bg-card p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <h3 className="flex items-center gap-1.5 font-semibold"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden /><span className="truncate">{r.experienceName ?? `Producto n.º ${r.experienceId}`}</span></h3>
-                <p className="text-sm text-muted-foreground">{r.variantName ?? (r.variantId == null ? "Cualquier modalidad" : `Modalidad n.º ${r.variantId}`)}</p>
+                <h3 className="flex items-center gap-1.5 font-semibold"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden /><span className="truncate">{experienceLabel(r)}</span></h3>
+                <p className="text-sm text-muted-foreground">{variantLabel(r)}</p>
               </div>
               <Badge variant={r.active ? "default" : "secondary"}>{r.active ? "Activa" : "Inactiva"}</Badge>
             </div>
             <dl className="mt-3 space-y-1 text-sm">
-              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Abre</dt><dd>{r.moduleTitles.length ? r.moduleTitles.join(" · ") : "—"}</dd></div>
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Abre</dt><dd>{modulesLabel(r)}</dd></div>
               <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Duración</dt><dd>{r.durationDays ? `${r.durationDays} días` : "Sin límite"}</dd></div>
               <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Inicio</dt><dd>{r.startMode === "fixed_date" ? fmt(r.fixedStart) : "Al conceder el acceso"}</dd></div>
             </dl>
