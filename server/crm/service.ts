@@ -589,7 +589,7 @@ export class CrmService {
     const arch = f.archived ?? "exclude";
     if (arch === "exclude") rows = rows.filter((l) => !l.archivedAt);
     else if (arch === "only") rows = rows.filter((l) => !!l.archivedAt);
-    if (f.focus) rows = rows.filter((l) => leadMatches(f.focus!, l));
+    if (f.focus) rows = rows.filter((l) => leadMatches(f.focus!, l, this.now()));
     const q = normalizeText(f.q);
     if (q) {
       const qp = normalizePhone(f.q);

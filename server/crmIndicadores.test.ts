@@ -132,3 +132,22 @@ describe("clasificación del origen de los eventos", () => {
     expect(r.activityStream.truncated).toBe(true);
   });
 });
+
+describe("indicadores de los informes: mismo criterio que sus listados", () => {
+  it("sin tocar (leads) y oportunidades sin responsable", async () => {
+    const l = await crm.createLead({ name: "Viejo", email: "v@x.example" }, "ana");
+    now += 10 * DAY;
+    await crm.createLead({ name: "Reciente", email: "r@x.example" }, "ana");
+    const co = await crm.createCompany({ name: "Hotel" }, "ana");
+    await crm.createOpportunity({ companyId: co.id, title: "Sin dueño", owner: null }, "ana");
+    const stale = (await crm.listLeads({ focus: "untouched" })).items;
+    expect(stale.map((x) => x.id)).toEqual([l.id]);
+    const opps = await crm.listOpportunities({ focus: "no-owner" });
+    const rep = crmReports(
+      { leads: (await crm.listLeads({ archived: "all" })).items, opportunities: (await crm.listOpportunities({})).items, companies: [], contacts: [], activities: [] },
+      { from: now - 30 * DAY, to: now + DAY, now },
+    );
+    expect(rep.followUps.untouchedLeads).toBe(stale.length);
+    expect(rep.quality.openOpportunitiesWithoutOwner).toBe(opps.total);
+  });
+});

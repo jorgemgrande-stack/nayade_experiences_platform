@@ -10,7 +10,7 @@
  */
 import { madridDate } from "../controlPlane/madridCalendar";
 import { normalizeCompanyName } from "./service";
-import { activityOrigin, AMBIGUOUS_NOTE, type ActivityOrigin } from "./focus";
+import { activityOrigin, AMBIGUOUS_NOTE, leadMatches, opportunityMatches, type ActivityOrigin } from "./focus";
 import type { Activity, Company, Contact, Lead, Opportunity } from "./types";
 
 export interface ReportData {
@@ -136,7 +136,7 @@ export function crmReports(d: ReportData, o: { from: number; to: number; now: nu
     overdueNextActions: openOpps.filter((x) => x.nextActionAt !== null && x.nextActionAt < now).map((x) => ({ id: x.id, title: x.title, owner: x.owner, nextActionAt: x.nextActionAt })),
     withoutNextAction: openOpps.filter((x) => x.nextActionAt === null).length,
     overdueTasks: d.activities.filter((a) => a.kind === "task" && a.doneAt === null && a.dueAt !== null && a.dueAt < now).length,
-    untouchedLeads: d.leads.filter((l) => l.status === "new" && now - l.createdAt > 7 * DAY).length,
+    untouchedLeads: d.leads.filter((l) => leadMatches("untouched", l, now)).length,
   };
 
   // ── Calidad de los datos (solo detecta; no corrige nada) ──
@@ -156,7 +156,7 @@ export function crmReports(d: ReportData, o: { from: number; to: number; now: nu
     duplicateCompaniesByTaxId: dup(taxGroups),
     duplicateLeadsByEmail: dup(emailGroups),
     leadsWithoutOwner: d.leads.filter((l) => !l.owner && l.status !== "converted" && l.status !== "disqualified").length,
-    openOpportunitiesWithoutOwner: openOpps.filter((x) => !x.owner).length,
+    openOpportunitiesWithoutOwner: d.opportunities.filter((x) => opportunityMatches("no-owner", x, now)).length,
     // Estados incoherentes
     convertedLeadsWithoutCompany: d.leads.filter((l) => l.status === "converted" && !l.convertedCompanyId).length,
     closedOpportunitiesWithoutDate: d.opportunities.filter((x) => (x.stage === "won" || x.stage === "lost") && !x.closedAt).length,

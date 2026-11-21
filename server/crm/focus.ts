@@ -10,9 +10,9 @@ export const DAY_MS = 86_400_000;
 /** Horizonte de renovaciones: contratos activos con renovación hasta dentro de 30 días (incluye fechas ya pasadas). */
 export const RENEWAL_HORIZON_DAYS = 30;
 
-export const LEAD_FOCUS = ["active", "unowned"] as const;
+export const LEAD_FOCUS = ["active", "unowned", "untouched"] as const;
 export type LeadFocus = (typeof LEAD_FOCUS)[number];
-export const OPPORTUNITY_FOCUS = ["open", "overdue-next-action", "no-next-action"] as const;
+export const OPPORTUNITY_FOCUS = ["open", "overdue-next-action", "no-next-action", "no-owner"] as const;
 export type OpportunityFocus = (typeof OPPORTUNITY_FOCUS)[number];
 export const CONTRACT_FOCUS = ["active", "to-sign", "signed", "renewals"] as const;
 export type ContractFocus = (typeof CONTRACT_FOCUS)[number];
@@ -22,11 +22,18 @@ export type CompanyFocus = (typeof COMPANY_FOCUS)[number];
 const ACTIVE_LEAD = (l: Lead) => !l.archivedAt && (l.status === "new" || l.status === "contacted" || l.status === "qualified");
 
 /** Leads en curso (nuevos, contactados o cualificados, sin archivar) y, de ellos, los que nadie lleva. */
-export const leadMatches = (f: LeadFocus, l: Lead): boolean => (f === "active" ? ACTIVE_LEAD(l) : ACTIVE_LEAD(l) && !l.owner?.trim());
+/** «Sin tocar»: nuevos (sin primer contacto) con más de 7 días desde el alta. */
+export const UNTOUCHED_DAYS = 7;
+export const leadMatches = (f: LeadFocus, l: Lead, now: number = Date.now()): boolean => {
+  if (f === "active") return ACTIVE_LEAD(l);
+  if (f === "unowned") return ACTIVE_LEAD(l) && !l.owner?.trim();
+  return !l.archivedAt && l.status === "new" && now - l.createdAt > UNTOUCHED_DAYS * DAY_MS;
+};
 
 export const opportunityMatches = (f: OpportunityFocus, o: Opportunity, now: number): boolean => {
   if (!OPEN_STAGES.includes(o.stage)) return false;
   if (f === "open") return true;
+  if (f === "no-owner") return !o.owner?.trim();
   if (f === "overdue-next-action") return o.nextActionAt !== null && o.nextActionAt < now;
   return o.nextActionAt === null;
 };
