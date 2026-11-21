@@ -10,6 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { I18nProvider } from "./i18n/I18nProvider";
 import { HomeGate, LocaleProductGate, LocaleSlugGate, PageOrDefault, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 import AdminRouteGate from "./components/admin/AdminRouteGate";
 
@@ -685,9 +686,11 @@ function App() {
         <TooltipProvider>
           <Toaster richColors position="top-right" />
           <ScrollToTop />
-          <MaintenanceGate>
-            <Router />
-          </MaintenanceGate>
+          <I18nProvider>
+            <MaintenanceGate>
+              <Router />
+            </MaintenanceGate>
+          </I18nProvider>
           <CookieBanner />
           <MetaPixelLoader />
           <GA4Loader />
