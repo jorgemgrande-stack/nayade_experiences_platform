@@ -61,7 +61,7 @@ describe("plantillas de correo sembradas", () => {
 
 describe("pantallas del panel", () => {
   it("Variantes y precios: sin jerga técnica y con «producto o servicio» para una pyme", () => {
-    const src = read("client/src/pages/admin/products/VariantsManager.tsx");
+    const src = read("client/src/pages/admin/products/VariantsManager.tsx") + read("shared/i18n/locales/es/productsVariants.ts");
     expect(src).not.toMatch(/BookingModal|Redsys|modal de reserva/);
     expect(src).toContain("useVocabulary");
     expect(src).toContain('"producto o servicio"');

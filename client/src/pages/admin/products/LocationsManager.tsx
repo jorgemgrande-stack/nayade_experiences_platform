@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, MapPin, MoreVertical, Copy, PowerOff, Power, Chev
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelEmpty } from "@/components/admin/PanelStates";
 import { useVocabulary } from "@/lib/vocabulary";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface LocationForm {
   name: string;
@@ -26,6 +27,7 @@ const emptyForm: LocationForm = { name: "", slug: "", description: "", address: 
 
 export default function LocationsManager() {
   const voc = useVocabulary();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<LocationForm>(emptyForm);
@@ -35,32 +37,32 @@ export default function LocationsManager() {
   const { data: locations, isLoading } = trpc.products.getLocations.useQuery();
 
   const createMut = trpc.products.createLocation.useMutation({
-    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Lugar de servicio creado"); setOpen(false); setForm(emptyForm); },
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success(t("productsLocations.toast.created")); setOpen(false); setForm(emptyForm); },
     onError: (e) => toast.error(e.message),
   });
   const updateMut = trpc.products.updateLocation.useMutation({
-    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Lugar de servicio actualizado"); setOpen(false); setEditId(null); setForm(emptyForm); },
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success(t("productsLocations.toast.updated")); setOpen(false); setEditId(null); setForm(emptyForm); },
     onError: (e) => toast.error(e.message),
   });
   const deleteMut = trpc.products.deleteLocation.useMutation({
-    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Lugar de servicio desactivado"); },
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success(t("productsLocations.toast.deactivated")); },
     onError: (e) => toast.error(e.message),
   });
   const hardDeleteMut = trpc.products.hardDeleteLocation.useMutation({
-    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Lugar de servicio eliminado"); },
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success(t("productsLocations.toast.removed")); },
     onError: (e) => toast.error(e.message),
   });
   const toggleActiveMut = trpc.products.toggleLocationActive.useMutation({
-    onSuccess: (_, vars) => { utils.products.getLocations.invalidate(); toast.success(vars.isActive ? "Lugar de servicio activado" : "Lugar de servicio desactivado"); },
+    onSuccess: (_, vars) => { utils.products.getLocations.invalidate(); toast.success(vars.isActive ? t("productsLocations.toast.activated") : t("productsLocations.toast.deactivated")); },
     onError: (e) => toast.error(e.message),
   });
   const cloneMut = trpc.products.cloneLocation.useMutation({
-    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Lugar de servicio clonado (inactivo)"); },
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success(t("productsLocations.toast.cloned")); },
     onError: (e) => toast.error(e.message),
   });
   const reorderMut = trpc.products.reorderLocations.useMutation({
     onSuccess: () => { utils.products.getLocations.invalidate(); },
-    onError: () => toast.error("Error al guardar el orden"),
+    onError: () => toast.error(t("productsLocations.toast.orderError")),
   });
 
   const openCreate = () => { setEditId(null); setForm(emptyForm); setOpen(true); };
@@ -71,7 +73,7 @@ export default function LocationsManager() {
   };
 
   const handleSubmit = () => {
-    if (!form.name || !form.slug) { toast.error("Nombre y slug son obligatorios"); return; }
+    if (!form.name || !form.slug) { toast.error(t("productsLocations.toast.required")); return; }
     if (editId) updateMut.mutate({ id: editId, name: form.name, description: form.description, imageUrl: form.imageUrl || undefined });
     else createMut.mutate({ name: form.name, slug: form.slug, description: form.description, address: form.address || undefined, imageUrl: form.imageUrl || undefined });
   };
@@ -98,14 +100,14 @@ export default function LocationsManager() {
   };
 
   return (
-    <AdminLayout title="Lugares de servicio">
+    <AdminLayout title={t("productsLocations.title")}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Lugares de servicio</h2>
-          <p className="text-sm text-muted-foreground mt-1">{locations?.length ?? 0} lugares registrados</p>
+          <h2 className="text-xl font-semibold text-foreground">{t("productsLocations.title")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("productsLocations.count", { n: locations?.length ?? 0 })}</p>
         </div>
         <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
-          <Plus className="w-4 h-4 mr-2" /> Nuevo lugar de servicio
+          <Plus className="w-4 h-4 mr-2" /> {t("productsLocations.newLocation")}
         </Button>
       </div>
 
@@ -114,11 +116,11 @@ export default function LocationsManager() {
       ) : sortedLocations.length === 0 ? (
         <PanelEmpty
           icon={<MapPin className="w-6 h-6" />}
-          title="Todavía no tienes lugares de servicio"
-          description="Dónde prestas tus servicios o entregas tus productos: tu local, una sede, a domicilio u online."
+          title={t("productsLocations.empty.title")}
+          description={t("productsLocations.empty.description")}
         >
           <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" /> Añadir el primer lugar
+            <Plus className="w-4 h-4 mr-2" /> {t("productsLocations.empty.cta")}
           </Button>
         </PanelEmpty>
       ) : (
@@ -126,11 +128,11 @@ export default function LocationsManager() {
           {sortedLocations.map((loc, idx) => (
             <div key={loc.id} className="bg-card border border-border rounded-xl p-5 flex items-center gap-4">
               <div className="flex flex-col items-center gap-0.5 shrink-0">
-                <button onClick={() => moveLoc(idx, "up")} disabled={idx === 0 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Subir">
+                <button onClick={() => moveLoc(idx, "up")} disabled={idx === 0 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title={t("productsLocations.up")}>
                   <ChevronUp className="w-4 h-4 text-muted-foreground" />
                 </button>
                 <span className="text-xs font-mono text-muted-foreground">{idx + 1}</span>
-                <button onClick={() => moveLoc(idx, "down")} disabled={idx === sortedLocations.length - 1 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Bajar">
+                <button onClick={() => moveLoc(idx, "down")} disabled={idx === sortedLocations.length - 1 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title={t("productsLocations.down")}>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
@@ -140,14 +142,14 @@ export default function LocationsManager() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-semibold text-foreground">{loc.name}</p>
-                  <Badge variant="outline" className="text-xs">{loc.isActive ? "Activa" : "Inactiva"}</Badge>
+                  <Badge variant="outline" className="text-xs">{loc.isActive ? t("productsLocations.active") : t("productsLocations.inactive")}</Badge>
                 </div>
                 {loc.address && <p className="text-sm text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{loc.address}</p>}
                 {loc.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{loc.description}</p>}
               </div>
               <div className="flex gap-2 shrink-0">
                 <Button size="sm" variant="outline" onClick={() => openEdit(loc)}>
-                  <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
+                  <Pencil className="w-3.5 h-3.5 mr-1" /> {t("productsLocations.edit")}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -158,18 +160,18 @@ export default function LocationsManager() {
                   <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem onClick={() => toggleActiveMut.mutate({ id: loc.id, isActive: !loc.isActive })}>
                       {loc.isActive
-                        ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> Desactivar</>
-                        : <><Power className="w-3.5 h-3.5 mr-2" /> Activar</>}
+                        ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> {t("productsLocations.deactivate")}</>
+                        : <><Power className="w-3.5 h-3.5 mr-2" /> {t("productsLocations.activate")}</>}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => cloneMut.mutate({ id: loc.id })}>
-                      <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
+                      <Copy className="w-3.5 h-3.5 mr-2" /> {t("productsLocations.clone")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onClick={() => { if (confirm("¿Eliminar este lugar de servicio? No se puede deshacer.")) hardDeleteMut.mutate({ id: loc.id }); }}
+                      onClick={() => { if (confirm(t("productsLocations.confirmRemove"))) hardDeleteMut.mutate({ id: loc.id }); }}
                     >
-                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                      <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsLocations.remove")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -182,39 +184,39 @@ export default function LocationsManager() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editId ? "Editar lugar de servicio" : "Nuevo lugar de servicio"}</DialogTitle>
+            <DialogTitle>{editId ? t("productsLocations.dialog.editTitle") : t("productsLocations.dialog.newTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Nombre *</Label>
+              <Label>{t("productsLocations.dialog.name")}</Label>
               <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value, slug: editId ? f.slug : toSlug(e.target.value) }))} placeholder={voc.catalog.locationExample} />
             </div>
             <div>
-              <Label>{voc.licensed ? "Dirección en la web *" : "Slug *"}</Label>
+              <Label>{voc.licensed ? t("productsLocations.dialog.slugLicensed") : t("productsLocations.dialog.slug")}</Label>
               <Input value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: toSlug(e.target.value) }))} placeholder={voc.licensed ? "tienda-principal" : "embarcadero-principal"} />
-              {voc.licensed && <p className="text-xs text-muted-foreground mt-1">Se rellena sola con el nombre.</p>}
+              {voc.licensed && <p className="text-xs text-muted-foreground mt-1">{t("productsLocations.dialog.slugHelp")}</p>}
             </div>
             <div>
-              <Label>Dirección</Label>
-              <Input value={form.address} onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Calle Mayor 1, Ciudad" />
+              <Label>{t("productsLocations.dialog.address")}</Label>
+              <Input value={form.address} onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))} placeholder={t("productsLocations.dialog.addressPlaceholder")} />
             </div>
             <div>
-              <Label>Descripción</Label>
+              <Label>{t("productsLocations.dialog.description")}</Label>
               <Textarea value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
             </div>
             <div>
-              <Label>Enlace del mapa (Google Maps)</Label>
+              <Label>{t("productsLocations.dialog.mapLink")}</Label>
               <Input value={form.mapUrl} onChange={(e) => setForm(f => ({ ...f, mapUrl: e.target.value }))} placeholder="https://maps.google.com/..." />
             </div>
             <div>
-              <Label>Enlace de la imagen</Label>
+              <Label>{t("productsLocations.dialog.imageLink")}</Label>
               <Input value={form.imageUrl} onChange={(e) => setForm(f => ({ ...f, imageUrl: e.target.value }))} placeholder="https://..." />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t("productsLocations.dialog.cancel")}</Button>
             <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending}>
-              {editId ? "Guardar cambios" : "Crear lugar de servicio"}
+              {editId ? t("productsLocations.dialog.save") : t("productsLocations.dialog.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

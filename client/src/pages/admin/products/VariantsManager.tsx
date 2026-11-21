@@ -16,21 +16,8 @@ import { PanelEmpty } from "@/components/admin/PanelStates";
 import { Link } from "wouter";
 import { useVocabulary } from "@/lib/vocabulary";
 import { VariantIncludedServicesDialog } from "./EnrollmentCommerce";
+import { useI18n } from "@/i18n/I18nProvider";
 
-const PRICE_TYPE_LABELS: Record<string, string> = {
-  fixed: "Precio fijo (€)",
-  per_person: "Por persona (€/pax)",
-  percentage: "Porcentaje sobre base (%)",
-};
-
-/** Pyme sin reservas: el precio de la variante es el de cada unidad; «por persona» no aplica. */
-const SME_PRICE_TYPE_LABELS: Record<string, string> = {
-  fixed: "Precio (€)",
-  per_person: "Por persona (€)",
-  percentage: "Porcentaje sobre el precio base (%)",
-};
-
-const amount = (v: string | null | undefined) => parseFloat(v ?? "0").toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type FormState = {
   experienceId: number;
@@ -62,10 +49,15 @@ export default function VariantsManager() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [servicesFor, setServicesFor] = useState<{ id: number; name: string } | null>(null);
   const voc = useVocabulary();
+  const { t, format } = useI18n();
   // Pyme: «producto o servicio»; instalación propia: «experiencia»
-  const item = voc.licensed ? "producto o servicio" : "experiencia";
-  const Item = voc.licensed ? "Producto o servicio" : "Experiencia";
-  const priceTypeLabels = voc.licensed ? SME_PRICE_TYPE_LABELS : PRICE_TYPE_LABELS;
+  const item = voc.licensed ? t("productsVariants.itemLower.licensed") : t("productsVariants.itemLower.own");
+  const Item = voc.licensed ? t("productsVariants.itemUpper.licensed") : t("productsVariants.itemUpper.own");
+  // Pyme sin reservas: el precio de la variante es el de cada unidad; «por persona» no aplica.
+  const priceTypeLabels: Record<string, string> = voc.licensed
+    ? { fixed: t("productsVariants.priceType.smeFixed"), per_person: t("productsVariants.priceType.smePerPerson"), percentage: t("productsVariants.priceType.smePercentage") }
+    : { fixed: t("productsVariants.priceType.fixed"), per_person: t("productsVariants.priceType.perPerson"), percentage: t("productsVariants.priceType.percentage") };
+  const amount = (v: string | null | undefined) => format.number(parseFloat(v ?? "0"), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const utils = trpc.useUtils();
   const { data: experiences, isLoading: loadingExp } = trpc.products.getAll.useQuery();
@@ -75,29 +67,29 @@ export default function VariantsManager() {
 
   const createMutation = trpc.products.createVariant.useMutation({
     onSuccess: () => {
-      toast.success("Variante creada correctamente");
+      toast.success(t("productsVariants.toast.created"));
       utils.products.getVariants.invalidate();
       setOpen(false);
     },
-    onError: (err) => toast.error("Error al crear variante: " + err.message),
+    onError: (err) => toast.error(t("productsVariants.toast.createError", { message: err.message })),
   });
 
   const updateMutation = trpc.products.updateVariant.useMutation({
     onSuccess: () => {
-      toast.success("Variante actualizada correctamente");
+      toast.success(t("productsVariants.toast.updated"));
       utils.products.getVariants.invalidate();
       setOpen(false);
     },
-    onError: (err) => toast.error("Error al actualizar variante: " + err.message),
+    onError: (err) => toast.error(t("productsVariants.toast.updateError", { message: err.message })),
   });
 
   const deleteMutation = trpc.products.deleteVariant.useMutation({
     onSuccess: () => {
-      toast.success("Variante eliminada");
+      toast.success(t("productsVariants.toast.deleted"));
       utils.products.getVariants.invalidate();
       setDeleteConfirm(null);
     },
-    onError: (err) => toast.error("Error al eliminar: " + err.message),
+    onError: (err) => toast.error(t("productsVariants.toast.deleteError", { message: err.message })),
   });
 
   // Group variants by experienceId
@@ -133,9 +125,9 @@ export default function VariantsManager() {
   };
 
   const handleSave = () => {
-    if (!form.name.trim()) { toast.error("El nombre es obligatorio"); return; }
-    if (!form.priceModifier || isNaN(parseFloat(form.priceModifier))) { toast.error("Introduce un precio válido"); return; }
-    if (!editId && !form.experienceId) { toast.error(`Selecciona ${voc.licensed ? "un producto o servicio" : "una experiencia"}`); return; }
+    if (!form.name.trim()) { toast.error(t("productsVariants.toast.nameRequired")); return; }
+    if (!form.priceModifier || isNaN(parseFloat(form.priceModifier))) { toast.error(t("productsVariants.toast.priceInvalid")); return; }
+    if (!editId && !form.experienceId) { toast.error(voc.licensed ? t("productsVariants.toast.selectItemLicensed") : t("productsVariants.toast.selectItemOwn")); return; }
 
     const payload = {
       name: form.name.trim(),
@@ -157,28 +149,28 @@ export default function VariantsManager() {
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <AdminLayout title="Variantes y precios">
+    <AdminLayout title={t("productsVariants.title")}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Variantes y precios</h2>
+          <h2 className="text-xl font-semibold text-foreground">{t("productsVariants.title")}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {voc.licensed ? "Define variantes de precio por producto (talla, formato, tamaño, etc.)." : "Define variantes de precio por producto (adulto, niño, grupo, etc.)."} {voc.licensed ? "Al comprar, el cliente elige una y se cobra su precio." : "Al reservar, el cliente elige una y se cobra su precio."}
+            {voc.licensed ? t("productsVariants.intro.licensedDefine") : t("productsVariants.intro.ownDefine")} {voc.licensed ? t("productsVariants.intro.licensedChoose") : t("productsVariants.intro.ownChoose")}
           </p>
         </div>
         <div className="flex gap-3">
           <Select value={selectedExp} onValueChange={setSelectedExp}>
             <SelectTrigger className="w-56">
-              <SelectValue placeholder={`Filtrar por ${item}`} />
+              <SelectValue placeholder={t("productsVariants.filterBy", { item })} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{voc.licensed ? "Todos los productos y servicios" : "Todas las experiencias"}</SelectItem>
+              <SelectItem value="all">{voc.licensed ? t("productsVariants.allLicensed") : t("productsVariants.allOwn")}</SelectItem>
               {experiences?.map(e => (
                 <SelectItem key={e.id} value={String(e.id)}>{e.title}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Button onClick={() => openCreate()} className="bg-primary hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-2" /> Nueva variante
+            <Plus className="w-4 h-4 mr-2" /> {t("productsVariants.newVariant")}
           </Button>
         </div>
       </div>
@@ -187,25 +179,25 @@ export default function VariantsManager() {
       <div className="mb-6 p-4 bg-info/10 border border-info/30 rounded-xl flex gap-3 text-sm text-foreground">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-info" />
         <div>
-          <strong>Cómo funcionan las variantes:</strong> {voc.licensed ? "Al añadir variantes a un producto o servicio, el cliente elige una al comprarlo." : "Al añadir variantes a una experiencia, el cliente elige una al reservarla."} El precio de la variante elegida sustituye al precio base en el total del pago.
+          <strong>{t("productsVariants.info.how")}</strong> {voc.licensed ? t("productsVariants.info.licensedAdd") : t("productsVariants.info.ownAdd")} {t("productsVariants.info.replaces")}
           <br />
           {voc.licensed
-            ? <><strong>Tipos:</strong> <em>Precio</em> = lo que paga el cliente por cada unidad; <em>Porcentaje</em> = ajuste sobre el precio base.</>
-            : <><strong>Tipos:</strong> <em>Precio fijo</em> = precio total por persona; <em>Por persona</em> = igual que fijo; <em>Porcentaje</em> = ajuste sobre el precio base.</>}
+            ? <><strong>{t("productsVariants.info.types")}</strong> <em>{t("productsVariants.info.licensedTypes.price")}</em> {t("productsVariants.info.licensedTypes.priceText")} <em>{t("productsVariants.info.licensedTypes.pct")}</em> {t("productsVariants.info.licensedTypes.pctText")}</>
+            : <><strong>{t("productsVariants.info.types")}</strong> <em>{t("productsVariants.info.ownTypes.fixed")}</em> {t("productsVariants.info.ownTypes.fixedText")} <em>{t("productsVariants.info.ownTypes.perPerson")}</em> {t("productsVariants.info.ownTypes.perPersonText")} <em>{t("productsVariants.info.ownTypes.pct")}</em> {t("productsVariants.info.ownTypes.pctText")}</>}
         </div>
       </div>
 
       {loadingExp || loadingVariants ? (
-        <div className="text-center py-12 text-muted-foreground">Cargando...</div>
+        <div className="text-center py-12 text-muted-foreground">{t("productsVariants.loading")}</div>
       ) : !experiences?.length ? (
         <PanelEmpty
           icon={<Tag className="w-6 h-6" />}
-          title="Primero crea un producto o servicio"
-          description="Las variantes son opciones de un producto (duración, tamaño, tarifa) con su propio precio."
+          title={t("productsVariants.empty.title")}
+          description={t("productsVariants.empty.description")}
         >
           <Button asChild>
             <Link href="/admin/productos/experiencias">
-              <Plus className="w-4 h-4 mr-2" /> Crear un producto
+              <Plus className="w-4 h-4 mr-2" /> {t("productsVariants.empty.cta")}
             </Link>
           </Button>
         </PanelEmpty>
@@ -222,12 +214,12 @@ export default function VariantsManager() {
                     {!voc.licensed && <Badge variant="outline" className="text-xs">{exp.difficulty ?? "facil"}</Badge>}
                     {variants.length > 0 && (
                       <Badge className="text-xs bg-success/10 text-success border-success/40">
-                        {variants.length} variante{variants.length !== 1 ? "s" : ""}
+                        {t("productsVariants.variantCount", { n: variants.length })}
                       </Badge>
                     )}
                   </div>
                   <Button size="sm" variant="outline" onClick={() => openCreate(exp.id)}>
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir Variante
+                    <Plus className="w-3.5 h-3.5 mr-1" /> {t("productsVariants.addVariant")}
                   </Button>
                 </div>
 
@@ -250,28 +242,28 @@ export default function VariantsManager() {
                           {v.priceType === "percentage" && <span className="text-sm font-normal text-muted-foreground">%</span>}
                         </div>
                         {v.isRequired && (
-                          <Badge variant="secondary" className="text-xs">Obligatoria</Badge>
+                          <Badge variant="secondary" className="text-xs">{t("productsVariants.required")}</Badge>
                         )}
                         <div className="flex gap-1">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="ghost" title="Acciones">
+                              <Button size="sm" variant="ghost" title={t("productsVariants.actions")}>
                                 <MoreVertical className="w-3.5 h-3.5" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
                               <DropdownMenuItem onClick={() => openEdit(v)}>
-                                <Pencil className="w-3.5 h-3.5 mr-2" /> Editar
+                                <Pencil className="w-3.5 h-3.5 mr-2" /> {t("productsVariants.edit")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setServicesFor({ id: v.id, name: v.name })}>
-                                <ListChecks className="w-3.5 h-3.5 mr-2" /> Servicios incluidos
+                                <ListChecks className="w-3.5 h-3.5 mr-2" /> {t("productsVariants.includedServices")}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 onClick={() => setDeleteConfirm(v.id)}
                               >
-                                <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                                <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsVariants.remove")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -281,10 +273,10 @@ export default function VariantsManager() {
                   </div>
                 ) : (
                   <div className="px-5 py-8 text-center text-muted-foreground text-sm">
-                    Precio base: <strong className="text-primary">€{parseFloat(exp.basePrice).toFixed(2)}</strong>
+                    {t("productsVariants.basePrice")} <strong className="text-primary">{format.currency(parseFloat(exp.basePrice))}</strong>
                     {" · "}
                     <button className="text-primary underline hover:no-underline" onClick={() => openCreate(exp.id)}>
-                      Añadir variante de precio
+                      {t("productsVariants.addPriceVariant")}
                     </button>
                   </div>
                 )}
@@ -298,7 +290,7 @@ export default function VariantsManager() {
       <Dialog open={open} onOpenChange={(v) => { if (!isPending) setOpen(v); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editId ? "Editar Variante" : "Nueva variante de precio"}</DialogTitle>
+            <DialogTitle>{editId ? t("productsVariants.dialog.editTitle") : t("productsVariants.dialog.newTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {!editId && (
@@ -309,7 +301,7 @@ export default function VariantsManager() {
                   onValueChange={(v) => setForm(f => ({ ...f, experienceId: parseInt(v) }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={`Seleccionar ${item}`} />
+                    <SelectValue placeholder={t("productsVariants.dialog.selectItem", { item })} />
                   </SelectTrigger>
                   <SelectContent>
                     {experiences?.map(e => (
@@ -321,7 +313,7 @@ export default function VariantsManager() {
             )}
 
             <div>
-              <Label>Nombre de la variante *</Label>
+              <Label>{t("productsVariants.dialog.name")}</Label>
               <Input
                 value={form.name}
                 onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
@@ -330,7 +322,7 @@ export default function VariantsManager() {
             </div>
 
             <div>
-              <Label>Descripción (opcional)</Label>
+              <Label>{t("productsVariants.dialog.description")}</Label>
               <Textarea
                 value={form.description}
                 onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
@@ -341,7 +333,7 @@ export default function VariantsManager() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Tipo de precio *</Label>
+                <Label>{t("productsVariants.dialog.priceType")}</Label>
                 <Select
                   value={form.priceType}
                   onValueChange={(v) => setForm(f => ({ ...f, priceType: v as FormState["priceType"] }))}
@@ -352,13 +344,13 @@ export default function VariantsManager() {
                   <SelectContent>
                     <SelectItem value="fixed">{priceTypeLabels.fixed}</SelectItem>
                     {(voc.catalog.showPerPersonVariant || form.priceType === "per_person") && <SelectItem value="per_person">{priceTypeLabels.per_person}</SelectItem>}
-                    <SelectItem value="percentage">Porcentaje (%)</SelectItem>
+                    <SelectItem value="percentage">{t("productsVariants.priceType.optionPercentage")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <Label>
-                  {form.priceType === "percentage" ? "Porcentaje (%)" : "Precio (€) *"}
+                  {form.priceType === "percentage" ? t("productsVariants.dialog.percentage") : t("productsVariants.dialog.price")}
                 </Label>
                 <Input
                   type="number"
@@ -373,7 +365,7 @@ export default function VariantsManager() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Orden de visualización</Label>
+                <Label>{t("productsVariants.dialog.sortOrder")}</Label>
                 <Input
                   type="number"
                   min="0"
@@ -388,22 +380,22 @@ export default function VariantsManager() {
                     onCheckedChange={(v) => setForm(f => ({ ...f, isRequired: v }))}
                     id="isRequired"
                   />
-                  <Label htmlFor="isRequired" className="cursor-pointer">Selección obligatoria</Label>
+                  <Label htmlFor="isRequired" className="cursor-pointer">{t("productsVariants.dialog.mandatory")}</Label>
                 </div>
               </div>
               <div className="col-span-2">
-                <Label htmlFor="validUntil">Se ofrece hasta (opcional)</Label>
+                <Label htmlFor="validUntil">{t("productsVariants.dialog.validUntil")}</Label>
                 <Input id="validUntil" type="date" value={form.validUntil} onChange={(e) => setForm(f => ({ ...f, validUntil: e.target.value }))} />
-                <p className="text-xs text-muted-foreground mt-1">Último día, inclusive (hora de Madrid). Después deja de mostrarse y de poder pedirse, sin tareas manuales. Vacío = sin caducidad.</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("productsVariants.dialog.validUntilHelp")}</p>
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
-              Cancelar
+              {t("productsVariants.dialog.cancel")}
             </Button>
             <Button onClick={handleSave} disabled={isPending}>
-              {isPending ? "Guardando..." : editId ? "Guardar Cambios" : "Crear variante"}
+              {isPending ? t("productsVariants.dialog.saving") : editId ? t("productsVariants.dialog.saveChanges") : t("productsVariants.dialog.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -415,19 +407,19 @@ export default function VariantsManager() {
       <Dialog open={deleteConfirm !== null} onOpenChange={() => setDeleteConfirm(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Eliminar variante</DialogTitle>
+            <DialogTitle>{t("productsVariants.delete.title")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            ¿Seguro que quieres eliminar esta variante? Esta acción no se puede deshacer.
+            {t("productsVariants.delete.text")}
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>{t("productsVariants.delete.cancel")}</Button>
             <Button
               variant="destructive"
               onClick={() => deleteConfirm !== null && deleteMutation.mutate({ id: deleteConfirm })}
               disabled={deleteMutation.isPending}
             >
-              {deleteMutation.isPending ? "Eliminando..." : "Eliminar"}
+              {deleteMutation.isPending ? t("productsVariants.delete.deleting") : t("productsVariants.delete.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
