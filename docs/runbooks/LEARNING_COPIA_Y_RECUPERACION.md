@@ -21,7 +21,7 @@ Una sola copia lógica por empresa contiene todas las tablas `learning_*`: curso
 ## Recuperar el curso
 Ver `BACKUPS_Y_RECUPERACION.md` §7 (restauración individual en base nueva + `--switch`) y §12 (`restore-files`).
 
-## Simulacro de recuperación de ficheros (preparado, NO ejecutado)
+## Simulacro de recuperación de ficheros (EJECUTADO y verificado el 21/11/2026)
 **Hallazgo (21/11/2026):** el procedimiento protegido existente NO permite `restore-files`: la lista cerrada del drill
 (`DRILL_ALLOWED`) excluye restauraciones salvo `restore-tenant`. Además `restore-files --out` escribe los 16 GB en el disco del
 contenedor. Por eso se preparó una orden de **solo comprobación**: `verify-files <empresa>`.
@@ -43,17 +43,43 @@ Container» y «Stopping Container»). Ni se verificó ni se detectó ningún fa
 - El flujo recalcula la salida (recuento de objetos, suma de bytes, fallos, digest = sha256 de las líneas `clave:sha256` ordenadas) y
   no da el resultado por bueno si algo no cuadra: imprime `verify-files: COMPROBADO|NO COMPROBADO · objetos= bytes= fallos= digest=`.
 
-**Operación exacta (cuando el propietario la autorice):**
+**Operación exacta (así se ejecutó; repetible):**
 1. Fusionar el PR de la herramienta y publicarlo (cambia `scripts/deploy/`, el flujo y el backup-job: es un cambio protegido).
 2. `gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=desplegar-restore-drill -f confirm=production -f commit=<SHA>`
    (la imagen del drill debe contener `verify-files`).
 3. `gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=verificar-ficheros -f only=t12-quantum-soulrise -f confirm=production`
    (acción protegida: entorno con aprobación; nunca está entre las ordinarias).
 
-**Verificación del resultado (independiente):** (a) `fallos` vacío; (b) `ficheros` = 107 y `bytes` = 16.675.549.787; (c) los 86
-hashes de `learning_resources.sha256` (panel: `learning.admin.materials.list`) están contenidos en `entradas`, y los otros 21 son los
-de los huérfanos (`storage.reconcile`); (d) `digest` guardado en el informe para comparar simulacros futuros. Documentar el resultado
-en este fichero.
+**Criterios de verificación (independiente):** (a) `FIN-ORDEN codigo=0` y «COMPROBADO» con `fallos=0`; (b) `learning-content/` = 107 objetos y
+16.675.549.787 B (el total de la empresa incluye además `media/` y `_meta/`); (c) los 86 recursos de `learning.admin.materials.list`
+coinciden por `objectId`, SHA-256 y tamaño, y los objetos restantes son los huérfanos de `storage.reconcile`; (d) digest guardado para comparar
+simulacros futuros.
+
+**Resultado del simulacro (21/11/2026): VERIFICADO.** Ejecución protegida 44923273875 (`verificar-ficheros`, `only=t12-quantum-soulrise`,
+imagen de restore-drill con `4646129c`, PR #923), 41 min 50 s, solo lectura. Registro: `FIN-ORDEN codigo=0` y
+`verify-files: COMPROBADO · objetos=308 bytes=16717089249 fallos=0`. Digest del conjunto completo (sha256 de las líneas `clave:sha256`
+ordenadas, recalculado por el flujo): `1378f5dc5a8f72a2d5c80ef179939f61c51039ff0098bdd4da5ad38e948a51d5`.
+
+| Prefijo de la réplica | Objetos | Bytes | Qué es |
+|---|---|---|---|
+| `learning-content/` | 107 | 16.675.549.787 | materiales de Elephant Learning (RECONNECT y repetidos) |
+| `media/` | 47 | 41.447.199 | imágenes y PDF del CMS |
+| `_meta/` | 154 | 92.263 | JSON auxiliares |
+| **Total** | **308** | **16.717.089.249** | 0 fallos de descarga, descifrado, SHA-256 o tamaño |
+
+Las cifras de referencia «107 objetos / 16.675.549.787 B» son las de `learning-content/`, que coinciden exactamente; el total de la
+réplica de la empresa es mayor porque incluye medios del CMS y sidecars.
+
+**Cruce con la base de datos y `storage.reconcile` (solo lectura, 21/11/2026):**
+- Los 86 recursos de `learning.admin.materials.list` tienen su objeto en la réplica por `objectId`, con **SHA-256 y tamaño idénticos** (86/86; 0 distintos).
+- Los 107 objetos tienen 85 hashes distintos; los 86 recursos también (un mismo contenido está referenciado por dos recursos).
+- Los 21 objetos sin recurso son exactamente los 21 huérfanos de `storage.reconcile` (107 objetos, 86 referenciados, 21 huérfanos,
+  2.516.453.419 B): los 21 existen en la réplica con el mismo hash y tamaño, y **los 21 son copias exactas de un contenido ya referenciado**
+  (`sameHashAsReferenced`). Nada que recuperar de ellos; siguen SIN eliminar (la limpieza requiere autorización expresa).
+- `storage.reconcile` informa de `planHash` `2a049d23e50ca0baaa6962407dc3058d901e3f32807411c9ec8a1730c075dcab`, `missing=0`, `protected=0`.
+  (Media: 44 objetos en el proveedor frente a 47 en la réplica; sin relación con Learning.)
+
+**Primer intento (ejecución 44915427713) NO válido:** véase la incidencia más abajo. No dejó resultado.
 
 ## Análisis de los 24 ficheros repetidos de Quantum (21/11/2026, solo lectura)
 Medido con `storage.reconcile` (categoría `learning-content`) desde el panel de la propia empresa, sin cambios:
