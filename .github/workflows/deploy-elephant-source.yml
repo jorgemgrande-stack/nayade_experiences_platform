@@ -46,6 +46,7 @@ on:
           - desplegar-backup-job
           - copia-de-seguridad
           - verificar-copia
+          - verificar-ficheros
           - migraciones-plataforma-simulacion
           - migraciones-plataforma-aplicar
           - migraciones-simulacion
@@ -278,6 +279,14 @@ jobs:
       - name: Copia de seguridad (todas o las indicadas)
         if: inputs.action == 'copia-de-seguridad'
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run${ES_ONLY:+ --only ${ES_ONLY}}"
+
+      # Simulacro de recuperación de ficheros de UNA empresa (indícala en «only»): descarga y descifra cada objeto de la réplica en
+      # memoria y compara su SHA-256 con el índice. No escribe ficheros ni toca los originales. Acción protegida (con aprobación).
+      - name: Verificar la réplica de ficheros de una empresa (sin escribir)
+        if: inputs.action == 'verificar-ficheros'
+        run: |
+          [[ "${ES_ONLY}" =~ ^[a-z0-9][a-z0-9-]{1,62}$ ]] || { echo "Indica UNA empresa en «only»"; exit 1; }
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js verify-files ${ES_ONLY}"
 
       - name: Verificar la copia en el bucket (solo lectura; últimas 24 h)
         if: inputs.action == 'verificar-copia'

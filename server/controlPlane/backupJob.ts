@@ -55,7 +55,7 @@ import {
 } from "../_core/ops/backupStorage";
 import { MysqlBackupInventory, safeError, type BackupTargetKind } from "../_core/ops/backupInventory";
 import { MysqlBackupCopyLedger, type BackupDestination, type CopyTargetKind } from "../_core/ops/backupCopies";
-import { restoreTenantFiles, runBackupJob, type SecondaryTarget } from "../_core/ops/backupJob";
+import { restoreTenantFiles, runBackupJob, verifyTenantFiles, type SecondaryTarget } from "../_core/ops/backupJob";
 import { applyBackupRetention, applyCopyRetention, gfsPolicyFromEnv } from "../_core/ops/backupRetention";
 import { restorePlatformDatabase, restoreTenant, restoredDatabaseName } from "../_core/ops/backupRestore";
 import { buildRecoveryPackage, readRecoveryPackage } from "../_core/ops/recoveryPackage";
@@ -412,6 +412,14 @@ async function main() {
       case "restore-files": {
         const id = pos[0] ?? die("Falta <empresa>");
         print(await restoreTenantFiles({ storage: sourceStorageOrDie(source), ring: backupKeyringFromEnv(process.env), copies, source, actor: actorLabel }, id, filesOutOrDie()));
+        break;
+      }
+      case "verify-files": {
+        // Simulacro de recuperación de ficheros SOLO de comprobación (no escribe nada). Una sola línea JSON: Railway desordena las largas.
+        const id = pos[0] ?? die("Falta <empresa>");
+        const r = await verifyTenantFiles({ storage: sourceStorageOrDie(source), ring: backupKeyringFromEnv(process.env), copies, source, actor: actorLabel }, id);
+        console.log(JSON.stringify({ verifyFiles: true, empresa: r.tenantId, origen: r.source, ficheros: r.files, bytes: r.bytes, fallos: r.failed, digest: r.digest, entradas: r.entries.map((x) => [x.key, x.bytes, x.sha256, x.ok ? 1 : 0]) }));
+        if (r.failed.length) process.exit(1);
         break;
       }
       case "purge-test-companies": {

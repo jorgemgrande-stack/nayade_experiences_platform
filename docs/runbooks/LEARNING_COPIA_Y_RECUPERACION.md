@@ -22,13 +22,26 @@ Una sola copia lógica por empresa contiene todas las tablas `learning_*`: curso
 Ver `BACKUPS_Y_RECUPERACION.md` §7 (restauración individual en base nueva + `--switch`) y §12 (`restore-files`).
 
 ## Simulacro de recuperación de ficheros (preparado, NO ejecutado)
-Es una operación protegida (`drill` con `restore-files`); no se ha lanzado. Solicitud que habría que autorizar, y nada más:
-1. Restaurar `t12-quantum-soulrise` con `restore-files t12-quantum-soulrise --out <directorio aislado del runner>`: escribe en un
-   directorio temporal del trabajo, **nunca** en el bucket de medios ni en la base de production.
-2. El propio comando descarga cada objeto de `files/t12-quantum-soulrise/objects/`, lo descifra y comprueba su SHA-256 contra el
-   índice. Resultado esperado: 107 ficheros (86 referenciados + 21 sin referencias), 16.675.549.787 bytes.
-3. Segunda comprobación independiente: comparar los 86 hashes con `learning_resources.sha256` de la base (lectura).
-4. El directorio se destruye al terminar el trabajo. No se borra ni se sobrescribe nada de production.
+**Hallazgo (21/11/2026):** el procedimiento protegido existente NO permite `restore-files`: la lista cerrada del drill
+(`DRILL_ALLOWED`) excluye restauraciones salvo `restore-tenant`. Además `restore-files --out` escribe los 16 GB en el disco del
+contenedor. Por eso se preparó una orden de **solo comprobación**: `verify-files <empresa>`.
+
+**Qué hace:** lee el índice cifrado `files/<empresa>/index.json.enc`; para cada objeto de la réplica lo descarga, lo descifra EN
+MEMORIA y compara su SHA-256 y tamaño con el índice. No escribe ningún fichero (ni disco ni bucket de medios), no toca los originales
+ni la base de production. Un fallo no detiene el resto: informa de todos. Anota la comprobación en `backup_restores` (registro de
+copias). Salida: una línea JSON con `ficheros`, `bytes`, `fallos`, `digest` y `entradas` [clave, bytes, sha256, ok]. Código de salida 1 si hay fallos.
+
+**Operación exacta (cuando el propietario la autorice):**
+1. Fusionar el PR de la herramienta y publicarlo (cambia `scripts/deploy/`, el flujo y el backup-job: es un cambio protegido).
+2. `gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=desplegar-restore-drill -f confirm=production -f commit=<SHA>`
+   (la imagen del drill debe contener `verify-files`).
+3. `gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=verificar-ficheros -f only=t12-quantum-soulrise -f confirm=production`
+   (acción protegida: entorno con aprobación; nunca está entre las ordinarias).
+
+**Verificación del resultado (independiente):** (a) `fallos` vacío; (b) `ficheros` = 107 y `bytes` = 16.675.549.787; (c) los 86
+hashes de `learning_resources.sha256` (panel: `learning.admin.materials.list`) están contenidos en `entradas`, y los otros 21 son los
+de los huérfanos (`storage.reconcile`); (d) `digest` guardado en el informe para comparar simulacros futuros. Documentar el resultado
+en este fichero.
 
 ## Análisis de los 24 ficheros repetidos de Quantum (21/11/2026, solo lectura)
 Medido con `storage.reconcile` (categoría `learning-content`) desde el panel de la propia empresa, sin cambios:
