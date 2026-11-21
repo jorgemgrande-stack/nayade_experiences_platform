@@ -87,3 +87,18 @@ Si `publicar` en production se detiene en la barrera 3, se usa el procedimiento 
 2. `aplicar-production`: requiere la aprobación del propietario en GitHub.
 
 Después, los despliegues vuelven a ser ordinarios.
+
+## Incidencia 21/11/2026: la publicación «solo CRM» sella live y puede dejar sin publicar el Core
+
+**Qué pasó.** Tras fusionar #919 (cambio de cliente del Core, `95b253a6`), los CI del CRM lanzaron `publicacion.yml` con `solo: crm`. Esa ejecución publica el CRM y pone `elephant-source/live=success` en el commit **sin esperar al CI del Core ni publicar el Core**. Cuando Railway terminó el despliegue de live, `disparar` vio «ya superó live» y no lanzó la publicación completa. Resultado: el run salió en verde, `elephant-source/live` en success, y production seguía sirviendo el commit anterior (`611ead4f`) en Core, controlplane y core-gateway. Se repitió con el siguiente commit (`2310761b`).
+
+**Cómo se detecta (no fiarse del color ni del estado de live).**
+1. En el log de la publicación: `ES_SERVICES: crm` / `solo: crm` en las entradas indica que fue parcial.
+2. `gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=estado -f confirm=production` (ordinaria, solo lectura): las líneas «core / controlplane / core-gateway: … sirve <sha>» son el SHA realmente servido. Debe coincidir con el commit fusionado.
+3. El estado `elephant-source/production` solo aparece si production se publicó completo.
+
+**Cómo se completa por la vía ordinaria.** Cuando el CI del commit (`Suites del Core multiempresa`) esté en verde y siga siendo el último de la rama: `gh workflow run publicacion.yml --ref integration/elephant-source` (es exactamente lo que ejecuta `disparar`). No es una acción protegida, no crea ramas y no se salta ninguna barrera: `publicar` vuelve a comprobar CI, live y el plan de production.
+
+**Regla para próximos desarrollos.** Tras fusionar cualquier cambio del Core, la publicación no está completa hasta que `estado` en production muestre el SHA fusionado en los tres servicios. Un run «solo CRM» en verde nunca lo demuestra.
+
+**Mejora pendiente (cambio de código, no hecho aquí).** Que `solo: crm|web` no escriba `elephant-source/live` (usar solo `crm-live`), o que `disparar` ignore ese sello cuando el Core del commit no figure como publicado.
