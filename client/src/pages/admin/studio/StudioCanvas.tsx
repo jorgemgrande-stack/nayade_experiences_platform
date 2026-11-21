@@ -14,6 +14,7 @@ import { DRAG_MIME, isToCanvas, parseDragPayload, type FromCanvas, type ToCanvas
 import { renderTokens } from "@/components/admin/studio/tokens";
 import { walk } from "@shared/studio/tree";
 import type { PageBlock } from "@shared/pageBlocks";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 const EDITABLE_CSS = `
 .studio-editable{outline:none;cursor:text;border-radius:4px;box-shadow:0 0 0 1px rgba(91,91,246,.35);transition:box-shadow .12s}
@@ -36,6 +37,7 @@ function post(msg: FromCanvas) {
 }
 
 export default function StudioCanvas() {
+  const tx = useStudioText();
   const [state, setState] = useState<ToCanvas | null>(null);
   const lastLocalSelect = useRef<string | null>(null);
 
@@ -138,7 +140,7 @@ export default function StudioCanvas() {
       <style>{EDITABLE_CSS}</style>
       <PublicLayout>
         {!state || !edit ? (
-          <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-label="Cargando">
+          <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-label={tx("Cargando")}>
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : (

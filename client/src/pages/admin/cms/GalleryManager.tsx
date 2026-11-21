@@ -43,6 +43,7 @@ import {
   Plus,
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 // ── Categorías predefinidas ────────────────────────────────────────────────────
 const PREDEFINED_CATEGORIES = [
@@ -71,6 +72,7 @@ interface GalleryItem {
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function GalleryManager() {
+  const tx = useStudioText();
   const imageMax = useImageUploadLimit();
   const utils = trpc.useUtils();
   const [filterCategory, setFilterCategory] = useState("Todas");
@@ -91,11 +93,11 @@ export default function GalleryManager() {
     onError: (e) => toastError(e),
   });
   const updateMutation = trpc.gallery.adminUpdate.useMutation({
-    onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); utils.gallery.getCategories.invalidate(); toast.success("Foto actualizada"); setEditItem(null); },
+    onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); utils.gallery.getCategories.invalidate(); toast.success(tx("Foto actualizada")); setEditItem(null); },
     onError: (e) => toastError(e),
   });
   const deleteMutation = trpc.gallery.adminDelete.useMutation({
-    onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); toast.success("Foto eliminada"); setDeleteId(null); },
+    onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); toast.success(tx("Foto eliminada")); setDeleteId(null); },
     onError: (e) => toastError(e),
   });
   const reorderMutation = trpc.gallery.adminReorder.useMutation({
@@ -106,8 +108,8 @@ export default function GalleryManager() {
   const handleFilesSelected = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const validFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    if (validFiles.length === 0) { toast.error("Solo se aceptan imágenes"); return; }
-    if (validFiles.some((f) => f.size > imageMax.bytes)) { toast.error(`Alguna imagen supera el límite de ${imageMax.mb} MB`); return; }
+    if (validFiles.length === 0) { toast.error(tx("Solo se aceptan imágenes")); return; }
+    if (validFiles.some((f) => f.size > imageMax.bytes)) { toast.error(tx("Alguna imagen supera el límite de {mb} MB", { mb: imageMax.mb })); return; }
 
     setUploading(true);
     setUploadProgress({ done: 0, total: validFiles.length });
@@ -131,7 +133,7 @@ export default function GalleryManager() {
           toast.error(`Error subiendo ${file.name}: ${data.error || "Error desconocido"}`);
         }
       } catch {
-        toast.error(`Error subiendo ${file.name}`);
+        toast.error(tx("Error subiendo {name}", { name: file.name }));
       }
       done++;
       setUploadProgress({ done, total: validFiles.length });
@@ -139,7 +141,7 @@ export default function GalleryManager() {
 
     setUploading(false);
     setUploadProgress(null);
-    toast.success(`${done} foto${done !== 1 ? "s" : ""} subida${done !== 1 ? "s" : ""} correctamente`);
+    toast.success(tx("{done, plural, one {# foto subida correctamente} other {# fotos subidas correctamente}}", { done }));
   }, [createMutation, filterCategory]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -180,10 +182,8 @@ export default function GalleryManager() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Galería</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {items.length} foto{items.length !== 1 ? "s" : ""} · Arrastra para reordenar
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">{tx("Galería")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{tx("{itemsN, plural, one {# foto · Arrastra para reordenar} other {# fotos · Arrastra para reordenar}}", { itemsN: items.length })}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -192,9 +192,9 @@ export default function GalleryManager() {
             className="gap-2"
           >
             {uploading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Subiendo {uploadProgress?.done}/{uploadProgress?.total}...</>
+              <><Loader2 className="w-4 h-4 animate-spin" />{" "}{tx("Subiendo")}{" "}{uploadProgress?.done}/{uploadProgress?.total}...</>
             ) : (
-              <><ImagePlus className="w-4 h-4" /> Subir fotos</>
+              <><ImagePlus className="w-4 h-4" />{" "}{tx("Subir fotos")}</>
             )}
           </Button>
           <input
@@ -237,9 +237,7 @@ export default function GalleryManager() {
         className="border-2 border-dashed border-border rounded-xl p-4 text-center text-sm text-muted-foreground hover:border-primary/50 transition-colors cursor-pointer"
         onClick={() => fileInputRef.current?.click()}
       >
-        <Upload className="w-5 h-5 mx-auto mb-1 opacity-50" />
-        Arrastra imágenes aquí o haz clic para seleccionar (múltiple)
-      </div>
+        <Upload className="w-5 h-5 mx-auto mb-1 opacity-50" />{tx("Arrastra imágenes aquí o haz clic para seleccionar (múltiple)")}</div>
 
       {/* Grid de fotos */}
       {isLoading ? (
@@ -251,8 +249,8 @@ export default function GalleryManager() {
       ) : filteredItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
           <ImagePlus className="w-12 h-12 mb-3 opacity-30" />
-          <p className="font-medium">No hay fotos en esta categoría</p>
-          <p className="text-xs mt-1">Sube fotos con el botón de arriba o arrastra aquí</p>
+          <p className="font-medium">{tx("No hay fotos en esta categoría")}</p>
+          <p className="text-xs mt-1">{tx("Sube fotos con el botón de arriba o arrastra aquí")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -282,21 +280,21 @@ export default function GalleryManager() {
                     <button
                       onClick={() => updateMutation.mutate({ id: item.id, isActive: !item.isActive })}
                       className="p-1 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
-                      title={item.isActive ? "Ocultar" : "Mostrar"}
+                      title={item.isActive ? tx("Ocultar") : tx("Mostrar")}
                     >
                       {item.isActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                     </button>
                     <button
                       onClick={() => setEditItem(item as GalleryItem)}
                       className="p-1 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
-                      title="Editar"
+                      title={tx("Editar")}
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setDeleteId(item.id)}
                       className="p-1 rounded-md bg-red-500/70 hover:bg-red-500 text-white transition-colors"
-                      title="Eliminar"
+                      title={tx("Eliminar")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -314,7 +312,7 @@ export default function GalleryManager() {
               {/* Indicador inactivo */}
               {!item.isActive && (
                 <div className="absolute top-1.5 left-1.5">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background/80">Oculta</Badge>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background/80">{tx("Oculta")}</Badge>
                 </div>
               )}
             </div>
@@ -336,20 +334,16 @@ export default function GalleryManager() {
       <AlertDialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar esta foto?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción no se puede deshacer. La foto se eliminará de la galería pública.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{tx("¿Eliminar esta foto?")}</AlertDialogTitle>
+            <AlertDialogDescription>{tx("Esta acción no se puede deshacer. La foto se eliminará de la galería pública.")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{tx("Cancelar")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId !== null && deleteMutation.mutate({ id: deleteId })}
               className="bg-destructive hover:bg-destructive/90"
             >
-              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Eliminar
-            </AlertDialogAction>
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}{tx("Eliminar")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -370,6 +364,7 @@ function EditDialog({
   onSave: (data: { title?: string; category?: string; isActive?: boolean }) => void;
   saving: boolean;
 }) {
+  const tx = useStudioText();
   const [title, setTitle] = useState(item.title || "");
   const [category, setCategory] = useState(item.category);
   const [isActive, setIsActive] = useState(item.isActive);
@@ -382,7 +377,7 @@ function EditDialog({
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Editar foto</DialogTitle>
+          <DialogTitle>{tx("Editar foto")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <img
@@ -391,15 +386,15 @@ function EditDialog({
             className="w-full aspect-video object-cover rounded-xl"
           />
           <div className="space-y-2">
-            <label className="text-sm font-medium">Título (opcional)</label>
+            <label className="text-sm font-medium">{tx("Título (opcional)")}</label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ej: Wakeboard en el lago"
+              placeholder={tx("Ej: Wakeboard en el lago")}
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Categoría</label>
+            <label className="text-sm font-medium">{tx("Categoría")}</label>
             {!showCustom ? (
               <div className="flex gap-2">
                 <Select value={category} onValueChange={setCategory}>
@@ -412,7 +407,7 @@ function EditDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="icon" onClick={() => setShowCustom(true)} title="Categoría personalizada">
+                <Button variant="outline" size="icon" onClick={() => setShowCustom(true)} title={tx("Categoría personalizada")}>
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
@@ -421,7 +416,7 @@ function EditDialog({
                 <Input
                   value={customCategory}
                   onChange={(e) => setCustomCategory(e.target.value)}
-                  placeholder="Nueva categoría..."
+                  placeholder={tx("Nueva categoría...")}
                   className="flex-1"
                   autoFocus
                 />
@@ -439,20 +434,16 @@ function EditDialog({
               onChange={(e) => setIsActive(e.target.checked)}
               className="w-4 h-4 rounded"
             />
-            <label htmlFor="isActive" className="text-sm font-medium cursor-pointer">
-              Visible en la galería pública
-            </label>
+            <label htmlFor="isActive" className="text-sm font-medium cursor-pointer">{tx("Visible en la galería pública")}</label>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button variant="outline" onClick={onClose}>{tx("Cancelar")}</Button>
           <Button
             onClick={() => onSave({ title: title || undefined, category: effectiveCategory, isActive })}
             disabled={saving || (showCustom && !customCategory.trim())}
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Guardar cambios
-          </Button>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}{tx("Guardar cambios")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

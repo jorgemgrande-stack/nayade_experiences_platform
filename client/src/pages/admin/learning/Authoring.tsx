@@ -12,35 +12,37 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
-import { BLOCK_KINDS, BLOCK_KIND_ES, RESOURCE_KINDS, type BlockKind } from "@shared/learningAuthoring";
+import { useI18n } from "@/i18n/I18nProvider";
+import { BLOCK_KINDS, RESOURCE_KINDS, type BlockKind } from "@shared/learningAuthoring";
 import { Archive, ArchiveRestore, BookPlus, Copy, FileText, Film, Layers, Link2, ListPlus, Music, Plus, Type, type LucideIcon } from "lucide-react";
 
 const KIND_ICON: Record<string, LucideIcon> = { text: Type, video: Film, audio: Music, pdf: FileText, external_link: Link2 };
-const STATUS: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Borrador (privado)", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
-  published: { label: "Publicado", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
-  archived: { label: "Archivado", cls: "bg-muted text-muted-foreground" },
+const STATUS: Record<string, { key: string; cls: string }> = {
+  draft: { key: "draft", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
+  published: { key: "published", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  archived: { key: "archived", cls: "bg-muted text-muted-foreground" },
 };
 
 function NewCourseDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+  const { t } = useI18n();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [language, setLanguage] = useState("es");
-  const create = trpc.learning.admin.authoring.createCourse.useMutation({ onSuccess: (r) => { toast.success("Curso creado en borrador. Nadie lo ve hasta que lo publiques."); onCreated(r.courseId); }, onError: (e) => toastError(e) });
+  const create = trpc.learning.admin.authoring.createCourse.useMutation({ onSuccess: (r) => { toast.success(t("learningManage.authoring.courseCreated")); onCreated(r.courseId); }, onError: (e) => toastError(e) });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Nuevo curso</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{t("learningManage.authoring.newCourse")}</DialogTitle></DialogHeader>
         <div className="space-y-3">
-          <label className="block text-sm">Título<Input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder="Por ejemplo, Meditación y sanación" /></label>
-          <label className="block text-sm">Descripción (opcional)<Textarea value={description} maxLength={5000} rows={3} onChange={(e) => setDescription(e.target.value)} /></label>
-          <label className="block text-sm">Idioma del contenido
+          <label className="block text-sm">{t("learningManage.authoring.title")}<Input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder={t("learningManage.authoring.titlePlaceholder")} /></label>
+          <label className="block text-sm">{t("learningManage.authoring.descriptionOptional")}<Textarea value={description} maxLength={5000} rows={3} onChange={(e) => setDescription(e.target.value)} /></label>
+          <label className="block text-sm">{t("learningManage.authoring.contentLanguage")}
             <select className="mt-1 block w-full rounded-md border bg-background px-2 py-1.5" value={language} onChange={(e) => setLanguage(e.target.value)}>
-              <option value="es">Español</option><option value="de">Alemán</option><option value="en">Inglés</option>
+              <option value="es">{t("learningManage.authoring.langEs")}</option><option value="de">{t("learningManage.authoring.langDe")}</option><option value="en">{t("learningManage.authoring.langEn")}</option>
             </select>
           </label>
-          <p className="text-xs text-muted-foreground">El idioma indica en qué idioma está el contenido; no se traduce nada automáticamente.</p>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button disabled={!title.trim() || create.isPending} onClick={() => create.mutate({ title, description: description || null, language })}>Crear en borrador</Button></div>
+          <p className="text-xs text-muted-foreground">{t("learningManage.authoring.languageNote")}</p>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("learningManage.common.cancel")}</Button><Button disabled={!title.trim() || create.isPending} onClick={() => create.mutate({ title, description: description || null, language })}>{t("learningManage.authoring.createDraft")}</Button></div>
         </div>
       </DialogContent>
     </Dialog>
@@ -50,19 +52,20 @@ function NewCourseDialog({ onClose, onCreated }: { onClose: () => void; onCreate
 type AddState = null | { kind: "module" } | { kind: "lesson"; moduleId: number } | { kind: "block"; lessonId: number };
 
 function AddDialog({ state, courseId, onClose, onDone }: { state: NonNullable<AddState>; courseId: number; onClose: () => void; onDone: () => void }) {
+  const { t } = useI18n();
   const lib = trpc.learning.admin.materials.list.useQuery(undefined, { enabled: state.kind === "block" });
   const [title, setTitle] = useState("");
   const [bk, setBk] = useState<BlockKind>("text");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
   const [resourceId, setResourceId] = useState<number | "">("");
-  const done = { onSuccess: () => { toast.success("Añadido"); onDone(); }, onError: (e: unknown) => toastError(e) };
+  const done = { onSuccess: () => { toast.success(t("learningManage.authoring.added")); onDone(); }, onError: (e: unknown) => toastError(e) };
   const addModule = trpc.learning.admin.authoring.addModule.useMutation(done);
   const addLesson = trpc.learning.admin.authoring.addLesson.useMutation(done);
   const addBlock = trpc.learning.admin.authoring.addBlock.useMutation(done);
   const reusable = useMemo(() => (lib.data ?? []).filter((r) => r.kind === bk && r.objectId), [lib.data, bk]);
   const busy = addModule.isPending || addLesson.isPending || addBlock.isPending;
-  const heading = state.kind === "module" ? "Añadir módulo" : state.kind === "lesson" ? "Añadir lección" : "Añadir contenido";
+  const heading = state.kind === "module" ? t("learningManage.authoring.addModule") : state.kind === "lesson" ? t("learningManage.authoring.addLesson") : t("learningManage.authoring.addContent");
   function submit() {
     if (state.kind === "module") addModule.mutate({ courseId, title });
     else if (state.kind === "lesson") addLesson.mutate({ moduleId: state.moduleId, title });
@@ -74,25 +77,25 @@ function AddDialog({ state, courseId, onClose, onDone }: { state: NonNullable<Ad
         <DialogHeader><DialogTitle>{heading}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           {state.kind === "block" && (
-            <div role="group" aria-label="Tipo de contenido" className="flex flex-wrap gap-1.5">
-              {BLOCK_KINDS.map((k) => { const I = KIND_ICON[k]; return <Button key={k} size="sm" variant={bk === k ? "default" : "outline"} aria-pressed={bk === k} onClick={() => { setBk(k); setResourceId(""); }}><I className="mr-1.5 h-4 w-4" aria-hidden />{BLOCK_KIND_ES[k]}</Button>; })}
+            <div role="group" aria-label={t("learningManage.authoring.contentType")} className="flex flex-wrap gap-1.5">
+              {BLOCK_KINDS.map((k) => { const I = KIND_ICON[k]; return <Button key={k} size="sm" variant={bk === k ? "default" : "outline"} aria-pressed={bk === k} onClick={() => { setBk(k); setResourceId(""); }}><I className="mr-1.5 h-4 w-4" aria-hidden />{t(`learningManage.authoring.kind.${k}`)}</Button>; })}
             </div>
           )}
-          <label className="block text-sm">Título<Input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} /></label>
-          {state.kind === "block" && bk === "text" && <label className="block text-sm">Texto<Textarea rows={5} value={body} onChange={(e) => setBody(e.target.value)} /></label>}
-          {state.kind === "block" && bk === "external_link" && <label className="block text-sm">Enlace (https://…)<Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" /></label>}
+          <label className="block text-sm">{t("learningManage.authoring.title")}<Input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} /></label>
+          {state.kind === "block" && bk === "text" && <label className="block text-sm">{t("learningManage.authoring.text")}<Textarea rows={5} value={body} onChange={(e) => setBody(e.target.value)} /></label>}
+          {state.kind === "block" && bk === "external_link" && <label className="block text-sm">{t("learningManage.authoring.link")}<Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" /></label>}
           {state.kind === "block" && RESOURCE_KINDS.includes(bk as never) && (
             <div className="space-y-1 text-sm">
-              <label className="block">Material
+              <label className="block">{t("learningManage.authoring.material")}
                 <select className="mt-1 block w-full rounded-md border bg-background px-2 py-1.5" value={resourceId} onChange={(e) => setResourceId(e.target.value ? Number(e.target.value) : "")}>
-                  <option value="">Nuevo material: subiré el fichero después</option>
-                  {reusable.map((r) => <option key={r.resourceId} value={r.resourceId}>Reutilizar: {r.originalName ?? `material ${r.resourceId}`}</option>)}
+                  <option value="">{t("learningManage.authoring.newMaterial")}</option>
+                  {reusable.map((r) => <option key={r.resourceId} value={r.resourceId}>{t("learningManage.authoring.reuse", { name: r.originalName ?? t("learningManage.authoring.materialFallback", { id: r.resourceId }) })}</option>)}
                 </select>
               </label>
-              <p className="text-xs text-muted-foreground">Reutilizar un material no duplica el fichero ni ocupa espacio nuevo. Un material nuevo se sube desde la pestaña Materiales.</p>
+              <p className="text-xs text-muted-foreground">{t("learningManage.authoring.reuseNote")}</p>
             </div>
           )}
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button disabled={!title.trim() || busy} onClick={submit}>Añadir</Button></div>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("learningManage.common.cancel")}</Button><Button disabled={!title.trim() || busy} onClick={submit}>{t("learningManage.authoring.add")}</Button></div>
         </div>
       </DialogContent>
     </Dialog>
@@ -100,6 +103,7 @@ function AddDialog({ state, courseId, onClose, onDone }: { state: NonNullable<Ad
 }
 
 function Builder({ courseId }: { courseId: number }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const q = trpc.learning.admin.authoring.outline.useQuery({ courseId });
   const [add, setAdd] = useState<AddState>(null);
@@ -109,28 +113,28 @@ function Builder({ courseId }: { courseId: number }) {
   const editable = o.course.status === "draft";
   const refresh = () => { setAdd(null); utils.learning.admin.authoring.outline.invalidate(); utils.learning.admin.courses.invalidate(); utils.learning.admin.materials.list.invalidate(); };
   return (
-    <section className="rounded-xl border bg-card p-4" aria-label="Estructura del curso">
+    <section className="rounded-xl border bg-card p-4" aria-label={t("learningManage.authoring.structure")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 font-semibold"><Layers className="h-4 w-4 text-primary" aria-hidden />Estructura de «{o.course.title}»</h3>
-        {editable && <Button size="sm" onClick={() => setAdd({ kind: "module" })}><Plus className="mr-1.5 h-4 w-4" aria-hidden />Añadir módulo</Button>}
+        <h3 className="flex items-center gap-2 font-semibold"><Layers className="h-4 w-4 text-primary" aria-hidden />{t("learningManage.authoring.structureOf", { title: o.course.title })}</h3>
+        {editable && <Button size="sm" onClick={() => setAdd({ kind: "module" })}><Plus className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.addModule")}</Button>}
       </div>
-      {!editable && <p className="mt-2 rounded-md bg-muted p-2 text-sm text-muted-foreground">{o.course.status === "archived" ? "Curso archivado: restáuralo para editarlo." : "Curso publicado: para cambiar textos y orden usa «Editor». Para añadir módulos o lecciones, vuélvelo a borrador."}</p>}
+      {!editable && <p className="mt-2 rounded-md bg-muted p-2 text-sm text-muted-foreground">{o.course.status === "archived" ? t("learningManage.authoring.archivedNote") : t("learningManage.authoring.publishedNote")}</p>}
       {!o.modules.length ? (
-        <PanelEmpty title="Curso sin módulos" description="Empieza añadiendo el primer módulo; dentro irán las lecciones y su contenido." />
+        <PanelEmpty title={t("learningManage.authoring.noModulesTitle")} description={t("learningManage.authoring.noModulesDesc")} />
       ) : (
         <ol className="mt-3 space-y-3">
           {o.modules.map((m, mi) => (
             <li key={m.id} className="rounded-lg border p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium">Módulo {mi + 1} · {m.title}</p>
-                {editable && <Button size="sm" variant="outline" onClick={() => setAdd({ kind: "lesson", moduleId: m.id })}><ListPlus className="mr-1.5 h-4 w-4" aria-hidden />Añadir lección</Button>}
+                <p className="font-medium">{t("learningManage.authoring.moduleN", { n: mi + 1, title: m.title })}</p>
+                {editable && <Button size="sm" variant="outline" onClick={() => setAdd({ kind: "lesson", moduleId: m.id })}><ListPlus className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.addLesson")}</Button>}
               </div>
               <ol className="mt-2 space-y-2">
                 {m.lessons.map((l, li) => (
                   <li key={l.id} className="rounded-md bg-muted/40 p-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-medium">{mi + 1}.{li + 1} {l.title}</p>
-                      {editable && <Button size="sm" variant="ghost" onClick={() => setAdd({ kind: "block", lessonId: l.id })}><Plus className="mr-1 h-4 w-4" aria-hidden />Contenido</Button>}
+                      {editable && <Button size="sm" variant="ghost" onClick={() => setAdd({ kind: "block", lessonId: l.id })}><Plus className="mr-1 h-4 w-4" aria-hidden />{t("learningManage.authoring.content")}</Button>}
                     </div>
                     {l.blocks.length > 0 && (
                       <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
@@ -139,7 +143,7 @@ function Builder({ courseId }: { courseId: number }) {
                     )}
                   </li>
                 ))}
-                {!m.lessons.length && <li className="text-sm text-muted-foreground">Sin lecciones todavía.</li>}
+                {!m.lessons.length && <li className="text-sm text-muted-foreground">{t("learningManage.authoring.noLessons")}</li>}
               </ol>
             </li>
           ))}
@@ -151,13 +155,14 @@ function Builder({ courseId }: { courseId: number }) {
 }
 
 export default function Authoring() {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const courses = trpc.learning.admin.courses.useQuery();
   const [sel, setSel] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const refresh = () => { utils.learning.admin.courses.invalidate(); utils.learning.admin.authoring.outline.invalidate(); };
-  const duplicate = trpc.learning.admin.authoring.duplicateCourse.useMutation({ onSuccess: (r) => { toast.success(`Copia creada en borrador (${r.shared} materiales compartidos, sin duplicar ficheros).`); refresh(); setSel(r.courseId); }, onError: (e) => toastError(e) });
-  const archive = trpc.learning.admin.authoring.archiveCourse.useMutation({ onSuccess: (r) => { toast.success(r.status === "archived" ? "Curso archivado. Se conservan matrículas, progreso y ficheros." : "Curso restaurado como borrador."); refresh(); }, onError: (e) => toastError(e) });
+  const duplicate = trpc.learning.admin.authoring.duplicateCourse.useMutation({ onSuccess: (r) => { toast.success(t("learningManage.authoring.copyCreated", { n: r.shared })); refresh(); setSel(r.courseId); }, onError: (e) => toastError(e) });
+  const archive = trpc.learning.admin.authoring.archiveCourse.useMutation({ onSuccess: (r) => { toast.success(r.status === "archived" ? t("learningManage.authoring.archivedToast") : t("learningManage.authoring.restoredToast")); refresh(); }, onError: (e) => toastError(e) });
   const setStatus = trpc.learning.admin.setCourseStatus.useMutation({ onSuccess: () => refresh(), onError: (e) => toastError(e) });
   if (courses.isLoading) return <PanelLoading />;
   if (courses.isError) return <PanelError error={courses.error} onRetry={() => courses.refetch()} />;
@@ -165,11 +170,11 @@ export default function Authoring() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">Crea cursos, módulos, lecciones y contenidos. Un curso nuevo es privado hasta que lo publiques.</p>
-        <Button onClick={() => setCreating(true)}><BookPlus className="mr-1.5 h-4 w-4" aria-hidden />Nuevo curso</Button>
+        <p className="text-sm text-muted-foreground">{t("learningManage.authoring.intro")}</p>
+        <Button onClick={() => setCreating(true)}><BookPlus className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.newCourse")}</Button>
       </div>
       {!list.length ? (
-        <PanelEmpty title="Sin cursos" description="Crea tu primer curso: empieza en borrador y nadie lo verá hasta que lo publiques." />
+        <PanelEmpty title={t("learningManage.authoring.noCoursesTitle")} description={t("learningManage.authoring.noCoursesDesc")} />
       ) : (
         <ul className="grid gap-3 md:grid-cols-2">
           {list.map((c) => {
@@ -177,21 +182,21 @@ export default function Authoring() {
             return (
               <li key={c.id} className={`rounded-xl border bg-card p-4 ${sel === c.id ? "ring-2 ring-primary" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <button className="min-w-0 text-left" onClick={() => setSel(c.id)} aria-label={`Ver estructura de ${c.title}`}>
+                  <button className="min-w-0 text-left" onClick={() => setSel(c.id)} aria-label={t("learningManage.authoring.viewStructureOf", { title: c.title })}>
                     <h3 className="truncate font-semibold">{c.title}</h3>
-                    <p className="text-sm text-muted-foreground">{c.modules.length} módulos · ficheros {c.coverage.files.verified} verificados{c.coverage.files.pending ? `, ${c.coverage.files.pending} pendientes` : ""}</p>
+                    <p className="text-sm text-muted-foreground">{t("learningManage.authoring.courseSummary", { modules: c.modules.length, verified: c.coverage.files.verified, pending: c.coverage.files.pending ? t("learningManage.authoring.courseSummaryPending", { n: c.coverage.files.pending }) : "" })}</p>
                   </button>
-                  <Badge className={st.cls}>{st.label}</Badge>
+                  <Badge className={st.cls}>{t(`learningManage.authoring.status.${st.key}`)}</Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => setSel(c.id)}>Estructura</Button>
-                  <Button size="sm" variant="outline" disabled={duplicate.isPending} onClick={() => duplicate.mutate({ courseId: c.id })}><Copy className="mr-1.5 h-4 w-4" aria-hidden />Duplicar</Button>
-                  {c.status === "draft" && <Button size="sm" variant="outline" onClick={() => confirm(`Publicar «${c.title}»: los alumnos con matrícula podrán entrar. ¿Continuar?`) && setStatus.mutate({ courseId: c.id, status: "published" })}>Publicar</Button>}
-                  {c.status === "published" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ courseId: c.id, status: "draft" })}>Volver a borrador</Button>}
+                  <Button size="sm" variant="secondary" onClick={() => setSel(c.id)}>{t("learningManage.authoring.structureBtn")}</Button>
+                  <Button size="sm" variant="outline" disabled={duplicate.isPending} onClick={() => duplicate.mutate({ courseId: c.id })}><Copy className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.duplicate")}</Button>
+                  {c.status === "draft" && <Button size="sm" variant="outline" onClick={() => confirm(t("learningManage.authoring.publishConfirm", { title: c.title })) && setStatus.mutate({ courseId: c.id, status: "published" })}>{t("learningManage.authoring.publish")}</Button>}
+                  {c.status === "published" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ courseId: c.id, status: "draft" })}>{t("learningManage.authoring.backToDraft")}</Button>}
                   {c.status !== "archived" ? (
-                    <Button size="sm" variant="ghost" onClick={() => confirm(`Archivar «${c.title}»: deja de abrirse, pero se conservan matrículas, progreso y ficheros. ¿Continuar?`) && archive.mutate({ courseId: c.id, archive: true })}><Archive className="mr-1.5 h-4 w-4" aria-hidden />Archivar</Button>
+                    <Button size="sm" variant="ghost" onClick={() => confirm(t("learningManage.authoring.archiveConfirm", { title: c.title })) && archive.mutate({ courseId: c.id, archive: true })}><Archive className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.archive")}</Button>
                   ) : (
-                    <Button size="sm" variant="ghost" onClick={() => archive.mutate({ courseId: c.id, archive: false })}><ArchiveRestore className="mr-1.5 h-4 w-4" aria-hidden />Restaurar</Button>
+                    <Button size="sm" variant="ghost" onClick={() => archive.mutate({ courseId: c.id, archive: false })}><ArchiveRestore className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.restore")}</Button>
                   )}
                 </div>
               </li>

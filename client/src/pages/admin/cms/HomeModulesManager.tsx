@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { LayoutGrid, CheckCircle, Loader2, ArrowUp, ArrowDown, X, Plus } from "lucide-react";
 import { useVocabulary } from "@/lib/vocabulary";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 // ─── Constantes de módulos disponibles ───────────────────────────────────────
 const HOME_MODULES = [
@@ -28,6 +29,7 @@ const GENERIC_LABELS: Record<string, { label: string; description: string; icon:
 
 // ─── Componente de selección para un módulo ───────────────────────────────────
 function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: string; label: string; description: string; icon: string }) {
+  const tx = useStudioText();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -91,13 +93,11 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
         </div>
         {saving && (
           <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
-            <Loader2 className="w-3 h-3 animate-spin" /> Guardando...
-          </span>
+            <Loader2 className="w-3 h-3 animate-spin" />{" "}{tx("Guardando...")}</span>
         )}
         {saved && (
           <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-            <CheckCircle className="w-3 h-3" /> Guardado
-          </span>
+            <CheckCircle className="w-3 h-3" />{" "}{tx("Guardado")}</span>
         )}
       </div>
 
@@ -108,14 +108,10 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
             <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">
               {selectedIds.length}
             </span>
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Productos seleccionados
-            </span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{tx("Productos seleccionados")}</span>
           </div>
           {selectedExperiences.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-xs border-2 border-dashed border-border rounded-lg">
-              Sin productos seleccionados.<br />Añade desde la lista de la derecha.
-            </div>
+            <div className="py-8 text-center text-muted-foreground text-xs border-2 border-dashed border-border rounded-lg">{tx("Sin productos seleccionados.")}<br />{tx("Añade desde la lista de la derecha.")}</div>
           ) : (
             <div className="flex flex-col gap-2">
               {selectedExperiences.map((exp, idx) => (
@@ -160,14 +156,10 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
         {/* Columna derecha: disponibles */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Productos disponibles
-            </span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{tx("Productos disponibles")}</span>
           </div>
           {availableExperiences.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-xs">
-              Todos los productos están seleccionados
-            </div>
+            <div className="py-8 text-center text-muted-foreground text-xs">{tx("Todos los productos están seleccionados")}</div>
           ) : (
             <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pr-1">
               {availableExperiences.map((exp) => (
@@ -185,8 +177,7 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
                     onClick={() => toggleExperience(exp.id)}
                     className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold rounded-md px-2.5 py-1.5 transition-colors shrink-0"
                   >
-                    <Plus className="w-3 h-3" /> Añadir
-                  </button>
+                    <Plus className="w-3 h-3" />{" "}{tx("Añadir")}</button>
                 </div>
               ))}
             </div>
@@ -199,8 +190,9 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function HomeModulesManager() {
+  const tx = useStudioText();
   const { licensed } = useVocabulary();
-  const title = licensed ? "Módulos de portada" : "Módulos de la Home";
+  const title = licensed ? tx("Módulos de portada") : tx("Módulos de la Home");
   return (
     <AdminLayout title={title}>
       <div className="px-6 py-6">
@@ -211,9 +203,7 @@ export default function HomeModulesManager() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-foreground leading-none">{title}</h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">{tx("Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.")}</p>
           </div>
         </div>
 
@@ -222,8 +212,8 @@ export default function HomeModulesManager() {
           <ModuleEditor
             key={mod.key}
             moduleKey={mod.key}
-            label={mod.label}
-            description={mod.description}
+            label={tx(mod.label)}
+            description={tx(mod.description)}
             icon={mod.icon}
           />
         ))}

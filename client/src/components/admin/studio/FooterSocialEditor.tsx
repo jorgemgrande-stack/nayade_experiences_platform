@@ -6,6 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { checkSocialUrl, parseFooterSocial, SOCIAL_LABELS, SOCIAL_MAX, SOCIAL_NETWORKS, type SocialNetwork } from "@shared/footer";
+import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 type Row = { network: SocialNetwork; url: string };
 
@@ -21,6 +22,7 @@ export function rowsFromValue(value: string): Row[] {
 }
 
 export function FooterSocialEditor({ value, onChange }: { value: string; onChange: (json: string) => void }) {
+  const tx = useStudioText();
   const rows = rowsFromValue(value);
   const commit = (next: Row[]) => onChange(JSON.stringify(next));
   const used = new Set(rows.map((r) => r.network));
@@ -29,10 +31,10 @@ export function FooterSocialEditor({ value, onChange }: { value: string; onChang
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Redes sociales del pie</span>
-        <span className="text-xs text-muted-foreground">{rows.length} de {SOCIAL_MAX}</span>
+        <span className="text-sm font-medium">{tx("Redes sociales del pie")}</span>
+        <span className="text-xs text-muted-foreground">{tx("{rowsN} de {SOCIAL_MAX}", { rowsN: rows.length, SOCIAL_MAX: SOCIAL_MAX })}</span>
       </div>
-      {rows.length === 0 && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">Sin redes sociales. Añade una y pega la dirección de tu perfil.</p>}
+      {rows.length === 0 && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{tx("Sin redes sociales. Añade una y pega la dirección de tu perfil.")}</p>}
       {rows.map((r, i) => {
         const check = r.url.trim() ? checkSocialUrl(r.network, r.url) : null;
         const id = `social-${r.network}`;
@@ -42,7 +44,7 @@ export function FooterSocialEditor({ value, onChange }: { value: string; onChang
               <span className="w-24 shrink-0 text-sm">{SOCIAL_LABELS[r.network]}</span>
               <Input
                 id={id}
-                aria-label={`Dirección de ${SOCIAL_LABELS[r.network]}`}
+                aria-label={tx("Dirección de {network}", { network: SOCIAL_LABELS[r.network] })}
                 aria-invalid={check ? !check.ok : undefined}
                 aria-describedby={check && !check.ok ? `${id}-err` : undefined}
                 inputMode="url"
@@ -53,7 +55,7 @@ export function FooterSocialEditor({ value, onChange }: { value: string; onChang
                 value={r.url}
                 onChange={(e) => commit(rows.map((x, k) => (k === i ? { ...x, url: e.target.value } : x)))}
               />
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => commit(rows.filter((_, k) => k !== i))} aria-label={`Quitar ${SOCIAL_LABELS[r.network]}`}>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => commit(rows.filter((_, k) => k !== i))} aria-label={tx("Quitar {network}", { network: SOCIAL_LABELS[r.network] })}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
@@ -70,7 +72,7 @@ export function FooterSocialEditor({ value, onChange }: { value: string; onChang
           ))}
         </div>
       )}
-      <p className="text-xs text-muted-foreground">Cada enlace se abre en una pestaña nueva y debe ser https y de esa red. No se carga ningún script de las redes.</p>
+      <p className="text-xs text-muted-foreground">{tx("Cada enlace se abre en una pestaña nueva y debe ser https y de esa red. No se carga ningún script de las redes.")}</p>
     </div>
   );
 }
