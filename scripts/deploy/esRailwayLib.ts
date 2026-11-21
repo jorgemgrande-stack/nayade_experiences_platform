@@ -28,6 +28,8 @@ export const DRILL_ALLOWED: RegExp[] = [
   /^node dist-cp\/backup-job\.js restore-tenant [a-z0-9][a-z0-9-]{1,62} --apply$/,
   // La misma prueba con la primera empresa con copia verificada (no depende de una empresa concreta)
   /^node dist-cp\/backup-job\.js restore-tenant --any --apply$/,
+  // Simulacro de recuperación de ficheros de UNA empresa: solo comprueba hashes de la réplica, no escribe ni restaura nada
+  /^node dist-cp\/backup-job\.js verify-files [a-z0-9][a-z0-9-]{1,62}$/,
   // Base de medición del Resource Manager (es_erm): idempotente, permisos mínimos y sonda sin restos
   new RegExp(`^${BJ} erm-setup( --apply)?$`),
   // Purga definitiva de las empresas de prueba (lista cerrada en el código). Simulación (con o sin la huella esperada) o borrado: el

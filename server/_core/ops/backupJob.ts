@@ -480,6 +480,71 @@ export async function restoreTenantFiles(
   }
 }
 
+/**
+ * Simulacro de recuperación de ficheros SOLO de comprobación: descarga cada objeto de la réplica, lo descifra en memoria y compara su
+ * SHA-256 con el índice. No escribe ningún fichero (ni en disco ni en el bucket de medios) y no toca los originales. Un fallo en un
+ * fichero no detiene el resto: se informa de todos. `digest` resume el conjunto (sha256 de las líneas `clave:sha256` ordenadas).
+ */
+export interface VerifyFilesReport {
+  tenantId: string;
+  source: RestoreSource;
+  files: number;
+  bytes: number;
+  failed: Array<{ key: string; reason: string }>;
+  digest: string;
+  entries: Array<{ key: string; bytes: number; sha256: string; ok: boolean }>;
+}
+
+export async function verifyTenantFiles(
+  d: { storage: BackupStorage; ring: Keyring; copies?: BackupCopyLedger | null; source?: RestoreSource; actor?: string; now?: () => number },
+  tenantId: string,
+): Promise<VerifyFilesReport> {
+  const now = d.now ?? Date.now;
+  const source = d.source ?? "primary";
+  const logId = d.copies ? await d.copies.restoreStarted({ startedAt: now(), actor: d.actor ?? "operador", source, targetKind: "files", targetId: tenantId }).catch(() => null) : null;
+  try {
+    const index = await readFilesIndex(d.storage, d.ring, tenantId);
+    if (!index) throw new Error("No hay réplica de ficheros para esa empresa");
+    const entries: VerifyFilesReport["entries"] = [];
+    const failed: VerifyFilesReport["failed"] = [];
+    let bytes = 0;
+    const keys = Object.keys(index.entries).sort();
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const e = index.entries[key];
+      if (!key.startsWith(filesPrefix(tenantId))) {
+        failed.push({ key, reason: "clave de otra empresa en la réplica" });
+        continue;
+      }
+      let ok = false;
+      let reason = "";
+      try {
+        const buf = await d.storage.getBuffer(e.object);
+        if (!buf) reason = "falta el objeto en la réplica";
+        else {
+          const plain = decryptBuffer(buf, d.ring, backupAad("files", `${tenantId}:${key}`));
+          if (crypto.createHash("sha256").update(plain).digest("hex") !== e.sha256) reason = "SHA-256 distinto al del índice";
+          else if (plain.length !== e.bytes) reason = "tamaño distinto al del índice";
+          else {
+            ok = true;
+            bytes += plain.length;
+          }
+        }
+      } catch (err) {
+        reason = safeError(err);
+      }
+      if (!ok) failed.push({ key, reason });
+      entries.push({ key, bytes: e.bytes, sha256: e.sha256, ok });
+    }
+    const digest = crypto.createHash("sha256").update(entries.map((x) => `${x.key}:${x.sha256}`).join("\n")).digest("hex");
+    if (logId) await d.copies!.restoreFinished(logId, { finishedAt: now(), status: failed.length ? "failed" : "ok", verified: failed.length === 0, filesCount: entries.length - failed.length, error: failed.length ? `${failed.length} ficheros no verificados` : undefined }).catch(() => undefined);
+    return { tenantId, source, files: entries.length, bytes, failed, digest, entries };
+  } catch (e) {
+    if (logId) await d.copies!.restoreFinished(logId, { finishedAt: now(), status: "failed", verified: false, error: safeError(e) }).catch(() => undefined);
+    throw e;
+  }
+}
+
 // ── Ejecución completa ──────────────────────────────────────────────────────
 
 export interface BackupJobDeps {
