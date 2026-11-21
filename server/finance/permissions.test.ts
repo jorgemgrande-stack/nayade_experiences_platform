@@ -236,6 +236,10 @@ describe("reparto de los ámbitos de finanzas por rol", () => {
     expect(ROLE_SCOPES.sales).not.toContain("billing:write");
     expect(ROLE_SCOPES.readonly).toContain("billing:read");
     expect(ROLE_SCOPES.support).not.toContain("billing:read");
+    // Costes internos y márgenes: solo administración (margins:read); Comercial, Soporte y Solo lectura no lo tienen
+    expect(ROLE_SCOPES.admin).toContain("margins:read");
+    expect(ROLE_SCOPES.superadmin).toContain("margins:read");
+    for (const r of ["sales", "support", "readonly"] as const) expect(ROLE_SCOPES[r], r).not.toContain("margins:read");
   });
 });
 

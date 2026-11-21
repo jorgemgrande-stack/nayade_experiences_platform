@@ -1466,11 +1466,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }),
   );
   // Coste atribuible por empresa (solo lectura): consumo medido × tarifa + parte del coste compartido. Dato económico
-  // interno: exige también billing:read
+  // interno: exige también billing:read y margins:read (costes y margen: solo administración)
   router.get(
     "/resources/costs",
     requireScope("usage:read"),
     requireScope("billing:read"),
+    requireScope("margins:read"),
     wrap(async (req, res) => {
       if (!d.usage) return void res.json(notConfigured);
       const days = z.coerce.number().int().min(1).max(90).default(30).parse(req.query.days ?? undefined);
@@ -1521,6 +1522,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     "/resources/profitability",
     requireScope("usage:read"),
     requireScope("billing:read"),
+    requireScope("margins:read"),
     wrap(async (req, res) => {
       const days = z.coerce.number().int().pipe(z.union([z.literal(30), z.literal(90), z.literal(365)])).default(30).parse(req.query.days ?? undefined);
       const only = req.query.tenant === undefined ? undefined : idSchema.parse(req.query.tenant);
@@ -1664,6 +1666,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     "/resources/rates",
     requireScope("usage:read"),
     requireScope("billing:read"),
+    requireScope("margins:read"),
     wrap(async (_req, res) => {
       const stored = d.costModelStore ? await d.costModelStore.get() : null;
       const a = activeCostModel(stored, d.costModel ?? { model: ESTIMATED_COST_MODEL, error: null });
@@ -1682,6 +1685,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   router.put(
     "/resources/rates",
     requireScope("billing:write"),
+    requireScope("margins:read"),
     wrap(async (req, res) => {
       if (!d.costModelStore) return void res.status(501).json({ error: "not_available", message: "Tarifas editables no disponibles: falta la migración 0014 del registro" });
       const b = z.object({ model: costModelInputSchema, expectedVersion: z.number().int().min(0), reason: z.string().trim().min(5).max(300) }).strict().parse(req.body ?? {});
