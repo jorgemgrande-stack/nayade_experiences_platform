@@ -1,0 +1,20 @@
+/** Sedes de trabajo por persona dentro de «Usuarios». */
+export default {
+  title: "Sedes de trabajo",
+  intro: "Sin sedes marcadas, la persona trabaja en todas. Administración trabaja siempre en todas.",
+  loading: "Cargando sedes…",
+  loadError: "No se han podido cargar las sedes",
+  noTeam: "No hay personas del equipo a las que asignar sedes.",
+  allSites: "Todas las sedes",
+  chooseFor: "Elegir sedes de {name}",
+  sitesButton: "Sedes",
+  dialogTitle: "Sedes de {name}",
+  dialogDesc: "Marca las sedes en las que trabaja. Si no marcas ninguna, trabaja en todas.",
+  legend: "Sedes",
+  primary: " (principal)",
+  saved: "Sedes guardadas",
+  saveError: "No se han podido guardar las sedes.",
+  cancel: "Cancelar",
+  saving: "Guardando…",
+  save: "Guardar",
+};

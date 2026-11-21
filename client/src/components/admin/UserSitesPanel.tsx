@@ -12,17 +12,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type PanelUser = { id: number; name: string | null; email: string | null; role: string; isActive?: boolean | null };
 
 export default function UserSitesPanel({ users, canWrite }: { users: PanelUser[]; canWrite: boolean }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const sitesQ = trpc.sites.list.useQuery();
   const assignQ = trpc.sites.userAssignments.useQuery();
   const [editing, setEditing] = useState<{ user: PanelUser; siteIds: string[] } | null>(null);
   const save = trpc.sites.setUserSites.useMutation({
-    onSuccess: () => { void utils.sites.userAssignments.invalidate(); toast.success("Sedes guardadas"); setEditing(null); },
-    onError: (e) => toastError(e, "No se han podido guardar las sedes."),
+    onSuccess: () => { void utils.sites.userAssignments.invalidate(); toast.success(t("userSites.saved")); setEditing(null); },
+    onError: (e) => toastError(e, t("userSites.saveError")),
   });
 
   const active = sitesQ.data?.sites.filter((s) => s.status === "active") ?? [];
@@ -36,16 +38,16 @@ export default function UserSitesPanel({ users, canWrite }: { users: PanelUser[]
       <div>
         <h2 id="usuarios-sedes" className="text-lg font-semibold text-foreground flex items-center gap-2">
           <Building2 className="w-5 h-5 text-primary" aria-hidden="true" />
-          Sedes de trabajo
+          {t("userSites.title")}
         </h2>
-        <p className="text-sm text-muted-foreground">Sin sedes marcadas, la persona trabaja en todas. Administración trabaja siempre en todas.</p>
+        <p className="text-sm text-muted-foreground">{t("userSites.intro")}</p>
       </div>
       {sitesQ.isLoading || assignQ.isLoading ? (
-        <PanelLoading label="Cargando sedes…" />
+        <PanelLoading label={t("userSites.loading")} />
       ) : sitesQ.isError || assignQ.isError ? (
-        <PanelError error={sitesQ.error ?? assignQ.error} onRetry={() => { void sitesQ.refetch(); void assignQ.refetch(); }} title="No se han podido cargar las sedes" />
+        <PanelError error={sitesQ.error ?? assignQ.error} onRetry={() => { void sitesQ.refetch(); void assignQ.refetch(); }} title={t("userSites.loadError")} />
       ) : team.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No hay personas del equipo a las que asignar sedes.</p>
+        <p className="text-sm text-muted-foreground">{t("userSites.noTeam")}</p>
       ) : (
         <ul className="divide-y divide-border rounded-xl border border-border bg-card">
           {team.map((u) => {
@@ -54,11 +56,11 @@ export default function UserSitesPanel({ users, canWrite }: { users: PanelUser[]
               <li key={u.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground break-words">{u.name || u.email}</p>
-                  <p className="text-xs text-muted-foreground break-words">{ids.length ? ids.map(nameOf).join(", ") : "Todas las sedes"}</p>
+                  <p className="text-xs text-muted-foreground break-words">{ids.length ? ids.map(nameOf).join(", ") : t("userSites.allSites")}</p>
                 </div>
-                <Button size="sm" variant="outline" className="gap-1.5" disabled={!canWrite} onClick={() => setEditing({ user: u, siteIds: ids })} aria-label={`Elegir sedes de ${u.name || u.email}`}>
+                <Button size="sm" variant="outline" className="gap-1.5" disabled={!canWrite} onClick={() => setEditing({ user: u, siteIds: ids })} aria-label={t("userSites.chooseFor", { name: u.name || u.email })}>
                   <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-                  Sedes
+                  {t("userSites.sitesButton")}
                 </Button>
               </li>
             );
@@ -69,11 +71,11 @@ export default function UserSitesPanel({ users, canWrite }: { users: PanelUser[]
       <Dialog open={!!editing} onOpenChange={(o) => !o && !save.isPending && setEditing(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Sedes de {editing?.user.name || editing?.user.email}</DialogTitle>
-            <DialogDescription>Marca las sedes en las que trabaja. Si no marcas ninguna, trabaja en todas.</DialogDescription>
+            <DialogTitle>{t("userSites.dialogTitle", { name: editing?.user.name || editing?.user.email })}</DialogTitle>
+            <DialogDescription>{t("userSites.dialogDesc")}</DialogDescription>
           </DialogHeader>
           <fieldset className="space-y-2">
-            <legend className="sr-only">Sedes</legend>
+            <legend className="sr-only">{t("userSites.legend")}</legend>
             {active.map((s) => {
               const id = `usuario-sede-${s.siteId}`;
               const checked = !!editing?.siteIds.includes(s.siteId);
@@ -84,15 +86,15 @@ export default function UserSitesPanel({ users, canWrite }: { users: PanelUser[]
                     checked={checked}
                     onCheckedChange={(v) => setEditing((e) => e && { ...e, siteIds: v ? [...e.siteIds, s.siteId] : e.siteIds.filter((x) => x !== s.siteId) })}
                   />
-                  <label htmlFor={id} className="text-sm text-foreground">{s.name}{s.isPrimary ? " (principal)" : ""}</label>
+                  <label htmlFor={id} className="text-sm text-foreground">{s.name}{s.isPrimary ? t("userSites.primary") : ""}</label>
                 </div>
               );
             })}
           </fieldset>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)} disabled={save.isPending}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={save.isPending}>{t("userSites.cancel")}</Button>
             <Button disabled={save.isPending} onClick={() => editing && save.mutate({ userId: editing.user.id, siteIds: editing.siteIds })}>
-              {save.isPending ? "Guardando…" : "Guardar"}
+              {save.isPending ? t("userSites.saving") : t("userSites.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

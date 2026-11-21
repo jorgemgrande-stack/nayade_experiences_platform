@@ -157,6 +157,6 @@ describe("página de Integraciones", () => {
   const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/settings/Integrations.tsx"), "utf8");
   it("no pinta valores técnicos ni la jerga anterior", () => {
     expect(src).not.toMatch(/La cuenta es del propio tenant|configuración del servidor|>\s*\{o\}\s*</);
-    expect(src).toContain("Integraciones y pagos");
+    expect(fs.readFileSync(path.resolve(__dirname, "../shared/i18n/locales/es/settingsPayments.ts"), "utf8")).toContain("Integraciones y pagos");
   });
 });

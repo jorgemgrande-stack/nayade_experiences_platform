@@ -14,10 +14,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
 import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
 import { cn } from "@/lib/utils";
-import { CONTRACT_STATUSES, CONTRACT_STATUS_LABEL, ESIGN_PATHS, SIMPLE_SIGNATURE_NOTICE, type ContractStatus } from "@shared/contractsEsign";
-import { PageHeader, StatusBadge, fmtDay, fmtEur, useEsignRole } from "./ContractsParts";
+import { CONTRACT_STATUSES, ESIGN_PATHS, SIMPLE_SIGNATURE_NOTICE, type ContractStatus } from "@shared/contractsEsign";
+import { PageHeader, StatusBadge, useEsignFmt, useEsignRole } from "./ContractsParts";
+import { useI18n } from "@/i18n/I18nProvider";
 
 function NewContract({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
   const [, setLocation] = useLocation();
   const templates = trpc.contractsEsign.templates.useQuery();
   const [q, setQ] = useState("");
@@ -30,8 +32,8 @@ function NewContract({ onClose }: { onClose: () => void }) {
   const [reservationId, setReservationId] = useState("");
   const create = trpc.contractsEsign.create.useMutation({
     onSuccess: (r) => {
-      if (r.missing.length) toast.warning(`Contrato creado. Faltan datos (${r.missing.join(", ")}): complétalos en el borrador.`);
-      else toast.success("Contrato creado en borrador");
+      if (r.missing.length) toast.warning(t("contracts.create.createdMissing", { missing: r.missing.join(", ") }));
+      else toast.success(t("contracts.create.created"));
       setLocation(`${ESIGN_PATHS.contracts}/${r.id}`);
     },
     onError: (e) => toastError(e),
@@ -39,99 +41,101 @@ function NewContract({ onClose }: { onClose: () => void }) {
   const list = templates.data ?? [];
   const optId = (v: string) => (v.trim() ? Number(v) : null);
   const submit = () => {
-    if (!templateId) return toast.error("Elige una plantilla.");
-    if (!clientId) return toast.error("Elige el cliente.");
+    if (!templateId) return toast.error(t("contracts.create.chooseTemplate"));
+    if (!clientId) return toast.error(t("contracts.create.chooseClient"));
     const a = amount.trim() ? Number(amount.replace(",", ".")) : null;
-    if (a != null && (!Number.isFinite(a) || a < 0)) return toast.error("El importe no es válido.");
+    if (a != null && (!Number.isFinite(a) || a < 0)) return toast.error(t("contracts.create.invalidAmount"));
     create.mutate({ templateId, clientId, amount: a, contractDate: contractDate || null, quoteId: optId(quoteId), reservationId: optId(reservationId) });
   };
   return (
     <div className="space-y-3">
       {templates.isLoading ? (
-        <PanelLoading label="Cargando las plantillas…" />
+        <PanelLoading label={t("contracts.create.loadingTemplates")} />
       ) : list.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Aún no hay plantillas activas. <Link href={ESIGN_PATHS.templates} className="text-primary underline">Crea una plantilla</Link> primero.
+          {t("contracts.create.noTemplates")} <Link href={ESIGN_PATHS.templates} className="text-primary underline">{t("contracts.create.createTemplate")}</Link>{t("contracts.create.createTemplateFirst")}
         </p>
       ) : (
-        <FormField id="nc-tpl" label="Plantilla" required>
+        <FormField id="nc-tpl" label={t("contracts.create.template")} required>
           <select id="nc-tpl" className={selectClass} value={templateId ?? ""} onChange={(e) => setTemplateId(e.target.value ? Number(e.target.value) : null)}>
-            <option value="">Elige una plantilla</option>
-            {list.map((t) => <option key={t.id} value={t.id}>{t.title} (v{t.version})</option>)}
+            <option value="">{t("contracts.create.chooseTemplateOption")}</option>
+            {list.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.title} (v{tpl.version})</option>)}
           </select>
         </FormField>
       )}
-      <FormField id="nc-q" label="Cliente del CRM" required hint="Busca por nombre, correo o DNI/NIF.">
-        <Input id="nc-q" value={q} maxLength={100} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente" />
+      <FormField id="nc-q" label={t("contracts.create.clientLabel")} required hint={t("contracts.create.clientHint")}>
+        <Input id="nc-q" value={q} maxLength={100} onChange={(e) => setQ(e.target.value)} placeholder={t("contracts.create.clientPlaceholder")} />
       </FormField>
-      <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-md border border-border" aria-label="Clientes">
+      <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-md border border-border" aria-label={t("contracts.create.clientsAria")}>
         {(clients.data ?? []).map((c) => (
           <li key={c.id}>
             <button type="button" onClick={() => setClientId(c.id)} className={cn("w-full px-3 py-2 text-left text-sm hover:bg-muted/50", clientId === c.id && "bg-muted")} aria-pressed={clientId === c.id}>
               <span className="block break-words font-medium text-foreground">{c.name}</span>
-              <span className="block break-words text-xs text-muted-foreground">{[c.email, c.nif, c.company].filter(Boolean).join(" · ") || "Sin datos de contacto"}</span>
+              <span className="block break-words text-xs text-muted-foreground">{[c.email, c.nif, c.company].filter(Boolean).join(" · ") || t("contracts.create.noContact")}</span>
             </button>
           </li>
         ))}
-        {clients.data?.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">No hay clientes con esa búsqueda.</li>}
+        {clients.data?.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">{t("contracts.create.noClients")}</li>}
       </ul>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <FormField id="nc-amount" label="Importe en euros (opcional)">
+        <FormField id="nc-amount" label={t("contracts.create.amountLabel")}>
           <Input id="nc-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" />
         </FormField>
-        <FormField id="nc-date" label="Fecha del contrato" hint="Por defecto, hoy.">
+        <FormField id="nc-date" label={t("contracts.create.dateLabel")} hint={t("contracts.create.dateHint")}>
           <Input id="nc-date" type="date" value={contractDate} onChange={(e) => setDate(e.target.value)} />
         </FormField>
-        <FormField id="nc-quote" label="N.º interno de presupuesto (opcional)">
+        <FormField id="nc-quote" label={t("contracts.create.quoteLabel")}>
           <Input id="nc-quote" inputMode="numeric" value={quoteId} onChange={(e) => setQuoteId(e.target.value.replace(/\D/g, ""))} />
         </FormField>
-        <FormField id="nc-res" label="N.º interno de reserva (opcional)">
+        <FormField id="nc-res" label={t("contracts.create.reservationLabel")}>
           <Input id="nc-res" inputMode="numeric" value={reservationId} onChange={(e) => setReservationId(e.target.value.replace(/\D/g, ""))} />
         </FormField>
       </div>
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>Cancelar</Button>
-        <Button disabled={create.isPending || list.length === 0} onClick={submit}>Crear borrador</Button>
+        <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+        <Button disabled={create.isPending || list.length === 0} onClick={submit}>{t("contracts.create.createDraft")}</Button>
       </DialogFooter>
     </div>
   );
 }
 
 export default function ContractsList() {
+  const { t } = useI18n();
+  const { fmtDay, fmtEur } = useEsignFmt();
   const { canWrite } = useEsignRole();
   const [status, setStatus] = useState<ContractStatus | "all">("all");
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
   const list = trpc.contractsEsign.list.useQuery({ status: status === "all" ? undefined : status, q: q.trim() || undefined }, { retry: false });
-  const newButton = canWrite ? <Button onClick={() => setCreating(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />Nuevo contrato</Button> : undefined;
+  const newButton = canWrite ? <Button onClick={() => setCreating(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("contracts.list.newContract")}</Button> : undefined;
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-5">
         <PageHeader
-          title="Contratos y firma"
-          description="Contratos a partir de tus plantillas para clientes del CRM. Se firman en el panel o con un enlace de un solo uso que recibe el cliente por correo."
+          title={t("contracts.list.title")}
+          description={t("contracts.list.description")}
           actions={newButton}
         />
         <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">{SIMPLE_SIGNATURE_NOTICE}</p>
         <div className="flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label="Estado" className="inline-flex flex-wrap rounded-lg border border-border p-0.5">
+          <div role="tablist" aria-label={t("contracts.list.statusAria")} className="inline-flex flex-wrap rounded-lg border border-border p-0.5">
             {(["all", ...CONTRACT_STATUSES] as const).map((s) => (
               <button key={s} role="tab" aria-selected={status === s} onClick={() => setStatus(s)} className={cn("rounded-md px-3 py-1.5 text-sm", status === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-                {s === "all" ? "Todos" : CONTRACT_STATUS_LABEL[s]}
+                {t(`contracts.status.${s}`)}
               </button>
             ))}
           </div>
           <div className="relative w-full sm:w-64">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <Input className="pl-8" value={q} maxLength={100} onChange={(e) => setQ(e.target.value)} placeholder="Cliente o título" aria-label="Buscar contratos" />
+            <Input className="pl-8" value={q} maxLength={100} onChange={(e) => setQ(e.target.value)} placeholder={t("contracts.list.searchPlaceholder")} aria-label={t("contracts.list.searchAria")} />
           </div>
         </div>
         {list.isLoading ? (
-          <PanelLoading label="Cargando los contratos…" />
+          <PanelLoading label={t("contracts.list.loading")} />
         ) : list.isError ? (
           <PanelError error={list.error} onRetry={() => list.refetch()} />
         ) : (list.data ?? []).length === 0 ? (
-          <PanelEmpty icon={<FileSignature className="h-5 w-5" />} title="No hay contratos" description="Crea un contrato desde una plantilla y envíalo a firmar al cliente.">
+          <PanelEmpty icon={<FileSignature className="h-5 w-5" />} title={t("contracts.list.emptyTitle")} description={t("contracts.list.emptyDescription")}>
             {newButton}
           </PanelEmpty>
         ) : (
@@ -155,8 +159,8 @@ export default function ContractsList() {
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Nuevo contrato</DialogTitle>
-            <DialogDescription>Se crea en borrador con los datos del cliente ya puestos. Podrás revisarlo antes de enviarlo.</DialogDescription>
+            <DialogTitle>{t("contracts.list.newContract")}</DialogTitle>
+            <DialogDescription>{t("contracts.list.dialogDescription")}</DialogDescription>
           </DialogHeader>
           {creating && <NewContract onClose={() => setCreating(false)} />}
         </DialogContent>

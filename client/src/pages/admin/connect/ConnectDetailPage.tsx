@@ -29,11 +29,14 @@ import { trackConnect, useConnectTrackingSender } from "@/components/connect/use
 import { NetFeatureAreas } from "@/components/connect/NetFeatures";
 import { netProductOfLegacy } from "@shared/netProducts";
 import { toneOf } from "@shared/marketplaceVisual";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { Translate } from "@shared/i18n/core";
 import "@/components/connect/connectStage.css";
 
 type DialogKind = "purchase" | RequestKind;
 
 export default function ConnectDetailPage() {
+  const { t } = useI18n();
   useConnectTrackingSender();
   const params = useParams<{ clave: string }>();
   const search = useSearch();
@@ -89,12 +92,12 @@ export default function ConnectDetailPage() {
       <div className={cn("cx-stage cx-market -m-4 min-h-full p-4 sm:-m-6 sm:p-6", item && action?.kind !== "none" && "cx-mobile-bar-space")} data-accent={item?.sheet.layout.accentColor ?? undefined} data-tone={item ? toneOf(item) : undefined}>
         <div className="mx-auto max-w-[90rem] space-y-6">
           <Link href={AMPLIAR_PATH} className="inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Volver al marketplace
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("connect.sheet.back")}
           </Link>
 
-          {catalog.isLoading && <PanelLoading label="Cargando la ficha…" />}
-          {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title="No se ha podido cargar la ficha" />}
-          {catalog.isSuccess && !item && <p className="text-sm text-muted-foreground">No encontramos este módulo en el catálogo.</p>}
+          {catalog.isLoading && <PanelLoading label={t("connect.sheet.loading")} />}
+          {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("connect.sheet.loadError")} />}
+          {catalog.isSuccess && !item && <p className="text-sm text-muted-foreground">{t("connect.sheet.notFound")}</p>}
 
           {item && data && action && (
             <article className="space-y-6">
@@ -125,6 +128,7 @@ export default function ConnectDetailPage() {
 
 /** Cabecera: icono, marca, nombre, propuesta de valor, descripción, estado e imagen (o marcador neutro). */
 function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
+  const { t } = useI18n();
   const s = item.sheet;
   const style = s.layout.heroStyle ?? "split";
   const lead = s.headline ?? item.tagline;
@@ -147,7 +151,7 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
       {intro && <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">{intro}</p>}
       {item.forWho && (
         <p className="max-w-2xl text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Para quién: </span>
+          <span className="font-semibold text-foreground">{t("connect.sheet.forWho")}</span>
           {item.forWho}
         </p>
       )}
@@ -190,17 +194,18 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
 
 /** Navegación por anclas (solo las que tienen destino en esta ficha). */
 function AnchorNav({ item }: { item: ConnectCatalogItem }) {
+  const { t } = useI18n();
   const has = sheetAnchorTargets(item);
   const [current, setCurrent] = useState<string>(SHEET_ANCHORS.description);
   const links = [
-    { id: SHEET_ANCHORS.description, label: "Descripción", on: true },
-    { id: SHEET_ANCHORS.features, label: "Funcionalidades", on: has.features },
-    { id: SHEET_ANCHORS.integration, label: "Integración", on: has.integration },
-    { id: SHEET_ANCHORS.prices, label: "Precios", on: true },
-    { id: SHEET_ANCHORS.faq, label: "Preguntas frecuentes", on: has.faq },
+    { id: SHEET_ANCHORS.description, label: t("connect.sheet.anchors.description"), on: true },
+    { id: SHEET_ANCHORS.features, label: t("connect.sheet.anchors.features"), on: has.features },
+    { id: SHEET_ANCHORS.integration, label: t("connect.sheet.anchors.integration"), on: has.integration },
+    { id: SHEET_ANCHORS.prices, label: t("connect.sheet.anchors.prices"), on: true },
+    { id: SHEET_ANCHORS.faq, label: t("connect.sheet.anchors.faq"), on: has.faq },
   ].filter((l) => l.on);
   return (
-    <nav aria-label="Secciones de la ficha" className="sticky top-0 z-20 -mx-1 rounded-2xl border border-border bg-background/90 p-1.5 backdrop-blur">
+    <nav aria-label={t("connect.sheet.navAria")} className="sticky top-0 z-20 -mx-1 rounded-2xl border border-border bg-background/90 p-1.5 backdrop-blur">
       <ul className="flex gap-1 overflow-x-auto">
         {links.map((l) => (
           <li key={l.id} className="shrink-0">
@@ -229,18 +234,19 @@ function AnchorNav({ item }: { item: ConnectCatalogItem }) {
 const STEPS: Array<Exclude<ConnectActivation["state"], "none" | "error" | "suspended">> = ["pending", "processing", "active"];
 
 /** Explicación de cada error, sin prometer lo que no se puede hacer. */
-function errorText(a: ConnectActivation, canRetry: boolean, canRetryActivation: boolean): string {
+function errorText(t: Translate, a: ConnectActivation, canRetry: boolean, canRetryActivation: boolean): string {
   if (a.error?.kind === "activation") {
-    if (activationActions(a).retry) return canRetryActivation ? "El cobro ya está hecho y la activación no terminó. Reintentarla no vuelve a cobrar." : "El cobro ya está hecho y la activación no terminó. La administración de tu empresa puede reintentarla.";
-    return "La activación no terminó. Escríbenos y lo revisamos contigo.";
+    if (activationActions(a).retry) return canRetryActivation ? t("connect.sheet.errors.activationRetryAdmin") : t("connect.sheet.errors.activationRetryOther");
+    return t("connect.sheet.errors.activationFailed");
   }
-  if (a.payment === "failed") return canRetry ? "No se pudo cobrar la contratación y no se ha activado nada. Puedes volver a intentarlo con el botón de abajo." : "No se pudo cobrar la contratación y no se ha activado nada. Escríbenos y lo revisamos contigo.";
-  if (a.payment === "expired") return canRetry ? "El pago caducó sin completarse y no se ha activado nada. Puedes volver a contratar con el botón de abajo." : "El pago caducó sin completarse y no se ha activado nada. Escríbenos y lo revisamos contigo.";
-  return canRetry ? "La última contratación no se completó. Puedes volver a intentarlo con el botón de abajo." : "La última contratación no se completó. Escríbenos y lo revisamos contigo.";
+  if (a.payment === "failed") return canRetry ? t("connect.sheet.errors.paymentFailedRetry") : t("connect.sheet.errors.paymentFailed");
+  if (a.payment === "expired") return canRetry ? t("connect.sheet.errors.expiredRetry") : t("connect.sheet.errors.expired");
+  return canRetry ? t("connect.sheet.errors.lastRetry") : t("connect.sheet.errors.last");
 }
 
 /** Estado de la activación: pago pendiente → procesando → activo; error, suspendido o renovación cancelada. */
 function ActivationSteps({ productKey, activation, canRetry, canRetryActivation }: { productKey: string; activation: ConnectActivation; canRetry: boolean; canRetryActivation: boolean }) {
+  const { t } = useI18n();
   if (activation.state === "none") return null;
   const actions = <ActivationActionsBar productKey={productKey} activation={activation} canRetry={canRetryActivation} />;
   if (activation.state === "error" || activation.state === "suspended") {
@@ -250,9 +256,9 @@ function ActivationSteps({ productKey, activation, canRetry, canRetryActivation 
       <div role="status" className="space-y-2 rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm text-foreground">
         <p className="flex items-center gap-2 font-semibold text-danger">
           {suspended ? <Lock className="h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />}
-          {suspended ? "Suspendido" : label === ACTIVATION_LABELS.error ? "Activación con incidencia" : label}
+          {suspended ? t("connect.sheet.suspended") : label === ACTIVATION_LABELS.error ? t("connect.sheet.incident") : label}
         </p>
-        <p>{suspended ? "El acceso está suspendido por un cobro pendiente. Se recupera en cuanto se regularice el pago, sin perder datos." : errorText(activation, canRetry, canRetryActivation)}</p>
+        <p>{suspended ? t("connect.sheet.suspendedText") : errorText(t, activation, canRetry, canRetryActivation)}</p>
         {actions}
       </div>
     );
@@ -262,8 +268,8 @@ function ActivationSteps({ productKey, activation, canRetry, canRetryActivation 
   const extra = detail !== ACTIVATION_LABELS[activation.state] ? detail : null;
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Activación</p>
-      <ol className="flex items-center gap-2" aria-label={`Activación: ${detail}`}>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("connect.sheet.activation")}</p>
+      <ol className="flex items-center gap-2" aria-label={t("connect.sheet.activationAria", { detail })}>
         {STEPS.map((st, i) => {
           const done = i < at || activation.state === "active";
           const now = i === at && activation.state !== "active";
@@ -306,6 +312,7 @@ function ContractPanel({
   onRun: (a: PrimaryAction) => void;
   onOpenOrder: () => void;
 }) {
+  const { t } = useI18n();
   const s = item.sheet;
   const active = item.state === "active";
   // «Qué contratas» solo tiene sentido para lo que aún no está contratado
@@ -314,14 +321,14 @@ function ContractPanel({
   const others = sortPrices(item.prices).slice(1);
   const conditions = [s.terms.commitment, s.terms.cancellation, s.terms.activation].filter((x): x is string => !!x);
   return (
-    <aside id={SHEET_ANCHORS.prices} aria-label="Contratación" className="cx-glow scroll-mt-20 space-y-5 rounded-3xl border-2 border-primary/60 bg-card p-5 shadow-2xl shadow-black/10 dark:shadow-black/50 sm:p-6 lg:sticky lg:top-16">
+    <aside id={SHEET_ANCHORS.prices} aria-label={t("connect.sheet.panelAria")} className="cx-glow scroll-mt-20 space-y-5 rounded-3xl border-2 border-primary/60 bg-card p-5 shadow-2xl shadow-black/10 dark:shadow-black/50 sm:p-6 lg:sticky lg:top-16">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 break-words text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.name}</p>
         <StateBadge state={item.state} />
       </div>
       {active ? (
         <p className="flex items-start gap-2 text-base text-foreground">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" /> Ya forma parte de tu plataforma.
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" /> {t("connect.sheet.alreadyPart")}
         </p>
       ) : (
         <BigPrice prices={item.prices} size="lg" showFrom={false} />
@@ -330,7 +337,7 @@ function ContractPanel({
         <ul className="space-y-1 text-sm text-muted-foreground">
           {others.map((p, i) => (
             <li key={`${p.kind}-${i}`}>
-              También: <span className="font-semibold text-foreground">{formatMoney(p.amountCents, p.currency)}</span> {periodLabel(p.kind)} · {taxLabel(p)}
+              {t("connect.sheet.also")} <span className="font-semibold text-foreground">{formatMoney(p.amountCents, p.currency)}</span> {periodLabel(p.kind)} · {taxLabel(p)}
             </li>
           ))}
         </ul>
@@ -351,7 +358,7 @@ function ContractPanel({
             {action.label}
           </Button>
         )}
-        {action.kind === "purchase" && <p className="text-xs text-muted-foreground">Te mostramos el importe exacto antes de confirmar. Se activa cuando el cobro queda verificado.</p>}
+        {action.kind === "purchase" && <p className="text-xs text-muted-foreground">{t("connect.sheet.purchaseNote")}</p>}
         {action.kind === "convert" && <p className="text-xs text-muted-foreground">{conversionSupportText(item.name)}</p>}
         {action.kind === "assisted" && <p className="text-xs text-muted-foreground">{ASSISTED_CONTRACT_COPY.noPayment} {ASSISTED_CONTRACT_COPY.planLine(currentPlanName)}</p>}
         {/* Connect asistido: lo disponible y lo pendiente (en Elephant Net lo dicen sus áreas en la ficha) */}
@@ -363,20 +370,20 @@ function ContractPanel({
         {action.kind === "convert" && item.conversionPlan && item.conversionPlan !== currentPlan && <p className="text-xs text-muted-foreground">{conversionPlanText(item.name, item.conversionPlan)}</p>}
         {item.state === "activating" && attemptOrdered && (
           <Button type="button" variant="outline" className="w-full" onClick={onOpenOrder}>
-            Ver el estado del pedido
+            {t("connect.sheet.viewOrder")}
           </Button>
         )}
         {activation.state === "error" && item.state !== "incident" && action.kind !== "contact" && action.kind !== "purchase" && (
-          <Button type="button" variant="outline" className="w-full" onClick={() => onRun({ kind: "contact", label: "Contactar con el equipo", href: null })}>
-            Contactar con el equipo
+          <Button type="button" variant="outline" className="w-full" onClick={() => onRun({ kind: "contact", label: t("connect.sheet.contactTeam"), href: null })}>
+            {t("connect.sheet.contactTeam")}
           </Button>
         )}
-        {item.state === "coming_soon" && action.kind === "none" && <p className="text-sm text-muted-foreground">Todavía no se puede contratar.</p>}
+        {item.state === "coming_soon" && action.kind === "none" && <p className="text-sm text-muted-foreground">{t("connect.sheet.notYet")}</p>}
         {showBlock && <p className="text-xs text-muted-foreground">{showBlock}</p>}
       </div>
       {!contracted && (
         <div className="space-y-2 border-t border-border pt-4">
-          <p className="text-sm font-semibold text-foreground">Qué contratas</p>
+          <p className="text-sm font-semibold text-foreground">{t("connect.sheet.whatYouHire")}</p>
           <ul className="space-y-1.5 text-sm text-foreground">
             <li className="flex items-start gap-2">
               <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />

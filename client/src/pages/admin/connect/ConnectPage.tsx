@@ -24,23 +24,22 @@ import { useConnectCatalog, useOpenOrders, useOrderTracking, type ConnectCatalog
 import { useConnectTrackingSender } from "@/components/connect/useConnectTracking";
 import { Rail } from "@/components/connect/Rail";
 import type { MarketTone } from "@shared/marketplaceVisual";
+import { useI18n } from "@/i18n/I18nProvider";
 import "@/components/connect/connectStage.css";
 
 const STATE_FILTERS: Array<{ id: ConnectStateFilter; label: string }> = [
-  { id: "all", label: "Todos" },
-  { id: "available", label: "Disponibles" },
-  { id: "on_request", label: "Bajo solicitud" },
-  { id: "upcoming", label: "Próximamente" },
-  { id: "mine", label: "Contratados" },
+  { id: "all", label: "connect.filters.all" },
+  { id: "available", label: "connect.filters.available" },
+  { id: "on_request", label: "connect.filters.onRequest" },
+  { id: "upcoming", label: "connect.filters.upcoming" },
+  { id: "mine", label: "connect.filters.mine" },
 ];
-
-const PAGE_TITLE = "Amplía tu empresa";
-const PAGE_DESCRIPTION = "Módulos y herramientas que puedes añadir a tu plataforma, con su estado para tu empresa.";
 
 /** Un pedido propio en curso: se sigue consultando al backend aunque la persona esté en otra parte del catálogo. */
 function OpenOrder({ attempt, name }: { attempt: PurchaseAttempt; name: string }) {
-  const t = useOrderTracking(attempt);
-  const text = t.status === "payment_pending" ? "Falta completar el pago" : t.status === "applied" ? "Activada" : "Confirmando el cobro…";
+  const tracking = useOrderTracking(attempt);
+  const { t } = useI18n();
+  const text = tracking.status === "payment_pending" ? t("connect.order.paymentPending") : tracking.status === "applied" ? t("connect.order.applied") : t("connect.order.confirming");
   return (
     <li>
       <Link href={fichaPath(attempt.productKey)} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm hover:bg-muted">
@@ -57,6 +56,9 @@ const scrollToId = (id: string) => {
 };
 
 export default function ConnectPage() {
+  const { t } = useI18n();
+  const PAGE_TITLE = t("connect.page.title");
+  const PAGE_DESCRIPTION = t("connect.page.description");
   useConnectTrackingSender();
   const catalog = useConnectCatalog();
   const orders = useOpenOrders();
@@ -92,8 +94,8 @@ export default function ConnectPage() {
   const tiles = [
     { id: "connect" as const, title: brands.connect.title, count: items.filter((i) => brandOf(i) === "connect").length },
     { id: "net" as const, title: brands.net.title, count: items.filter((i) => brandOf(i) === "net").length },
-    { id: "bundles" as const, title: "Paquetes", count: items.filter((i) => categoryOf(i) === "bundles").length },
-    { id: "mine" as const, title: "Mis módulos", count: mineCount },
+    { id: "bundles" as const, title: t("connect.tiles.bundles"), count: items.filter((i) => categoryOf(i) === "bundles").length },
+    { id: "mine" as const, title: t("connect.tiles.mine"), count: mineCount },
   ];
   const activeTile: AccessId | null = state === "mine" ? "mine" : category === "bundles" ? "bundles" : null;
   const hasSlides = !!data && data.slides.length > 0;
@@ -153,19 +155,19 @@ export default function ConnectPage() {
             <NeutralHero title={PAGE_TITLE} description={PAGE_DESCRIPTION} />
           )}
 
-          {catalog.isLoading && <PanelLoading label="Cargando el catálogo…" />}
-          {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title="No se ha podido cargar el catálogo" />}
+          {catalog.isLoading && <PanelLoading label={t("connect.page.loading")} />}
+          {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("connect.page.loadError")} />}
 
           {data && !data.available && (
             <section className="space-y-2 rounded-2xl border border-border bg-card p-6">
               <p className="text-sm text-muted-foreground">
-                El catálogo no está disponible en este momento. Para añadir funcionalidades,{" "}
+                {t("connect.page.unavailableLead")}{" "}
                 {data.supportEmail ? (
                   <a className="underline underline-offset-4" href={`mailto:${data.supportEmail}`}>
-                    escríbenos
+                    {t("connect.page.writeUs")}
                   </a>
                 ) : (
-                  "contacta con tu responsable de cuenta"
+                  t("connect.page.contactManager")
                 )}
                 .
               </p>
@@ -175,7 +177,7 @@ export default function ConnectPage() {
           {orders.length > 0 && (
             <section className="space-y-2" aria-labelledby="cx-orders">
               <h2 id="cx-orders" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Pedidos en curso
+                {t("connect.page.ordersTitle")}
               </h2>
               <ul className="space-y-2">
                 {orders.map((a) => (
@@ -189,13 +191,13 @@ export default function ConnectPage() {
             <>
               <AccessTiles tiles={tiles} active={activeTile} onSelect={(id) => select(id)} />
 
-              <section aria-label="Buscar y filtrar" className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <section aria-label={t("connect.page.searchAria")} className="flex flex-col gap-3 xl:flex-row xl:items-center">
                 <label className="relative block xl:w-[24rem] xl:shrink-0">
-                  <span className="sr-only">Buscar en el catálogo</span>
+                  <span className="sr-only">{t("connect.page.searchLabel")}</span>
                   <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                  <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar módulo, función o beneficio…" className="h-12 rounded-full border-border bg-card pl-11 shadow-sm" />
+                  <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("connect.page.searchPlaceholder")} className="h-12 rounded-full border-border bg-card pl-11 shadow-sm" />
                 </label>
-                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Estado">
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("connect.page.stateAria")}>
                   {STATE_FILTERS.map((o) => (
                     <Button
                       key={o.id}
@@ -206,19 +208,19 @@ export default function ConnectPage() {
                       className={cn("h-10 rounded-full px-4 font-semibold", state !== o.id && "bg-card shadow-sm")}
                       onClick={() => setState(o.id)}
                     >
-                      {o.label}
+                      {t(o.label)}
                     </Button>
                   ))}
                 </div>
                 {categories.length > 1 && (
                   <label className="xl:ml-auto">
-                    <span className="sr-only">Categoría</span>
+                    <span className="sr-only">{t("connect.page.categoryLabel")}</span>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value as ConnectCategoryId | "all")}
                       className="h-12 w-full rounded-full border border-border bg-card px-4 text-sm text-foreground shadow-sm xl:w-60"
                     >
-                      <option value="all">Todas las categorías</option>
+                      <option value="all">{t("connect.page.allCategories")}</option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.label}
@@ -228,7 +230,7 @@ export default function ConnectPage() {
                   </label>
                 )}
                 <p className="sr-only" aria-live="polite">
-                  {shown.length === 1 ? "1 resultado" : `${shown.length} resultados`}
+                  {t("connect.page.results", { n: shown.length })}
                 </p>
               </section>
 
@@ -236,12 +238,12 @@ export default function ConnectPage() {
 
               <div id="cx-results" className="scroll-mt-4 space-y-10">
                 {items.length === 0 ? (
-                  <PanelEmpty icon={<PackagePlus />} title="Todavía no hay módulos publicados para tu empresa" />
+                  <PanelEmpty icon={<PackagePlus />} title={t("connect.page.emptyCatalog")} />
                 ) : (
                   shown.length === 0 && (
-                    <PanelEmpty icon={<Search />} title={state === "mine" && !query && category === "all" ? "Todavía no tienes módulos contratados" : "No hay nada que coincida con tu búsqueda"}>
+                    <PanelEmpty icon={<Search />} title={state === "mine" && !query && category === "all" ? t("connect.page.emptyMine") : t("connect.page.emptyNoMatch")}>
                       <Button type="button" variant="outline" onClick={reset}>
-                        {state === "mine" ? "Ver todo el catálogo" : "Quitar filtros"}
+                        {state === "mine" ? t("connect.page.seeAllCatalog") : t("connect.page.clearFilters")}
                       </Button>
                     </PanelEmpty>
                   )
@@ -249,8 +251,8 @@ export default function ConnectPage() {
 
                 {featured.length > 0 && (
                   <section className="space-y-4" aria-labelledby="cx-featured">
-                    <SectionHeader id="cx-featured" tone="magenta" icon={<Sparkles className="h-6 w-6" />} title="Destacados" />
-                    <Rail label="Destacados">
+                    <SectionHeader id="cx-featured" tone="magenta" icon={<Sparkles className="h-6 w-6" />} title={t("connect.page.featured")} />
+                    <Rail label={t("connect.page.featured")}>
                       {featured.map((i) => (
                         <ProductCard key={i.key} item={i} view={view} onAction={openDialog} />
                       ))}
@@ -265,7 +267,7 @@ export default function ConnectPage() {
                   const Icon = b.id === "net" ? Layers : Plug;
                   // Con búsqueda o filtros, o con «Ver todo», cuadrícula; si no, carriles por segmento para explorar
                   const asGrid = filtering || expanded.has(b.id);
-                  const segments = b.id === "net" ? netSegments(group) : connectSegments(group);
+                  const segments = b.id === "net" ? netSegments(group, t) : connectSegments(group, t);
                   return (
                     <section key={b.id} id={`cx-brand-${b.id}`} className="scroll-mt-4 space-y-5" aria-labelledby={`cx-brand-${b.id}-t`}>
                       <SectionHeader
@@ -277,7 +279,7 @@ export default function ConnectPage() {
                         action={
                           !filtering && group.length > 4 ? (
                             <Button type="button" variant="ghost" size="sm" className="shrink-0 rounded-full" onClick={() => toggleExpanded(b.id)}>
-                              {expanded.has(b.id) ? "Ver en carrusel" : `Ver todo (${group.length})`}
+                              {expanded.has(b.id) ? t("connect.page.viewCarousel") : t("connect.page.viewAll", { n: group.length })}
                               {!expanded.has(b.id) && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
                             </Button>
                           ) : null
@@ -319,19 +321,19 @@ export default function ConnectPage() {
 }
 
 /** Elephant Net en el escaparate: «Empresas» (las 6 soluciones sectoriales) y «Personal» (Life Net). */
-function netSegments(items: ConnectCatalogItem[]): Array<{ id: string; title: string | null; items: ConnectCatalogItem[] }> {
+function netSegments(items: ConnectCatalogItem[], t: (k: string) => string): Array<{ id: string; title: string | null; items: ConnectCatalogItem[] }> {
   const business = items.filter((i) => i.net?.segment !== "personal");
   const personal = items.filter((i) => i.net?.segment === "personal");
   return [
-    { id: "business", title: "Elephant Net · Empresas", items: business },
-    { id: "personal", title: "Elephant Net · Personal", items: personal },
+    { id: "business", title: t("connect.page.netBusiness"), items: business },
+    { id: "personal", title: t("connect.page.netPersonal"), items: personal },
   ].filter((s) => s.items.length > 0);
 }
 
 /** Elephant Connect en carriles por categoría (herramientas, paquetes, extras, ampliaciones), en el orden del catálogo. */
-function connectSegments(items: ConnectCatalogItem[]): Array<{ id: string; title: string | null; items: ConnectCatalogItem[] }> {
+function connectSegments(items: ConnectCatalogItem[], t: (k: string) => string): Array<{ id: string; title: string | null; items: ConnectCatalogItem[] }> {
   const known = CONNECT_CATEGORIES.map((c) => ({ id: c.id as string, title: c.label as string, items: items.filter((i) => categoryOf(i) === c.id) }));
-  const other = { id: "other", title: "Otros", items: items.filter((i) => categoryOf(i) === "other") };
+  const other = { id: "other", title: t("connect.page.other"), items: items.filter((i) => categoryOf(i) === "other") };
   const segs = [...known, other].filter((s) => s.items.length > 0);
   // Con un solo segmento sobra el subtítulo
   return segs.length === 1 ? [{ ...segs[0], title: null }] : segs;

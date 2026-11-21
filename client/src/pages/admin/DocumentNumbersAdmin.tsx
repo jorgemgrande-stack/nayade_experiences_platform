@@ -14,16 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { PanelError } from "@/components/admin/PanelStates";
 import { AlertTriangle, RefreshCw, Edit2, History, Hash } from "lucide-react";
+import { useI18n } from "@/i18n/I18nProvider";
 
-const DOC_TYPE_LABELS: Record<string, string> = {
-  presupuesto: "Presupuestos",
-  factura: "Facturas",
-  reserva: "Reservas",
-  tpv: "Tickets TPV",
-  cupon: "Cupones",
-  liquidacion: "Liquidaciones",
-  anulacion: "Anulaciones",
-};
+const DOC_TYPES = ["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"];
 
 const DOC_TYPE_COLORS: Record<string, string> = {
   presupuesto: "bg-blue-100 text-blue-800",
@@ -37,6 +30,8 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 
 export default function DocumentNumbersAdmin() {
   const utils = trpc.useUtils();
+  const { t, format } = useI18n();
+  const typeLabel = (k: string | undefined) => (k && DOC_TYPES.includes(k) ? t(`documentNumbers.types.${k}`) : k);
 
   const { data: counters, isLoading, error: countersError, refetch: refetchCounters } = trpc.documentNumbers.getCounters.useQuery();
 
@@ -73,18 +68,18 @@ export default function DocumentNumbersAdmin() {
     onSuccess: () => {
       utils.documentNumbers.getCounters.invalidate();
       setEditDialog(d => ({ ...d, open: false }));
-      toast.success("Prefijo actualizado", { description: "Los nuevos documentos usarán el nuevo prefijo." });
+      toast.success(t("documentNumbers.prefixUpdated"), { description: t("documentNumbers.prefixUpdatedDesc") });
     },
-    onError: (err) => toast.error("Error", { description: err.message }),
+    onError: (err) => toast.error(t("documentNumbers.error"), { description: err.message }),
   });
 
   const resetCounter = trpc.documentNumbers.resetCounter.useMutation({
     onSuccess: () => {
       utils.documentNumbers.getCounters.invalidate();
       setResetDialog(d => ({ ...d, open: false }));
-      toast.success("Contador reseteado", { description: "El contador ha sido actualizado correctamente." });
+      toast.success(t("documentNumbers.counterReset"), { description: t("documentNumbers.counterResetDesc") });
     },
-    onError: (err) => toast.error("Error", { description: err.message }),
+    onError: (err) => toast.error(t("documentNumbers.error"), { description: err.message }),
   });
 
   const nextNumber = (counter: { prefix: string; year: number; currentNumber: number }) =>
@@ -95,9 +90,9 @@ export default function DocumentNumbersAdmin() {
       <div className="flex items-center gap-3">
         <Hash className="h-7 w-7 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold">Series de Numeración</h1>
+          <h1 className="text-2xl font-bold">{t("documentNumbers.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Gestión centralizada de los contadores de documentos del sistema. Los cambios solo afectan a nuevos documentos.
+            {t("documentNumbers.subtitle")}
           </p>
         </div>
       </div>
@@ -106,33 +101,31 @@ export default function DocumentNumbersAdmin() {
       <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800">
         <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
         <div className="text-sm">
-          <strong>Importante:</strong> Los números ya emitidos nunca se modifican. Cambiar el prefijo o resetear un contador
-          solo afecta a los documentos generados a partir de ese momento. El reset manual está pensado exclusivamente
-          para correcciones de inicio de año.
+          <strong>{t("documentNumbers.importantLabel")}</strong> {t("documentNumbers.important")}
         </div>
       </div>
 
       {/* Tabla de contadores */}
       <Card>
         <CardHeader>
-          <CardTitle>Contadores activos</CardTitle>
-          <CardDescription>Estado actual de cada serie de numeración</CardDescription>
+          <CardTitle>{t("documentNumbers.activeCounters")}</CardTitle>
+          <CardDescription>{t("documentNumbers.activeCountersDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {countersError ? (
-            <PanelError title="No se han podido cargar las series" error={countersError} onRetry={() => void refetchCounters()} />
+            <PanelError title={t("documentNumbers.loadError")} error={countersError} onRetry={() => void refetchCounters()} />
           ) : isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Cargando contadores...</div>
+            <div className="text-center py-8 text-muted-foreground">{t("documentNumbers.loading")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tipo de documento</TableHead>
-                  <TableHead>Año</TableHead>
-                  <TableHead>Prefijo</TableHead>
-                  <TableHead>Último emitido</TableHead>
-                  <TableHead>Próximo número</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  <TableHead>{t("documentNumbers.colType")}</TableHead>
+                  <TableHead>{t("documentNumbers.colYear")}</TableHead>
+                  <TableHead>{t("documentNumbers.colPrefix")}</TableHead>
+                  <TableHead>{t("documentNumbers.colLast")}</TableHead>
+                  <TableHead>{t("documentNumbers.colNext")}</TableHead>
+                  <TableHead className="text-right">{t("documentNumbers.colActions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -140,7 +133,7 @@ export default function DocumentNumbersAdmin() {
                   <TableRow key={`${counter.documentType}-${counter.year}`}>
                     <TableCell>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${DOC_TYPE_COLORS[counter.documentType] ?? "bg-gray-100 text-gray-800"}`}>
-                        {DOC_TYPE_LABELS[counter.documentType] ?? counter.documentType}
+                        {typeLabel(counter.documentType)}
                       </span>
                     </TableCell>
                     <TableCell className="font-mono">{counter.year}</TableCell>
@@ -167,7 +160,7 @@ export default function DocumentNumbersAdmin() {
                             currentPrefix: counter.prefix,
                             newPrefix: counter.prefix,
                           })}
-                          title="Editar prefijo"
+                          title={t("documentNumbers.editPrefix")}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -181,7 +174,7 @@ export default function DocumentNumbersAdmin() {
                             currentNumber: counter.currentNumber,
                             newValue: String(counter.currentNumber),
                           })}
-                          title="Resetear contador"
+                          title={t("documentNumbers.resetCounter")}
                         >
                           <RefreshCw className="h-4 w-4" />
                         </Button>
@@ -202,7 +195,7 @@ export default function DocumentNumbersAdmin() {
           onClick={() => setLogsDialog({ open: true })}
         >
           <History className="h-4 w-4 mr-2" />
-          Ver historial de generación
+          {t("documentNumbers.viewHistory")}
         </Button>
       </div>
 
@@ -210,32 +203,32 @@ export default function DocumentNumbersAdmin() {
       <Dialog open={editDialog.open} onOpenChange={(o) => setEditDialog(d => ({ ...d, open: o }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar prefijo de serie</DialogTitle>
+            <DialogTitle>{t("documentNumbers.editTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
               <p className="text-sm text-muted-foreground mb-1">
-                Serie: <strong>{DOC_TYPE_LABELS[editDialog.documentType]}</strong> — Año {editDialog.year}
+                {t("documentNumbers.series")} <strong>{typeLabel(editDialog.documentType)}</strong> {t("documentNumbers.yearLine", { year: editDialog.year })}
               </p>
               <p className="text-sm text-muted-foreground">
-                Prefijo actual: <code className="bg-muted px-1 rounded">{editDialog.currentPrefix}</code>
+                {t("documentNumbers.currentPrefix")} <code className="bg-muted px-1 rounded">{editDialog.currentPrefix}</code>
               </p>
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Nuevo prefijo (solo mayúsculas, números y guiones)</label>
+              <label className="text-sm font-medium mb-1 block">{t("documentNumbers.newPrefixLabel")}</label>
               <Input
                 value={editDialog.newPrefix}
                 onChange={(e) => setEditDialog(d => ({ ...d, newPrefix: e.target.value.toUpperCase() }))}
-                placeholder="ej: FAC"
+                placeholder={t("documentNumbers.newPrefixPlaceholder")}
                 maxLength={16}
               />
             </div>
             <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
-              Los documentos ya emitidos con el prefijo anterior no se verán afectados.
+              {t("documentNumbers.prefixNote")}
             </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialog(d => ({ ...d, open: false }))}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setEditDialog(d => ({ ...d, open: false }))}>{t("common.cancel")}</Button>
             <Button
               onClick={() => updatePrefix.mutate({
                 documentType: editDialog.documentType as any,
@@ -244,7 +237,7 @@ export default function DocumentNumbersAdmin() {
               })}
               disabled={updatePrefix.isPending || !editDialog.newPrefix || editDialog.newPrefix === editDialog.currentPrefix}
             >
-              {updatePrefix.isPending ? "Guardando..." : "Guardar prefijo"}
+              {updatePrefix.isPending ? t("documentNumbers.saving") : t("documentNumbers.savePrefix")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -254,26 +247,25 @@ export default function DocumentNumbersAdmin() {
       <Dialog open={resetDialog.open} onOpenChange={(o) => setResetDialog(d => ({ ...d, open: o }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Resetear contador</DialogTitle>
+            <DialogTitle>{t("documentNumbers.resetTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="flex items-start gap-3 p-3 rounded-lg border border-red-200 bg-red-50 text-red-800">
               <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
               <p className="text-sm">
-                <strong>Acción irreversible.</strong> Usar solo para correcciones de inicio de año o errores graves.
-                Asegúrate de que el nuevo valor no genere números duplicados.
+                <strong>{t("documentNumbers.irreversible")}</strong> {t("documentNumbers.irreversibleText")}
               </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">
-                Serie: <strong>{DOC_TYPE_LABELS[resetDialog.documentType]}</strong> — Año {resetDialog.year}
+                {t("documentNumbers.series")} <strong>{typeLabel(resetDialog.documentType)}</strong> {t("documentNumbers.yearLine", { year: resetDialog.year })}
               </p>
               <p className="text-sm text-muted-foreground">
-                Valor actual: <code className="bg-muted px-1 rounded">{resetDialog.currentNumber}</code>
+                {t("documentNumbers.currentValue")} <code className="bg-muted px-1 rounded">{resetDialog.currentNumber}</code>
               </p>
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Nuevo valor del contador</label>
+              <label className="text-sm font-medium mb-1 block">{t("documentNumbers.newValueLabel")}</label>
               <Input
                 type="number"
                 min={0}
@@ -281,12 +273,12 @@ export default function DocumentNumbersAdmin() {
                 onChange={(e) => setResetDialog(d => ({ ...d, newValue: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                El próximo documento generado tendrá el número {parseInt(resetDialog.newValue || "0") + 1}.
+                {t("documentNumbers.nextDoc", { n: parseInt(resetDialog.newValue || "0") + 1 })}
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResetDialog(d => ({ ...d, open: false }))}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setResetDialog(d => ({ ...d, open: false }))}>{t("common.cancel")}</Button>
             <Button
               variant="destructive"
               onClick={() => resetCounter.mutate({
@@ -296,7 +288,7 @@ export default function DocumentNumbersAdmin() {
               })}
               disabled={resetCounter.isPending || resetDialog.newValue === ""}
             >
-              {resetCounter.isPending ? "Reseteando..." : "Confirmar reset"}
+              {resetCounter.isPending ? t("documentNumbers.resetting") : t("documentNumbers.confirmReset")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -306,7 +298,7 @@ export default function DocumentNumbersAdmin() {
       <Dialog open={logsDialog.open} onOpenChange={(o) => setLogsDialog(d => ({ ...d, open: o }))}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Historial de generación de números</DialogTitle>
+            <DialogTitle>{t("documentNumbers.historyTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="flex gap-2">
@@ -315,27 +307,27 @@ export default function DocumentNumbersAdmin() {
                 onValueChange={(v) => setLogsDialog(d => ({ ...d, documentType: v === "all" ? undefined : v }))}
               >
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Todos los tipos" />
+                  <SelectValue placeholder={t("documentNumbers.allTypes")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los tipos</SelectItem>
-                  {Object.entries(DOC_TYPE_LABELS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  <SelectItem value="all">{t("documentNumbers.allTypes")}</SelectItem>
+                  {DOC_TYPES.map((k) => (
+                    <SelectItem key={k} value={k}>{typeLabel(k)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             {logsLoading ? (
-              <div className="text-center py-8 text-muted-foreground">Cargando historial...</div>
+              <div className="text-center py-8 text-muted-foreground">{t("documentNumbers.loadingHistory")}</div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Número generado</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Contexto</TableHead>
-                    <TableHead>Generado por</TableHead>
-                    <TableHead>Fecha</TableHead>
+                    <TableHead>{t("documentNumbers.colNumber")}</TableHead>
+                    <TableHead>{t("documentNumbers.colKind")}</TableHead>
+                    <TableHead>{t("documentNumbers.colContext")}</TableHead>
+                    <TableHead>{t("documentNumbers.colBy")}</TableHead>
+                    <TableHead>{t("documentNumbers.colDate")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -344,20 +336,20 @@ export default function DocumentNumbersAdmin() {
                       <TableCell className="font-mono font-semibold">{log.documentNumber}</TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${DOC_TYPE_COLORS[log.documentType] ?? "bg-gray-100 text-gray-800"}`}>
-                          {DOC_TYPE_LABELS[log.documentType] ?? log.documentType}
+                          {typeLabel(log.documentType)}
                         </span>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{log.context ?? "—"}</TableCell>
                       <TableCell className="text-xs">{log.generatedBy ?? "system"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {new Date(log.generatedAt).toLocaleString("es-ES")}
+                        {format.dateTime(log.generatedAt, { dateStyle: "short", timeStyle: "medium" })}
                       </TableCell>
                     </TableRow>
                   ))}
                   {(logs ?? []).length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                        No hay registros en el historial
+                        {t("documentNumbers.noLogs")}
                       </TableCell>
                     </TableRow>
                   )}
