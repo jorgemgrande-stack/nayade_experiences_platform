@@ -33,6 +33,9 @@ import { discoveredAt, extensionBlocks, isNewExtension } from "@shared/panelNews
 import { useDiscoveredExtensions } from "@/hooks/useDiscoveredExtensions";
 import { ROLE_LABELS } from "@shared/roleLabels";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
+import { useI18n } from "@/i18n/I18nProvider";
+import LanguageSelect from "@/i18n/LanguageSelect";
+import { localizeNav } from "@shared/i18n/navLabels";
 
 /** El plegado del menú lateral se recuerda entre pantallas (cada página monta su propio AdminLayout). */
 const SIDEBAR_KEY = "panel.sidebarOpen";
@@ -92,9 +95,12 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const currentSearch = useSearch();
   const { user, logout, loading, isAuthenticated } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t, locale, format } = useI18n();
 
   const userRole = (user as any)?.role ?? "user";
   const roleMeta = ROLE_META[userRole] ?? ROLE_META.user;
+  const roleKey = "roles." + userRole;
+  const roleName = locale !== "es" && t(roleKey) !== roleKey ? t(roleKey) : roleMeta.label;
 
   // ── Guard: redirect adminrest a /admin/restaurantes si intenta acceder a /admin ──
   useEffect(() => {
@@ -228,12 +234,12 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const navSections: ResolvedSection[] =
     subscription.mode === "loading" || subscription.mode === "error"
       ? []
-      : resolveNav(subscription.mode === "tasks" ? TASK_NAV : LEGACY_SECTIONS, {
+      : localizeNav(resolveNav(subscription.mode === "tasks" ? TASK_NAV : LEGACY_SECTIONS, {
           role: userRole,
           isFlagVisible,
           isModuleVisible,
           capabilityState: subscription.mode === "tasks" ? subscription.capabilityState : () => "active",
-        }, subscription.extensions);
+        }, subscription.extensions), locale);
   const isTaskNav = subscription.mode === "tasks";
   // Prueba o suscripción terminada (o restringida): todo el panel en consulta (shared/subscriptionRecovery.ts)
   const panelReadOnly = isTaskNav && isPanelReadOnlyState(subscription.data?.state);
@@ -278,6 +284,10 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     onSuccess: () => utils.notifications.feed.invalidate(),
   });
 
+  const sectionLabel = (kind: string, fallback: string) => {
+    const key = "shell.notifications.kind." + kind;
+    return locale !== "es" && t(key) !== key ? t(key) : fallback;
+  };
   type FeedKind = "lead" | "quote" | "cancellation" | "pending_payment" | "tpv_alert" | "upcoming_reservation" | "task" | "community" | "automation";
   const severityColor: Record<string, string> = {
     info:     "text-sky-400",
@@ -312,9 +322,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
-          <h2 className="text-2xl font-display font-bold text-foreground mb-2">Sin permisos</h2>
-          <p className="text-muted-foreground mb-6">Tu cuenta no tiene acceso al panel de administración.</p>
-          <Button variant="outline" onClick={() => navigate("/")}>Volver al inicio</Button>
+          <h2 className="text-2xl font-display font-bold text-foreground mb-2">{t("shell.noPermissions.title")}</h2>
+          <p className="text-muted-foreground mb-6">{t("shell.noPermissions.text")}</p>
+          <Button variant="outline" onClick={() => navigate("/")}>{t("shell.noPermissions.home")}</Button>
         </div>
       </div>
     );
@@ -327,8 +337,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   // Avisos numéricos del menú por tareas (mismos datos que la campana).
   const badgeFor = (item: ResolvedItem): { n: number; tone: "red" | "amber"; label: string } | null => {
     if (!isTaskNav) return null;
-    if (item.key === "t-oportunidades" && newLeads > 0) return { n: newLeads, tone: "red", label: "oportunidades nuevas sin atender" };
-    if (item.key === "t-presupuestos" && pendingQuotes > 0) return { n: pendingQuotes, tone: "amber", label: "presupuestos enviados sin respuesta" };
+    if (item.key === "t-oportunidades" && newLeads > 0) return { n: newLeads, tone: "red", label: t("shell.menu.badgeLeads") };
+    if (item.key === "t-presupuestos" && pendingQuotes > 0) return { n: pendingQuotes, tone: "amber", label: t("shell.menu.badgeQuotes") };
     return null;
   };
 
@@ -353,7 +363,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     // Con todo el panel en consulta no se repite en cada apartado (lo explica el aviso único); con el plan en
     // vigor y una función suelta en solo lectura, sí se marca esa función
     const readOnlyTag = item.readOnly && showLabels && !panelReadOnly && (
-      <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-sidebar-accent text-sidebar-foreground/80">Solo lectura</span>
+      <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-sidebar-accent text-sidebar-foreground/80">{t("shell.menu.readOnly")}</span>
     );
 
     if (item.children) {
@@ -406,7 +416,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       )}
                     >
                       <span className="flex-1">{child.label}</span>
-                      {child.readOnly && !panelReadOnly && <span className="text-[10px] text-sidebar-foreground/70">Solo lectura</span>}
+                      {child.readOnly && !panelReadOnly && <span className="text-[10px] text-sidebar-foreground/70">{t("shell.menu.readOnly")}</span>}
                     </Link>
                   </li>
                 );
@@ -454,7 +464,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         href="#contenido-principal"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:ring-2 focus:ring-ring"
       >
-        Saltar al contenido
+        {t("shell.skipToContent")}
       </a>
       {/* Mobile backdrop */}
       {mobileMenuOpen && (
@@ -470,7 +480,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         id="panel-sidebar"
         role={mobileMenuOpen ? "dialog" : undefined}
         aria-modal={mobileMenuOpen ? true : undefined}
-        aria-label={mobileMenuOpen ? "Menú del panel" : undefined}
+        aria-label={mobileMenuOpen ? t("shell.menu.label") : undefined}
         className={cn(
           "fixed left-0 top-0 h-full z-50 flex flex-col transition-all duration-300",
           "bg-sidebar text-sidebar-foreground border-r border-sidebar-border",
@@ -486,7 +496,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           <Link
             href={userRole === "adminrest" ? "/admin/restaurantes" : "/admin"}
             className="flex items-center gap-2 min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-            aria-label={`${brandName}: ir al inicio del panel`}
+            aria-label={t("shell.brand.home", { brand: brandName })}
           >
             {brandLogo ? (
               <img
@@ -510,7 +520,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 <span className="text-sm font-display font-semibold text-sidebar-foreground overflow-hidden text-ellipsis whitespace-nowrap">{brandName}</span>
               ) : (
                 <span className="text-xs text-accent tracking-widest uppercase font-display font-bold shrink-0">
-                  {userRole === "adminrest" ? "Restaurantes" : userRole === "controler" ? "Control" : "Admin"}
+                  {userRole === "adminrest" ? t("shell.brand.restaurants") : userRole === "controler" ? t("shell.brand.control") : t("shell.brand.admin")}
                 </span>
               )
             )}
@@ -520,7 +530,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             ref={closeButtonRef}
             type="button"
             onClick={() => (mobileMenuOpen ? setMobileMenuOpen(false) : setSidebarOpen(!sidebarOpen))}
-            aria-label={mobileMenuOpen ? "Cerrar menú" : sidebarOpen ? "Plegar menú lateral" : "Desplegar menú lateral"}
+            aria-label={mobileMenuOpen ? t("shell.menu.close") : sidebarOpen ? t("shell.menu.collapse") : t("shell.menu.expand")}
             aria-expanded={mobileMenuOpen || sidebarOpen}
             className="ml-auto w-8 h-8 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           >
@@ -529,10 +539,10 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2" aria-label="Menú del panel">
+        <nav className="flex-1 overflow-y-auto py-4 px-2" aria-label={t("shell.menu.label")}>
           {subscription.mode === "loading" && (
             <div className="space-y-2 px-1" aria-busy="true" aria-live="polite">
-              <span className="sr-only">Cargando el menú…</span>
+              <span className="sr-only">{t("shell.menu.loading")}</span>
               {[0, 1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="h-9 rounded-lg bg-sidebar-accent/60 animate-pulse" />
               ))}
@@ -540,17 +550,17 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           )}
           {subscription.mode === "error" && (
             <div role="alert" className={cn("px-2 py-3 text-sm text-sidebar-foreground/80", !showLabels && "flex justify-center")}>
-              {showLabels && <p className="mb-2">No se ha podido cargar el menú.</p>}
+              {showLabels && <p className="mb-2">{t("shell.menu.loadError")}</p>}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={subscription.retry}
                 className={cn(showLabels ? "w-full" : "w-9 px-0")}
-                aria-label="Reintentar la carga del menú"
+                aria-label={t("shell.menu.reload")}
               >
                 <RefreshCw className="w-4 h-4" aria-hidden="true" />
-                {showLabels && <span className="ml-1.5">Reintentar</span>}
+                {showLabels && <span className="ml-1.5">{t("shell.menu.retry")}</span>}
               </Button>
             </div>
           )}
@@ -580,7 +590,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {isTaskNav && userRole === "admin" && (
             <div className="mt-2 pt-3 border-t border-sidebar-border">
               {showLabels && (
-                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">Ampliar</p>
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">{t("shell.menu.upgrade")}</p>
               )}
               {upgradeUrl ? (
                 <a
@@ -588,20 +598,20 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  title={showLabels ? undefined : "Ver planes y módulos (se abre en otra pestaña)"}
+                  title={showLabels ? undefined : t("shell.menu.seePlansTitle")}
                 >
                   <ArrowUpRight className="w-4 h-4 shrink-0" aria-hidden="true" />
-                  {showLabels ? <span className="flex-1">Ver planes y módulos</span> : <span className="sr-only">Ver planes y módulos</span>}
-                  <span className="sr-only">(se abre en otra pestaña)</span>
+                  {showLabels ? <span className="flex-1">{t("shell.menu.seePlans")}</span> : <span className="sr-only">{t("shell.menu.seePlans")}</span>}
+                  <span className="sr-only">{t("shell.menu.newTab")}</span>
                 </a>
               ) : (
                 <Link
                   href="/admin/suscripcion#ampliar"
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  title={showLabels ? undefined : "Ampliar mi plan"}
+                  title={showLabels ? undefined : t("shell.menu.upgradePlan")}
                 >
                   <ArrowUpRight className="w-4 h-4 shrink-0" aria-hidden="true" />
-                  {showLabels ? <span className="flex-1">Ampliar mi plan</span> : <span className="sr-only">Ampliar mi plan</span>}
+                  {showLabels ? <span className="flex-1">{t("shell.menu.upgradePlan")}</span> : <span className="sr-only">{t("shell.menu.upgradePlan")}</span>}
                 </Link>
               )}
             </div>
@@ -616,16 +626,16 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             </div>
             {showLabels && (
               <div className="flex-1 min-w-0">
-                <Link href="/admin/mi-cuenta" className="block text-xs font-semibold text-sidebar-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded overflow-hidden text-ellipsis whitespace-nowrap" title="Mi cuenta: correo y dispositivos">{user?.name ?? "Usuario"}</Link>
-                <p className={cn("text-xs font-medium capitalize", roleMeta.color)}>{roleMeta.label}</p>
+                <Link href="/admin/mi-cuenta" className="block text-xs font-semibold text-sidebar-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded overflow-hidden text-ellipsis whitespace-nowrap" title={t("shell.user.myAccount")}>{user?.name ?? t("shell.user.fallbackName")}</Link>
+                <p className={cn("text-xs font-medium capitalize", roleMeta.color)}>{roleName}</p>
               </div>
             )}
             <button
               type="button"
               onClick={isSupportUser(user) ? () => void exitSupportMode() : logout}
               className="w-8 h-8 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/70 hover:text-red-400 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-              title={isSupportUser(user) ? "Salir del modo soporte" : "Cerrar sesión"}
-              aria-label={isSupportUser(user) ? "Salir del modo soporte" : "Cerrar sesión"}
+              title={isSupportUser(user) ? t("shell.user.exitSupport") : t("shell.user.logout")}
+              aria-label={isSupportUser(user) ? t("shell.user.exitSupport") : t("shell.user.logout")}
             >
               <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
@@ -643,7 +653,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             type="button"
             className="lg:hidden w-9 h-9 rounded-lg hover:bg-accent flex items-center justify-center text-foreground/60 hover:text-foreground transition-colors shrink-0"
             onClick={() => setMobileMenuOpen(true)}
-            aria-label="Abrir menú"
+            aria-label={t("shell.menu.open")}
             aria-expanded={mobileMenuOpen}
             aria-controls="panel-sidebar"
           >
@@ -667,18 +677,19 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 )}
               >
                 <Rocket className="w-3.5 h-3.5" aria-hidden="true" />
-                {`Prueba: ${trialInfo.daysLeft} ${trialInfo.daysLeft === 1 ? "día" : "días"}`}
+                {t("shell.trial", { days: trialInfo.daysLeft })}
               </Link>
             )}
             {maintenanceMode && <MaintenanceModeControl mode={maintenanceMode} />}
+            <LanguageSelect />
             {/* Toggle Light / Dark */}
             <Button
               variant="ghost"
               size="icon"
               className="w-9 h-9"
               onClick={toggleTheme}
-              title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-              aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+              title={theme === "dark" ? t("shell.theme.toLight") : t("shell.theme.toDark")}
+              aria-label={theme === "dark" ? t("shell.theme.toLight") : t("shell.theme.toDark")}
             >
               {theme === "dark"
                 ? <Sun className="w-4 h-4 text-amber-400" />
@@ -691,8 +702,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                   variant="ghost"
                   size="icon"
                   className="w-9 h-9 relative"
-                  title={totalAlerts > 0 ? `${newLeads} leads nuevos · ${pendingQuotes} presupuestos pendientes` : "Sin alertas"}
-                  aria-label={totalAlerts > 0 ? `Notificaciones: ${totalAlerts} pendientes` : "Notificaciones: ninguna pendiente"}
+                  title={totalAlerts > 0 ? t("shell.notifications.summary", { leads: newLeads, quotes: pendingQuotes }) : t("shell.notifications.none")}
+                  aria-label={totalAlerts > 0 ? t("shell.notifications.someAria", { count: totalAlerts }) : t("shell.notifications.noneAria")}
                 >
                   <Bell className="w-4 h-4" aria-hidden="true" />
                   {totalAlerts > 0 && (
@@ -709,7 +720,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               >
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border sticky top-0 bg-card z-10">
-                  <span className="text-sm font-semibold text-foreground">Notificaciones</span>
+                  <span className="text-sm font-semibold text-foreground">{t("shell.notifications.title")}</span>
                   {totalAlerts > 0 && (
                     <span className="text-xs bg-danger text-background rounded-full px-2 py-0.5 font-bold">
                       {totalAlerts}
@@ -724,16 +735,16 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       <div className="flex items-center gap-1.5">
                         <span className="text-base leading-none">{section.icon}</span>
                         <span className={`text-xs font-semibold uppercase tracking-wide ${severityColor[section.severity]}`}>
-                          {section.label} ({section.total})
+                          {sectionLabel(section.kind, section.label)} ({section.total})
                         </span>
                       </div>
                       <button
                         className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                         onClick={() => dismissAllSection.mutate({ kind: section.kind as FeedKind })}
                         disabled={dismissAllSection.isPending}
-                        title="Marcar toda la sección como vista"
+                        title={t("shell.notifications.markSection")}
                       >
-                        Marcar todo
+                        {t("shell.notifications.markAll")}
                       </button>
                     </div>
                     <div className="space-y-1 px-2 pb-2">
@@ -752,7 +763,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                               </span>
                               {item.amount != null && (
                                 <span className="text-xs font-semibold text-emerald-400 shrink-0">
-                                  {item.amount.toFixed(2)}€
+                                  {format.currency(item.amount)}
                                 </span>
                               )}
                             </div>
@@ -769,7 +780,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                               dismissItem.mutate({ kind: item.kind as FeedKind, entityId: item.entityId });
                             }}
                             disabled={dismissItem.isPending}
-                            title="Marcar como visto (no afecta al estado real)"
+                            title={t("shell.notifications.markSeen")}
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -780,7 +791,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                           className="w-full text-[11px] text-muted-foreground hover:text-foreground text-center py-1"
                           onClick={() => { navigate(section.ctaAllPath); setNotifOpen(false); }}
                         >
-                          Ver los {section.total - section.items.length} restantes →
+                          {t("shell.notifications.seeRemaining", { count: section.total - section.items.length })}
                         </button>
                       )}
                     </div>
@@ -791,7 +802,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 {totalAlerts === 0 && (feed?.sections.every(s => s.total === 0) ?? true) && (
                   <div className="px-4 py-8 text-center">
                     <Bell className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Sin notificaciones pendientes</p>
+                    <p className="text-sm text-muted-foreground">{t("shell.notifications.empty")}</p>
                   </div>
                 )}
 
@@ -803,7 +814,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                     className="w-full text-xs text-muted-foreground hover:text-foreground justify-center"
                     onClick={() => { navigate("/admin/crm"); setNotifOpen(false); }}
                   >
-                    Ver todos en el CRM
+                    {t("shell.notifications.seeAllCrm")}
                     <ChevronRight className="w-3 h-3 ml-1" />
                   </Button>
                 </div>
@@ -812,9 +823,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             {isTaskNav && (
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-9 px-2 sm:px-3 text-xs gap-1.5" aria-label={contextHelp ? `Ayuda sobre esta pantalla: ${contextHelp.title}` : "Ayuda"}>
+                  <Button variant="ghost" size="sm" className="h-9 px-2 sm:px-3 text-xs gap-1.5" aria-label={contextHelp ? t("shell.help.onScreen", { title: contextHelp.title }) : t("shell.help.button")}>
                     <HelpCircle className="w-4 h-4" aria-hidden="true" />
-                    <span className="hidden sm:inline">Ayuda</span>
+                    <span className="hidden sm:inline">{t("shell.help.button")}</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-4">
@@ -823,14 +834,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       <p className="text-sm font-semibold text-foreground">{contextHelp.title}</p>
                       <p className="mt-1 text-sm text-muted-foreground">{contextHelp.summary}</p>
                       <Link href={`/admin/ayuda/${contextHelp.id}`} className="mt-3 inline-flex text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-                        Ver la guía paso a paso
+                        {t("shell.help.guide")}
                       </Link>
                     </>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Guías breves para crear clientes, productos, presupuestos, pedidos y facturas, invitar a tu equipo y gestionar tu suscripción.</p>
+                    <p className="text-sm text-muted-foreground">{t("shell.help.general")}</p>
                   )}
                   <Link href="/admin/ayuda" className="mt-2 block text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-                    Centro de ayuda y contacto
+                    {t("shell.help.center")}
                   </Link>
                 </PopoverContent>
               </Popover>
@@ -838,9 +849,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             {userRole !== "adminrest" && (
               <Link href="/" target="_blank">
                 <Button variant="outline" size="sm" className="text-xs hidden sm:inline-flex">
-                  Ver sitio web
+                  {t("shell.viewSite")}
                 </Button>
-                <Button variant="ghost" size="icon" className="sm:hidden w-9 h-9" title="Ver sitio web">
+                <Button variant="ghost" size="icon" className="sm:hidden w-9 h-9" title={t("shell.viewSite")}>
                   <ExternalLink className="w-4 h-4" />
                 </Button>
               </Link>
@@ -864,20 +875,22 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
 /** Marca discreta de una extensión recién activada (desaparece al entrar en ella). */
 function NewPill() {
+  const { t } = useI18n();
   return (
     <span className="shrink-0 rounded-full bg-sidebar-primary/15 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-sidebar-primary">
-      Nuevo
+      {t("shell.menu.new")}
     </span>
   );
 }
 
 /** Icono del menú con un punto de «Nuevo» cuando el menú está plegado. */
 function NavIconWithDot({ Icon, dot }: { Icon: React.ComponentType<{ className?: string }>; dot: boolean }) {
+  const { t } = useI18n();
   return (
     <span className="relative shrink-0">
       <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
       {dot && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-sidebar-primary" aria-hidden="true" />}
-      {dot && <span className="sr-only"> (nuevo)</span>}
+      {dot && <span className="sr-only"> {t("shell.menu.newDot")}</span>}
     </span>
   );
 }
