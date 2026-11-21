@@ -41,12 +41,6 @@ export const PURGE_COMPANIES_WITHOUT_TENANT = [
  * identificaciones, versiones, fechas y huellas quedan en el manifiesto del plan y, al aplicar, en la auditoría del registro.
  */
 export const ACCEPTANCE_EXEMPT_COMPANY_IDS: readonly number[] = [12];
-/**
- * Huella del plan que Dirección autorizó expresamente (20/11/2026, simulación en production del commit 5b17c289). `applyPurge`
- * recalcula el plan y se niega a borrar NADA, antes de la primera sentencia, si su huella no es exactamente esta. Cambiar la lista
- * de empresas, lo que se borraría o las evidencias cambia la huella: otra purga exige otra simulación y otra autorización.
- */
-export const APPROVED_PURGE_PLAN_HASH = "f7d1fbdbcdf4273ee8a2b165d281cd13e55960e9368b79756709890c623c185a";
 /** Empresas reales que nunca pueden aparecer en el plan. */
 export const PROTECTED_TENANTS: readonly string[] = [];
 export const PROTECTED_COMPANY_NAMES = ["Nextair", "NEXTAIR SL"];
@@ -400,7 +394,8 @@ export function planHashOf(plan: Omit<PurgePlan, "planHash"> | PurgePlan): strin
     databases: plan.databases,
     retire: plan.retire,
     extraDatabases: plan.extraDatabases,
-    measurement: plan.measurement,
+    // La medición del Resource Manager crece cada hora: cuenta por servidor y tabla, no por número de filas (se borran todas las de los tenants)
+    measurement: plan.measurement.map((m) => ({ server: m.server, table: m.table })),
     files: plan.files.byTenant.map((f) => ({ tenantId: f.tenantId, keys: [...f.keys].sort() })),
     acceptances: plan.acceptanceEvidence,
     problems: plan.problems,
@@ -471,7 +466,10 @@ export async function applyPurge(
     deleteMedia?: (key: string) => Promise<void>;
   },
   plan: PurgePlan,
+  /** Huella autorizada por Dirección (parámetro obligatorio del workflow protegido `expected_plan_hash`). */
   approvedPlanHash: string | null,
+  /** Referencia de la ejecución autorizada (id de ejecución de GitHub y quién la lanzó): queda en la auditoría. */
+  auditRef: string | null = null,
 ): Promise<{ deleted: Array<{ db: string; table: string; rows: number }>; droppedDatabases: string[]; deletedFiles: number }> {
   // Antes de CUALQUIER borrado: el plan recalculado debe tener exactamente la huella autorizada (y no estar manipulado)
   if (!approvedPlanHash || !/^[0-9a-f]{64}$/.test(approvedPlanHash)) throw new Error("Sin huella de plan autorizada: no se purga nada");
@@ -498,7 +496,7 @@ export async function applyPurge(
           await c.query("INSERT INTO tenant_events (tenant_id, actor_type, actor_id, action, from_state, to_state, details) VALUES (?, 'system', 'purge-test-companies', 'purged', ?, 'deleted', ?)", [
             x.tenantId,
             x.from,
-            JSON.stringify({ reason: PURGE_REASON, planHash: plan.planHash, companies: plan.companies.map((k) => ({ id: k.id, name: k.name, tenantId: k.tenantId })), acceptances: plan.acceptanceEvidence }),
+            JSON.stringify({ reason: PURGE_REASON, expectedPlanHash: approvedPlanHash, planHash: plan.planHash, auditRef, companies: plan.companies.map((k) => ({ id: k.id, name: k.name, tenantId: k.tenantId })), acceptances: plan.acceptanceEvidence }),
           ]);
       }
       await c.commit();
