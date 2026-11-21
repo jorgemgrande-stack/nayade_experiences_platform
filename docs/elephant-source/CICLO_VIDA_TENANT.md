@@ -37,6 +37,28 @@ La supresión del día 180 afecta **solo a los datos operativos**. La documentac
 
 La documentación de la relación contractual se entrega a la empresa a petición, en 5 días hábiles (`EXPORTACION_DATOS.md`, sección 5).
 
+### Excepción: empresas técnicas de prueba (purga definitiva, 21/11/2026)
+La regla «la documentación contractual no se toca» protege la relación con clientes reales. La purga de las empresas técnicas
+(`server/_core/ops/purgeTestCompanies.ts`, acción protegida `purgar-empresas-prueba`) contiene UNA excepción estricta y documentada:
+
+- **Qué:** las filas de `crm_contract_acceptances` de contratos de empresas técnicas con id exento (hoy, solo la empresa 12) se borran junto con
+  su empresa. Cualquier otra aceptación, de cualquier otra empresa, hace abortar la purga sin tocar nada (las del cliente real Nextair, p. ej.,
+  nunca pueden entrar).
+- **Por qué no es una contradicción:** la salida de la simulación lista en «se conservan» todas las tablas protegidas, incluida
+  `crm_contract_acceptances`, porque la protección general sigue vigente; las filas exentas figuran aparte en `aceptacionesPurgadas`
+  y en el plan (forman parte de la huella). El texto de «se conservan» no distingue la excepción: léase junto a `aceptacionesPurgadas`.
+- **Qué evidencia queda:** en `tenant_events` (auditoría inmutable del registro), dentro del evento `purged` de cada tenant retirado y
+  junto con la referencia de la ejecución (`auditRef`) y la huella autorizada: id de aceptación y de contrato, referencia, versión, empresa,
+  estado, fecha de aceptación, SHA-256 del documento, SHA-256 del texto de consentimiento, si existía huella de IP, quién creó el
+  enlace y cuándo. NO queda: la fila completa, el texto de consentimiento en claro ni el valor de la huella de IP.
+- **Copias de seguridad:** las copias cifradas del CRM anteriores a la purga conservan las filas completas hasta su rotación (30 diarias, 12
+  semanales, 12 mensuales). No se tocan.
+- **Condición previa:** que Dirección confirme por escrito que la empresa es técnica y que no existe una contraparte real (sin facturas,
+  cobros, suscripción externa ni cliente real asociado; la propia purga lo comprueba). La identidad de quien pulsó «aceptar» en un
+  enlace público no queda registrada más allá de la huella de IP y del nombre introducido; no debe presuponerse.
+- **Numeración:** borrar contratos técnicos deja huecos en la serie `CT-AAAA-nnnnnn` (no es una serie fiscal).
+
+
 ## 3. Reglas de operación
 
 1. **Exportación hasta el archivado:** la persona propietaria puede exportar desde el día 0 hasta el día 90. Cada ZIP es una copia que se retira a los 7 días, y siempre puede pedir otro.
