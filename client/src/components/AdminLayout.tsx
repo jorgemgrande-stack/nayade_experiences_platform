@@ -252,7 +252,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   }, [location, extensionBlocksSig, markDiscovered]);
   const nowMs = Date.now();
   // Ayuda contextual de la pantalla actual (contenido en shared/helpCenter.ts)
-  const contextHelp = isTaskNav ? helpForLocation(location, currentSearch) : undefined;
+  const contextHelp = isTaskNav ? helpForLocation(location, currentSearch, locale) : undefined;
   const upgradeUrl = subscription.data?.upgradeUrl ?? null;
   const trialInfo = subscription.data?.trial ?? null;
   // Una empresa nueva sin logo propio no hereda el de la instalación original: se muestra su inicial.
