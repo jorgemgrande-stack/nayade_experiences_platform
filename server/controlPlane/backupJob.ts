@@ -37,6 +37,7 @@
  * Código de salida 1 si falla cualquier copia, también solo en el secundario (la copia primaria ya hecha
  * sigue siendo válida).
  */
+import fs from "node:fs";
 import path from "node:path";
 import { runErmSetup } from "../_core/erm/setup";
 import { orphanReport } from "../_core/provisioning/orphans";
@@ -55,7 +56,7 @@ import {
 } from "../_core/ops/backupStorage";
 import { MysqlBackupInventory, safeError, type BackupTargetKind } from "../_core/ops/backupInventory";
 import { MysqlBackupCopyLedger, type BackupDestination, type CopyTargetKind } from "../_core/ops/backupCopies";
-import { restoreTenantFiles, runBackupJob, verifyTenantFiles, type SecondaryTarget } from "../_core/ops/backupJob";
+import { formatVerifyFilesLines, restoreTenantFiles, runBackupJob, verifyTenantFiles, type SecondaryTarget } from "../_core/ops/backupJob";
 import { applyBackupRetention, applyCopyRetention, gfsPolicyFromEnv } from "../_core/ops/backupRetention";
 import { restorePlatformDatabase, restoreTenant, restoredDatabaseName } from "../_core/ops/backupRestore";
 import { buildRecoveryPackage, readRecoveryPackage } from "../_core/ops/recoveryPackage";
@@ -105,6 +106,16 @@ const flag = (n: string) => args.includes(n);
 const opt = (n: string) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
 const actor: Actor = { type: "operator", id: opt("--actor") ?? process.env.USERNAME ?? process.env.USER ?? "backup-job" };
 const actorLabel = `${actor.type}:${actor.id}`;
+
+// «FIN-ORDEN codigo=N» marca el FINAL real del proceso con su código de salida (también tras process.exit y excepciones): el drill espera
+// a esta marca, porque Railway da el despliegue por bueno al ARRANCAR el contenedor, no al terminar la orden.
+process.on("exit", (code) => {
+  try {
+    fs.writeSync(1, `FIN-ORDEN codigo=${code}\n`);
+  } catch {
+    /* sin salida estándar: nada que marcar */
+  }
+});
 
 // «Orden fallida:» marca el fallo en el registro: el drill lo detecta aunque Railway dé el despliegue por bueno
 function die(msg: string): never {
@@ -415,10 +426,10 @@ async function main() {
         break;
       }
       case "verify-files": {
-        // Simulacro de recuperación de ficheros SOLO de comprobación (no escribe nada). Una sola línea JSON: Railway desordena las largas.
+        // Simulacro de recuperación de ficheros SOLO de comprobación (no escribe nada). Líneas cortas (resumen + una por objeto): Railway recorta las largas.
         const id = pos[0] ?? die("Falta <empresa>");
         const r = await verifyTenantFiles({ storage: sourceStorageOrDie(source), ring: backupKeyringFromEnv(process.env), copies, source, actor: actorLabel }, id);
-        console.log(JSON.stringify({ verifyFiles: true, empresa: r.tenantId, origen: r.source, ficheros: r.files, bytes: r.bytes, fallos: r.failed, digest: r.digest, entradas: r.entries.map((x) => [x.key, x.bytes, x.sha256, x.ok ? 1 : 0]) }));
+        for (const line of formatVerifyFilesLines(r)) console.log(line);
         if (r.failed.length) process.exit(1);
         break;
       }

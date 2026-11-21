@@ -43,7 +43,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONTRACT_MAIL_CATEGORY, LIVE_MAIL_SERVICES, MAIL_TEST_SERVICES, SANDBOX_EXTRA_CATEGORIES, productionMailPlan, POSTMARK_WEBHOOK_TRIGGERS, contractMailPlan, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
-import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { DRILL_END_TIMEOUT_MS, DRILL_IDLE, DRILL_WAITS_FOR_END, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, checkVerifyFilesOutput, isAllowedDrill, scrub, waitForFinOrden, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { ACCESS_CHECKS, ACCESS_PROBE_USER, CATALOG_STAMP_FILE, WEB_CATALOG_SITE, accessProblems } from "./esRailwayLib";
 import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
@@ -1566,16 +1566,34 @@ async function main() {
       console.error(`La orden «${command}» no terminó en el tiempo de espera: el paso falla (restore-drill NO se devuelve a «${DRILL_IDLE}»).`);
       process.exit(1);
     }
-    // El registro tarda en estar completo tras terminar la orden: se espera un poco antes de leerlo
-    await new Promise((r) => setTimeout(r, 20_000));
-    const out = d.id === "?" ? "" : await logs(d.id);
-    console.log(`restore-drill «${command}» → ${d.status}\n${out}`);
+    // Las órdenes largas (verify-files) se esperan hasta su marca «FIN-ORDEN codigo=N»: SUCCESS de Railway solo dice que el contenedor
+    // arrancó. Sin la marca en 45 min el paso FALLA y NO se redespliega el reposo: la orden podría seguir ejecutándose.
+    let out: string;
+    let endCode: number | null = null;
+    if (DRILL_WAITS_FOR_END.test(command) && d.id !== "?") {
+      const end = await waitForFinOrden(() => logs(d.id, 5000), { timeoutMs: DRILL_END_TIMEOUT_MS });
+      console.log(`restore-drill «${command}» → ${d.status}\n${end.out}`);
+      if (end.state === "timeout") {
+        console.error(`La orden «${command}» no mostró «FIN-ORDEN» en ${DRILL_END_TIMEOUT_MS / 60_000} min: el paso falla y restore-drill NO se devuelve a «${DRILL_IDLE}» (la orden puede seguir en curso; revisa el despliegue ${d.id} en Railway).`);
+        process.exit(1);
+      }
+      out = end.out;
+      endCode = end.code;
+      const chk = checkVerifyFilesOutput(out);
+      console.log(`verify-files: ${chk.ok ? "COMPROBADO" : "NO COMPROBADO"} · objetos=${chk.files} bytes=${chk.bytes} fallos=${chk.failures} digest=${chk.digest}${chk.problems.length ? ` · ${chk.problems.join("; ")}` : ""}`);
+      if (!chk.ok) out += "\nOrden fallida: la comprobación de la salida no es íntegra";
+    } else {
+      // El registro tarda en estar completo tras terminar la orden: se espera un poco antes de leerlo
+      await new Promise((r) => setTimeout(r, 20_000));
+      out = d.id === "?" ? "" : await logs(d.id);
+      console.log(`restore-drill «${command}» → ${d.status}\n${out}`);
+    }
     const idle = await setAndDeploy(DRILL_IDLE);
     if (idle.status === "SUCCESS") console.log(`restore-drill devuelto a «${DRILL_IDLE}»`);
     else console.error(`AVISO: restore-drill no quedó en «${DRILL_IDLE}» (${idle.status})`);
     // Una orden que no termina bien (p. ej. una copia que no se sube) es un FALLO del paso, nunca un éxito
     // El contenedor puede salir con error después de que Railway lo dé por bueno: la marca del registro manda
-    const failed = /Orden fallida:/.test(out);
+    const failed = /Orden fallida:/.test(out) || (endCode !== null && endCode !== 0);
     if (d.status !== "SUCCESS" || failed) {
       console.error(`La orden «${command}» terminó en ${d.status}${failed ? " con «Orden fallida»" : ""}: el paso falla.`);
       process.exit(1);

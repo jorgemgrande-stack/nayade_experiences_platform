@@ -545,6 +545,21 @@ export async function verifyTenantFiles(
   }
 }
 
+/**
+ * Salida de `verify-files` en LÍNEAS CORTAS (Railway recorta o parte las largas): un resumen y una línea por objeto, todas con el
+ * prefijo `VERIFY-FICHEROS` para que el flujo las reconozca y las compruebe (scripts/deploy/esRailwayLib.ts · checkVerifyFilesOutput).
+ *   VERIFY-FICHEROS RESUMEN empresa=<id> origen=<primary|secondary> ficheros=<n> bytes=<verificados> fallos=<n> digest=<sha256>
+ *   VERIFY-FICHEROS ENTRADA<TAB><ok|fallo><TAB><bytes><TAB><sha256><TAB><clave>
+ *   VERIFY-FICHEROS MOTIVO<TAB><clave><TAB><motivo>
+ */
+export function formatVerifyFilesLines(r: VerifyFilesReport): string[] {
+  const clean = (x: string) => x.replace(/[\r\n\t]+/g, " ");
+  const lines = [`VERIFY-FICHEROS RESUMEN empresa=${r.tenantId} origen=${r.source} ficheros=${r.files} bytes=${r.bytes} fallos=${r.failed.length} digest=${r.digest}`];
+  for (const e of r.entries) lines.push(`VERIFY-FICHEROS ENTRADA\t${e.ok ? "ok" : "fallo"}\t${e.bytes}\t${e.sha256}\t${clean(e.key)}`);
+  for (const f of r.failed) lines.push(`VERIFY-FICHEROS MOTIVO\t${clean(f.key)}\t${clean(f.reason)}`);
+  return lines;
+}
+
 // ── Ejecución completa ──────────────────────────────────────────────────────
 
 export interface BackupJobDeps {

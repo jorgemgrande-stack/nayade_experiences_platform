@@ -1138,3 +1138,83 @@ export function ownDeployState(nodes: ReadonlyArray<{ id: string; status: string
   }
   return { state: "done", id: own.id, status: own.status };
 }
+
+// ── Fin real de una orden de restore-drill ──────────────────────────────────────────────────────────────────────────
+// Railway da el despliegue por SUCCESS al arrancar el contenedor (reinicio NEVER), no al terminar la orden: el 21/11 una
+// verificación de 16 GB se mató a los 54 s al devolver el reposo. Las órdenes largas imprimen «FIN-ORDEN codigo=N» al final.
+
+/** Órdenes del drill que pueden tardar minutos y por tanto se esperan hasta su marca de fin. */
+export const DRILL_WAITS_FOR_END = /^node dist-cp\/backup-job\.js verify-files /;
+export const DRILL_END_TIMEOUT_MS = 45 * 60_000;
+
+/** Código de salida de la ÚLTIMA marca «FIN-ORDEN codigo=N» (solo al principio de línea); null si aún no hay. */
+export function parseFinOrden(out: string): number | null {
+  let code: number | null = null;
+  for (const m of out.matchAll(/^FIN-ORDEN codigo=(-?\d+)[ \t]*$/gm)) code = Number(m[1]);
+  return code;
+}
+
+export type DrillEnd = { state: "done"; code: number; out: string } | { state: "timeout"; out: string };
+
+/** Consulta el registro hasta ver la marca de fin; agotado el límite NO da nada por terminado. */
+export async function waitForFinOrden(
+  fetchLogs: () => Promise<string>,
+  o: { timeoutMs?: number; intervalMs?: number; now?: () => number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<DrillEnd> {
+  const now = o.now ?? Date.now;
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const timeoutMs = o.timeoutMs ?? DRILL_END_TIMEOUT_MS;
+  const t0 = now();
+  let out = "";
+  for (;;) {
+    try {
+      out = await fetchLogs();
+    } catch {
+      /* el registro puede tardar o fallar de forma transitoria: se vuelve a consultar */
+    }
+    const code = parseFinOrden(out);
+    if (code !== null) return { state: "done", code, out };
+    if (now() - t0 >= timeoutMs) return { state: "timeout", out };
+    await sleep(o.intervalMs ?? 15_000);
+  }
+}
+
+export interface VerifyFilesCheck {
+  ok: boolean;
+  files: number;
+  bytes: number;
+  failures: number;
+  digest: string;
+  problems: string[];
+}
+
+/**
+ * Comprueba la salida de `verify-files` sin fiarse del resumen: recuenta las líneas por objeto, suma los bytes verificados, cuenta
+ * los fallos y recalcula el digest (sha256 de las líneas `clave:sha256` ordenadas). Un registro incompleto o incoherente NO es ok.
+ */
+export function checkVerifyFilesOutput(out: string): VerifyFilesCheck {
+  const problems: string[] = [];
+  const summaries = [...out.matchAll(/^VERIFY-FICHEROS RESUMEN empresa=(\S+) origen=(\S+) ficheros=(\d+) bytes=(\d+) fallos=(\d+) digest=([0-9a-f]{64})[ \t]*$/gm)];
+  const entries = [...out.matchAll(/^VERIFY-FICHEROS ENTRADA\t(ok|fallo)\t(\d+)\t([0-9a-f]{64})\t([^\r\n]*)$/gm)].map((m) => ({ ok: m[1] === "ok", bytes: Number(m[2]), sha: m[3], key: m[4] }));
+  const end = parseFinOrden(out);
+  if (end === null) problems.push("falta la marca FIN-ORDEN: la orden no terminó");
+  else if (end !== 0) problems.push(`la orden terminó con código ${end}`);
+  if (summaries.length !== 1) problems.push(summaries.length ? "hay más de un resumen" : "falta el resumen");
+  const s = summaries[0];
+  const files = s ? Number(s[3]) : 0;
+  const bytes = s ? Number(s[4]) : 0;
+  const failures = s ? Number(s[5]) : 0;
+  const digest = s ? s[6] : "";
+  if (s) {
+    if (entries.length !== files) problems.push(`el resumen declara ${files} objetos y hay ${entries.length} líneas`);
+    if (new Set(entries.map((e) => e.key)).size !== entries.length) problems.push("hay claves repetidas");
+    const okBytes = entries.filter((e) => e.ok).reduce((a, e) => a + e.bytes, 0);
+    if (okBytes !== bytes) problems.push(`los bytes verificados suman ${okBytes} y el resumen dice ${bytes}`);
+    const bad = entries.filter((e) => !e.ok).length;
+    if (bad !== failures) problems.push(`el resumen declara ${failures} fallos y hay ${bad} objetos con fallo`);
+    if (failures !== 0) problems.push(`${failures} objetos no verificados`);
+    const again = createHash("sha256").update([...entries].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)).map((e) => `${e.key}:${e.sha}`).join("\n")).digest("hex");
+    if (again !== digest) problems.push("el digest no coincide con las líneas por objeto");
+  }
+  return { ok: problems.length === 0, files, bytes, failures, digest, problems };
+}
