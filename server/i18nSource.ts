@@ -13,7 +13,7 @@ function entries(): Array<{ ns: string; key: string; text: string }> {
     if (!f.endsWith(".ts")) continue;
     const ns = f.replace(/\.ts$/, "");
     const src = fs.readFileSync(path.join(DIR, f), "utf8");
-    for (const m of src.matchAll(/^ {2}([A-Za-z_]\w*): ("(?:[^"\\]|\\.)*"),$/gm)) out.push({ ns, key: m[1], text: JSON.parse(m[2]) });
+    for (const m of Array.from(src.matchAll(/^ {2}([A-Za-z_]\w*): ("(?:[^"\\]|\\.)*"),$/gm))) out.push({ ns, key: m[1], text: JSON.parse(m[2]) });
   }
   return out;
 }
