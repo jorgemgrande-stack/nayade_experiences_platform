@@ -5,7 +5,6 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useVocabulary } from "@/lib/vocabulary";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
