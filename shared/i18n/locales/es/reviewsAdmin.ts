@@ -1,0 +1,38 @@
+/** Moderación de reseñas (el texto de las reseñas es contenido de clientes y no se traduce). */
+export default {
+  title: "Moderación de Reseñas",
+  subtitle: "Gestiona las opiniones de clientes del Hotel y el SPA",
+  refresh: "Actualizar",
+  status: { pending: "Pendiente", approved: "Aprobada", rejected: "Rechazada" },
+  stats: { total: "Total", pending: "Pendientes", approved: "Aprobadas", rejected: "Rechazadas", average: "Media" },
+  filter: {
+    type: "Tipo:",
+    status: "Estado:",
+    all: "Todos",
+    pending: "Pendientes",
+    approved: "Aprobadas",
+    rejected: "Rechazadas",
+    results: "{n, plural, one {# resultado} other {# resultados}}",
+  },
+  empty: "No hay reseñas con estos filtros",
+  verifiedBooking: "Reserva verificada",
+  teamReply: "Respuesta del equipo",
+  action: {
+    approve: "Aprobar",
+    reject: "Rechazar",
+    withdraw: "Retirar",
+    reply: "Responder",
+    editReply: "Editar respuesta",
+    delete: "Eliminar",
+    confirmDelete: "¿Eliminar esta reseña definitivamente? Esta acción no se puede deshacer.",
+  },
+  pager: { previous: "Anterior", next: "Siguiente", page: "Página {page} de {pages}" },
+  reply: {
+    title: "Responder a la reseña",
+    label: "Tu respuesta (visible públicamente)",
+    placeholder: "Escribe una respuesta profesional y cordial...",
+    cancel: "Cancelar",
+    saving: "Guardando…",
+    publish: "Publicar respuesta",
+  },
+};

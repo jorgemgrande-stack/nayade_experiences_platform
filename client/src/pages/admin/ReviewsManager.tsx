@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -48,17 +49,18 @@ function StarDisplay({ rating }: { rating: number }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useI18n();
   const map: Record<string, { label: string; className: string }> = {
     pending: {
-      label: "Pendiente",
+      label: t("reviewsAdmin.status.pending"),
       className: "bg-amber-100 text-amber-700 border-amber-200",
     },
     approved: {
-      label: "Aprobada",
+      label: t("reviewsAdmin.status.approved"),
       className: "bg-emerald-100 text-emerald-700 border-emerald-200",
     },
     rejected: {
-      label: "Rechazada",
+      label: t("reviewsAdmin.status.rejected"),
       className: "bg-red-100 text-red-700 border-red-200",
     },
   };
@@ -85,6 +87,7 @@ function ReplyModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const [reply, setReply] = useState(existingReply ?? "");
   const replyMutation = trpc.reviews.adminReply.useMutation({
     onSuccess: () => {
@@ -97,7 +100,7 @@ function ReplyModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between p-5 border-b">
-          <h3 className="font-bold text-gray-900">Responder a la reseña</h3>
+          <h3 className="font-bold text-gray-900">{t("reviewsAdmin.reply.title")}</h3>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
@@ -107,12 +110,12 @@ function ReplyModal({
         </div>
         <div className="p-5 space-y-3">
           <Label className="text-sm text-gray-600">
-            Tu respuesta (visible públicamente)
+            {t("reviewsAdmin.reply.label")}
           </Label>
           <Textarea
             value={reply}
             onChange={(e) => setReply(e.target.value)}
-            placeholder="Escribe una respuesta profesional y cordial..."
+            placeholder={t("reviewsAdmin.reply.placeholder")}
             className="min-h-[120px] resize-none"
             maxLength={1000}
           />
@@ -120,14 +123,14 @@ function ReplyModal({
         </div>
         <div className="flex justify-end gap-2 p-5 border-t">
           <Button variant="ghost" onClick={onClose}>
-            Cancelar
+            {t("reviewsAdmin.reply.cancel")}
           </Button>
           <Button
             onClick={() => replyMutation.mutate({ id: reviewId, reply })}
             disabled={!reply.trim() || replyMutation.isPending}
             className="bg-teal-600 hover:bg-teal-500 text-white"
           >
-            {replyMutation.isPending ? "Guardando…" : "Publicar respuesta"}
+            {replyMutation.isPending ? t("reviewsAdmin.reply.saving") : t("reviewsAdmin.reply.publish")}
           </Button>
         </div>
       </div>
@@ -139,6 +142,7 @@ function ReplyModal({
 
 export default function ReviewsManager() {
   const utils = trpc.useUtils();
+  const { t, format } = useI18n();
   const [filterType, setFilterType] = useState<"all" | "hotel" | "spa">("all");
   const [filterStatus, setFilterStatus] = useState<
     "all" | "pending" | "approved" | "rejected"
@@ -184,10 +188,10 @@ export default function ReviewsManager() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Moderación de Reseñas
+              {t("reviewsAdmin.title")}
             </h1>
             <p className="text-gray-500 text-sm mt-1">
-              Gestiona las opiniones de clientes del Hotel y el SPA
+              {t("reviewsAdmin.subtitle")}
             </p>
           </div>
           <Button
@@ -197,7 +201,7 @@ export default function ReviewsManager() {
             className="gap-2"
           >
             <RefreshCw className="w-4 h-4" />
-            Actualizar
+            {t("reviewsAdmin.refresh")}
           </Button>
         </div>
 
@@ -206,36 +210,36 @@ export default function ReviewsManager() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
               {
-                label: "Total",
+                label: t("reviewsAdmin.stats.total"),
                 value: stats.total,
                 icon: MessageSquare,
                 color: "text-gray-700",
                 bg: "bg-gray-50",
               },
               {
-                label: "Pendientes",
+                label: t("reviewsAdmin.stats.pending"),
                 value: stats.pending,
                 icon: Clock,
                 color: "text-amber-600",
                 bg: "bg-amber-50",
               },
               {
-                label: "Aprobadas",
+                label: t("reviewsAdmin.stats.approved"),
                 value: stats.approved,
                 icon: CheckCircle2,
                 color: "text-emerald-600",
                 bg: "bg-emerald-50",
               },
               {
-                label: "Rechazadas",
+                label: t("reviewsAdmin.stats.rejected"),
                 value: stats.rejected,
                 icon: XCircle,
                 color: "text-red-500",
                 bg: "bg-red-50",
               },
               {
-                label: "Media",
-                value: stats.avgRating > 0 ? `${stats.avgRating.toFixed(1)} ★` : "—",
+                label: t("reviewsAdmin.stats.average"),
+                value: stats.avgRating > 0 ? `${format.number(stats.avgRating, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ★` : "—",
                 icon: Star,
                 color: "text-amber-500",
                 bg: "bg-amber-50",
@@ -261,7 +265,7 @@ export default function ReviewsManager() {
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex items-center gap-2">
             <Label className="text-sm text-gray-600 whitespace-nowrap">
-              Tipo:
+              {t("reviewsAdmin.filter.type")}
             </Label>
             <Select
               value={filterType}
@@ -274,7 +278,7 @@ export default function ReviewsManager() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="all">{t("reviewsAdmin.filter.all")}</SelectItem>
                 <SelectItem value="hotel">Hotel</SelectItem>
                 <SelectItem value="spa">SPA</SelectItem>
               </SelectContent>
@@ -282,7 +286,7 @@ export default function ReviewsManager() {
           </div>
           <div className="flex items-center gap-2">
             <Label className="text-sm text-gray-600 whitespace-nowrap">
-              Estado:
+              {t("reviewsAdmin.filter.status")}
             </Label>
             <Select
               value={filterStatus}
@@ -295,15 +299,15 @@ export default function ReviewsManager() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="pending">Pendientes</SelectItem>
-                <SelectItem value="approved">Aprobadas</SelectItem>
-                <SelectItem value="rejected">Rechazadas</SelectItem>
+                <SelectItem value="all">{t("reviewsAdmin.filter.all")}</SelectItem>
+                <SelectItem value="pending">{t("reviewsAdmin.filter.pending")}</SelectItem>
+                <SelectItem value="approved">{t("reviewsAdmin.filter.approved")}</SelectItem>
+                <SelectItem value="rejected">{t("reviewsAdmin.filter.rejected")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <span className="text-sm text-gray-400 ml-auto">
-            {total} resultado{total !== 1 ? "s" : ""}
+            {t("reviewsAdmin.filter.results", { n: total })}
           </span>
         </div>
 
@@ -320,7 +324,7 @@ export default function ReviewsManager() {
         ) : reviews.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No hay reseñas con estos filtros</p>
+            <p className="font-medium">{t("reviewsAdmin.empty")}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -365,7 +369,7 @@ export default function ReviewsManager() {
                       )}
                     </div>
                     {review.verifiedBooking && (
-                      <ThumbsUp className="w-3.5 h-3.5 text-teal-500" aria-label="Reserva verificada" />
+                      <ThumbsUp className="w-3.5 h-3.5 text-teal-500" aria-label={t("reviewsAdmin.verifiedBooking")} />
                     )}
                   </div>
 
@@ -373,7 +377,7 @@ export default function ReviewsManager() {
                     <StarDisplay rating={review.rating} />
                     <StatusBadge status={review.status} />
                     <span className="text-xs text-gray-400">
-                      {new Date(review.createdAt).toLocaleDateString("es-ES")}
+                      {format.date(review.createdAt)}
                     </span>
                   </div>
                 </div>
@@ -392,7 +396,7 @@ export default function ReviewsManager() {
                 {review.adminReply && (
                   <div className="mt-3 bg-teal-50 border border-teal-200 rounded-lg p-3">
                     <p className="text-xs font-semibold text-teal-600 mb-1">
-                      Respuesta del equipo
+                      {t("reviewsAdmin.teamReply")}
                     </p>
                     <p className="text-xs text-teal-700 leading-relaxed">
                       {review.adminReply}
@@ -413,7 +417,7 @@ export default function ReviewsManager() {
                         className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 h-8"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        Aprobar
+                        {t("reviewsAdmin.action.approve")}
                       </Button>
                       <Button
                         size="sm"
@@ -425,7 +429,7 @@ export default function ReviewsManager() {
                         className="border-red-200 text-red-600 hover:bg-red-50 gap-1.5 h-8"
                       >
                         <XCircle className="w-3.5 h-3.5" />
-                        Rechazar
+                        {t("reviewsAdmin.action.reject")}
                       </Button>
                     </>
                   )}
@@ -440,7 +444,7 @@ export default function ReviewsManager() {
                       className="border-gray-200 text-gray-500 hover:bg-gray-50 gap-1.5 h-8"
                     >
                       <XCircle className="w-3.5 h-3.5" />
-                      Retirar
+                      {t("reviewsAdmin.action.withdraw")}
                     </Button>
                   )}
                   {review.status === "rejected" && (
@@ -454,7 +458,7 @@ export default function ReviewsManager() {
                       className="border-emerald-200 text-emerald-600 hover:bg-emerald-50 gap-1.5 h-8"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      Aprobar
+                      {t("reviewsAdmin.action.approve")}
                     </Button>
                   )}
                   <Button
@@ -469,7 +473,7 @@ export default function ReviewsManager() {
                     className="border-teal-200 text-teal-600 hover:bg-teal-50 gap-1.5 h-8"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
-                    {review.adminReply ? "Editar respuesta" : "Responder"}
+                    {review.adminReply ? t("reviewsAdmin.action.editReply") : t("reviewsAdmin.action.reply")}
                   </Button>
                   <Button
                     size="sm"
@@ -477,7 +481,7 @@ export default function ReviewsManager() {
                     onClick={() => {
                       if (
                         confirm(
-                          "¿Eliminar esta reseña definitivamente? Esta acción no se puede deshacer."
+                          t("reviewsAdmin.action.confirmDelete")
                         )
                       ) {
                         deleteMutation.mutate({ id: review.id });
@@ -487,7 +491,7 @@ export default function ReviewsManager() {
                     className="text-red-400 hover:text-red-600 hover:bg-red-50 gap-1.5 h-8 ml-auto"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    Eliminar
+                    {t("reviewsAdmin.action.delete")}
                   </Button>
                 </div>
               </div>
@@ -506,10 +510,10 @@ export default function ReviewsManager() {
               className="gap-1"
             >
               <ChevronLeft className="w-4 h-4" />
-              Anterior
+              {t("reviewsAdmin.pager.previous")}
             </Button>
             <span className="text-sm text-gray-500">
-              Página {page + 1} de {Math.ceil(total / LIMIT)}
+              {t("reviewsAdmin.pager.page", { page: page + 1, pages: Math.ceil(total / LIMIT) })}
             </span>
             <Button
               variant="outline"
@@ -518,7 +522,7 @@ export default function ReviewsManager() {
               onClick={() => setPage(page + 1)}
               className="gap-1"
             >
-              Siguiente
+              {t("reviewsAdmin.pager.next")}
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
