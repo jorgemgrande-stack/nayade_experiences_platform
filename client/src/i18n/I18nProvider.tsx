@@ -3,6 +3,7 @@ import { createFormatters, createTranslator, DEFAULT_LOCALE, resolveLocale, type
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { FLAT } from "./catalog";
+import { setCurrentLocale } from "./standalone";
 
 /**
  * Idioma de la INTERFAZ del panel. Individual por usuario: se guarda en el servidor (`user_ui_prefs`) y, para pintar sin
@@ -76,6 +77,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       document.documentElement.lang = previous;
     };
   }, [locale]);
+
+  setCurrentLocale(locale); // publica el idioma para el código que no es React (errorMessage, toastError…)
 
   const setLocale = useCallback(
     (l: Locale) => {
