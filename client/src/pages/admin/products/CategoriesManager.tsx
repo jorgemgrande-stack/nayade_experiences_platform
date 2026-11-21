@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { PanelEmpty } from "@/components/admin/PanelStates";
 import { useVocabulary } from "@/lib/vocabulary";
 import { CategoryTranslationsPanel } from "./CategoryTranslationsPanel";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface CategoryForm {
   name: string;
@@ -28,22 +29,23 @@ const emptyForm: CategoryForm = { name: "", slug: "", description: "", iconName:
 
 // ── Zona de upload de imagen para categorías ────────────────────────────────
 function CatImageUpload({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const { t } = useI18n();
   const imageMax = useImageUploadLimit();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const handleFile = async (file: File) => {
-    if (file.size > imageMax.bytes) { toast.error(`La imagen no puede superar ${imageMax.mb} MB`); return; }
+    if (file.size > imageMax.bytes) { toast.error(t("productsCategories.upload.tooBig", { mb: imageMax.mb })); return; }
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("image", file);
       const res = await fetch("/api/upload/image", { method: "POST", body: fd, credentials: "include" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al subir");
+      if (!res.ok) throw new Error(data.error || t("productsCategories.upload.failed"));
       onChange(data.url);
-      toast.success("Imagen subida correctamente");
+      toast.success(t("productsCategories.upload.done"));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Error al subir imagen");
+      toast.error(e instanceof Error ? e.message : t("productsCategories.upload.failedImage"));
     } finally { setUploading(false); }
   };
   return (
@@ -56,13 +58,13 @@ function CatImageUpload({ value, onChange }: { value: string; onChange: (url: st
     >
       {value ? (
         <>
-          <img src={value} alt="Imagen categoría" className="w-full h-full object-cover" />
+          <img src={value} alt={t("productsCategories.upload.alt")} className="w-full h-full object-cover" />
           <button type="button" className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-destructive"
             onClick={(e) => { e.stopPropagation(); onChange(""); }}><X className="w-3.5 h-3.5" /></button>
         </>
       ) : (
         <div className="flex flex-col items-center justify-center h-full gap-1 text-muted-foreground">
-          {uploading ? <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <><ImageIcon className="w-6 h-6 opacity-40" /><span className="text-xs">Haz clic o arrastra</span></>}
+          {uploading ? <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <><ImageIcon className="w-6 h-6 opacity-40" /><span className="text-xs">{t("productsCategories.upload.hint")}</span></>}
         </div>
       )}
       {uploading && <div className="absolute inset-0 bg-white/70 flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}
@@ -73,6 +75,7 @@ function CatImageUpload({ value, onChange }: { value: string; onChange: (url: st
 }
 
 export default function CategoriesManager() {
+  const { t } = useI18n();
   const voc = useVocabulary();
   const [open, setOpen] = useState(false);
   const [translationsOpen, setTranslationsOpen] = useState(false);
@@ -84,32 +87,32 @@ export default function CategoriesManager() {
   const { data: categories, isLoading } = trpc.products.getCategories.useQuery();
 
   const createMut = trpc.products.createCategory.useMutation({
-    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría creada"); setOpen(false); setForm(emptyForm); },
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success(t("productsCategories.toast.created")); setOpen(false); setForm(emptyForm); },
     onError: (e) => toast.error(e.message),
   });
   const updateMut = trpc.products.updateCategory.useMutation({
-    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría actualizada"); setOpen(false); setEditId(null); setForm(emptyForm); },
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success(t("productsCategories.toast.updated")); setOpen(false); setEditId(null); setForm(emptyForm); },
     onError: (e) => toast.error(e.message),
   });
   const deleteMut = trpc.products.deleteCategory.useMutation({
-    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría desactivada"); },
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success(t("productsCategories.toast.deactivated")); },
     onError: (e) => toast.error(e.message),
   });
   const hardDeleteMut = trpc.products.hardDeleteCategory.useMutation({
-    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría eliminada permanentemente"); },
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success(t("productsCategories.toast.hardDeleted")); },
     onError: (e) => toast.error(e.message),
   });
   const toggleActiveMut = trpc.products.toggleCategoryActive.useMutation({
-    onSuccess: (_, vars) => { utils.products.getCategories.invalidate(); toast.success(vars.isActive ? "Categoría activada" : "Categoría desactivada"); },
+    onSuccess: (_, vars) => { utils.products.getCategories.invalidate(); toast.success(vars.isActive ? t("productsCategories.toast.activated") : t("productsCategories.toast.deactivated")); },
     onError: (e) => toast.error(e.message),
   });
   const cloneMut = trpc.products.cloneCategory.useMutation({
-    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría clonada (inactiva)"); },
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success(t("productsCategories.toast.cloned")); },
     onError: (e) => toast.error(e.message),
   });
   const reorderMut = trpc.products.reorderCategories.useMutation({
     onSuccess: () => { utils.products.getCategories.invalidate(); },
-    onError: () => toast.error("Error al guardar el orden"),
+    onError: () => toast.error(t("productsCategories.toast.reorderFailed")),
   });
 
   const openCreate = () => { setEditId(null); setForm(emptyForm); setOpen(true); };
@@ -120,7 +123,7 @@ export default function CategoriesManager() {
   };
 
   const handleSubmit = () => {
-    if (!form.name || !form.slug) { toast.error("Nombre y slug son obligatorios"); return; }
+    if (!form.name || !form.slug) { toast.error(t("productsCategories.toast.required")); return; }
     if (editId) updateMut.mutate({ id: editId, name: form.name, description: form.description, image1: form.image1 || undefined });
     else createMut.mutate({ name: form.name, slug: form.slug, description: form.description, iconName: form.iconName, image1: form.image1 || undefined });
   };
@@ -147,16 +150,16 @@ export default function CategoriesManager() {
   };
 
   return (
-    <AdminLayout title="Categorías">
+    <AdminLayout title={t("productsCategories.title")}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Categorías de productos y servicios</h2>
-          <p className="text-sm text-muted-foreground mt-1">{categories?.length ?? 0} categorías registradas</p>
+          <h2 className="text-xl font-semibold text-foreground">{t("productsCategories.heading")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t("productsCategories.count", { n: categories?.length ?? 0 })}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setTranslationsOpen(true)}>Idiomas</Button>
+          <Button variant="outline" onClick={() => setTranslationsOpen(true)}>{t("productsCategories.languages")}</Button>
           <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-2" /> Nueva categoría
+            <Plus className="w-4 h-4 mr-2" /> {t("productsCategories.newCategory")}
           </Button>
         </div>
       </div>
@@ -168,11 +171,11 @@ export default function CategoriesManager() {
       ) : sortedCategories.length === 0 ? (
         <PanelEmpty
           icon={<Tag className="w-6 h-6" />}
-          title="Todavía no tienes categorías"
-          description="Agrupa tus productos y servicios por categorías: tus clientes los encontrarán antes en tu web."
+          title={t("productsCategories.emptyTitle")}
+          description={t("productsCategories.emptyText")}
         >
           <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" /> Crear la primera categoría
+            <Plus className="w-4 h-4 mr-2" /> {t("productsCategories.createFirst")}
           </Button>
         </PanelEmpty>
       ) : (
@@ -191,20 +194,20 @@ export default function CategoriesManager() {
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="flex flex-col">
-                    <button onClick={() => moveCat(idx, "up")} disabled={idx === 0 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Subir">
+                    <button onClick={() => moveCat(idx, "up")} disabled={idx === 0 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title={t("productsCategories.moveUp")}>
                       <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
-                    <button onClick={() => moveCat(idx, "down")} disabled={idx === sortedCategories.length - 1 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Bajar">
+                    <button onClick={() => moveCat(idx, "down")} disabled={idx === sortedCategories.length - 1 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title={t("productsCategories.moveDown")}>
                       <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
                   </div>
-                  <Badge variant="outline" className="text-xs">{cat.isActive ? "Activa" : "Inactiva"}</Badge>
+                  <Badge variant="outline" className="text-xs">{cat.isActive ? t("productsCategories.active") : t("productsCategories.inactive")}</Badge>
                 </div>
               </div>
               {cat.description && <p className="text-sm text-muted-foreground line-clamp-2">{cat.description}</p>}
               <div className="flex gap-2 mt-auto pt-2 border-t border-border">
                 <Button size="sm" variant="outline" className="flex-1" onClick={() => openEdit(cat)}>
-                  <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
+                  <Pencil className="w-3.5 h-3.5 mr-1" /> {t("productsCategories.edit")}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -215,18 +218,18 @@ export default function CategoriesManager() {
                   <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem onClick={() => toggleActiveMut.mutate({ id: cat.id, isActive: !cat.isActive })}>
                       {cat.isActive
-                        ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> Desactivar</>
-                        : <><Power className="w-3.5 h-3.5 mr-2" /> Activar</>}
+                        ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> {t("productsCategories.deactivate")}</>
+                        : <><Power className="w-3.5 h-3.5 mr-2" /> {t("productsCategories.activate")}</>}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => cloneMut.mutate({ id: cat.id })}>
-                      <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
+                      <Copy className="w-3.5 h-3.5 mr-2" /> {t("productsCategories.clone")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onClick={() => { if (confirm("¿Eliminar permanentemente esta categoría?")) hardDeleteMut.mutate({ id: cat.id }); }}
+                      onClick={() => { if (confirm(t("productsCategories.confirmHardDelete"))) hardDeleteMut.mutate({ id: cat.id }); }}
                     >
-                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                      <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsCategories.remove")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -239,37 +242,37 @@ export default function CategoriesManager() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editId ? "Editar categoría" : "Nueva categoría"}</DialogTitle>
+            <DialogTitle>{editId ? t("productsCategories.editTitle") : t("productsCategories.newTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Nombre *</Label>
+              <Label>{t("productsCategories.name")}</Label>
               <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value, slug: editId ? f.slug : toSlug(e.target.value) }))} placeholder={voc.catalog.categoryExample} />
             </div>
             <div>
-              <Label>{voc.licensed ? "Dirección en la web *" : "Slug *"}</Label>
+              <Label>{voc.licensed ? t("productsCategories.webAddress") : t("productsCategories.slug")}</Label>
               <Input value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: toSlug(e.target.value) }))} placeholder={voc.licensed ? "accesorios" : "deportes-acuaticos"} />
-              {voc.licensed && <p className="text-xs text-muted-foreground mt-1">Se rellena sola con el nombre. Es la parte final de la dirección de la categoría en tu tienda.</p>}
+              {voc.licensed && <p className="text-xs text-muted-foreground mt-1">{t("productsCategories.slugHint")}</p>}
             </div>
             <div>
-              <Label>Descripción</Label>
+              <Label>{t("productsCategories.description")}</Label>
               <Textarea value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
             </div>
             {!voc.licensed && (
               <div>
-                <Label>Icono (nombre)</Label>
+                <Label>{t("productsCategories.iconName")}</Label>
                 <Input value={form.iconName} onChange={(e) => setForm(f => ({ ...f, iconName: e.target.value }))} placeholder="anchor" />
               </div>
             )}
             <div>
-              <Label className="block mb-1">Imagen de la categoría</Label>
+              <Label className="block mb-1">{t("productsCategories.image")}</Label>
               <CatImageUpload value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{t("productsCategories.cancel")}</Button>
             <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending}>
-              {editId ? "Guardar cambios" : "Crear categoría"}
+              {editId ? t("productsCategories.saveChanges") : t("productsCategories.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

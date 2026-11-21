@@ -9,10 +9,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { localeAutonym } from "@/hooks/useSiteLocale";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TRANSLATION_FIELD_SETS, translationState } from "@shared/translationEditor";
 import { ContentTranslationForm, TranslationStateBadge } from "./ProductTranslationsPanel";
 
 export function CategoryTranslationsPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const q = trpc.cms.categoryTranslationEditor.useQuery(undefined, { enabled: open });
   const data = q.data;
@@ -27,24 +29,24 @@ export function CategoryTranslationsPanel({ open, onOpenChange }: { open: boolea
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-display">Idiomas · Categorías</DialogTitle>
+          <DialogTitle className="font-display">{t("productsTranslations.category.title")}</DialogTitle>
           <DialogDescription>
-            Traduce el nombre de cada categoría a los idiomas de tu web. Se ve en los filtros del catálogo cuando validas la traducción.
+            {t("productsTranslations.category.description")}
           </DialogDescription>
         </DialogHeader>
         {q.isLoading ? (
-          <p className="text-sm text-muted-foreground">Cargando…</p>
+          <p className="text-sm text-muted-foreground">{t("productsTranslations.product.loading")}</p>
         ) : q.isError ? (
-          <p role="alert" className="text-sm text-destructive">No se han podido cargar las traducciones. {q.error.message}</p>
+          <p role="alert" className="text-sm text-destructive">{t("productsTranslations.product.loadError", { error: q.error.message })}</p>
         ) : !data?.multilingual ? (
           <p className="text-sm text-muted-foreground">
-            Tu web está en un solo idioma. Añade otro en <Link href="/admin/cms/idiomas" className="underline underline-offset-4">Web › Idiomas</Link> para traducir tus categorías.
+            {t("productsTranslations.category.singleBefore")}<Link href="/admin/cms/idiomas" className="underline underline-offset-4">{t("productsTranslations.product.languagesLink")}</Link>{t("productsTranslations.category.singleAfter")}
           </p>
         ) : !data.categories.length ? (
-          <p className="text-sm text-muted-foreground">Todavía no hay categorías.</p>
+          <p className="text-sm text-muted-foreground">{t("productsTranslations.category.none")}</p>
         ) : (
           <div className="space-y-4">
-            <div role="tablist" aria-label="Idioma de la traducción" className="flex flex-wrap gap-2">
+            <div role="tablist" aria-label={t("productsTranslations.product.languageTab")} className="flex flex-wrap gap-2">
               {data.locales.map((l) => {
                 const active = l.locale === locale;
                 return (
@@ -65,14 +67,14 @@ export function CategoryTranslationsPanel({ open, onOpenChange }: { open: boolea
               <>
                 {data.locales.find((l) => l.locale === locale)?.status !== "validated" && (
                   <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                    El idioma {localeAutonym(locale)} aún no está publicado en tu web: puedes ir traduciendo y se verá cuando valides el idioma en Web › Idiomas.
+                    {t("productsTranslations.product.notPublished", { language: localeAutonym(locale) })}
                   </p>
                 )}
                 {data.categories.map((c) => (
                   <details key={c.id} className="rounded-md border border-border p-3" open={data.categories.length === 1}>
                     <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm">
                       {c.principal.name || `#${c.id}`}
-                      {!c.isActive && <span className="text-xs text-muted-foreground">(inactiva)</span>}
+                      {!c.isActive && <span className="text-xs text-muted-foreground">{t("productsTranslations.category.inactive")}</span>}
                       <TranslationStateBadge state={translationState(c.translations[locale] ?? null)} />
                     </summary>
                     <div className="mt-3">
