@@ -26,6 +26,8 @@ import {
   type CreditNoteMode,
 } from "@shared/creditNoteForm";
 
+import { useI18n } from "@/i18n/I18nProvider";
+const EUR2: Intl.NumberFormatOptions = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 export interface CreditNoteLineView {
   itemIndex: number;
   description: string;
@@ -71,25 +73,22 @@ export function CreditNoteForm(props: {
   preview: CreditNotePreviewView | null;
   previewLoading?: boolean;
 }) {
+  const { t, format } = useI18n();
   const { context, mode, drafts, preview } = props;
   const { invoice } = context;
   const fieldClass = "bg-foreground/[0.05] border-foreground/[0.15] text-white";
   return (
     <div className="space-y-4 py-2 text-sm">
       <div className="rounded-lg border border-foreground/[0.12] p-3 space-y-1" data-testid="resumen-factura">
-        <p className="text-white font-medium">
-          Factura {invoice.invoiceNumber}
+        <p className="text-white font-medium">{t("crmInvoices.factura", { invoiceNumber: invoice.invoiceNumber })}
           {invoice.clientName ? <span className="text-foreground/60 font-normal"> · {invoice.clientName}</span> : null}
         </p>
-        <p className="text-foreground/65">
-          Facturado {formatEur(invoice.total)} · Ya abonado {formatEur(invoice.credited)} · <span className="text-white">Pendiente de abonar {formatEur(invoice.remaining)}</span>
+        <p className="text-foreground/65">{t("crmInvoices.facturadoYaAbonado", { formatEur: format.currency(invoice.total, "EUR", EUR2), formatEur2: format.currency(invoice.credited, "EUR", EUR2) })}{" "}<span className="text-white">{t("crmInvoices.pendienteDeAbonar", { formatEur: format.currency(invoice.remaining, "EUR", EUR2) })}</span>
         </p>
         {context.previous.length > 0 && (
           <ul className="text-xs text-foreground/50 pt-1">
             {context.previous.map((p) => (
-              <li key={p.invoiceNumber}>
-                Abono {p.invoiceNumber}: {formatEur(p.total)}
-                {p.reason ? ` — ${p.reason}` : ""}
+              <li key={p.invoiceNumber}>{t("crmInvoices.abono3", { invoiceNumber: p.invoiceNumber, formatEur: format.currency(p.total, "EUR", EUR2), v: p.reason ? ` — ${p.reason}` : "" })}
               </li>
             ))}
           </ul>
@@ -97,15 +96,11 @@ export function CreditNoteForm(props: {
       </div>
 
       <fieldset className="space-y-2">
-        <legend className="text-foreground/65 text-xs mb-1.5">¿Qué quieres abonar?</legend>
+        <legend className="text-foreground/65 text-xs mb-1.5">{t("crmInvoices.queQuieresAbonar")}</legend>
         <label className="flex items-center gap-2 text-white cursor-pointer">
-          <input type="radio" name="modo-abono" value="total" checked={mode === "total"} onChange={() => props.onModeChange("total")} />
-          Todo lo pendiente ({formatEur(invoice.remaining)})
-        </label>
+          <input type="radio" name="modo-abono" value="total" checked={mode === "total"} onChange={() => props.onModeChange("total")} />{t("crmInvoices.todoLoPendiente", { formatEur: format.currency(invoice.remaining, "EUR", EUR2) })}</label>
         <label className="flex items-center gap-2 text-white cursor-pointer">
-          <input type="radio" name="modo-abono" value="partial" checked={mode === "partial"} onChange={() => props.onModeChange("partial")} />
-          Solo una parte: elige líneas y unidades o importe
-        </label>
+          <input type="radio" name="modo-abono" value="partial" checked={mode === "partial"} onChange={() => props.onModeChange("partial")} />{t("crmInvoices.soloUnaParteElige")}</label>
       </fieldset>
 
       {mode === "partial" && (
@@ -123,14 +118,14 @@ export function CreditNoteForm(props: {
                     checked={d.selected}
                     disabled={done}
                     onChange={(e) => props.onDraftChange(l.itemIndex, { selected: e.target.checked })}
-                    aria-label={`Abonar «${l.description}»`}
+                    aria-label={t("crmInvoices.abonar", { description: l.description })}
                   />
                   <span className="flex-1">
                     <span className="block text-white">{l.description}</span>
                     <span className="block text-xs text-foreground/55">
-                      {l.quantity} × {formatEur(l.unitPrice)} · {taxLabel(l.taxRate)} · Total {formatEur(l.total)}
-                      {l.credited > 0 ? ` · Ya abonado ${formatEur(l.credited)}` : ""}
-                      {done ? " · Abonada por completo" : ` · Puedes abonar hasta ${formatEur(l.remaining)}`}
+                      {t("crmInvoices.total2", { quantity: l.quantity, formatEur: format.currency(l.unitPrice, "EUR", EUR2), taxLabel: taxLabel(l.taxRate), formatEur2: format.currency(l.total, "EUR", EUR2) })}
+                      {l.credited > 0 ? t("crmInvoices.yaAbonado", { formatEur: format.currency(l.credited, "EUR", EUR2) }) : ""}
+                      {done ? t("crmInvoices.abonadaPorCompleto") : t("crmInvoices.puedesAbonarHasta", { formatEur: format.currency(l.remaining, "EUR", EUR2) })}
                     </span>
                   </span>
                 </label>
@@ -140,19 +135,19 @@ export function CreditNoteForm(props: {
                       className={`rounded-md border px-2 py-1.5 text-sm ${fieldClass}`}
                       value={d.by}
                       onChange={(e) => props.onDraftChange(l.itemIndex, { by: e.target.value as CreditNoteLineDraft["by"], value: e.target.value === "quantity" ? String(l.quantity) : String(l.remaining) })}
-                      aria-label="Abonar por"
+                      aria-label={t("crmInvoices.abonarPor")}
                     >
-                      <option value="quantity">Unidades</option>
-                      <option value="amount">Importe con IVA</option>
+                      <option value="quantity">{t("crmInvoices.unidades")}</option>
+                      <option value="amount">{t("crmInvoices.importeConIva")}</option>
                     </select>
                     <Input
                       inputMode="decimal"
                       className={`w-28 ${fieldClass}`}
                       value={d.value}
                       onChange={(e) => props.onDraftChange(l.itemIndex, { value: e.target.value })}
-                      aria-label={d.by === "quantity" ? "Unidades a abonar" : "Importe a abonar"}
+                      aria-label={d.by === "quantity" ? t("crmInvoices.unidadesAAbonar") : t("crmInvoices.importeAAbonar")}
                     />
-                    <span className="text-xs text-foreground/50">{d.by === "quantity" ? `de ${l.quantity}` : "€"}</span>
+                    <span className="text-xs text-foreground/50">{d.by === "quantity" ? t("crmInvoices.de", { quantity: l.quantity }) : "€"}</span>
                   </div>
                 )}
                 {err ? <p className="text-xs text-red-400 mt-1 pl-6">{err}</p> : null}
@@ -163,57 +158,55 @@ export function CreditNoteForm(props: {
       )}
 
       <div className="rounded-lg border border-foreground/[0.12] p-3" data-testid="vista-previa">
-        <p className="text-foreground/65 text-xs mb-2">Vista previa del abono</p>
+        <p className="text-foreground/65 text-xs mb-2">{t("crmInvoices.vistaPreviaDelAbono")}</p>
         {preview ? (
           <table className="w-full text-sm">
             <tbody>
               {preview.taxBreakdown.map((b) => (
                 <tr key={b.rate} className="text-foreground/75">
-                  <td>Base al {b.rate} %</td>
-                  <td className="text-right">{formatEur(abs(b.base))}</td>
-                  <td className="text-right pl-3">IVA {b.rate} %</td>
-                  <td className="text-right">{formatEur(abs(b.amount))}</td>
+                  <td>{t("crmInvoices.baseAl", { rate: b.rate })}</td>
+                  <td className="text-right">{format.currency(abs(b.base), "EUR", EUR2)}</td>
+                  <td className="text-right pl-3">{t("crmInvoices.iva2", { rate: b.rate })}</td>
+                  <td className="text-right">{format.currency(abs(b.amount), "EUR", EUR2)}</td>
                 </tr>
               ))}
               <tr className="text-foreground/75 border-t border-foreground/[0.1]">
-                <td>Base imponible</td>
-                <td className="text-right">{formatEur(abs(preview.subtotal))}</td>
-                <td className="text-right pl-3">Total IVA</td>
-                <td className="text-right">{formatEur(abs(preview.taxAmount))}</td>
+                <td>{t("crmInvoices.baseImponible")}</td>
+                <td className="text-right">{format.currency(abs(preview.subtotal), "EUR", EUR2)}</td>
+                <td className="text-right pl-3">{t("crmInvoices.totalIva")}</td>
+                <td className="text-right">{format.currency(abs(preview.taxAmount), "EUR", EUR2)}</td>
               </tr>
               <tr className="text-white font-semibold">
-                <td colSpan={3}>Total del abono</td>
-                <td className="text-right">−{formatEur(abs(preview.total))}</td>
+                <td colSpan={3}>{t("crmInvoices.totalDelAbono")}</td>
+                <td className="text-right">−{format.currency(abs(preview.total), "EUR", EUR2)}</td>
               </tr>
             </tbody>
           </table>
         ) : (
-          <p className="text-foreground/50">{props.previewLoading ? "Calculando…" : "Elige qué abonar para ver los importes."}</p>
+          <p className="text-foreground/50">{props.previewLoading ? t("crmInvoices.calculando") : t("crmInvoices.eligeQueAbonarPara")}</p>
         )}
         {preview && (
           <p className="text-xs text-foreground/50 mt-2">
             {preview.closesInvoice
-              ? "Con este abono la factura queda abonada por completo."
-              : `Después de este abono quedarán ${formatEur(preview.remainingAfter)} por abonar.`}
+              ? t("crmInvoices.conEsteAbonoLa")
+              : t("crmInvoices.despuesDeEsteAbono", { formatEur: format.currency(preview.remainingAfter, "EUR", EUR2) })}
           </p>
         )}
         {props.problem ? <p className="text-xs text-red-400 mt-2" role="alert">{props.problem}</p> : null}
       </div>
 
       <div>
-        <Label className="text-foreground/65 text-xs mb-1.5 block">Motivo del abono *</Label>
+        <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmInvoices.motivoDelAbono")}</Label>
         <Textarea
           value={props.reason}
           onChange={(e) => props.onReasonChange(e.target.value)}
-          placeholder="Ej.: devolución de una parte del pedido"
+          placeholder={t("crmInvoices.ejDevolucionDeUna")}
           className={`${fieldClass} placeholder:text-foreground/40 resize-none`}
           rows={2}
         />
         {props.reasonError ? <p className="text-xs text-red-400 mt-1">{props.reasonError}</p> : null}
       </div>
-      <p className="text-xs text-foreground/50">
-        Se emitirá una factura de abono con su propio número. La factura original no se modifica.
-      </p>
+      <p className="text-xs text-foreground/50">{t("crmInvoices.seEmitiraUnaFactura")}</p>
     </div>
   );
 }
@@ -229,6 +222,7 @@ function useDebounced<T>(value: T, ms: number): T {
 }
 
 export default function CreditNoteDialog({ invoiceId, onClose, onIssued }: { invoiceId: number | null; onClose: () => void; onIssued?: () => void }) {
+  const { t, format } = useI18n();
   const [mode, setMode] = useState<CreditNoteMode>("total");
   const [drafts, setDrafts] = useState<Record<number, CreditNoteLineDraft>>({});
   const [reason, setReason] = useState("");
@@ -262,7 +256,7 @@ export default function CreditNoteDialog({ invoiceId, onClose, onIssued }: { inv
 
   const issue = trpc.crm.invoices.createCreditNote.useMutation({
     onSuccess: (data) => {
-      toast.success(`Abono ${data.creditNoteNumber} emitido`);
+      toast.success(t("crmInvoices.abonoEmitido", { creditNoteNumber: data.creditNoteNumber }));
       utils.crm.invoices.listAll.invalidate();
       utils.crm.invoices.creditNotePreview.invalidate();
       onIssued?.();
@@ -283,13 +277,12 @@ export default function CreditNoteDialog({ invoiceId, onClose, onIssued }: { inv
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-[#0d1526] border-foreground/[0.12] text-white">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-2">
-            <RotateCcw className="w-5 h-5 text-violet-400" /> Emitir abono
-          </DialogTitle>
+            <RotateCcw className="w-5 h-5 text-violet-400" />{" "}{t("crmInvoices.emitirAbono")}</DialogTitle>
         </DialogHeader>
         {ctx.isLoading ? (
-          <p className="text-sm text-foreground/60 py-6 text-center">Cargando la factura…</p>
+          <p className="text-sm text-foreground/60 py-6 text-center">{t("crmInvoices.cargandoLaFactura")}</p>
         ) : ctx.error ? (
-          <p className="text-sm text-red-400 py-6 text-center">No se ha podido cargar la factura. Inténtalo de nuevo.</p>
+          <p className="text-sm text-red-400 py-6 text-center">{t("crmInvoices.noSeHaPodido")}</p>
         ) : ctx.data ? (
           <CreditNoteForm
             context={ctx.data}
@@ -307,10 +300,9 @@ export default function CreditNoteDialog({ invoiceId, onClose, onIssued }: { inv
           />
         ) : null}
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+          <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
           <Button size="sm" onClick={submit} disabled={!canSubmit} className="bg-violet-600 hover:bg-violet-700 text-white">
-            {issue.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <RotateCcw className="w-4 h-4 mr-1" />}
-            Emitir abono{preview ? ` de ${formatEur(abs(preview.total))}` : ""}
+            {issue.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <RotateCcw className="w-4 h-4 mr-1" />}{t("crmInvoices.emitirAbono")}{preview ? t("crmInvoices.de2", { formatEur: format.currency(abs(preview.total), "EUR", EUR2) }) : ""}
           </Button>
         </DialogFooter>
       </DialogContent>

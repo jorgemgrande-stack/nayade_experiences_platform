@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { computeDirectInvoice, convertUnitPrice, needsExemptionReason, validateNewInvoice } from "../shared/directInvoice";
 
+import { srcShows, esDictText } from "./i18nSource";
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const client = { name: "Cliente SL", nif: "", email: "", phone: "", address: "" };
 
@@ -67,9 +68,9 @@ describe("factura libre: IVA incluido o sin IVA", () => {
   it("el formulario usa IVA incluido por defecto, con selector y motivo de exención; el documento lo muestra", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/NewInvoiceDialog.tsx"), "utf8");
     expect(src).toContain("useState(true)");
-    expect(src).toContain("Precios con IVA incluido");
-    expect(src).toContain("Precios sin IVA");
-    expect(src).toContain("Motivo de la exención");
+    expect(srcShows(src, "Precios con IVA incluido")).toBe(true);
+    expect(srcShows(src, "Precios sin IVA")).toBe(true);
+    expect(srcShows(src, "Motivo de la exención (IVA 0 %) *")).toBe(true);
     expect(src).toContain("computeDirectInvoice(valid, { pricesIncludeTax })");
     const html = fs.readFileSync(path.resolve(__dirname, "invoiceHtml.ts"), "utf8");
     expect(html).toContain("exemptionReasons");

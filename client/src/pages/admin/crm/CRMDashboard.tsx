@@ -110,6 +110,9 @@ import {
   UserPlus,
 } from "lucide-react";
 
+import { useI18n } from "@/i18n/I18nProvider";
+const DT_FULL: Intl.DateTimeFormatOptions = { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" };
+const EUR2: Intl.NumberFormatOptions = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 /** Aviso del envío de un presupuesto según lo que ha pasado con el correo (prueba gratuita incluida). */
 function toastQuoteMail(r: QuoteMailResult | null | undefined, sentMessage: string) {
   const n = quoteMailNotice(r, sentMessage);
@@ -142,6 +145,7 @@ function ConfirmDialog({ open, title, description, confirmLabel = "Eliminar", on
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <AlertDialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
       <AlertDialogContent>
@@ -150,7 +154,7 @@ function ConfirmDialog({ open, title, description, confirmLabel = "Eliminar", on
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel>{t("crmShared.cancelar")}</AlertDialogCancel>
           <AlertDialogAction className="bg-destructive hover:bg-destructive/90 text-white" onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -161,27 +165,29 @@ function ConfirmDialog({ open, title, description, confirmLabel = "Eliminar", on
 // ─── BADGE HELPERS ────────────────────────────────────────────────────────────
 
 function OpportunityBadge({ status }: { status: OpportunityStatus }) {
+  const { t } = useI18n();
   const map: Record<OpportunityStatus, { label: string; className: string }> = {
-    nueva: { label: "Nueva", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-    enviada: { label: "Enviada", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-    ganada: { label: "Ganada", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-    perdida: { label: "Perdida", className: "bg-red-500/15 text-red-400 border-red-500/30" },
+    nueva: { label: t("crmLeads.nueva"), className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+    enviada: { label: t("crmLeads.enviada"), className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+    ganada: { label: t("crmLeads.ganada"), className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+    perdida: { label: t("crmLeads.perdida"), className: "bg-red-500/15 text-red-400 border-red-500/30" },
   };
   const { label, className } = map[status] ?? map.nueva;
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}>{label}</span>;
 }
 
 function QuoteStatusBadge({ status }: { status: QuoteStatus }) {
+  const { t } = useI18n();
   const map: Record<QuoteStatus, { label: string; className: string }> = {
-    borrador:           { label: "Borrador",         className: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
-    enviado:            { label: "Enviado",           className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-    visualizado:        { label: "Visualizado",       className: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
-    convertido_carrito: { label: "Pago iniciado",     className: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
-    pago_fallido:       { label: "Pago fallido",      className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-    aceptado:           { label: "Aceptado",          className: TONE_BADGE.success },
-    rechazado:          { label: "Rechazado",         className: "bg-red-500/15 text-red-400 border-red-500/30" },
-    expirado:           { label: "Expirado",          className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-    perdido:            { label: "Perdido",           className: "bg-red-500/15 text-red-400 border-red-500/30" },
+    borrador:           { label: t("crmQuotes.borrador"),         className: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
+    enviado:            { label: t("crmQuotes.enviado"),           className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+    visualizado:        { label: t("crmQuotes.visualizado"),       className: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
+    convertido_carrito: { label: t("crmQuotes.pagoIniciado"),     className: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
+    pago_fallido:       { label: t("crmQuotes.pagoFallido"),      className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+    aceptado:           { label: t("crmQuotes.aceptado"),          className: TONE_BADGE.success },
+    rechazado:          { label: t("crmQuotes.rechazado"),         className: "bg-red-500/15 text-red-400 border-red-500/30" },
+    expirado:           { label: t("crmQuotes.expirado"),          className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+    perdido:            { label: t("crmQuotes.perdido"),           className: "bg-red-500/15 text-red-400 border-red-500/30" },
   };
   const { label, className } = map[status] ?? { label: status, className: "bg-slate-500/15 text-slate-400 border-slate-500/30" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}>{label}</span>;
@@ -310,44 +316,47 @@ const COUNTER_STYLES = {
 
 // ─── Anulaciones badge helpers ───────────────────────────────────────────────
 function AnulOpBadge({ status }: { status: string }) {
+  const { t } = useI18n();
   const map: Record<string, { label: string; cls: string }> = {
-    recibida: { label: "Recibida", cls: "bg-blue-500/15 text-blue-300 border-blue-500/20" },
-    en_revision: { label: "En revisión", cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
-    pendiente_documentacion: { label: "Pend. docs", cls: "bg-orange-500/15 text-orange-300 border-orange-500/20" },
-    pendiente_decision: { label: "Pend. decisión", cls: "bg-yellow-500/15 text-yellow-300 border-yellow-500/20" },
-    resuelta: { label: "Resuelta", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
-    cerrada: { label: "Cerrada", cls: "bg-gray-500/15 text-gray-400 border-gray-500/20" },
-    incidencia: { label: "Incidencia", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+    recibida: { label: t("crmCancellations.recibida"), cls: "bg-blue-500/15 text-blue-300 border-blue-500/20" },
+    en_revision: { label: t("crmCancellations.enRevision"), cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
+    pendiente_documentacion: { label: t("crmCancellations.pendDocs"), cls: "bg-orange-500/15 text-orange-300 border-orange-500/20" },
+    pendiente_decision: { label: t("crmCancellations.pendDecision"), cls: "bg-yellow-500/15 text-yellow-300 border-yellow-500/20" },
+    resuelta: { label: t("crmCancellations.resuelta"), cls: "bg-green-500/15 text-green-300 border-green-500/20" },
+    cerrada: { label: t("crmCancellations.cerrada"), cls: "bg-gray-500/15 text-gray-400 border-gray-500/20" },
+    incidencia: { label: t("crmCancellations.incidencia"), cls: "bg-red-500/15 text-red-300 border-red-500/20" },
   };
   const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
 }
 function AnulResBadge({ status }: { status: string }) {
+  const { t } = useI18n();
   const map: Record<string, { label: string; cls: string }> = {
-    sin_resolver: { label: "Sin resolver", cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
-    rechazada: { label: "Rechazada", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
-    aceptada_total: { label: "Aceptada total", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
-    aceptada_parcial: { label: "Aceptada parcial", cls: "bg-teal-500/15 text-teal-300 border-teal-500/20" },
+    sin_resolver: { label: t("crmCancellations.sinResolver"), cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
+    rechazada: { label: t("crmCancellations.rechazada"), cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+    aceptada_total: { label: t("crmCancellations.aceptadaTotal"), cls: "bg-green-500/15 text-green-300 border-green-500/20" },
+    aceptada_parcial: { label: t("crmCancellations.aceptadaParcial"), cls: "bg-teal-500/15 text-teal-300 border-teal-500/20" },
   };
   const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
 }
 function AnulFinBadge({ status }: { status: string }) {
+  const { t } = useI18n();
   const map: Record<string, { label: string; cls: string }> = {
-    sin_compensacion: { label: "Sin comp.", cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
-    pendiente_devolucion: { label: "Pend. dev.", cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
-    devuelta_economicamente: { label: "Devuelta", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
-    pendiente_bono: { label: "Pend. bono", cls: "bg-purple-500/15 text-purple-300 border-purple-500/20" },
-    compensada_bono: { label: "Bono enviado", cls: "bg-violet-500/15 text-violet-300 border-violet-500/20" },
-    incidencia_economica: { label: "Incid. ec.", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+    sin_compensacion: { label: t("crmCancellations.sinComp"), cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
+    pendiente_devolucion: { label: t("crmCancellations.pendDev"), cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
+    devuelta_economicamente: { label: t("crmCancellations.devuelta"), cls: "bg-green-500/15 text-green-300 border-green-500/20" },
+    pendiente_bono: { label: t("crmCancellations.pendBono"), cls: "bg-purple-500/15 text-purple-300 border-purple-500/20" },
+    compensada_bono: { label: t("crmCancellations.bonoEnviado"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/20" },
+    incidencia_economica: { label: t("crmCancellations.incidEc"), cls: "bg-red-500/15 text-red-300 border-red-500/20" },
   };
   const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
 }
 
-function fmtAmount(n: number): string {
+function fmtAmount(n: number, format: ReturnType<typeof useI18n>["format"]): string {
   if (n === 0) return "";
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+  return format.currency(n, "EUR", { maximumFractionDigits: 0 });
 }
 
 function CounterCard({
@@ -369,6 +378,7 @@ function CounterCard({
   subtitle?: string;
   amount?: number;
 }) {
+  const { format } = useI18n();
   const s = COUNTER_STYLES[color] ?? COUNTER_STYLES.blue;
   const numericValue = typeof value === "number" ? value : null;
   const displayValue = typeof value === "string" ? value : undefined;
@@ -404,7 +414,7 @@ function CounterCard({
         </div>
         {amount != null && amount > 0 && (
           <span className={`text-[11px] font-semibold tabular-nums pb-0.5 ${s.number} opacity-70`}>
-            {fmtAmount(amount)}
+            {fmtAmount(amount, format)}
           </span>
         )}
       </div>
@@ -428,6 +438,7 @@ function LeadDetailModal({
   onClose: () => void;
   onConvert: (leadId: number, leadName?: string) => void;
 }) {
+  const { t, format } = useI18n();
   const [note, setNote] = useState("");
   const [pauseReason, setPauseReason] = useState("");
   const [showPauseInput, setShowPauseInput] = useState(false);
@@ -438,7 +449,7 @@ function LeadDetailModal({
 
   const addNote = trpc.crm.leads.addNote.useMutation({
     onSuccess: () => {
-      toast.success("Nota añadida");
+      toast.success(t("crmLeads.notaAnadida"));
       setNote("");
       utils.crm.leads.get.invalidate({ id: leadId });
     },
@@ -447,7 +458,7 @@ function LeadDetailModal({
 
   const updateStatus = trpc.crm.leads.update.useMutation({
     onSuccess: () => {
-      toast.success("Estado actualizado");
+      toast.success(t("crmLeads.estadoActualizado"));
       utils.crm.leads.get.invalidate({ id: leadId });
       utils.crm.leads.counters.invalidate();
     },
@@ -465,7 +476,7 @@ function LeadDetailModal({
   const generateQuote = trpc.crm.leads.generateFromLead.useMutation({
     onSuccess: (result) => {
       toast.success(
-        `✨ Presupuesto ${result.quoteNumber} generado con ${result.itemCount} línea${result.itemCount !== 1 ? "s" : ""} — Total: ${formatEur(result.total)}`,
+        t("crmLeads.presupuestoGeneradoCon", { quoteNumber: result.quoteNumber, itemCount: result.itemCount, total: format.currency(result.total, "EUR", EUR2) }),
         { duration: 5000 }
       );
       utils.crm.leads.get.invalidate({ id: leadId });
@@ -483,7 +494,7 @@ function LeadDetailModal({
   );
   const setPrefs = trpc.emailCommunications.setCustomerPrefs.useMutation({
     onSuccess: () => {
-      toast.success(emailPrefsQ.data?.automationsPaused ? "Automatizaciones reanudadas" : "Automatizaciones pausadas");
+      toast.success(emailPrefsQ.data?.automationsPaused ? t("crmLeads.automatizacionesReanudadas") : t("crmLeads.automatizacionesPausadas"));
       setPauseReason("");
       setShowPauseInput(false);
       emailPrefsQ.refetch();
@@ -525,14 +536,12 @@ function LeadDetailModal({
         <div className="flex items-center gap-3 flex-wrap">
           <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
           {(lead as any).source === "venta_perdida" && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/25">
-              Venta abandonada
-            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/25">{t("crmLeads.ventaAbandonada")}</span>
           )}
           <PriorityDot priority={lead.priority as Priority} />
-          <span className="text-xs text-foreground/50 capitalize">{lead.priority} prioridad</span>
+          <span className="text-xs text-foreground/50 capitalize">{t("crmLeads.prioridad", { priority: lead.priority })}</span>
           <span className="text-xs text-foreground/40">·</span>
-          <span className="text-xs text-foreground/50">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</span>
+          <span className="text-xs text-foreground/50">{format.date(lead.createdAt, {})}</span>
         </div>
 
         {/* Contact info */}
@@ -554,34 +563,34 @@ function LeadDetailModal({
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-2">
           {lead.selectedCategory && (
             <div className="flex justify-between text-sm">
-              <span className="text-foreground/60">Categoría</span>
+              <span className="text-foreground/60">{t("crmLeads.categoria")}</span>
               <span className="text-white font-medium">{lead.selectedCategory}</span>
             </div>
           )}
           {lead.selectedProduct && (
             <div className="flex justify-between text-sm">
-              <span className="text-foreground/60">Producto</span>
+              <span className="text-foreground/60">{t("crmLeads.producto")}</span>
               <span className="text-white font-medium">{lead.selectedProduct}</span>
             </div>
           )}
           {lead.preferredDate && (
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">{voc.serviceDate}</span>
-              <span className="text-white font-medium">{new Date(lead.preferredDate).toLocaleDateString("es-ES")}</span>
+              <span className="text-white font-medium">{format.date(lead.preferredDate, {})}</span>
             </div>
           )}
           {(lead as any).preferredTime && (
             <div className="flex justify-between text-sm">
-              <span className="text-foreground/60">Hora solicitada</span>
+              <span className="text-foreground/60">{t("crmLeads.horaSolicitada")}</span>
               <span className="text-white font-medium">{(lead as any).preferredTime}</span>
             </div>
           )}
           {(lead.numberOfAdults || lead.numberOfPersons) && (
             <div className="flex justify-between text-sm">
-              <span className="text-foreground/60">Personas</span>
+              <span className="text-foreground/60">{t("crmLeads.personas")}</span>
               <span className="text-white font-medium">
-                {lead.numberOfAdults ? `${lead.numberOfAdults} adultos` : ""}{lead.numberOfChildren ? ` + ${lead.numberOfChildren} niños` : ""}
-                {!lead.numberOfAdults && lead.numberOfPersons ? `${lead.numberOfPersons} personas` : ""}
+                {lead.numberOfAdults ? t("crmLeads.adultos2", { numberOfAdults: lead.numberOfAdults }) : ""}{lead.numberOfChildren ? t("crmLeads.ninos2", { numberOfChildren: lead.numberOfChildren }) : ""}
+                {!lead.numberOfAdults && lead.numberOfPersons ? t("crmLeads.personas2", { numberOfPersons: lead.numberOfPersons }) : ""}
               </span>
             </div>
           )}
@@ -594,13 +603,13 @@ function LeadDetailModal({
                   <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2.5">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-semibold text-white">{act.experienceTitle}</span>
-                      <span className="text-xs text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full">{act.participants} pax</span>
+                      <span className="text-xs text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full">{t("crmLeads.pax", { participants: act.participants })}</span>
                     </div>
                     {act.details && Object.keys(act.details).length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(act.details).map(([k, v]) => {
                           const labelMap: Record<string, string> = {
-                            duration: 'Duración', jumps: 'Saltos', level: 'Nivel',
+                            duration: t("crmLeads.duracion"), jumps: 'Saltos', level: 'Nivel',
                             type: 'Tipo', notes: 'Notas'
                           };
                           return (
@@ -618,7 +627,7 @@ function LeadDetailModal({
           )}
           {lead.message && (
             <div className="pt-2 border-t border-foreground/[0.12]">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">Mensaje</p>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">{t("crmLeads.mensaje")}</p>
               <p className="text-sm text-foreground/80 whitespace-pre-line break-words" data-testid="lead-message">{lead.message}</p>
             </div>
           )}
@@ -627,7 +636,7 @@ function LeadDetailModal({
         {/* Related quotes */}
         {relatedQuotes.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Presupuestos asociados</h4>
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.presupuestosAsociados")}</h4>
             <div className="space-y-2">
               {relatedQuotes.map((q: any) => (
                 <div key={q.id} className="flex items-center justify-between bg-foreground/[0.05] rounded-lg px-3 py-2">
@@ -637,7 +646,7 @@ function LeadDetailModal({
                   </div>
                   <div className="flex items-center gap-2">
                     <QuoteStatusBadge status={q.status as QuoteStatus} />
-                    <span className="text-sm font-bold text-orange-400">{formatEur(Number(q.total))}</span>
+                    <span className="text-sm font-bold text-orange-400">{format.currency(Number(q.total), "EUR", EUR2)}</span>
                   </div>
                 </div>
               ))}
@@ -647,7 +656,7 @@ function LeadDetailModal({
 
         {/* Email automation preferences */}
         <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Emails automáticos</h4>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.emailsAutomaticos")}</h4>
           <div className={`rounded-lg border px-4 py-3 flex items-start justify-between gap-3 ${emailPrefs?.automationsPaused ? "bg-amber-950/30 border-amber-700/40" : "bg-foreground/[0.04] border-foreground/[0.10]"}`}>
             <div className="flex items-start gap-2.5">
               {emailPrefs?.automationsPaused
@@ -655,18 +664,17 @@ function LeadDetailModal({
                 : <Bell className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />}
               <div>
                 <div className="text-sm font-medium text-white">
-                  {emailPrefs?.automationsPaused ? "Automatizaciones pausadas" : "Automatizaciones activas"}
+                  {emailPrefs?.automationsPaused ? t("crmLeads.automatizacionesPausadas") : t("crmLeads.automatizacionesActivas")}
                 </div>
                 {emailPrefs?.automationsPaused && emailPrefs.pauseReason && (
-                  <div className="text-xs text-amber-400/80 mt-0.5">Motivo: {emailPrefs.pauseReason}</div>
+                  <div className="text-xs text-amber-400/80 mt-0.5">{t("crmLeads.motivo", { pauseReason: emailPrefs.pauseReason })}</div>
                 )}
                 {emailPrefs?.automationsPaused && emailPrefs.pausedAt && (
-                  <div className="text-xs text-foreground/40 mt-0.5">
-                    Pausado el {new Date(emailPrefs.pausedAt).toLocaleDateString("es-ES")}
+                  <div className="text-xs text-foreground/40 mt-0.5">{t("crmLeads.pausadoEl")}{" "}{format.date(emailPrefs.pausedAt, {})}
                   </div>
                 )}
                 {!emailPrefs?.automationsPaused && (
-                  <div className="text-xs text-foreground/40 mt-0.5">Este cliente recibe emails automáticos normalmente</div>
+                  <div className="text-xs text-foreground/40 mt-0.5">{t("crmLeads.esteClienteRecibeEmails")}</div>
                 )}
               </div>
             </div>
@@ -679,8 +687,7 @@ function LeadDetailModal({
                   onClick={() => setPrefs.mutate({ email: lead.email, automationsPaused: false })}
                   disabled={setPrefs.isPending}
                 >
-                  <Bell className="w-3 h-3 mr-1" /> Reanudar
-                </Button>
+                  <Bell className="w-3 h-3 mr-1" />{" "}{t("crmLeads.reanudar")}</Button>
               ) : (
                 <Button
                   size="sm"
@@ -688,8 +695,7 @@ function LeadDetailModal({
                   className="text-xs h-7 border-amber-700/50 text-amber-400 hover:bg-amber-900/30"
                   onClick={() => setShowPauseInput(v => !v)}
                 >
-                  <BellOff className="w-3 h-3 mr-1" /> Pausar
-                </Button>
+                  <BellOff className="w-3 h-3 mr-1" />{" "}{t("crmLeads.pausar")}</Button>
               )}
             </div>
           </div>
@@ -698,7 +704,7 @@ function LeadDetailModal({
               <Input
                 value={pauseReason}
                 onChange={e => setPauseReason(e.target.value)}
-                placeholder="Motivo (opcional)..."
+                placeholder={t("crmLeads.motivoOpcional")}
                 className="h-8 text-xs bg-foreground/[0.05] border-foreground/[0.12] text-white"
               />
               <Button
@@ -706,9 +712,7 @@ function LeadDetailModal({
                 className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
                 onClick={() => setPrefs.mutate({ email: lead.email, automationsPaused: true, pauseReason: pauseReason || null })}
                 disabled={setPrefs.isPending}
-              >
-                Confirmar pausa
-              </Button>
+              >{t("crmLeads.confirmarPausa")}</Button>
             </div>
           )}
         </div>
@@ -716,31 +720,30 @@ function LeadDetailModal({
         {/* Emails automáticos programados para este lead */}
         <div>
           <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-2">
-            <Mail className="w-3 h-3" /> Emails programados
-          </h4>
+            <Mail className="w-3 h-3" />{" "}{t("crmLeads.emailsProgramados")}</h4>
           <ScheduledJobsMini entityType="lead" entityId={leadId} />
         </div>
 
         {/* Notes */}
         <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Notas internas</h4>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.notasInternas")}</h4>
           {Array.isArray(lead.internalNotes) && lead.internalNotes.length > 0 ? (
             <div className="space-y-2 mb-3">
               {(lead.internalNotes as { text: string; authorName: string; createdAt: string }[]).map((n, i) => (
                 <div key={i} className="bg-foreground/[0.05] rounded-lg px-3 py-2">
                   <p className="text-sm text-foreground/80">{n.text}</p>
-                  <p className="text-xs text-foreground/40 mt-1">{n.authorName} · {new Date(n.createdAt).toLocaleString("es-ES")}</p>
+                  <p className="text-xs text-foreground/40 mt-1">{n.authorName} · {format.dateTime(n.createdAt, DT_FULL)}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-foreground/40 mb-3">Sin notas aún</p>
+            <p className="text-xs text-foreground/40 mb-3">{t("crmLeads.sinNotasAun")}</p>
           )}
           <div className="flex gap-2">
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Añadir nota interna..."
+              placeholder={t("crmLeads.anadirNotaInterna")}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none h-16"
             />
             <Button
@@ -756,7 +759,7 @@ function LeadDetailModal({
 
         {/* Change status */}
         <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Cambiar estado</h4>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.cambiarEstado")}</h4>
           <div className="flex gap-2 flex-wrap">
             {(["nueva", "enviada", "ganada", "perdida"] as OpportunityStatus[]).map((s) => (
               <Button
@@ -780,16 +783,14 @@ function LeadDetailModal({
           className="border-red-500/30 text-red-400 hover:bg-red-500/10"
           onClick={() => markLost.mutate({ id: leadId })}
         >
-          <XCircle className="w-4 h-4 mr-1" /> Marcar perdido
-        </Button>
+          <XCircle className="w-4 h-4 mr-1" />{" "}{t("crmLeads.marcarPerdido")}</Button>
         {/* Botón 'Generar presupuesto' eliminado — flujo correcto es 'Crear Presupuesto' que abre el modal */}
         <Button
           size="sm"
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
           onClick={() => { onClose(); onConvert(leadId, undefined); }}
         >
-          <FileText className="w-4 h-4 mr-1" /> Crear Presupuesto
-        </Button>
+          <FileText className="w-4 h-4 mr-1" />{" "}{t("crmLeads.crearPresupuesto")}</Button>
       </DialogFooter>
     </DialogContent>
     </>
@@ -805,6 +806,7 @@ function LeadEditModal({
   leadId: number;
   onClose: () => void;
 }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
@@ -909,7 +911,7 @@ function LeadEditModal({
 
   const handleSave = () => {
     if (!form.name.trim() || !form.email.trim()) {
-      toast.error("Nombre y email son obligatorios");
+      toast.error(t("crmLeads.nombreYEmailSon"));
       return;
     }
     const validActivities = activityLines.filter(l => l.experienceTitle.trim());
@@ -951,19 +953,19 @@ function LeadEditModal({
         {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-foreground/65 text-xs">Nombre <span className="text-red-400">*</span></Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.nombre")}{" "}<span className="text-red-400">*</span></Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Email <span className="text-red-400">*</span></Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.email")}{" "}<span className="text-red-400">*</span></Label>
             <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Teléfono</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.telefono")}</Label>
             <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Empresa / Grupo</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.empresaGrupo")}</Label>
             <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
         </div>
@@ -1004,14 +1006,14 @@ function LeadEditModal({
                             })}>
                             <span className="text-foreground/50">{p.productType === "experience" ? "🏊" : "📦"}</span>
                             <span>{p.title}</span>
-                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50">{formatEur(Number(p.basePrice))}</span>}
+                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50">{format.currency(Number(p.basePrice), "EUR", EUR2)}</span>}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-foreground/50">Pax</span>
+                    <span className="text-xs text-foreground/50">{t("crmLeads.pax2")}</span>
                     <Input
                       type="number" min={1} value={line.participants}
                       onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
@@ -1039,11 +1041,11 @@ function LeadEditModal({
             <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Adultos</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.adultos")}</Label>
             <Input type="number" min={1} value={form.numberOfAdults} onChange={e => setForm({ ...form, numberOfAdults: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Niños</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.ninos")}</Label>
             <Input type="number" min={0} value={form.numberOfChildren} onChange={e => setForm({ ...form, numberOfChildren: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
         </div>
@@ -1051,25 +1053,25 @@ function LeadEditModal({
         {/* Prioridad y estado */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-foreground/65 text-xs">Prioridad</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.prioridad2")}</Label>
             <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
               <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="baja" className="text-white">Baja</SelectItem>
-                <SelectItem value="media" className="text-white">Media</SelectItem>
-                <SelectItem value="alta" className="text-white">Alta</SelectItem>
+                <SelectItem value="baja" className="text-white">{t("crmLeads.baja")}</SelectItem>
+                <SelectItem value="media" className="text-white">{t("crmLeads.media")}</SelectItem>
+                <SelectItem value="alta" className="text-white">{t("crmLeads.alta")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Estado oportunidad</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.estadoOportunidad")}</Label>
             <Select value={form.opportunityStatus} onValueChange={(v) => setForm({ ...form, opportunityStatus: v })}>
               <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
               <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="nueva" className="text-white">1. Nueva Oportunidad</SelectItem>
-                <SelectItem value="enviada" className="text-white">2. Oportunidad Enviada</SelectItem>
-                <SelectItem value="ganada" className="text-white">3. Oportunidad Ganada</SelectItem>
-                <SelectItem value="perdida" className="text-white">4. Oportunidad Perdida</SelectItem>
+                <SelectItem value="nueva" className="text-white">{t("crmLeads.n1NuevaOportunidad")}</SelectItem>
+                <SelectItem value="enviada" className="text-white">{t("crmLeads.n2OportunidadEnviada")}</SelectItem>
+                <SelectItem value="ganada" className="text-white">{t("crmLeads.n3OportunidadGanada")}</SelectItem>
+                <SelectItem value="perdida" className="text-white">{t("crmLeads.n4OportunidadPerdida")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1083,9 +1085,9 @@ function LeadEditModal({
               value={form.leadSourceId ? String(form.leadSourceId) : "none"}
               onValueChange={v => setForm({ ...form, leadSourceId: v === "none" ? null : Number(v) })}
             >
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue placeholder={t("crmLeads.sinAsignar")} /></SelectTrigger>
               <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="none" className="text-foreground/50 text-xs">Sin asignar</SelectItem>
+                <SelectItem value="none" className="text-foreground/50 text-xs">{t("crmLeads.sinAsignar")}</SelectItem>
                 {(leadSources as any[]).map((src: any) => (
                   <SelectItem key={src.id} value={String(src.id)} className="text-xs">
                     <span style={{ color: src.color ?? undefined }}>{src.name}</span>
@@ -1098,21 +1100,19 @@ function LeadEditModal({
 
         {/* Notas */}
         <div>
-          <Label className="text-foreground/65 text-xs">Mensaje / Comentarios</Label>
+          <Label className="text-foreground/65 text-xs">{t("crmLeads.mensajeComentarios")}</Label>
           <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-16 text-sm" />
         </div>
       </div>
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmLeads.cancelar")}</Button>
         <Button
           size="sm"
           onClick={handleSave}
           disabled={updateLead.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
-          {updateLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-          Guardar cambios
-        </Button>
+          {updateLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}{t("crmLeads.guardarCambios")}</Button>
       </DialogFooter>
     </DialogContent>
   );
@@ -1159,13 +1159,14 @@ function RegimeCell({ item, onChange }: {
   item: QuoteLineItem;
   onChange: (fiscalRegime: "reav" | "general", taxRate: number) => void;
 }) {
+  const { t } = useI18n();
   const voc = useVocabulary();
   const isProduct = item.productId != null;
   const isReav = item.fiscalRegime === "reav";
   if (isProduct) {
     return (
       <div className="col-span-2 flex items-center justify-center"
-        title="Régimen fiscal heredado del producto — no editable">
+        title={t("crmLeads.regimenFiscalHeredadoDel")}>
         <span className={`text-[10px] font-semibold px-2 py-1 rounded-md border whitespace-nowrap ${
           isReav ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
                  : "bg-foreground/[0.06] text-foreground/70 border-foreground/[0.12]"}`}>
@@ -1177,7 +1178,7 @@ function RegimeCell({ item, onChange }: {
   return (
     <select
       className="col-span-2 bg-foreground/[0.05] border border-orange-500/30 text-white text-xs rounded-md px-1 py-1.5 h-9"
-      title="Línea manual — el régimen fiscal se elige aquí"
+      title={t("crmLeads.lineaManualElRegimen")}
       value={isReav ? "reav" : ((item as any).taxRate === 10 ? "general_10" : "general")}
       onChange={(e) => {
         const v = e.target.value;
@@ -1186,9 +1187,9 @@ function RegimeCell({ item, onChange }: {
         else onChange("general", 21);
       }}
     >
-      <option value="general" className="bg-[#0d1526]">IVA 21% · manual</option>
-      <option value="general_10" className="bg-[#0d1526]">IVA 10% · manual</option>
-      {(voc.showReav || isReav) && <option value="reav" className="bg-[#0d1526]">REAV · manual</option>}
+      <option value="general" className="bg-[#0d1526]">{t("crmLeads.iva21Manual")}</option>
+      <option value="general_10" className="bg-[#0d1526]">{t("crmLeads.iva10Manual")}</option>
+      {(voc.showReav || isReav) && <option value="reav" className="bg-[#0d1526]">{t("crmLeads.reavManual")}</option>}
     </select>
   );
 }
@@ -1198,6 +1199,7 @@ function RegimeCell({ item, onChange }: {
 // ─── NEW LEAD MODAL (creación manual de lead por admin) ──────────────────────
 
 function NewLeadModal({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const [errors, setErrors] = useState<FieldErrors<"name" | "email" | "phone">>({});
@@ -1254,7 +1256,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
     const errs = validateContact({ name, email, phone });
     setErrors(errs);
     if (hasErrors(errs)) {
-      toast.error("Revisa los campos marcados");
+      toast.error(t("crmLeads.revisaLosCamposMarcados"));
       return;
     }
     const validActivities = activityLines.filter(l => l.experienceTitle.trim());
@@ -1292,23 +1294,23 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
         {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="new-lead-name" className="text-xs text-foreground/60 mb-1 block">Nombre <span className="text-red-400">*</span></Label>
-            <Input id="new-lead-name" required value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.name, "new-lead-name-error")} />
+            <Label htmlFor="new-lead-name" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.nombre")}{" "}<span className="text-red-400">*</span></Label>
+            <Input id="new-lead-name" required value={name} onChange={e => setName(e.target.value)} placeholder={t("crmLeads.anaGarcia")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.name, "new-lead-name-error")} />
             <FieldError id="new-lead-name-error" msg={errors.name} />
           </div>
           <div>
-            <Label htmlFor="new-lead-email" className="text-xs text-foreground/60 mb-1 block">Email <span className="text-red-400">*</span></Label>
+            <Label htmlFor="new-lead-email" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.email")}{" "}<span className="text-red-400">*</span></Label>
             <Input id="new-lead-email" required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.email, "new-lead-email-error")} />
             <FieldError id="new-lead-email-error" msg={errors.email} />
           </div>
           <div>
-            <Label htmlFor="new-lead-phone" className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+            <Label htmlFor="new-lead-phone" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.telefono")}</Label>
             <Input id="new-lead-phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.phone, "new-lead-phone-error")} />
             <FieldError id="new-lead-phone-error" msg={errors.phone} />
           </div>
           <div>
-            <Label htmlFor="new-lead-company" className="text-xs text-foreground/60 mb-1 block">Empresa / Grupo</Label>
-            <Input id="new-lead-company" value={company} onChange={e => setCompany(e.target.value)} placeholder="Empresa S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+            <Label htmlFor="new-lead-company" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.empresaGrupo")}</Label>
+            <Input id="new-lead-company" value={company} onChange={e => setCompany(e.target.value)} placeholder={t("crmLeads.empresaSL")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
           </div>
         </div>
 
@@ -1340,7 +1342,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                     sourceType={line.family === "experience" ? "experience" : line.family === "pack" ? "legoPack" : undefined}
                   />
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-foreground/50">Pax</span>
+                    <span className="text-xs text-foreground/50">{t("crmLeads.pax2")}</span>
                     <Input
                       type="number" min={1} value={line.participants}
                       onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
@@ -1356,7 +1358,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                 {line.experienceId && (
                   <p className="text-xs text-emerald-400 pl-6 mt-1.5 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                    {voc.licensed ? "Vinculado al catálogo" : <>{line.family === "experience" ? "Experiencia" : "Pack"} vinculado del catálogo</>}
+                    {voc.licensed ? t("crmLeads.vinculadoAlCatalogo") : <>{line.family === "experience" ? t("crmLeads.experiencia") : t("crmLeads.pack")}{" "}{t("crmLeads.vinculadoDelCatalogo")}</>}
                   </p>
                 )}
               </div>
@@ -1371,39 +1373,39 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
             <Input id="new-lead-date" type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
-            <Label htmlFor="new-lead-adults" className="text-xs text-foreground/60 mb-1 block">Adultos</Label>
+            <Label htmlFor="new-lead-adults" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.adultos")}</Label>
             <Input id="new-lead-adults" type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
-            <Label htmlFor="new-lead-children" className="text-xs text-foreground/60 mb-1 block">Niños</Label>
+            <Label htmlFor="new-lead-children" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.ninos")}</Label>
             <Input id="new-lead-children" type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
         </div>
 
         {/* Canal y notas */}
         <div>
-          <Label htmlFor="new-lead-source" className="text-xs text-foreground/60 mb-1 block">Canal de origen</Label>
+          <Label htmlFor="new-lead-source" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.canalDeOrigen")}</Label>
           <Select value={source} onValueChange={setSource}>
             <SelectTrigger id="new-lead-source" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
             <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-              <SelectItem value="admin" className="text-white text-xs">{voc.licensed ? "💼 Alta manual" : "💼 Admin (manual)"}</SelectItem>
-              <SelectItem value="telefono" className="text-white text-xs">📞 Teléfono</SelectItem>
-              <SelectItem value="email" className="text-white text-xs">📧 Email</SelectItem>
-              <SelectItem value="whatsapp" className="text-white text-xs">💬 WhatsApp</SelectItem>
-              <SelectItem value="presencial" className="text-white text-xs">👤 Presencial</SelectItem>
-              <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
+              <SelectItem value="admin" className="text-white text-xs">{voc.licensed ? t("crmLeads.altaManual") : t("crmLeads.adminManual")}</SelectItem>
+              <SelectItem value="telefono" className="text-white text-xs">{t("crmLeads.telefono2")}</SelectItem>
+              <SelectItem value="email" className="text-white text-xs">{t("crmLeads.email2")}</SelectItem>
+              <SelectItem value="whatsapp" className="text-white text-xs">{t("crmLeads.whatsapp")}</SelectItem>
+              <SelectItem value="presencial" className="text-white text-xs">{t("crmLeads.presencial")}</SelectItem>
+              <SelectItem value="otro" className="text-white text-xs">{t("crmLeads.otro")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div>
-          <Label htmlFor="new-lead-message" className="text-xs text-foreground/60 mb-1 block">Mensaje / notas</Label>
-          <Textarea id="new-lead-message" value={messageText} onChange={e => setMessageText(e.target.value)} placeholder="Información adicional del cliente..." rows={3} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
+          <Label htmlFor="new-lead-message" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.mensajeNotas")}</Label>
+          <Textarea id="new-lead-message" value={messageText} onChange={e => setMessageText(e.target.value)} placeholder={t("crmLeads.informacionAdicionalDelCliente")} rows={3} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
         </div>
       </div>
       <DialogFooter className="gap-2">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmLeads.cancelar")}</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createLead.isPending} className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white">
-          {createLead.isPending ? "Creando..." : voc.createLead}
+          {createLead.isPending ? t("crmLeads.creando") : voc.createLead}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1413,6 +1415,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
 // ─── NEW RESERVATION MODAL (creación manual de reserva por admin) ─────────────
 
 function NewReservationModal({ onClose }: { onClose: () => void }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const [errors, setErrors] = useState<FieldErrors<"name" | "email" | "phone" | "product" | "date" | "amount">>({});
@@ -1455,7 +1458,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       setClientSearch("");
       setShowClientSugg(false);
       setShowCreateClient(false);
-      toast.success("Cliente creado y seleccionado");
+      toast.success(t("crmReservations.clienteCreadoYSeleccionado"));
     },
     onError: (e) => toast.error(errorToastMessage(e, "No se ha podido crear el cliente.")),
   });
@@ -1508,7 +1511,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       { date: voc.serviceDate },
     );
     setErrors(errs);
-    if (hasErrors(errs)) { toast.error("Revisa los campos marcados"); return; }
+    if (hasErrors(errs)) { toast.error(t("crmReservations.revisaLosCamposMarcados")); return; }
     if (!productId) return;
     createManual.mutate({
       customerName: customerName.trim(),
@@ -1537,19 +1540,19 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       <div className="space-y-4 py-2">
         {/* Cliente */}
         <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Cliente</p>
+          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">{t("crmReservations.cliente")}</p>
 
           {/* Búsqueda de cliente existente — se oculta cuando hay cliente seleccionado o se está creando */}
           {!customerName && !showCreateClient && (
             <div className="relative">
-              <Label htmlFor="new-order-client" className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
+              <Label htmlFor="new-order-client" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.nombreCompleto")}</Label>
               <Input
                 id="new-order-client"
                 {...invalidProps(errors.name, "new-order-client-error")}
                 value={clientSearch}
                 onChange={e => { setClientSearch(e.target.value); setShowClientSugg(true); }}
                 onFocus={() => setShowClientSugg(true)}
-                placeholder="Buscar cliente existente o escribir nuevo..."
+                placeholder={t("crmReservations.buscarClienteExistenteO")}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
               />
               {showClientSugg && clientSuggestions.length > 0 && (
@@ -1570,9 +1573,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                   onClick={() => { setNewClientName(clientSearch); setNewClientEmail(""); setNewClientPhone(""); setNewClientCompany(""); setShowClientSugg(false); setShowCreateClient(true); }}
                   className="mt-2 w-full flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 border border-dashed border-emerald-500/40 hover:border-emerald-500/70 rounded-lg px-3 py-2 transition-colors"
                 >
-                  <UserPlus className="w-4 h-4 shrink-0" />
-                  Crear nuevo cliente "{clientSearch}"
-                </button>
+                  <UserPlus className="w-4 h-4 shrink-0" />{t("crmReservations.crearNuevoCliente", { clientSearch })}</button>
               )}
               <FieldError id="new-order-client-error" msg={errors.name} />
             </div>
@@ -1585,9 +1586,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                 <p className="text-sm font-medium text-emerald-300">{customerName}</p>
                 {customerEmail && <p className="text-xs text-foreground/50">{customerEmail}</p>}
               </div>
-              <button type="button" onClick={() => { setCustomerName(""); setCustomerEmail(""); setCustomerPhone(""); setClientSearch(""); }} className="text-xs text-foreground/40 hover:text-foreground/70 underline underline-offset-2">
-                Cambiar
-              </button>
+              <button type="button" onClick={() => { setCustomerName(""); setCustomerEmail(""); setCustomerPhone(""); setClientSearch(""); }} className="text-xs text-foreground/40 hover:text-foreground/70 underline underline-offset-2">{t("crmReservations.cambiar")}</button>
             </div>
           )}
 
@@ -1596,31 +1595,30 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
             <div className="bg-emerald-950/30 border border-emerald-500/25 rounded-lg p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <UserPlus className="w-3.5 h-3.5" /> Nuevo cliente
-                </p>
-                <button type="button" onClick={() => setShowCreateClient(false)} className="text-foreground/40 hover:text-foreground/70" aria-label="Cerrar el alta de cliente">
+                  <UserPlus className="w-3.5 h-3.5" />{" "}{t("crmReservations.nuevoCliente")}</p>
+                <button type="button" onClick={() => setShowCreateClient(false)} className="text-foreground/40 hover:text-foreground/70" aria-label={t("crmReservations.cerrarElAltaDe")}>
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <Label htmlFor="new-client-name" className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
-                  <Input id="new-client-name" required value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Nombre completo" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.name, "new-client-name-error")} />
+                  <Label htmlFor="new-client-name" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.nombreCompleto")}</Label>
+                  <Input id="new-client-name" required value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder={t("crmReservations.nombreCompleto2")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.name, "new-client-name-error")} />
                   <FieldError id="new-client-name-error" msg={clientErrors.name} />
                 </div>
                 <div className="col-span-2">
-                  <Label htmlFor="new-client-email" className="text-xs text-foreground/60 mb-1 block">Email *</Label>
+                  <Label htmlFor="new-client-email" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.email")}</Label>
                   <Input id="new-client-email" required type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.email, "new-client-email-error")} />
                   <FieldError id="new-client-email-error" msg={clientErrors.email} />
                 </div>
                 <div>
-                  <Label htmlFor="new-client-phone" className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+                  <Label htmlFor="new-client-phone" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.telefono")}</Label>
                   <Input id="new-client-phone" type="tel" value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.phone, "new-client-phone-error")} />
                   <FieldError id="new-client-phone-error" msg={clientErrors.phone} />
                 </div>
                 <div>
-                  <Label htmlFor="new-client-company" className="text-xs text-foreground/60 mb-1 block">Empresa</Label>
-                  <Input id="new-client-company" value={newClientCompany} onChange={e => setNewClientCompany(e.target.value)} placeholder="Opcional" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                  <Label htmlFor="new-client-company" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.empresa")}</Label>
+                  <Input id="new-client-company" value={newClientCompany} onChange={e => setNewClientCompany(e.target.value)} placeholder={t("crmReservations.opcional")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
                 </div>
               </div>
               <Button
@@ -1629,7 +1627,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                 disabled={createClientMutation.isPending}
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-8"
               >
-                {createClientMutation.isPending ? "Creando..." : "✓ Crear y usar este cliente"}
+                {createClientMutation.isPending ? t("crmReservations.creando") : t("crmReservations.crearYUsarEste")}
               </Button>
             </div>
           )}
@@ -1638,12 +1636,12 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           {customerName && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="new-order-email" className="text-xs text-foreground/60 mb-1 block">Email *</Label>
+                <Label htmlFor="new-order-email" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.email")}</Label>
                 <Input id="new-order-email" required type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.email, "new-order-email-error")} />
                 <FieldError id="new-order-email-error" msg={errors.email} />
               </div>
               <div>
-                <Label htmlFor="new-order-phone" className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+                <Label htmlFor="new-order-phone" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.telefono")}</Label>
                 <Input id="new-order-phone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.phone, "new-order-phone-error")} />
                 <FieldError id="new-order-phone-error" msg={errors.phone} />
               </div>
@@ -1652,7 +1650,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
         </div>
         {/* Producto */}
         <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Producto / Servicio</p>
+          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">{t("crmReservations.productoServicio")}</p>
           <div className="relative">
             <Label htmlFor="new-order-product" className="text-xs text-foreground/60 mb-1 block">{voc.productRequired}</Label>
             {productName ? (
@@ -1660,12 +1658,10 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                 <div>
                   <p className="text-sm font-medium text-emerald-300">{productName}</p>
                   <p className="text-xs text-foreground/50 mt-0.5">
-                    {productPricingType === "per_person" ? "precio por persona" : "precio por unidad"}
+                    {productPricingType === "per_person" ? t("crmReservations.precioPorPersona") : t("crmReservations.precioPorUnidad")}
                   </p>
                 </div>
-                <button type="button" onClick={() => { setProductId(null); setProductName(""); setProductSearch(""); setProductPricingType("per_person"); setAmountTotal(""); setAmountPaid(""); }} className="text-xs text-foreground/40 hover:text-foreground/70 underline underline-offset-2">
-                  Cambiar
-                </button>
+                <button type="button" onClick={() => { setProductId(null); setProductName(""); setProductSearch(""); setProductPricingType("per_person"); setAmountTotal(""); setAmountPaid(""); }} className="text-xs text-foreground/40 hover:text-foreground/70 underline underline-offset-2">{t("crmReservations.cambiar")}</button>
               </div>
             ) : (
               <>
@@ -1676,7 +1672,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                   onChange={e => { setProductSearch(e.target.value); setShowProductSugg(true); }}
                   onFocus={() => setShowProductSugg(true)}
                   onBlur={() => setTimeout(() => setShowProductSugg(false), 150)}
-                  placeholder={voc.licensed ? voc.productSearch : "Buscar producto o actividad..."}
+                  placeholder={voc.licensed ? voc.productSearch : t("crmReservations.buscarProductoOActividad")}
                   className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
                 />
                 {showProductSugg && productSuggestions.length > 0 && (
@@ -1685,7 +1681,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                       const base = Number(p.basePrice ?? 0);
                       const pricing = p.pricingType ?? "per_person";
                       const priceLabel = base > 0
-                        ? `${formatEur(base)}${pricing === "per_person" ? "/pers" : "/ud"}`
+                        ? `${format.currency(base, "EUR", EUR2)}${pricing === "per_person" ? "/pers" : "/ud"}`
                         : null;
                       return (
                         <button key={`${p.productType}-${p.id}`} type="button"
@@ -1712,9 +1708,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
                 {showProductSugg && productQuery.length > 0 && !productsFetching && productSuggestions.length === 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl px-3 py-3 text-sm text-foreground/40">
-                    Sin resultados para "{productQuery}"
-                  </div>
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl px-3 py-3 text-sm text-foreground/40">{t("crmReservations.sinResultadosPara", { productQuery })}</div>
                 )}
               </>
             )}
@@ -1722,70 +1716,70 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="new-order-date" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? voc.serviceDate : "Fecha del servicio"} *</Label>
+              <Label htmlFor="new-order-date" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? voc.serviceDate : t("crmReservations.fechaDelServicio")} *</Label>
               <Input id="new-order-date" required type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" {...invalidProps(errors.date, "new-order-date-error")} />
               <FieldError id="new-order-date-error" msg={errors.date} />
             </div>
             <div>
-              <Label htmlFor="new-order-people" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? "Cantidad" : "Nº personas"}</Label>
+              <Label htmlFor="new-order-people" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? t("crmReservations.cantidad") : t("crmReservations.nPersonas")}</Label>
               <Input id="new-order-people" type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
             </div>
           </div>
         </div>
         {/* Económico */}
         <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Datos económicos</p>
+          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">{t("crmReservations.datosEconomicos")}</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="new-order-total" className="text-xs text-foreground/60 mb-1 block">Importe total (€) *</Label>
+              <Label htmlFor="new-order-total" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.importeTotal")}</Label>
               <Input id="new-order-total" required type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.amount, "new-order-total-error")} />
               <FieldError id="new-order-total-error" msg={errors.amount} />
             </div>
             <div>
-              <Label htmlFor="new-order-paid" className="text-xs text-foreground/60 mb-1 block">Importe cobrado (€)</Label>
-              <Input id="new-order-paid" type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="Igual al total si pagado" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+              <Label htmlFor="new-order-paid" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.importeCobrado")}</Label>
+              <Input id="new-order-paid" type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder={t("crmReservations.igualAlTotalSi")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="new-order-payment" className="text-xs text-foreground/60 mb-1 block">Método de pago</Label>
+              <Label htmlFor="new-order-payment" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.metodoDePago")}</Label>
               <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as typeof paymentMethod)}>
                 <SelectTrigger id="new-order-payment" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="efectivo" className="text-white text-xs">💵 Efectivo</SelectItem>
-                  <SelectItem value="transferencia" className="text-white text-xs">🏦 Transferencia</SelectItem>
-                  <SelectItem value="tarjeta_fisica" className="text-white text-xs">💳 {voc.licensed ? "Tarjeta en datáfono" : "Tarjeta Física"}</SelectItem>
-                  <SelectItem value="tarjeta_redsys" className="text-white text-xs">💳 {voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys"}</SelectItem>
-                  {!voc.licensed && <SelectItem value="redsys" className="text-white text-xs">💳 Tarjeta Redsys (legacy)</SelectItem>}
-                  <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
+                  <SelectItem value="efectivo" className="text-white text-xs">{t("crmReservations.efectivo")}</SelectItem>
+                  <SelectItem value="transferencia" className="text-white text-xs">{t("crmReservations.transferencia")}</SelectItem>
+                  <SelectItem value="tarjeta_fisica" className="text-white text-xs">💳 {voc.licensed ? t("crmReservations.tarjetaEnDatafono") : t("crmReservations.tarjetaFisica")}</SelectItem>
+                  <SelectItem value="tarjeta_redsys" className="text-white text-xs">💳 {voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys")}</SelectItem>
+                  {!voc.licensed && <SelectItem value="redsys" className="text-white text-xs">{t("crmReservations.tarjetaRedsysLegacy")}</SelectItem>}
+                  <SelectItem value="otro" className="text-white text-xs">{t("crmReservations.otro")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="new-order-channel" className="text-xs text-foreground/60 mb-1 block">Canal</Label>
+              <Label htmlFor="new-order-channel" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.canal")}</Label>
               <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
                 <SelectTrigger id="new-order-channel" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="VENTA_DELEGADA" className="text-white text-xs">{voc.licensed ? "💼 Alta desde el panel" : "💼 CRM (admin)"}</SelectItem>
-                  <SelectItem value="TELEFONO" className="text-white text-xs">📞 Teléfono</SelectItem>
-                  <SelectItem value="EMAIL" className="text-white text-xs">📧 Email</SelectItem>
-                  <SelectItem value="MANUAL" className="text-white text-xs">❓ Otro</SelectItem>
+                  <SelectItem value="VENTA_DELEGADA" className="text-white text-xs">{voc.licensed ? t("crmReservations.altaDesdeElPanel") : t("crmReservations.crmAdmin")}</SelectItem>
+                  <SelectItem value="TELEFONO" className="text-white text-xs">{t("crmReservations.telefono2")}</SelectItem>
+                  <SelectItem value="EMAIL" className="text-white text-xs">{t("crmReservations.email2")}</SelectItem>
+                  <SelectItem value="MANUAL" className="text-white text-xs">{t("crmReservations.otro")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
         </div>
         <div>
-          <Label htmlFor="new-order-notes" className="text-xs text-foreground/60 mb-1 block">Notas internas</Label>
-          <Textarea id="new-order-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo..." rows={2} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
+          <Label htmlFor="new-order-notes" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.notasInternas")}</Label>
+          <Textarea id="new-order-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder={t("crmReservations.notasParaElEquipo")} rows={2} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
         </div>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={sendEmailConfirm} onChange={e => setSendEmailConfirm(e.target.checked)} className="rounded" />
-          <span className="text-sm text-foreground/65">Enviar email de confirmación al cliente</span>
+          <span className="text-sm text-foreground/65">{t("crmReservations.enviarEmailDeConfirmacion")}</span>
         </label>
       </div>
       <DialogFooter className="gap-2">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmReservations.cancelar")}</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createManual.isPending} className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
           {createManual.isPending ? voc.creatingOrder : voc.createOrder}
         </Button>
@@ -1795,6 +1789,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
 }
 
 function DirectQuoteModal({ onClose }: { onClose: () => void }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const [errors, setErrors] = useState<FieldErrors<"name" | "email" | "phone" | "lines">>({});
@@ -1891,10 +1886,10 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           quoteId: data.quoteId,
           installments: draftInstallmentsD.map((i, idx) => ({ ...i, installmentNumber: idx + 1 })),
         });
-        toast.success(`Presupuesto ${data.quoteNumber} creado con plan de ${draftInstallmentsD.length} cuotas`);
+        toast.success(t("crmQuotes.presupuestoCreadoConPlan", { quoteNumber: data.quoteNumber, draftInstallmentsDCount: draftInstallmentsD.length }));
       } else {
-        if (data.sent) toastQuoteMail(data, `Presupuesto ${data.quoteNumber} creado y enviado al cliente`);
-        else toast.success(`Presupuesto ${data.quoteNumber} guardado como borrador`);
+        if (data.sent) toastQuoteMail(data, t("crmQuotes.presupuestoCreadoYEnviado", { quoteNumber: data.quoteNumber }));
+        else toast.success(t("crmQuotes.presupuestoGuardadoComoBorrado", { quoteNumber: data.quoteNumber }));
       }
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
@@ -1909,11 +1904,11 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
     if (errs.lines) errs.lines = "Completa la descripción de todos los conceptos.";
     setErrors(errs);
     if (hasErrors(errs)) {
-      toast.error("Revisa los campos marcados");
+      toast.error(t("crmQuotes.revisaLosCamposMarcados"));
       return;
     }
     if (draftInstallmentsD.some(i => !i.dueDate || i.amountCents <= 0)) {
-      toast.error("Completa el importe y la fecha de todas las cuotas del plan");
+      toast.error(t("crmQuotes.completaElImporteY"));
       return;
     }
     setSendAfterCreate(andSend);
@@ -1930,7 +1925,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       total,
       validUntil,
       activityDate: activityDate || null,
-      notes: promoData ? `Código ${promoData.code} (-${promoData.discountPercent}%)${notes ? "\n" + notes : ""}` : notes || undefined,
+      notes: promoData ? t("crmQuotes.codigo", { code: promoData.code, discountPercent: promoData.discountPercent, v: notes ? "\n" + notes : "" }) : notes || undefined,
       conditions,
       sendNow: andSend,
       origin: window.location.origin,
@@ -1953,8 +1948,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
     <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto *:min-w-0">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2 pr-6">
-          <Plus className="w-5 h-5 text-orange-400" /> {voc.licensed ? "Nuevo presupuesto" : "Nuevo Presupuesto"}
-          <span className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">sin {voc.lead} previ{voc.agreeLead("o", "a")}</span>
+          <Plus className="w-5 h-5 text-orange-400" /> {voc.licensed ? t("crmQuotes.nuevoPresupuesto2") : t("crmQuotes.nuevoPresupuesto")}
+          <span className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">{voc.agreeLead(t("crmQuotes.sinLeadPrevio", { lead: voc.lead }), t("crmQuotes.sinLeadPrevia", { lead: voc.lead }))}</span>
         </DialogTitle>
       </DialogHeader>
 
@@ -1963,18 +1958,18 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2 mb-1">
             <User className="w-4 h-4 text-orange-400" />
-            <span className="text-xs font-semibold uppercase tracking-widest text-foreground/60">Datos del cliente</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-foreground/60">{t("crmQuotes.datosDelCliente")}</span>
           </div>
 
           {/* Buscador de cliente existente */}
           <div className="relative">
-            <Label htmlFor="new-quote-client-search" className="text-foreground/65 text-xs">Buscar cliente existente</Label>
+            <Label htmlFor="new-quote-client-search" className="text-foreground/65 text-xs">{t("crmQuotes.buscarClienteExistente")}</Label>
             <div className="relative mt-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" aria-hidden="true" />
               <Input
                 id="new-quote-client-search"
                 className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
-                placeholder="Nombre o email del cliente..."
+                placeholder={t("crmQuotes.nombreOEmailDel")}
                 value={clientSearch}
                 onChange={(e) => { setClientSearch(e.target.value); setShowClientSuggestions(true); }}
                 onFocus={() => setShowClientSuggestions(true)}
@@ -2001,31 +1996,31 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
-          <div className="text-xs text-foreground/40 text-center">— o introduce los datos manualmente —</div>
+          <div className="text-xs text-foreground/40 text-center">{t("crmQuotes.oIntroduceLosDatos")}</div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="new-quote-name" className="text-foreground/65 text-xs">Nombre *</Label>
+              <Label htmlFor="new-quote-name" className="text-foreground/65 text-xs">{t("crmQuotes.nombre")}</Label>
               <Input id="new-quote-name" required value={clientName} onChange={(e) => { setClientName(e.target.value); setTitle(`Presupuesto - ${e.target.value}`); }}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre completo" {...invalidProps(errors.name, "new-quote-name-error")} />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder={t("crmQuotes.nombreCompleto")} {...invalidProps(errors.name, "new-quote-name-error")} />
               <FieldError id="new-quote-name-error" msg={errors.name} />
             </div>
             <div>
-              <Label htmlFor="new-quote-email" className="text-foreground/65 text-xs">Email *</Label>
+              <Label htmlFor="new-quote-email" className="text-foreground/65 text-xs">{t("crmQuotes.email")}</Label>
               <Input id="new-quote-email" required type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="cliente@email.com" {...invalidProps(errors.email, "new-quote-email-error")} />
               <FieldError id="new-quote-email-error" msg={errors.email} />
             </div>
             <div>
-              <Label htmlFor="new-quote-phone" className="text-foreground/65 text-xs">Teléfono</Label>
+              <Label htmlFor="new-quote-phone" className="text-foreground/65 text-xs">{t("crmQuotes.telefono")}</Label>
               <Input id="new-quote-phone" type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="+34 600 000 000" {...invalidProps(errors.phone, "new-quote-phone-error")} />
               <FieldError id="new-quote-phone-error" msg={errors.phone} />
             </div>
             <div>
-              <Label htmlFor="new-quote-company" className="text-foreground/65 text-xs">Empresa</Label>
+              <Label htmlFor="new-quote-company" className="text-foreground/65 text-xs">{t("crmQuotes.empresa")}</Label>
               <Input id="new-quote-company" value={clientCompany} onChange={(e) => setClientCompany(e.target.value)}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre empresa (opcional)" />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder={t("crmQuotes.nombreEmpresaOpcional")} />
             </div>
           </div>
         </div>
@@ -2033,7 +2028,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         {/* ── Asunto y fechas ── */}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label htmlFor="new-quote-title" className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
+            <Label htmlFor="new-quote-title" className="text-foreground/65 text-xs">{t("crmQuotes.asuntoDelPresupuesto")}</Label>
             <Input id="new-quote-title" value={title} onChange={(e) => setTitle(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" />
           </div>
@@ -2043,7 +2038,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label htmlFor="new-quote-valid" className="text-foreground/65 text-xs">Válido hasta</Label>
+            <Label htmlFor="new-quote-valid" className="text-foreground/65 text-xs">{t("crmQuotes.validoHasta")}</Label>
             <Input id="new-quote-valid" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
@@ -2052,21 +2047,20 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         {/* ── Conceptos ── */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-foreground/65 text-xs">Conceptos * <span className="text-foreground/40">(escribe o busca un producto)</span></Label>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.conceptos")}{" "}<span className="text-foreground/40">{t("crmQuotes.escribeOBuscaUn")}</span></Label>
             <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0 }])}>
-              <Plus className="w-3 h-3 mr-1" /> Añadir línea
-            </Button>
+              <Plus className="w-3 h-3 mr-1" />{" "}{t("crmQuotes.anadirLinea")}</Button>
           </div>
           <FieldError id="new-quote-lines-error" msg={errors.lines} />
           <div className="overflow-x-auto -mx-1 px-1">
           <div className="min-w-[460px]">
           <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
-            <span className="col-span-4">Descripción</span>
-            <span className="col-span-2 text-center">Régimen</span>
-            <span className="col-span-2 text-center">Cant.</span>
-            <span className="col-span-2 text-right">P.Unit.</span>
-            <span className="col-span-2 text-right">Total</span>
+            <span className="col-span-4">{t("crmQuotes.descripcion")}</span>
+            <span className="col-span-2 text-center">{t("crmQuotes.regimen")}</span>
+            <span className="col-span-2 text-center">{t("crmQuotes.cant")}</span>
+            <span className="col-span-2 text-right">{t("crmQuotes.pUnit")}</span>
+            <span className="col-span-2 text-right">{t("crmQuotes.total")}</span>
           </div>
           <div className="space-y-2">
             {items.map((item, idx) => (
@@ -2091,21 +2085,21 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                   item={item as QuoteLineItem}
                   onChange={(fr, tr) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: fr, taxRate: tr } : it))}
                 />
-                <Input aria-label={`Cantidad de la línea ${idx + 1}`} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
+                <Input aria-label={t("crmQuotes.cantidadDeLaLinea", { v: idx + 1 })} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
-                <Input aria-label={`Precio unitario de la línea ${idx + 1}`} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
+                <Input aria-label={t("crmQuotes.precioUnitarioDeLa", { v: idx + 1 })} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{formatEur(item.total)}</div>
-                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1" aria-label={`Quitar la línea ${idx + 1}`}
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{format.currency(item.total, "EUR", EUR2)}</div>
+                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1" aria-label={t("crmQuotes.quitarLaLinea", { v: idx + 1 })}
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <label htmlFor={`new-quote-line-date-${idx}`} className="text-[11px] text-muted-foreground whitespace-nowrap">{voc.serviceDateLabel} (opcional):</label>
+                <label htmlFor={`new-quote-line-date-${idx}`} className="text-[11px] text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</label>
                 <Input id={`new-quote-line-date-${idx}`} type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-muted-foreground">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
+                <span className="text-[10px] text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
               </div>
               </div>
             ))}
@@ -2118,32 +2112,32 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{formatEur((discountedGeneral - taxAmount))}</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{formatEur((discountedSubtotal - discountedGeneral))}</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponibleGeneral")}</span><span>{format.currency((discountedGeneral - taxAmount), "EUR", EUR2)}</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((discountedSubtotal - discountedGeneral), "EUR", EUR2)}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{formatEur(baseImponible)}</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponible")}</span><span>{format.currency(baseImponible, "EUR", EUR2)}</span></div>
           )}
           {taxRowsD.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{formatEur(row.amount)}</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.ivaIncluidoEnEl", { rate: row.rate })}</span><span>{format.currency(row.amount, "EUR", EUR2)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
-            <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
+            <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
-            <span>TOTAL</span><span className="text-orange-400 text-xl">{formatEur(total)}</span>
+            <span>{t("crmQuotes.total2")}</span><span className="text-orange-400 text-xl">{format.currency(total, "EUR", EUR2)}</span>
           </div>
         </div>
 
         <div>
-          <Label className="text-foreground/65 text-xs">Notas para el cliente</Label>
+          <Label className="text-foreground/65 text-xs">{t("crmQuotes.notasParaElCliente")}</Label>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-            placeholder="Información adicional visible para el cliente..."
+            placeholder={t("crmQuotes.informacionAdicionalVisiblePar")}
             className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1 resize-none h-16 text-sm" />
         </div>
         <div>
-          <Label className="text-foreground/65 text-xs">Condiciones</Label>
+          <Label className="text-foreground/65 text-xs">{t("crmQuotes.condiciones")}</Label>
           <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)}
             className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-12 text-sm" />
         </div>
@@ -2157,19 +2151,17 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-foreground/[0.04] transition-colors"
         >
           <span className="flex items-center gap-2 text-violet-300 font-medium">
-            <CreditCard className="w-4 h-4" />
-            Plan de pago fraccionado
-            {draftInstallmentsD.length > 0 && (
+            <CreditCard className="w-4 h-4" />{t("crmQuotes.planDePagoFraccionado")}{draftInstallmentsD.length > 0 && (
               <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-xs px-1.5 py-0.5 rounded-full">
-                {draftInstallmentsD.length} cuota{draftInstallmentsD.length !== 1 ? "s" : ""}
+                {t("crmQuotes.cuota", { draftInstallmentsDCount: draftInstallmentsD.length })}
               </span>
             )}
           </span>
-          <span className="text-foreground/40 text-xs">{showPlanSectionD ? "▲ ocultar" : "▼ opcional"}</span>
+          <span className="text-foreground/40 text-xs">{showPlanSectionD ? t("crmQuotes.ocultar") : t("crmQuotes.opcional2")}</span>
         </button>
         {showPlanSectionD && (
           <div className="px-4 pb-4 space-y-3 border-t border-foreground/[0.08]">
-            <p className="text-xs text-foreground/45 pt-3">Define las cuotas ahora. Se guardarán automáticamente al crear el presupuesto.</p>
+            <p className="text-xs text-foreground/45 pt-3">{t("crmQuotes.defineLasCuotasAhora")}</p>
             {draftInstallmentsD.map((inst, idx) => (
               <div key={idx} className="space-y-1.5 py-1.5 border-b border-foreground/[0.07] last:border-0">
                 <div className="flex items-center gap-2">
@@ -2177,7 +2169,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                   <input
                     type="text"
                     inputMode="decimal"
-                    placeholder="Importe (€)"
+                    placeholder={t("crmQuotes.importe")}
                     value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -2216,10 +2208,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                         setDraftInstallmentsD(updated);
                       }}
                       className="accent-violet-500 shrink-0"
-                    />
-                    Cuota inaplazable
-                  </label>
-                  <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕ Eliminar</button>
+                    />{t("crmQuotes.cuotaInaplazable")}</label>
+                  <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">{t("crmQuotes.eliminar")}</button>
                 </div>
               </div>
             ))}
@@ -2239,16 +2229,16 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                 }]);
               }}
               className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
-            >+ Añadir cuota</button>
+            >{t("crmQuotes.anadirCuota")}</button>
             {draftInstallmentsD.length > 0 && (() => {
               const sum = draftInstallmentsD.reduce((s, i) => s + i.amountCents, 0);
               const totalCents = Math.round(total * 100);
               const diff = Math.abs(sum - totalCents);
               return (
                 <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
-                  <span>Suma: {formatEur((sum / 100))}</span>
-                  <span>Total: {formatEur(total)}</span>
-                  {diff > 1 && <span>⚠ Dif: {formatEur((diff / 100))}</span>}
+                  <span>{t("crmQuotes.suma", { formatEur: format.currency((sum / 100), "EUR", EUR2) })}</span>
+                  <span>{t("crmQuotes.total3", { formatEur: format.currency(total, "EUR", EUR2) })}</span>
+                  {diff > 1 && <span>{t("crmQuotes.dif", { formatEur: format.currency((diff / 100), "EUR", EUR2) })}</span>}
                 </div>
               );
             })()}
@@ -2257,17 +2247,13 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <DialogFooter className="gap-2 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmQuotes.cancelar")}</Button>
         <Button size="sm" onClick={() => handleSubmit(false)} disabled={createDirect.isPending}
           className="bg-foreground/[0.08] hover:bg-foreground/[0.15] text-white border border-foreground/[0.15]">
-          {createDirect.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
-          Guardar borrador
-        </Button>
+          {createDirect.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}{t("crmQuotes.guardarBorrador")}</Button>
         <Button size="sm" onClick={() => handleSubmit(true)} disabled={createDirect.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white">
-          {createDirect.isPending && sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
-          Crear y Enviar al cliente
-        </Button>
+          {createDirect.isPending && sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}{t("crmQuotes.crearYEnviarAl")}</Button>
       </DialogFooter>
     </DialogContent>
     </>
@@ -2285,6 +2271,7 @@ function QuoteBuilderModal({
   leadName: string;
   onClose: () => void;
 }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const [title, setTitle] = useState(`Presupuesto - ${leadName}`);
@@ -2333,9 +2320,9 @@ function QuoteBuilderModal({
     if (result.data?.hasActivities && result.data.items.length > 0) {
       setItems(result.data.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]);
       setAutoFilled(true);
-      toast.success(`Lineas generadas automaticamente (${result.data.items.length})`);
+      toast.success(t("crmQuotes.lineasGeneradasAutomaticamente", { length: result.data.items.length }));
     } else {
-      toast.error(`Est${voc.agreeLead("e", "a")} ${voc.lead} no tiene ${voc.licensed ? "productos o servicios" : "actividades"} seleccionad${voc.licensed ? "os" : "as"}`);
+      toast.error(`Est${voc.agreeLead("e", "a")} ${voc.lead} no tiene ${voc.licensed ? t("crmQuotes.productosOServicios") : "actividades"} seleccionad${voc.licensed ? "os" : "as"}`);
     }
   };
 
@@ -2387,7 +2374,7 @@ function QuoteBuilderModal({
 
   const convertToQuote = trpc.crm.leads.convertToQuote.useMutation({
     onSuccess: async (data) => {
-      toast.success(`Presupuesto ${data.quoteNumber} creado`);
+      toast.success(t("crmQuotes.presupuestoCreado", { quoteNumber: data.quoteNumber }));
       utils.crm.leads.counters.invalidate();
       utils.crm.quotes.counters.invalidate();
       utils.crm.quotes.list.invalidate();
@@ -2396,7 +2383,7 @@ function QuoteBuilderModal({
           quoteId: data.quoteId,
           installments: draftInstallments.map((i, idx) => ({ ...i, installmentNumber: idx + 1 })),
         });
-        toast.success(`Plan fraccionado guardado (${draftInstallments.length} cuotas)`);
+        toast.success(t("crmQuotes.planFraccionadoGuardadoCuotas", { draftInstallmentsCount: draftInstallments.length }));
       }
       if (sendAfterCreate) {
         await sendQuote.mutateAsync({ id: data.quoteId, origin: window.location.origin });
@@ -2408,11 +2395,11 @@ function QuoteBuilderModal({
 
   const handleSubmit = (andSend = false) => {
     if (!title || items.some((i) => !i.description)) {
-      toast.error("Completa el título y todos los conceptos");
+      toast.error(t("crmQuotes.completaElTituloY"));
       return;
     }
     if (draftInstallments.some(i => !i.dueDate || i.amountCents <= 0)) {
-      toast.error("Completa el importe y la fecha de todas las cuotas del plan");
+      toast.error(t("crmQuotes.completaElImporteY"));
       return;
     }
     setSendAfterCreate(andSend);
@@ -2436,8 +2423,7 @@ function QuoteBuilderModal({
     <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <FileText className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
-          {leadName && <span className="text-foreground/50 text-sm font-normal ml-1">para {leadName}</span>}
+          <FileText className="w-5 h-5 text-orange-400" />{" "}{t("crmQuotes.nuevoPresupuesto")}{leadName && <span className="text-foreground/50 text-sm font-normal ml-1">{t("crmQuotes.para", { leadName })}</span>}
         </DialogTitle>
       </DialogHeader>
       {/* Boton Autogenerar con IA */}
@@ -2445,8 +2431,8 @@ function QuoteBuilderModal({
         <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
         <span className="text-emerald-300 text-sm flex-1">
           {voc.licensed
-            ? (autoFilled ? "Conceptos generados desde los productos o servicios de la oportunidad" : "Autogenera los conceptos del presupuesto desde los productos o servicios seleccionados")
-            : (autoFilled ? "Conceptos generados desde las actividades del lead" : "Autogenera los conceptos del presupuesto desde las actividades seleccionadas")}
+            ? (autoFilled ? t("crmQuotes.conceptosGeneradosDesdeLos") : t("crmQuotes.autogeneraLosConceptosDel"))
+            : (autoFilled ? t("crmQuotes.conceptosGeneradosDesdeLas") : t("crmQuotes.autogeneraLosConceptosDel2"))}
         </span>
         <Button
           size="sm"
@@ -2458,20 +2444,20 @@ function QuoteBuilderModal({
           {previewQuery.isFetching
             ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
             : <Sparkles className="w-3.5 h-3.5 mr-1" />}
-          {autoFilled ? "Regenerar" : "Autogenerar con IA"}
+          {autoFilled ? t("crmQuotes.regenerar") : t("crmQuotes.autogenerarConIa")}
         </Button>
       </div>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.asuntoDelPresupuesto")}</Label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1"
             />
-            <p className="text-foreground/40 text-xs mt-1">Generado automáticamente. Puedes editarlo.</p>
+            <p className="text-foreground/40 text-xs mt-1">{t("crmQuotes.generadoAutomaticamentePuedesE")}</p>
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{voc.serviceDateLabel}</Label>
@@ -2482,11 +2468,11 @@ function QuoteBuilderModal({
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"
             />
             {leadQuery.data?.lead?.preferredDate && (
-              <p className="text-foreground/40 text-xs mt-1">Prerellenada desde el formulario del cliente.</p>
+              <p className="text-foreground/40 text-xs mt-1">{t("crmQuotes.prerellenadaDesdeElFormulario")}</p>
             )}
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Válido hasta</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.validoHasta")}</Label>
             <Input
               type="date"
               value={validUntil}
@@ -2499,8 +2485,7 @@ function QuoteBuilderModal({
         {/* Items con buscador de productos */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-foreground/65 text-xs">
-              Conceptos * <span className="text-foreground/40">(escribe o busca un producto)</span>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.conceptos")}{" "}<span className="text-foreground/40">{t("crmQuotes.escribeOBuscaUn")}</span>
             </Label>
             <Button
               size="sm"
@@ -2508,17 +2493,16 @@ function QuoteBuilderModal({
               className="text-orange-400 hover:text-orange-300 text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }])}
             >
-              <Plus className="w-3 h-3 mr-1" /> Añadir línea
-            </Button>
+              <Plus className="w-3 h-3 mr-1" />{" "}{t("crmQuotes.anadirLinea")}</Button>
           </div>
           <div className="overflow-x-auto -mx-1 px-1">
           <div className="min-w-[460px]">
           <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
-            <span className="col-span-4">Descripción</span>
-            <span className="col-span-2 text-center">Régimen</span>
-            <span className="col-span-2 text-center">Cant.</span>
-            <span className="col-span-2 text-right">P.Unit.</span>
-            <span className="col-span-2 text-right">Total</span>
+            <span className="col-span-4">{t("crmQuotes.descripcion")}</span>
+            <span className="col-span-2 text-center">{t("crmQuotes.regimen")}</span>
+            <span className="col-span-2 text-center">{t("crmQuotes.cant")}</span>
+            <span className="col-span-2 text-right">{t("crmQuotes.pUnit")}</span>
+            <span className="col-span-2 text-right">{t("crmQuotes.total")}</span>
           </div>
           <div className="space-y-2">
             {items.map((item, idx) => (
@@ -2559,7 +2543,7 @@ function QuoteBuilderModal({
                   onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))}
                 />
                 <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>
-                  {formatEur(item.total)}
+                  {format.currency(item.total, "EUR", EUR2)}
                 </div>
                 <Button
                   size="sm"
@@ -2572,10 +2556,10 @@ function QuoteBuilderModal({
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <span className="text-[11px] text-muted-foreground whitespace-nowrap">{voc.serviceDateLabel} (opcional):</span>
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-muted-foreground">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
+                <span className="text-[10px] text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
               </div>
               </div>
             ))}
@@ -2586,23 +2570,23 @@ function QuoteBuilderModal({
 
         {/* Código promocional */}
         <div className="bg-foreground/[0.05] rounded-xl p-3">
-          <Label className="text-foreground/65 text-xs mb-1.5 block">Código de descuento (opcional)</Label>
+          <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmQuotes.codigoDeDescuentoOpcional")}</Label>
           {promoData ? (
             <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded-lg px-3 py-2">
               <span className="font-mono font-bold text-green-400 text-sm">{promoData.code} — -{promoData.discountPercent}%</span>
-              <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-foreground/50 hover:text-red-400 text-xs ml-2">× Quitar</button>
+              <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-foreground/50 hover:text-red-400 text-xs ml-2">{t("crmQuotes.quitar")}</button>
             </div>
           ) : (
             <div className="flex gap-2">
               <Input
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm font-mono uppercase"
-                placeholder="VERANO25"
+                placeholder={t("crmQuotes.verano25")}
                 value={promoInput}
                 onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && validatePromo.mutate({ code: promoInput })}
               />
               <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0" onClick={() => validatePromo.mutate({ code: promoInput })} disabled={validatePromo.isPending || !promoInput.trim()}>
-                {validatePromo.isPending ? "..." : "Aplicar"}
+                {validatePromo.isPending ? "..." : t("crmQuotes.aplicar")}
               </Button>
             </div>
           )}
@@ -2612,38 +2596,38 @@ function QuoteBuilderModal({
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{formatEur((discountedGeneral - taxAmount))}</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{formatEur((discountedSubtotal - discountedGeneral))}</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponibleGeneral")}</span><span>{format.currency((discountedGeneral - taxAmount), "EUR", EUR2)}</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((discountedSubtotal - discountedGeneral), "EUR", EUR2)}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{formatEur(baseImponible)}</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponible")}</span><span>{format.currency(baseImponible, "EUR", EUR2)}</span></div>
           )}
           {promoDiscount > 0 && (
-            <div className="flex justify-between text-sm text-green-400"><span>Descuento {promoData?.code}</span><span>-{formatEur(promoDiscount)}</span></div>
+            <div className="flex justify-between text-sm text-green-400"><span>{t("crmQuotes.descuento", { code: promoData?.code })}</span><span>-{format.currency(promoDiscount, "EUR", EUR2)}</span></div>
           )}
           {taxRowsB.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{formatEur(row.amount)}</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.ivaIncluidoEnEl", { rate: row.rate })}</span><span>{format.currency(row.amount, "EUR", EUR2)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
-            <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
+            <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
-            <span>TOTAL</span><span className="text-orange-400 text-xl">{formatEur(total)}</span>
+            <span>{t("crmQuotes.total2")}</span><span className="text-orange-400 text-xl">{format.currency(total, "EUR", EUR2)}</span>
           </div>
         </div>
 
         <div>
-          <Label className="text-foreground/65 text-xs">Notas para el cliente</Label>
+          <Label className="text-foreground/65 text-xs">{t("crmQuotes.notasParaElCliente")}</Label>
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Información adicional visible para el cliente..."
+            placeholder={t("crmQuotes.informacionAdicionalVisiblePar")}
             className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1 resize-none h-16 text-sm"
           />
         </div>
         <div>
-          <Label className="text-foreground/65 text-xs">Condiciones</Label>
+          <Label className="text-foreground/65 text-xs">{t("crmQuotes.condiciones")}</Label>
           <Textarea
             value={conditions}
             onChange={(e) => setConditions(e.target.value)}
@@ -2660,19 +2644,17 @@ function QuoteBuilderModal({
           className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-foreground/[0.04] transition-colors"
         >
           <span className="flex items-center gap-2 text-violet-300 font-medium">
-            <CreditCard className="w-4 h-4" />
-            Plan de pago fraccionado
-            {draftInstallments.length > 0 && (
+            <CreditCard className="w-4 h-4" />{t("crmQuotes.planDePagoFraccionado")}{draftInstallments.length > 0 && (
               <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-xs px-1.5 py-0.5 rounded-full">
-                {draftInstallments.length} cuota{draftInstallments.length !== 1 ? "s" : ""}
+                {t("crmQuotes.cuota2", { draftInstallmentsCount: draftInstallments.length })}
               </span>
             )}
           </span>
-          <span className="text-foreground/40 text-xs">{showPlanSection ? "▲ ocultar" : "▼ opcional"}</span>
+          <span className="text-foreground/40 text-xs">{showPlanSection ? t("crmQuotes.ocultar") : t("crmQuotes.opcional2")}</span>
         </button>
         {showPlanSection && (
           <div className="px-4 pb-4 space-y-3 border-t border-foreground/[0.08]">
-            <p className="text-xs text-foreground/45 pt-3">Define las cuotas ahora. Se guardarán automáticamente al crear el presupuesto.</p>
+            <p className="text-xs text-foreground/45 pt-3">{t("crmQuotes.defineLasCuotasAhora")}</p>
             {draftInstallments.map((inst, idx) => (
               <div key={idx} className="space-y-1.5 py-1.5 border-b border-foreground/[0.07] last:border-0">
                 <div className="flex items-center gap-2">
@@ -2680,7 +2662,7 @@ function QuoteBuilderModal({
                   <input
                     type="text"
                     inputMode="decimal"
-                    placeholder="Importe (€)"
+                    placeholder={t("crmQuotes.importe")}
                     value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -2719,10 +2701,8 @@ function QuoteBuilderModal({
                         setDraftInstallments(updated);
                       }}
                       className="accent-violet-500 shrink-0"
-                    />
-                    Cuota inaplazable
-                  </label>
-                  <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕ Eliminar</button>
+                    />{t("crmQuotes.cuotaInaplazable")}</label>
+                  <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">{t("crmQuotes.eliminar")}</button>
                 </div>
               </div>
             ))}
@@ -2742,16 +2722,16 @@ function QuoteBuilderModal({
                 }]);
               }}
               className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
-            >+ Añadir cuota</button>
+            >{t("crmQuotes.anadirCuota")}</button>
             {draftInstallments.length > 0 && (() => {
               const sum = draftInstallments.reduce((s, i) => s + i.amountCents, 0);
               const totalCents = Math.round(total * 100);
               const diff = Math.abs(sum - totalCents);
               return (
                 <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
-                  <span>Suma cuotas: {formatEur((sum / 100))}</span>
-                  <span>Total: {formatEur(total)}</span>
-                  {diff > 1 && <span>⚠ Dif: {formatEur((diff / 100))}</span>}
+                  <span>{t("crmQuotes.sumaCuotas", { formatEur: format.currency((sum / 100), "EUR", EUR2) })}</span>
+                  <span>{t("crmQuotes.total3", { formatEur: format.currency(total, "EUR", EUR2) })}</span>
+                  {diff > 1 && <span>{t("crmQuotes.dif", { formatEur: format.currency((diff / 100), "EUR", EUR2) })}</span>}
                 </div>
               );
             })()}
@@ -2760,27 +2740,21 @@ function QuoteBuilderModal({
       </div>
 
       <DialogFooter className="gap-2 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">
-          Cancelar
-        </Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmQuotes.cancelar")}</Button>
         <Button
           size="sm"
           onClick={() => handleSubmit(false)}
           disabled={convertToQuote.isPending}
           className="bg-foreground/[0.08] hover:bg-foreground/[0.15] text-white border border-foreground/[0.15]"
         >
-          {convertToQuote.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
-          Guardar borrador
-        </Button>
+          {convertToQuote.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}{t("crmQuotes.guardarBorrador")}</Button>
         <Button
           size="sm"
           onClick={() => handleSubmit(true)}
           disabled={convertToQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
-          {convertToQuote.isPending && sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
-          Crear y Enviar al cliente
-        </Button>
+          {convertToQuote.isPending && sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}{t("crmQuotes.crearYEnviarAl")}</Button>
       </DialogFooter>
     </DialogContent>
   );
@@ -2800,6 +2774,7 @@ function ProductAutocompleteInput({
   onSelect: (product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general" }) => void;
   placeholder?: string;
 }) {
+  const { t, format } = useI18n();
   const voc = useVocabulary();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
@@ -2828,7 +2803,7 @@ function ProductAutocompleteInput({
 
   const TYPE_LABELS: Record<string, string> = voc.licensed
     ? { experience: "Producto", pack: "Paquete", legopack: "Paquete" }
-    : { experience: "Actividad", pack: "Pack", legopack: "Lego Pack" };
+    : { experience: "Actividad", pack: "Pack", legopack: t("crmQuotes.legoPack") };
   const TYPE_COLORS: Record<string, string> = {
     experience: "text-blue-400",
     pack: "text-emerald-400",
@@ -2852,11 +2827,10 @@ function ProductAutocompleteInput({
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-2xl overflow-hidden">
           {isFetching && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-foreground/50">
-              <RefreshCw className="w-3 h-3 animate-spin" /> Buscando...
-            </div>
+              <RefreshCw className="w-3 h-3 animate-spin" />{" "}{t("crmQuotes.buscando")}</div>
           )}
           {!isFetching && results.length === 0 && (
-            <div className="px-3 py-2 text-xs text-foreground/40">Sin resultados para "{query}"</div>
+            <div className="px-3 py-2 text-xs text-foreground/40">{t("crmQuotes.sinResultadosPara", { query })}</div>
           )}
           {results.map((r) => (
             <button
@@ -2879,9 +2853,9 @@ function ProductAutocompleteInput({
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {r.fiscalRegime === "reav" && (
-                  <span className="text-[10px] text-amber-400 font-semibold">REAV</span>
+                  <span className="text-[10px] text-amber-400 font-semibold">{t("crmQuotes.reav")}</span>
                 )}
-                <span className="text-sm font-semibold text-orange-400">{formatEur(r.unitPrice)}</span>
+                <span className="text-sm font-semibold text-orange-400">{format.currency(r.unitPrice, "EUR", EUR2)}</span>
               </div>
             </button>
           ))}
@@ -2898,6 +2872,7 @@ function QuoteEditModal({
   quoteId: number;
   onClose: () => void;
 }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const { data, isLoading } = trpc.crm.quotes.get.useQuery({ id: quoteId });
@@ -2923,7 +2898,7 @@ function QuoteEditModal({
 
   const applyDiscountCodeMut = trpc.crm.timeline.applyDiscountCode.useMutation({
     onSuccess: (result) => {
-      toast.success(`Bono ${result.code} aplicado — ${formatEur(result.discountEur)} descontados`);
+      toast.success(t("crmQuotes.bonoAplicadoDescontados", { code: result.code, formatEur: format.currency(result.discountEur, "EUR", EUR2) }));
       setDiscount(result.discountEur);
       setShowBonoPanel(false);
       setBonoCode("");
@@ -3001,7 +2976,7 @@ function QuoteEditModal({
 
   const updateQuote = trpc.crm.quotes.update.useMutation({
     onSuccess: () => {
-      toast.success("Presupuesto actualizado");
+      toast.success(t("crmQuotes.presupuestoActualizado"));
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.get.invalidate({ id: quoteId });
       onClose();
@@ -3023,13 +2998,12 @@ function QuoteEditModal({
     <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <Pencil className="w-4 h-4 text-orange-400" /> Editar Presupuesto
-        </DialogTitle>
+          <Pencil className="w-4 h-4 text-orange-400" />{" "}{t("crmQuotes.editarPresupuesto")}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label className="text-foreground/65 text-xs">Título *</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.titulo")}</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
@@ -3037,26 +3011,25 @@ function QuoteEditModal({
             <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Válido hasta</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.validoHasta")}</Label>
             <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
         </div>
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-foreground/65 text-xs">Conceptos *</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.conceptos")}</Label>
             <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }])}>
-              <Plus className="w-3 h-3 mr-1" /> Añadir línea
-            </Button>
+              <Plus className="w-3 h-3 mr-1" />{" "}{t("crmQuotes.anadirLinea")}</Button>
           </div>
           <div className="overflow-x-auto -mx-1 px-1">
           <div className="min-w-[460px]">
           <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
-            <span className="col-span-4">Descripción</span>
-            <span className="col-span-2 text-center">Régimen</span>
-            <span className="col-span-2 text-center">Cant.</span>
-            <span className="col-span-2 text-right">P.Unit.</span>
-            <span className="col-span-2 text-right">Total</span>
+            <span className="col-span-4">{t("crmQuotes.descripcion")}</span>
+            <span className="col-span-2 text-center">{t("crmQuotes.regimen")}</span>
+            <span className="col-span-2 text-center">{t("crmQuotes.cant")}</span>
+            <span className="col-span-2 text-right">{t("crmQuotes.pUnit")}</span>
+            <span className="col-span-2 text-right">{t("crmQuotes.total")}</span>
           </div>
           <div className="space-y-2">
             {items.map((item, idx) => (
@@ -3078,17 +3051,17 @@ function QuoteEditModal({
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{formatEur(item.total)}</div>
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{format.currency(item.total, "EUR", EUR2)}</div>
                 <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <span className="text-[11px] text-muted-foreground whitespace-nowrap">{voc.serviceDateLabel} (opcional):</span>
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-muted-foreground">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
+                <span className="text-[10px] text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
               </div>
               </div>
             ))}
@@ -3099,27 +3072,27 @@ function QuoteEditModal({
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{formatEur((discountedBase - taxAmount))}</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{formatEur((subtotal - generalSubtotalEdit))}</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponibleGeneral")}</span><span>{format.currency((discountedBase - taxAmount), "EUR", EUR2)}</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((subtotal - generalSubtotalEdit), "EUR", EUR2)}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{formatEur(baseImponible)}</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponible")}</span><span>{format.currency(baseImponible, "EUR", EUR2)}</span></div>
           )}
           {discount > 0 && (
             <div className="flex justify-between text-sm text-purple-300">
-              <span className="flex items-center gap-1"><Gift className="w-3 h-3" /> Descuento / bono</span>
-              <span>−{formatEur(discount)}</span>
+              <span className="flex items-center gap-1"><Gift className="w-3 h-3" />{" "}{t("crmQuotes.descuentoBono")}</span>
+              <span>−{format.currency(discount, "EUR", EUR2)}</span>
             </div>
           )}
           {taxRowsE.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{formatEur(row.amount)}</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.ivaIncluidoEnEl", { rate: row.rate })}</span><span>{format.currency(row.amount, "EUR", EUR2)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
-            <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
+            <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2">
-            <span>TOTAL</span><span className="text-orange-400 text-xl">{formatEur(total)}</span>
+            <span>{t("crmQuotes.total2")}</span><span className="text-orange-400 text-xl">{format.currency(total, "EUR", EUR2)}</span>
           </div>
         </div>
 
@@ -3131,7 +3104,7 @@ function QuoteEditModal({
               className="w-full flex items-center justify-between text-xs font-semibold text-purple-300 uppercase tracking-wider"
               onClick={() => setShowBonoPanel((v) => !v)}
             >
-              <span className="flex items-center gap-2"><Gift className="w-3.5 h-3.5" /> Aplicar bono / código de descuento</span>
+              <span className="flex items-center gap-2"><Gift className="w-3.5 h-3.5" />{" "}{t("crmQuotes.aplicarBonoCodigoDe")}</span>
               <span className="text-purple-400/60">{showBonoPanel ? "▲" : "▼"}</span>
             </button>
             {showBonoPanel && (
@@ -3140,7 +3113,7 @@ function QuoteEditModal({
                   <Input
                     value={bonoCode}
                     onChange={(e) => { setBonoCode(e.target.value.toUpperCase()); setBonoQueryCode(null); }}
-                    placeholder="Ej: BON-A1B2-C3D4"
+                    placeholder={t("crmQuotes.ejBonA1b2C3d4")}
                     className="bg-[#0a0a1a] border-foreground/[0.12] text-white placeholder:text-gray-600 font-mono text-xs h-8 flex-1"
                     spellCheck={false}
                   />
@@ -3153,7 +3126,7 @@ function QuoteEditModal({
                   </Button>
                 </div>
                 {bonoPreview && !bonoPreview.found && (
-                  <p className="text-red-400 text-xs">Código no encontrado.</p>
+                  <p className="text-red-400 text-xs">{t("crmQuotes.codigoNoEncontrado")}</p>
                 )}
                 {bonoPreview?.found && (
                   <div className={`rounded-lg border p-3 space-y-2 text-xs ${
@@ -3168,21 +3141,21 @@ function QuoteEditModal({
                         bonoPreview.status === "caducado" ? "text-red-400 bg-red-500/10" :
                         "text-purple-300 bg-purple-500/10"
                       }`}>
-                        {bonoPreview.status === "canjeado" ? "Ya canjeado" : bonoPreview.status === "caducado" ? "Caducado" : "Activo"}
+                        {bonoPreview.status === "canjeado" ? t("crmQuotes.yaCanjeado") : bonoPreview.status === "caducado" ? t("crmQuotes.caducado") : t("crmQuotes.activo")}
                       </span>
                     </div>
-                    {bonoPreview.value > 0 && <p className="text-white font-bold">{formatEur(bonoPreview.value)} de descuento</p>}
+                    {bonoPreview.value > 0 && <p className="text-white font-bold">{t("crmQuotes.deDescuento", { formatEur: format.currency(bonoPreview.value, "EUR", EUR2) })}</p>}
                     {bonoPreview.activityName && <p className="text-foreground/50">{bonoPreview.activityName}</p>}
                     {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
                       <Button size="sm" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-7"
                         disabled={applyDiscountCodeMut.isPending}
                         onClick={() => applyDiscountCodeMut.mutate({ id: quoteId, code: bonoPreview.code })}
                       >
-                        {applyDiscountCodeMut.isPending ? "Aplicando..." : `Confirmar — descontar ${formatEur(bonoPreview.value)}`}
+                        {applyDiscountCodeMut.isPending ? t("crmQuotes.aplicando") : t("crmQuotes.confirmarDescontar", { formatEur: format.currency(bonoPreview.value, "EUR", EUR2) })}
                       </Button>
                     )}
                     {bonoPreview.status !== "enviado" && bonoPreview.status !== "generado" && (
-                      <p className="text-red-400">Este bono no puede aplicarse ({bonoPreview.status}).</p>
+                      <p className="text-red-400">{t("crmQuotes.esteBonoNoPuede", { status: bonoPreview.status })}</p>
                     )}
                   </div>
                 )}
@@ -3192,25 +3165,23 @@ function QuoteEditModal({
         )}
 
         <div>
-          <Label className="text-foreground/65 text-xs">Notas para el cliente</Label>
+          <Label className="text-foreground/65 text-xs">{t("crmQuotes.notasParaElCliente")}</Label>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-16 text-sm" />
         </div>
         <div>
-          <Label className="text-foreground/65 text-xs">Condiciones</Label>
+          <Label className="text-foreground/65 text-xs">{t("crmQuotes.condiciones")}</Label>
           <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-12 text-sm" />
         </div>
       </div>
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmQuotes.cancelar")}</Button>
         <Button
           size="sm"
           onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal: baseImponible, discount, taxRate: effectiveTaxRateE, total, validUntil, activityDate: activityDate || null })}
           disabled={updateQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
-          {updateQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-          Guardar cambios
-        </Button>
+          {updateQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}{t("crmQuotes.guardarCambios")}</Button>
       </DialogFooter>
     </DialogContent>
   );
@@ -3219,6 +3190,7 @@ function QuoteEditModal({
 // ─── SCHEDULED JOBS MINI ─────────────────────────────────────────────────────
 
 function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entityId: number }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const { data, isLoading, isError } = trpc.emailCommunications.listScheduledJobs.useQuery(
     { relatedEntityType: entityType, relatedEntityId: entityId, limit: 20 },
@@ -3226,7 +3198,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
   );
   const cancelJob = trpc.emailCommunications.cancelJob.useMutation({
     onSuccess: () => {
-      toast.success("Job cancelado");
+      toast.success(t("crmQuotes.jobCancelado"));
       utils.emailCommunications.listScheduledJobs.invalidate({ relatedEntityType: entityType, relatedEntityId: entityId });
     },
     onError: (e) => toast.error(errorToastMessage(e)),
@@ -3237,17 +3209,17 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
   const rest = rows.filter(r => r.status !== "pending");
 
   const STATUS_STYLE: Record<string, { label: string; color: string }> = {
-    pending:   { label: "Pendiente",  color: "text-amber-300" },
-    sent:      { label: "Enviado",    color: "text-green-400" },
-    skipped:   { label: "Saltado",    color: "text-gray-500"  },
-    failed:    { label: "Fallido",    color: "text-red-400"   },
-    cancelled: { label: "Cancelado",  color: "text-zinc-600"  },
+    pending:   { label: t("crmQuotes.pendiente"),  color: "text-amber-300" },
+    sent:      { label: t("crmQuotes.enviado"),    color: "text-green-400" },
+    skipped:   { label: t("crmQuotes.saltado"),    color: "text-gray-500"  },
+    failed:    { label: t("crmQuotes.fallido"),    color: "text-red-400"   },
+    cancelled: { label: t("crmQuotes.cancelado"),  color: "text-zinc-600"  },
   };
 
-  if (isLoading) return <div className="text-xs text-foreground/40 py-2">Cargando emails programados...</div>;
+  if (isLoading) return <div className="text-xs text-foreground/40 py-2">{t("crmQuotes.cargandoEmailsProgramados")}</div>;
   if (isError) return null;
   if (!rows.length) return (
-    <div className="text-xs text-foreground/35 py-1">Sin emails automáticos programados para este elemento.</div>
+    <div className="text-xs text-foreground/35 py-1">{t("crmQuotes.sinEmailsAutomaticosProgramado")}</div>
   );
 
   function fmtDate(d: Date | string | null | undefined) {
@@ -3258,9 +3230,9 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
     const h = Math.floor(abs / 3600000);
     const m = Math.floor((abs % 3600000) / 60000);
     const rel = diff > 0
-      ? `en ${h > 24 ? `${Math.floor(h / 24)}d` : h > 0 ? `${h}h ${m}m` : `${m}m`}`
+      ? `en ${h > 24 ? `${Math.floor(h / 24)}d` : h > 0 ? t("crmQuotes.hM", { h, m }) : `${m}m`}`
       : `hace ${h > 24 ? `${Math.floor(h / 24)}d` : h > 0 ? `${h}h` : `${m}m`}`;
-    return `${date.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })} (${rel})`;
+    return `${format.date(date, { day: "2-digit", month: "2-digit" })} ${format.time(date, { hour: "2-digit", minute: "2-digit" })} (${rel})`;
   }
 
   return (
@@ -3271,7 +3243,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
             <div key={job.id} className="flex items-center justify-between bg-amber-950/20 border border-amber-700/25 rounded-lg px-3 py-2 gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-amber-300 font-medium">Pendiente</span>
+                  <span className="text-xs text-amber-300 font-medium">{t("crmQuotes.pendiente")}</span>
                   <span className="text-xs text-foreground/50 font-mono">{job.templateKey}</span>
                 </div>
                 <div className="text-xs text-foreground/40 mt-0.5">{fmtDate(job.scheduledFor)}</div>
@@ -3281,9 +3253,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
                 onClick={() => cancelJob.mutate({ id: job.id })}
                 disabled={cancelJob.isPending}
                 className="text-xs text-red-500 hover:text-red-400 shrink-0 px-2 py-1 rounded hover:bg-foreground/[0.06] transition-colors"
-              >
-                Cancelar
-              </button>
+              >{t("crmQuotes.cancelar")}</button>
             </div>
           ))}
         </div>
@@ -3329,6 +3299,7 @@ const TIMELINE_CONFIG: Record<TimelineEventType, { icon: React.ReactNode; color:
 };
 
 function QuoteTimeline({ quoteId }: { quoteId: number }) {
+  const { t, format } = useI18n();
   const { data, isLoading } = trpc.crm.timeline.get.useQuery({ quoteId });
 
   if (isLoading) {
@@ -3340,7 +3311,7 @@ function QuoteTimeline({ quoteId }: { quoteId: number }) {
   }
 
   if (!data || data.events.length === 0) {
-    return <p className="text-xs text-foreground/40 text-center py-4">Sin actividad registrada</p>;
+    return <p className="text-xs text-foreground/40 text-center py-4">{t("crmQuotes.sinActividadRegistrada")}</p>;
   }
 
   return (
@@ -3362,14 +3333,14 @@ function QuoteTimeline({ quoteId }: { quoteId: number }) {
                 <div className="flex items-start justify-between gap-2">
                   <span className={`text-sm font-medium ${cfg.color}`}>{event.label}</span>
                   <span className="text-xs text-foreground/40 whitespace-nowrap flex-shrink-0">
-                    {new Date(event.timestamp).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {format.dateTime(event.timestamp, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
                 {event.detail && (
                   <p className="text-xs text-foreground/50 mt-0.5">{event.detail}</p>
                 )}
                 {event.actor && (
-                  <p className="text-xs text-foreground/40 mt-0.5">Por: {event.actor}</p>
+                  <p className="text-xs text-foreground/40 mt-0.5">{t("crmQuotes.por", { actor: event.actor })}</p>
                 )}
               </div>
             </div>
@@ -3389,6 +3360,7 @@ function QuoteDetailModal({
   quoteId: number;
   onClose: () => void;
 }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const [confirmDeletePlan, setConfirmDeletePlan] = useState(false);
@@ -3456,7 +3428,7 @@ function QuoteDetailModal({
 
   const confirmPayment = trpc.crm.quotes.confirmPayment.useMutation({
     onSuccess: (data) => {
-      toast.success(`Pago confirmado · Factura ${data.invoiceNumber} generada`);
+      toast.success(t("crmQuotes.pagoConfirmadoFacturaGenerada", { invoiceNumber: data.invoiceNumber }));
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
@@ -3468,7 +3440,7 @@ function QuoteDetailModal({
 
   const markLost = trpc.crm.quotes.markLost.useMutation({
     onSuccess: () => {
-      toast.success("Presupuesto marcado como perdido");
+      toast.success(t("crmQuotes.presupuestoMarcadoComoPerdido"));
       utils.crm.quotes.counters.invalidate();
       onClose();
     },
@@ -3476,7 +3448,7 @@ function QuoteDetailModal({
 
   const duplicate = trpc.crm.quotes.duplicate.useMutation({
     onSuccess: (d) => {
-      toast.success(`Copia creada: ${d.quoteNumber}`);
+      toast.success(t("crmQuotes.copiaCreada", { quoteNumber: d.quoteNumber }));
       utils.crm.quotes.counters.invalidate();
       onClose();
     },
@@ -3500,13 +3472,13 @@ function QuoteDetailModal({
   const uploadTransferProof = trpc.crm.quotes.uploadTransferProof.useMutation({
     onSuccess: (data) => {
       setTransferProofUrl(data.url);
-      toast.success("Justificante subido correctamente");
+      toast.success(t("crmQuotes.justificanteSubidoCorrectament"));
     },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const confirmTransfer = trpc.crm.quotes.confirmTransfer.useMutation({
     onSuccess: (data) => {
-      toast.success(`Pago por transferencia confirmado · Factura ${data.invoiceNumber} generada`);
+      toast.success(t("crmQuotes.pagoPorTransferenciaConfirmado", { invoiceNumber: data.invoiceNumber }));
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
@@ -3536,7 +3508,7 @@ function QuoteDetailModal({
   );
   const createPendingPayment = trpc.crm.pendingPayments.create.useMutation({
     onSuccess: () => {
-      toast.success("Pago pendiente registrado · Email enviado al cliente");
+      toast.success(t("crmQuotes.pagoPendienteRegistradoEmail"));
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.counters.invalidate();
       setShowPendingPaymentModal(false);
@@ -3550,7 +3522,7 @@ function QuoteDetailModal({
   const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor || !!data?.quote?.paymentPlanId });
   const upsertPlan = trpc.crm.paymentPlans.upsert.useMutation({
     onSuccess: () => {
-      toast.success("Plan de pago guardado");
+      toast.success(t("crmQuotes.planDePagoGuardado"));
       planQuery.refetch();
       setPlanEditMode(false);
     },
@@ -3558,7 +3530,7 @@ function QuoteDetailModal({
   });
   const deletePlan = trpc.crm.paymentPlans.delete.useMutation({
     onSuccess: () => {
-      toast.success("Plan de pago eliminado");
+      toast.success(t("crmQuotes.planDePagoEliminado"));
       planQuery.refetch();
       setDraftInstallments([]);
       setPlanEditMode(false);
@@ -3567,7 +3539,7 @@ function QuoteDetailModal({
   });
   const confirmInstallmentMut = trpc.crm.paymentPlans.confirmInstallment.useMutation({
     onSuccess: () => {
-      toast.success("Cuota confirmada");
+      toast.success(t("crmQuotes.cuotaConfirmada"));
       setConfirmingInstallment(null);
       setInstPayMethod("transferencia");
       setInstTpvOp("");
@@ -3580,14 +3552,14 @@ function QuoteDetailModal({
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const generateInstallmentLink = trpc.crm.paymentPlans.generateInstallmentLink.useMutation({
-    onSuccess: (d) => toast.success(`Enlace enviado al cliente — Cuota #${d.installmentNumber}`),
+    onSuccess: (d) => toast.success(t("crmQuotes.enlaceEnviadoAlCliente", { installmentNumber: d.installmentNumber })),
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const confirmPaymentWithMethod = trpc.crm.quotes.confirmPayment.useMutation({
     onSuccess: (data) => {
       const label = paymentMethodSelected === "transferencia" ? "transferencia" : paymentMethodSelected === "efectivo" ? "efectivo" : "tarjeta";
-      toast.success(`Pago confirmado (${label}) · Factura ${(data as { invoiceNumber?: string })?.invoiceNumber ?? ""} generada`);
+      toast.success(t("crmQuotes.pagoConfirmadoFacturaGenerada2", { label, v: (data as { invoiceNumber?: string })?.invoiceNumber ?? "" }));
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
@@ -3614,8 +3586,8 @@ function QuoteDetailModal({
     const file = e.target.files?.[0];
     if (!file) return;
     const allowed = ["image/jpeg", "image/png", "application/pdf"];
-    if (!allowed.includes(file.type)) { toast.error("Solo se permiten archivos JPG, PNG o PDF"); return; }
-    if (file.size > 10 * 1024 * 1024) { toast.error("El archivo no puede superar 10 MB"); return; }
+    if (!allowed.includes(file.type)) { toast.error(t("crmQuotes.soloSePermitenArchivos")); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error(t("crmQuotes.elArchivoNoPuede")); return; }
     setIsUploadingViewProof(true);
     try {
       const reader = new FileReader();
@@ -3630,7 +3602,7 @@ function QuoteDetailModal({
         setViewProofUrl(result.url);
         setViewProofKey(result.fileKey);
         setIsUploadingViewProof(false);
-        toast.success("Justificante subido correctamente");
+        toast.success(t("crmQuotes.justificanteSubidoCorrectament"));
       };
       reader.readAsDataURL(file);
     } catch (_) {
@@ -3643,11 +3615,11 @@ function QuoteDetailModal({
     if (!file) return;
     const allowed = ["image/jpeg", "image/png", "application/pdf"];
     if (!allowed.includes(file.type)) {
-      toast.error("Solo se permiten archivos JPG, PNG o PDF");
+      toast.error(t("crmQuotes.soloSePermitenArchivos"));
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("El archivo no puede superar 10 MB");
+      toast.error(t("crmQuotes.elArchivoNoPuede"));
       return;
     }
     setTransferFile(file);
@@ -3680,7 +3652,7 @@ function QuoteDetailModal({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      toast.success("PDF generado correctamente");
+      toast.success(t("crmQuotes.pdfGeneradoCorrectamente"));
     } catch (_) { /* error ya mostrado */ }
   };
 
@@ -3724,14 +3696,12 @@ function QuoteDetailModal({
           {quote.isAutoGenerated && (
             <span
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2.5 py-1 rounded-full"
-              title={`Este presupuesto fue generado automáticamente desde ${voc.licensed ? "los productos o servicios seleccionados" : "las actividades seleccionadas"} en el formulario`}
+              title={`Este presupuesto fue generado automáticamente desde ${voc.licensed ? t("crmQuotes.losProductosOServicios") : t("crmQuotes.lasActividadesSeleccionadas")} en el formulario`}
             >
-              <Sparkles className="w-3 h-3" />
-              Generado con IA
-            </span>
+              <Sparkles className="w-3 h-3" />{t("crmQuotes.generadoConIa")}</span>
           )}
-          {quote.sentAt && <span className="text-xs text-foreground/50">Enviado {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>}
-          {quote.viewedAt && <span className="text-xs text-emerald-400">Visto ✓</span>}
+          {quote.sentAt && <span className="text-xs text-foreground/50">{t("crmQuotes.enviado")}{" "}{format.date(quote.sentAt, {})}</span>}
+          {quote.viewedAt && <span className="text-xs text-emerald-400">{t("crmQuotes.visto")}</span>}
         </div>
 
         <div className="bg-foreground/[0.05] rounded-xl overflow-hidden">
@@ -3742,40 +3712,40 @@ function QuoteDetailModal({
           <table className="w-full">
             <thead>
               <tr className="bg-foreground/[0.05]">
-                <th className="text-left px-4 py-2 text-xs text-foreground/50 font-medium">Concepto</th>
-                <th className="text-center px-4 py-2 text-xs text-foreground/50 font-medium">Cant.</th>
-                <th className="text-right px-4 py-2 text-xs text-foreground/50 font-medium">P.Unit.</th>
-                <th className="text-right px-4 py-2 text-xs text-foreground/50 font-medium">Total</th>
+                <th className="text-left px-4 py-2 text-xs text-foreground/50 font-medium">{t("crmQuotes.concepto")}</th>
+                <th className="text-center px-4 py-2 text-xs text-foreground/50 font-medium">{t("crmQuotes.cant")}</th>
+                <th className="text-right px-4 py-2 text-xs text-foreground/50 font-medium">{t("crmQuotes.pUnit")}</th>
+                <th className="text-right px-4 py-2 text-xs text-foreground/50 font-medium">{t("crmQuotes.total")}</th>
               </tr>
             </thead>
             <tbody>
               {hasGeneral && hasReav && (
                 <tr className="border-t border-foreground/[0.08] bg-blue-500/5">
-                  <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-blue-300 uppercase tracking-wider">Régimen General (IVA 21%)</td>
+                  <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-blue-300 uppercase tracking-wider">{t("crmQuotes.regimenGeneralIva21")}</td>
                 </tr>
               )}
               {(hasGeneral && hasReav ? generalItems : items).map((item, i) => (
                 <tr key={i} className="border-t border-foreground/[0.08]">
                   <td className="px-4 py-2.5 text-sm text-foreground/80">{item.description}</td>
                   <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
-                  <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{formatEur(Number(item.unitPrice))}</td>
-                  <td className="px-4 py-2.5 text-sm font-semibold text-orange-400 text-right">{formatEur(Number(item.total))}</td>
+                  <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</td>
+                  <td className="px-4 py-2.5 text-sm font-semibold text-orange-400 text-right">{format.currency(Number(item.total), "EUR", EUR2)}</td>
                 </tr>
               ))}
               {hasReav && (
                 <>
                   <tr className="border-t border-foreground/[0.08] bg-amber-500/5">
-                    <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-amber-300 uppercase tracking-wider">REAV — Sin IVA (Régimen Especial Agencias de Viaje)</td>
+                    <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-amber-300 uppercase tracking-wider">{t("crmQuotes.reavSinIvaRegimen")}</td>
                   </tr>
                   {reavItems.map((item, i) => (
                     <tr key={`reav-${i}`} className="border-t border-foreground/[0.08]">
                       <td className="px-4 py-2.5 text-sm text-foreground/80">
                         {item.description}
-                        <span className="ml-1.5 text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">REAV</span>
+                        <span className="ml-1.5 text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">{t("crmQuotes.reav")}</span>
                       </td>
                       <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
-                      <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{formatEur(Number(item.unitPrice))}</td>
-                      <td className="px-4 py-2.5 text-sm font-semibold text-amber-400 text-right">{formatEur(Number(item.total))}</td>
+                      <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</td>
+                      <td className="px-4 py-2.5 text-sm font-semibold text-amber-400 text-right">{format.currency(Number(item.total), "EUR", EUR2)}</td>
                     </tr>
                   ))}
                 </>
@@ -3785,30 +3755,30 @@ function QuoteDetailModal({
           <div className="px-4 py-3 border-t border-foreground/[0.12] space-y-1">
             {Number(quote.discount) > 0 && (
               <div className="flex justify-between text-sm text-foreground/60">
-                <span>Descuento</span><span>-{formatEur(Number(quote.discount))}</span>
+                <span>{t("crmQuotes.descuento2")}</span><span>-{format.currency(Number(quote.discount), "EUR", EUR2)}</span>
               </div>
             )}
             {hasGeneral && hasReav && (
               <>
                 <div className="flex justify-between text-sm text-foreground/60">
-                  <span>Subtotal rég. general</span><span>{formatEur(generalItems.reduce((s,i) => s+i.total,0))}</span>
+                  <span>{t("crmQuotes.subtotalRegGeneral")}</span><span>{format.currency(generalItems.reduce((s,i) => s+i.total,0), "EUR", EUR2)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-amber-400/70">
-                  <span>Subtotal REAV (sin IVA)</span><span>{formatEur(reavItems.reduce((s,i) => s+i.total,0))}</span>
+                  <span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency(reavItems.reduce((s,i) => s+i.total,0), "EUR", EUR2)}</span>
                 </div>
               </>
             )}
             {Number(quote.tax) > 0 && (
               <div className="flex justify-between text-sm text-foreground/60">
-                <span>IVA (21%)</span><span>{formatEur(Number(quote.tax))}</span>
+                <span>{t("crmQuotes.iva21")}</span><span>{format.currency(Number(quote.tax), "EUR", EUR2)}</span>
               </div>
             )}
             {hasReav && !hasGeneral && (
-              <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
+              <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
             )}
             <div className="flex justify-between items-center pt-1">
-              <span className="font-bold text-foreground">TOTAL</span>
-              <span className="text-xl font-bold text-orange-400">{formatEur(Number(quote.total))}</span>
+              <span className="font-bold text-foreground">{t("crmQuotes.total2")}</span>
+              <span className="text-xl font-bold text-orange-400">{format.currency(Number(quote.total), "EUR", EUR2)}</span>
             </div>
           </div>
         </div>
@@ -3816,18 +3786,17 @@ function QuoteDetailModal({
         {/* Invoices */}
         {relatedInvoices.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Facturas generadas</h4>
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmQuotes.facturasGeneradas")}</h4>
             {relatedInvoices.map((inv: any) => (
               <div key={inv.id} className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
                 <div>
                   <span className="text-sm font-medium text-emerald-400">{inv.invoiceNumber}</span>
-                  <span className="text-xs text-foreground/50 ml-2">{new Date(inv.issuedAt).toLocaleDateString("es-ES")}</span>
+                  <span className="text-xs text-foreground/50 ml-2">{format.date(inv.issuedAt, {})}</span>
                 </div>
                 {inv.pdfUrl && (
                   <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer">
                     <Button size="sm" variant="ghost" className="text-emerald-400 hover:text-emerald-300 h-7 text-xs">
-                      <Download className="w-3.5 h-3.5 mr-1" /> Descargar
-                    </Button>
+                      <Download className="w-3.5 h-3.5 mr-1" />{" "}{t("crmQuotes.descargar")}</Button>
                   </a>
                 )}
               </div>
@@ -3838,8 +3807,7 @@ function QuoteDetailModal({
         {/* Emails automáticos programados */}
         <div>
           <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-2">
-            <Mail className="w-3 h-3" /> Emails automáticos
-          </h4>
+            <Mail className="w-3 h-3" />{" "}{t("crmQuotes.emailsAutomaticos")}</h4>
           <ScheduledJobsMini entityType="quote" entityId={quoteId} />
         </div>
 
@@ -3852,7 +3820,7 @@ function QuoteDetailModal({
             <div className="flex-1 h-px bg-foreground/[0.08]" />
             <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-foreground/[0.05] hover:bg-foreground/[0.08] transition-colors">
               <Eye className="w-3 h-3" />
-              {showTimeline ? "Ocultar historial" : "Ver historial de actividad"}
+              {showTimeline ? t("crmQuotes.ocultarHistorial") : t("crmQuotes.verHistorialDeActividad")}
             </span>
             <div className="flex-1 h-px bg-foreground/[0.08]" />
           </button>
@@ -3866,7 +3834,7 @@ function QuoteDetailModal({
         {/* Payment link input */}
         {showPaymentInput && (
           <div>
-            <Label className="text-foreground/65 text-xs">Link de pago (opcional)</Label>
+            <Label className="text-foreground/65 text-xs">{t("crmQuotes.linkDePagoOpcional")}</Label>
             <Input
               value={paymentLink}
               onChange={(e) => setPaymentLink(e.target.value)}
@@ -3881,9 +3849,7 @@ function QuoteDetailModal({
           <div className="bg-violet-950/30 border border-violet-500/30 rounded-xl p-4 space-y-2">
             <div className="flex items-center justify-between mb-1">
               <h4 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-violet-400" />
-                Plan de Pago Fraccionado
-              </h4>
+                <CreditCard className="w-4 h-4 text-violet-400" />{t("crmQuotes.planDePagoFraccionado2")}</h4>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                 planQuery.data.installments.every(i => i.status === "paid")
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
@@ -3892,10 +3858,10 @@ function QuoteDetailModal({
                   : "bg-violet-500/20 text-violet-300 border border-violet-500/30"
               }`}>
                 {planQuery.data.installments.every(i => i.status === "paid")
-                  ? "Completado"
+                  ? t("crmQuotes.completado")
                   : planQuery.data.installments.some(i => i.status === "paid")
-                  ? "En curso"
-                  : "Pendiente"}
+                  ? t("crmQuotes.enCurso")
+                  : t("crmQuotes.pendiente")}
               </span>
             </div>
             <div className="space-y-1">
@@ -3904,10 +3870,10 @@ function QuoteDetailModal({
                   <div className="flex items-center gap-2">
                     <span className="text-foreground/40 w-5">#{inst.installmentNumber}</span>
                     <span className={inst.status === "paid" ? "text-emerald-300 font-medium" : "text-foreground/80"}>
-                      {(inst.amountCents / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                      {format.currency((inst.amountCents / 100))}
                     </span>
                     {inst.isRequiredForConfirmation && (
-                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">Inaplazable</span>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">{t("crmQuotes.inaplazable")}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -3917,7 +3883,7 @@ function QuoteDetailModal({
                         ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                         : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
                     }`}>
-                      {inst.status === "paid" ? "Pagada" : "Pendiente"}
+                      {inst.status === "paid" ? t("crmQuotes.pagada") : t("crmQuotes.pendiente")}
                     </span>
                   </div>
                 </div>
@@ -3930,8 +3896,8 @@ function QuoteDetailModal({
               return (
                 <>
                   <div className="flex justify-between pt-1 text-xs text-foreground/60">
-                    <span>Cobrado: <span className="text-emerald-300 font-medium">{(paidTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
-                    <span>Pendiente: <span className="text-amber-300 font-medium">{(pendingTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                    <span>{t("crmQuotes.cobrado")}{" "}<span className="text-emerald-300 font-medium">{format.currency((paidTotal / 100))}</span></span>
+                    <span>{t("crmQuotes.pendiente2")}{" "}<span className="text-amber-300 font-medium">{format.currency((pendingTotal / 100))}</span></span>
                   </div>
                   {hasPending && (
                     <button
@@ -3940,7 +3906,7 @@ function QuoteDetailModal({
                       className="w-full mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-violet-300 border border-violet-500/40 hover:bg-violet-500/10 rounded-lg py-1.5 transition-colors disabled:opacity-50"
                     >
                       <ExternalLink className="w-3 h-3" />
-                      {generateInstallmentLink.isPending ? "Enviando..." : "Enviar enlace de pago al cliente"}
+                      {generateInstallmentLink.isPending ? t("crmQuotes.enviando") : t("crmQuotes.enviarEnlaceDePago")}
                     </button>
                   )}
                 </>
@@ -3954,9 +3920,7 @@ function QuoteDetailModal({
           <div className="bg-foreground/[0.04] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-violet-400" />
-                Plan de Pago Fraccionado
-              </h4>
+                <CreditCard className="w-4 h-4 text-violet-400" />{t("crmQuotes.planDePagoFraccionado2")}</h4>
               <div className="flex items-center gap-2">
                 {planQuery.data && !planEditMode && (
                   <button
@@ -3971,16 +3935,16 @@ function QuoteDetailModal({
                       setPlanEditMode(true);
                     }}
                     className="text-xs text-violet-400 hover:text-violet-300 underline"
-                  >Editar</button>
+                  >{t("crmQuotes.editar")}</button>
                 )}
                 {planQuery.data && !planEditMode && (
                   <button
                     onClick={() => setConfirmDeletePlan(true)}
                     className="text-xs text-red-400 hover:text-red-300 underline"
-                  >Eliminar</button>
+                  >{t("crmQuotes.eliminar2")}</button>
                 )}
                 {planEditMode && (
-                  <button onClick={() => setPlanEditMode(false)} className="text-xs text-foreground/50 hover:text-foreground underline">Cancelar</button>
+                  <button onClick={() => setPlanEditMode(false)} className="text-xs text-foreground/50 hover:text-foreground underline">{t("crmQuotes.cancelar")}</button>
                 )}
               </div>
             </div>
@@ -3993,22 +3957,20 @@ function QuoteDetailModal({
                   return (
                     <div key={inst.id} className="flex items-center gap-3 py-2 border-b border-foreground/[0.08] last:border-0">
                       <span className="text-xs text-foreground/40 w-5">#{inst.installmentNumber}</span>
-                      <span className="text-sm font-semibold text-white flex-1">{(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                      <span className="text-sm font-semibold text-white flex-1">{format.number((inst.amountCents / 100), { minimumFractionDigits: 2 })} €</span>
                       <span className="text-xs text-foreground/55">{inst.dueDate}</span>
-                      {inst.isRequiredForConfirmation && <span className="text-xs bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">Requerida</span>}
+                      {inst.isRequiredForConfirmation && <span className="text-xs bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">{t("crmQuotes.requerida")}</span>}
                       {inst.status === "paid" ? (
-                        <span className="text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded">Pagada</span>
+                        <span className="text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded">{t("crmQuotes.pagada")}</span>
                       ) : inst.status === "cancelled" ? (
-                        <span className="text-xs text-foreground/30">Cancelada</span>
+                        <span className="text-xs text-foreground/30">{t("crmQuotes.cancelada")}</span>
                       ) : isOverdue ? (
-                        <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">Vencida</span>
+                        <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">{t("crmQuotes.vencida")}</span>
                       ) : (
                         <button
                           onClick={() => setConfirmingInstallment({ id: inst.id, installmentNumber: inst.installmentNumber, amountCents: inst.amountCents })}
                           className="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/25 px-2 py-0.5 rounded transition-colors"
-                        >
-                          Confirmar pago
-                        </button>
+                        >{t("crmQuotes.confirmarPago")}</button>
                       )}
                     </div>
                   );
@@ -4018,9 +3980,9 @@ function QuoteDetailModal({
                   const quoteTotalCents = Math.round(Number(quote.total ?? 0) * 100);
                   return (
                     <div className="flex justify-between items-center pt-1 text-xs text-foreground/50">
-                      <span>Total plan: <strong className="text-white">{(total / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</strong></span>
+                      <span>{t("crmQuotes.totalPlan")}{" "}<strong className="text-white">{format.number((total / 100), { minimumFractionDigits: 2 })} €</strong></span>
                       {Math.abs(total - quoteTotalCents) > 1 && (
-                        <span className="text-amber-400">⚠ Diferencia con presupuesto ({formatEur((quoteTotalCents / 100))})</span>
+                        <span className="text-amber-400">{t("crmQuotes.diferenciaConPresupuesto", { formatEur: format.currency((quoteTotalCents / 100), "EUR", EUR2) })}</span>
                       )}
                     </div>
                   );
@@ -4032,7 +3994,7 @@ function QuoteDetailModal({
             {(!planQuery.data || planEditMode) && (
               <div className="space-y-3">
                 {draftInstallments.length === 0 && (
-                  <p className="text-xs text-foreground/45 text-center py-2">Sin cuotas definidas. Añade la primera cuota abajo.</p>
+                  <p className="text-xs text-foreground/45 text-center py-2">{t("crmQuotes.sinCuotasDefinidasAnade")}</p>
                 )}
                 {draftInstallments.map((inst, idx) => (
                   <div key={idx} className="space-y-1.5 py-1.5 border-b border-foreground/[0.07] last:border-0">
@@ -4041,7 +4003,7 @@ function QuoteDetailModal({
                       <input
                         type="text"
                         inputMode="decimal"
-                        placeholder="Importe (€)"
+                        placeholder={t("crmQuotes.importe")}
                         value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -4080,13 +4042,11 @@ function QuoteDetailModal({
                             setDraftInstallments(updated);
                           }}
                           className="accent-violet-500 shrink-0"
-                        />
-                        Cuota inaplazable
-                      </label>
+                        />{t("crmQuotes.cuotaInaplazable")}</label>
                       <button
                         onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))}
                         className="text-red-400 hover:text-red-300 text-xs"
-                      >✕ Eliminar</button>
+                      >{t("crmQuotes.eliminar")}</button>
                     </div>
                   </div>
                 ))}
@@ -4106,9 +4066,7 @@ function QuoteDetailModal({
                     }]);
                   }}
                   className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
-                >
-                  + Añadir cuota
-                </button>
+                >{t("crmQuotes.anadirCuota")}</button>
 
                 {draftInstallments.length > 0 && (() => {
                   const sum = draftInstallments.reduce((s, i) => s + i.amountCents, 0);
@@ -4116,9 +4074,9 @@ function QuoteDetailModal({
                   const diff = Math.abs(sum - quoteTotalCents);
                   return (
                     <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
-                      <span>Suma cuotas: {formatEur((sum / 100))}</span>
-                      <span>Total presupuesto: {formatEur(Number(quote.total ?? 0))}</span>
-                      {diff > 1 && <span>⚠ Diferencia: {formatEur((diff / 100))}</span>}
+                      <span>{t("crmQuotes.sumaCuotas", { formatEur: format.currency((sum / 100), "EUR", EUR2) })}</span>
+                      <span>{t("crmQuotes.totalPresupuesto", { formatEur: format.currency(Number(quote.total ?? 0), "EUR", EUR2) })}</span>
+                      {diff > 1 && <span>{t("crmQuotes.diferencia", { formatEur: format.currency((diff / 100), "EUR", EUR2) })}</span>}
                     </div>
                   );
                 })()}
@@ -4129,7 +4087,7 @@ function QuoteDetailModal({
                   disabled={draftInstallments.length === 0 || upsertPlan.isPending}
                   onClick={() => {
                     if (draftInstallments.some(i => !i.dueDate || i.amountCents <= 0)) {
-                      toast.error("Completa el importe y la fecha de todas las cuotas");
+                      toast.error(t("crmQuotes.completaElImporteY2"));
                       return;
                     }
                     upsertPlan.mutate({
@@ -4138,7 +4096,7 @@ function QuoteDetailModal({
                     });
                   }}
                 >
-                  {upsertPlan.isPending ? <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />Guardando...</> : "Guardar plan de pago"}
+                  {upsertPlan.isPending ? <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />{t("crmQuotes.guardando")}</> : t("crmQuotes.guardarPlanDePago")}
                 </Button>
               </div>
             )}
@@ -4155,15 +4113,11 @@ function QuoteDetailModal({
             className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold"
             onClick={() => setShowConfirmPaymentModal(true)}
           >
-            <CheckCircle className="w-3.5 h-3.5 mr-1" />
-            Confirmar Pago
-          </Button>
+            <CheckCircle className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.confirmarPago2")}</Button>
         )}
         {/* Con plan fraccionado: recordar al admin que confirme cuota a cuota */}
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
-          <span className="text-xs text-violet-300/70 italic self-center">
-            Plan fraccionado: confirma cada cuota desde el panel ↑
-          </span>
+          <span className="text-xs text-violet-300/70 italic self-center">{t("crmQuotes.planFraccionadoConfirmaCada")}</span>
         )}
         {/* Enviar / Reenviar */}
         {quote.status === "borrador" && (
@@ -4174,7 +4128,7 @@ function QuoteDetailModal({
               className="border-foreground/[0.15] text-foreground/65 text-xs"
               onClick={() => setShowPaymentInput(!showPaymentInput)}
             >
-              <ArrowUpRight className="w-3.5 h-3.5 mr-1" /> {showPaymentInput ? "Sin link" : "+ Link pago"}
+              <ArrowUpRight className="w-3.5 h-3.5 mr-1" /> {showPaymentInput ? t("crmQuotes.sinLink") : t("crmQuotes.linkPago")}
             </Button>
             <Button
               size="sm"
@@ -4182,16 +4136,12 @@ function QuoteDetailModal({
               onClick={() => sendQuote.mutate({ id: quoteId, origin: window.location.origin })}
               disabled={sendQuote.isPending}
             >
-              {sendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1" />}
-              Enviar al cliente
-            </Button>
+              {sendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1" />}{t("crmQuotes.enviarAlCliente")}</Button>
           </>
         )}
         {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
           <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
-            {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
-            Reenviar
-          </Button>
+            {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}{t("crmQuotes.reenviar")}</Button>
         )}
         {/* Pago Pendiente */}
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
@@ -4201,9 +4151,7 @@ function QuoteDetailModal({
             className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs"
             onClick={() => setShowPendingPaymentModal(true)}
           >
-            <Clock className="w-3.5 h-3.5 mr-1" />
-            Pago Pendiente
-          </Button>
+            <Clock className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.pagoPendiente")}</Button>
         )}
         {/* Plan Fraccionado */}
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "aceptado") && (
@@ -4221,24 +4169,18 @@ function QuoteDetailModal({
               }
             }}
           >
-            <CreditCard className="w-3.5 h-3.5 mr-1" />
-            Plan Fraccionado
-          </Button>
+            <CreditCard className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.planFraccionado")}</Button>
         )}
         {/* Descargar PDF */}
         <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
-          {generatePdf.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1" />}
-          Descargar PDF
-        </Button>
+          {generatePdf.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1" />}{t("crmQuotes.descargarPdf")}</Button>
         {/* Duplicar */}
         <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground text-xs" onClick={() => duplicate.mutate({ id: quoteId })} disabled={duplicate.isPending}>
-          <Copy className="w-3.5 h-3.5 mr-1" /> Duplicar
-        </Button>
+          <Copy className="w-3.5 h-3.5 mr-1" />{" "}{t("crmQuotes.duplicar")}</Button>
         {/* Marcar perdido */}
         {quote.status !== "aceptado" && quote.status !== "perdido" && (
           <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 text-xs" onClick={() => markLost.mutate({ id: quoteId })} disabled={markLost.isPending}>
-            <XCircle className="w-3.5 h-3.5 mr-1" /> Perdido
-          </Button>
+            <XCircle className="w-3.5 h-3.5 mr-1" />{" "}{t("crmQuotes.perdido")}</Button>
         )}
       </DialogFooter>
     </DialogContent>
@@ -4251,19 +4193,14 @@ function QuoteDetailModal({
         <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Banknote className="w-5 h-5 text-blue-400" />
-              Confirmar pago por transferencia
-            </DialogTitle>
+              <Banknote className="w-5 h-5 text-blue-400" />{t("crmQuotes.confirmarPagoPorTransferencia")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-xs text-foreground/50">
-              Puedes confirmar la transferencia manualmente con justificante o vincularla a un movimiento bancario importado para dejarla conciliada.
-            </p>
+            <p className="text-xs text-foreground/50">{t("crmQuotes.puedesConfirmarLaTransferencia")}</p>
 
             {/* ── Justificante (opcional si hay movimiento vinculado) ── */}
             <div>
-              <div className="text-xs text-foreground/60 font-medium mb-2 uppercase tracking-wide">
-                Justificante {selectedBankMovementId ? "(opcional)" : "(obligatorio si no vinculas movimiento)"}
+              <div className="text-xs text-foreground/60 font-medium mb-2 uppercase tracking-wide">{t("crmQuotes.justificante")}{" "}{selectedBankMovementId ? "(opcional)" : t("crmQuotes.obligatorioSiNoVinculas")}
               </div>
               <div className="border-2 border-dashed border-foreground/[0.18] rounded-lg p-4 text-center hover:border-blue-500/50 transition-colors">
                 <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={handleTransferFileChange} className="hidden" id="transfer-proof-input" />
@@ -4271,28 +4208,27 @@ function QuoteDetailModal({
                   {isUploadingProof ? (
                     <div className="flex flex-col items-center gap-2">
                       <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
-                      <span className="text-sm text-foreground/65">Subiendo justificante...</span>
+                      <span className="text-sm text-foreground/65">{t("crmQuotes.subiendoJustificante")}</span>
                     </div>
                   ) : transferProofUrl ? (
                     <div className="flex flex-col items-center gap-2">
                       <CheckCircle className="w-8 h-8 text-emerald-400" />
-                      <span className="text-sm text-emerald-400 font-medium">Justificante adjuntado</span>
+                      <span className="text-sm text-emerald-400 font-medium">{t("crmQuotes.justificanteAdjuntado")}</span>
                       <span className="text-xs text-foreground/50">{transferFile?.name}</span>
-                      <span className="text-xs text-blue-400 underline">Cambiar archivo</span>
+                      <span className="text-xs text-blue-400 underline">{t("crmQuotes.cambiarArchivo")}</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-2">
                       <Upload className="w-8 h-8 text-foreground/50" />
-                      <span className="text-sm text-foreground/65">Haz clic para adjuntar el justificante</span>
-                      <span className="text-xs text-foreground/40">JPG, PNG o PDF · Máx. 10 MB</span>
+                      <span className="text-sm text-foreground/65">{t("crmQuotes.hazClicParaAdjuntar")}</span>
+                      <span className="text-xs text-foreground/40">{t("crmQuotes.jpgPngOPdf")}</span>
                     </div>
                   )}
                 </label>
               </div>
               {transferProofUrl && (
                 <a href={transferProofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 underline mt-2">
-                  <Eye className="w-3.5 h-3.5" /> Ver justificante adjuntado
-                </a>
+                  <Eye className="w-3.5 h-3.5" />{" "}{t("crmQuotes.verJustificanteAdjuntado")}</a>
               )}
             </div>
 
@@ -4300,9 +4236,7 @@ function QuoteDetailModal({
             <div className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.03] p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
-                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold">2A</span>
-                  Vincular movimiento bancario
-                </div>
+                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold">{t("crmQuotes.n2a")}</span>{t("crmQuotes.vincularMovimientoBancario")}</div>
                 {!selectedBankMovementId && (
                   <Button
                     variant="ghost"
@@ -4310,7 +4244,7 @@ function QuoteDetailModal({
                     className="text-blue-400 hover:text-blue-300 text-xs h-7 px-2"
                     onClick={() => setShowBankMovementSearch(!showBankMovementSearch)}
                   >
-                    {showBankMovementSearch ? "Ocultar" : "Buscar movimiento"}
+                    {showBankMovementSearch ? t("crmQuotes.ocultar2") : t("crmQuotes.buscarMovimiento")}
                   </Button>
                 )}
               </div>
@@ -4318,28 +4252,25 @@ function QuoteDetailModal({
               {selectedBankMovementId ? (
                 (() => {
                   const mv = (bankMovementsQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementId)
-                    ?? { id: selectedBankMovementId, fecha: "–", movimiento: "Movimiento seleccionado", importe: "–" };
+                    ?? { id: selectedBankMovementId, fecha: "–", movimiento: t("crmQuotes.movimientoSeleccionado"), importe: "–" };
                   return (
                     <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-emerald-400 font-medium flex items-center gap-1">
-                          <CheckCircle className="w-3.5 h-3.5" /> Movimiento seleccionado
-                        </span>
+                          <CheckCircle className="w-3.5 h-3.5" />{" "}{t("crmQuotes.movimientoSeleccionado")}</span>
                         <button onClick={() => { setSelectedBankMovementId(null); setShowBankMovementSearch(true); }} className="text-foreground/40 hover:text-foreground/70">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                       <div className="text-foreground/70">
-                        {mv.fecha} · {mv.movimiento || "–"} · <span className="text-emerald-400 font-semibold">{mv.importe ? `${parseFloat(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                        {mv.fecha} · {mv.movimiento || "–"} · <span className="text-emerald-400 font-semibold">{mv.importe ? `${format.number(parseFloat(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                       </div>
                       {mv.masDatos && <div className="text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap">{mv.masDatos}</div>}
                     </div>
                   );
                 })()
               ) : (
-                <p className="text-xs text-foreground/40">
-                  Opcional. Si vinculas un movimiento bancario el sistema registrará la conciliación automáticamente.
-                </p>
+                <p className="text-xs text-foreground/40">{t("crmQuotes.opcionalSiVinculasUn")}</p>
               )}
 
               {showBankMovementSearch && !selectedBankMovementId && (
@@ -4348,17 +4279,16 @@ function QuoteDetailModal({
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
                     <input
                       className="w-full text-xs bg-foreground/[0.05] border border-foreground/[0.12] rounded-md pl-8 pr-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-                      placeholder="Buscar por concepto, importe o fecha..."
+                      placeholder={t("crmQuotes.buscarPorConceptoImporte")}
                       value={bankMovementSearch}
                       onChange={(e) => setBankMovementSearch(e.target.value)}
                     />
                   </div>
                   {bankMovementsQ.isLoading ? (
                     <div className="text-xs text-foreground/40 text-center py-2">
-                      <RefreshCw className="w-3 h-3 animate-spin inline mr-1" />Buscando...
-                    </div>
+                      <RefreshCw className="w-3 h-3 animate-spin inline mr-1" />{t("crmQuotes.buscando")}</div>
                   ) : (bankMovementsQ.data?.data as any[] ?? []).filter((m: any) => parseFloat(m.importe) > 0 && m.conciliationStatus !== "conciliado").length === 0 ? (
-                    <p className="text-xs text-foreground/40 text-center py-2">No hay movimientos pendientes disponibles.</p>
+                    <p className="text-xs text-foreground/40 text-center py-2">{t("crmQuotes.noHayMovimientosPendientes")}</p>
                   ) : (
                     <div className="space-y-1 max-h-48 overflow-y-auto">
                       {(bankMovementsQ.data?.data as any[] ?? [])
@@ -4371,7 +4301,7 @@ function QuoteDetailModal({
                           >
                             <div className="flex justify-between items-center">
                               <span className="text-foreground/70 font-medium">{mv.fecha}</span>
-                              <span className="text-emerald-400 font-semibold">{parseFloat(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                              <span className="text-emerald-400 font-semibold">{format.number(parseFloat(mv.importe), { minimumFractionDigits: 2 })} €</span>
                             </div>
                             <div className="text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento || "–"}</div>
                             {mv.masDatos && <div className="text-foreground/30 overflow-hidden text-ellipsis whitespace-nowrap">{mv.masDatos}</div>}
@@ -4390,20 +4320,18 @@ function QuoteDetailModal({
               variant="ghost"
               className="text-foreground/65 hover:text-foreground"
               onClick={() => { setShowTransferModal(false); setTransferFile(null); setTransferProofUrl(null); setSelectedBankMovementId(null); setShowBankMovementSearch(false); setBankMovementSearch(""); }}
-            >
-              Cancelar
-            </Button>
+            >{t("crmQuotes.cancelar")}</Button>
             <Button
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={(!transferProofUrl && !selectedBankMovementId) || confirmTransfer.isPending}
               onClick={() => confirmTransfer.mutate({ quoteId, bankMovementId: selectedBankMovementId ?? undefined })}
             >
               {confirmTransfer.isPending ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Confirmando...</>
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />{" "}{t("crmQuotes.confirmando")}</>
               ) : selectedBankMovementId ? (
-                <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y conciliar</>
+                <><CheckCircle className="w-4 h-4 mr-2" />{" "}{t("crmQuotes.confirmarYConciliar")}</>
               ) : (
-                <><CheckCircle className="w-4 h-4 mr-2" /> Validar pago y generar factura</>
+                <><CheckCircle className="w-4 h-4 mr-2" />{" "}{t("crmQuotes.validarPagoYGenerar")}</>
               )}
             </Button>
           </DialogFooter>
@@ -4415,12 +4343,10 @@ function QuoteDetailModal({
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-              Confirmar cuota #{confirmingInstallment?.installmentNumber}
+              <CheckCircle className="w-5 h-5 text-emerald-400" />{t("crmQuotes.confirmarCuota", { installmentNumber: confirmingInstallment?.installmentNumber })}
             </DialogTitle>
             {confirmingInstallment && (
-              <p className="text-foreground/60 text-sm pt-1">
-                Importe: <strong className="text-white">{(confirmingInstallment.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</strong>
+              <p className="text-foreground/60 text-sm pt-1">{t("crmQuotes.importe2")}{" "}<strong className="text-white">{format.number((confirmingInstallment.amountCents / 100), { minimumFractionDigits: 2 })} €</strong>
               </p>
             )}
           </DialogHeader>
@@ -4432,27 +4358,27 @@ function QuoteDetailModal({
                   onClick={() => setInstPayMethod(m)}
                   className={`py-2 px-3 rounded-lg border text-xs font-medium transition-colors capitalize ${instPayMethod === m ? "bg-violet-600 border-violet-500 text-white" : "bg-foreground/[0.05] border-foreground/[0.12] text-foreground/60 hover:border-foreground/30"}`}
                 >
-                  {m === "tarjeta_fisica" ? "Tarjeta Física" : m === "transferencia" ? "Transferencia" : "Efectivo"}
+                  {m === "tarjeta_fisica" ? t("crmQuotes.tarjetaFisica") : m === "transferencia" ? t("crmQuotes.transferencia") : t("crmQuotes.efectivo")}
                 </button>
               ))}
             </div>
             {instPayMethod === "tarjeta_fisica" && (
               <div className="space-y-1.5">
-                <Label className="text-foreground/70 text-xs">Nº operación TPV *</Label>
-                <Input value={instTpvOp} onChange={(e) => setInstTpvOp(e.target.value)} placeholder="Ej: 12345" className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
+                <Label className="text-foreground/70 text-xs">{t("crmQuotes.nOperacionTpv")}</Label>
+                <Input value={instTpvOp} onChange={(e) => setInstTpvOp(e.target.value)} placeholder={t("crmQuotes.ej12345")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
               </div>
             )}
             {instPayMethod === "transferencia" && (
               <div className="space-y-1.5">
-                <Label className="text-foreground/70 text-xs">Justificante de transferencia</Label>
+                <Label className="text-foreground/70 text-xs">{t("crmQuotes.justificanteDeTransferencia")}</Label>
                 {!instProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${isUploadingInstProof ? "border-violet-500/40 bg-violet-500/5" : "border-foreground/[0.15] hover:border-foreground/30"}`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" disabled={isUploadingInstProof} onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
                       const allowed = ["image/jpeg", "image/png", "application/pdf"];
-                      if (!allowed.includes(file.type)) { toast.error("Solo se permiten JPG, PNG o PDF"); return; }
-                      if (file.size > 10 * 1024 * 1024) { toast.error("El archivo no puede superar 10 MB"); return; }
+                      if (!allowed.includes(file.type)) { toast.error(t("crmQuotes.soloSePermitenJpg")); return; }
+                      if (file.size > 10 * 1024 * 1024) { toast.error(t("crmQuotes.elArchivoNoPuede")); return; }
                       setIsUploadingInstProof(true);
                       const reader = new FileReader();
                       reader.onload = async (ev) => {
@@ -4466,33 +4392,33 @@ function QuoteDetailModal({
                           });
                           setInstProofUrl(result.url);
                           setInstProofKey(result.fileKey);
-                          toast.success("Justificante subido correctamente");
-                        } catch { toast.error("Error al subir el justificante"); }
+                          toast.success(t("crmQuotes.justificanteSubidoCorrectament"));
+                        } catch { toast.error(t("crmQuotes.errorAlSubirEl")); }
                         setIsUploadingInstProof(false);
                       };
                       reader.readAsDataURL(file);
                     }} />
-                    {isUploadingInstProof ? <><RefreshCw className="w-4 h-4 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">Subiendo...</span></> : <><Upload className="w-4 h-4 text-foreground/50" /><span className="text-xs text-foreground/60">Subir justificante (PDF, JPG, PNG)</span></>}
+                    {isUploadingInstProof ? <><RefreshCw className="w-4 h-4 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">{t("crmQuotes.subiendo")}</span></> : <><Upload className="w-4 h-4 text-foreground/50" /><span className="text-xs text-foreground/60">{t("crmQuotes.subirJustificantePdfJpg")}</span></>}
                   </label>
                 ) : (
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Justificante subido</span>
-                    <a href={instProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
-                    <button onClick={() => { setInstProofUrl(null); setInstProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
+                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmQuotes.justificanteSubido")}</span>
+                    <a href={instProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">{t("crmQuotes.ver")}</a>
+                    <button onClick={() => { setInstProofUrl(null); setInstProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">{t("crmQuotes.texto")}</button>
                   </div>
                 )}
               </div>
             )}
             {instPayMethod === "efectivo" && (
               <div className="space-y-1.5">
-                <Label className="text-foreground/70 text-xs">Notas *</Label>
-                <Textarea value={instPayNote} onChange={(e) => setInstPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 20/04/2026" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
+                <Label className="text-foreground/70 text-xs">{t("crmQuotes.notas")}</Label>
+                <Textarea value={instPayNote} onChange={(e) => setInstPayNote(e.target.value)} placeholder={t("crmQuotes.ejCobradoEnRecepcion")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-foreground/65" onClick={() => setConfirmingInstallment(null)}>Cancelar</Button>
+            <Button variant="ghost" className="text-foreground/65" onClick={() => setConfirmingInstallment(null)}>{t("crmQuotes.cancelar")}</Button>
             <Button
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={
@@ -4512,7 +4438,7 @@ function QuoteDetailModal({
                 });
               }}
             >
-              {confirmInstallmentMut.isPending ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Confirmando...</> : <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar cuota</>}
+              {confirmInstallmentMut.isPending ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />{" "}{t("crmQuotes.confirmando")}</> : <><CheckCircle className="w-4 h-4 mr-2" />{" "}{t("crmQuotes.confirmarCuota2")}</>}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4525,12 +4451,10 @@ function QuoteDetailModal({
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-              Confirmar pago recibido
-            </DialogTitle>
+              <CheckCircle className="w-5 h-5 text-emerald-400" />{t("crmQuotes.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-foreground/65 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
+            <p className="text-foreground/65 text-sm">{t("crmQuotes.seleccionaElMetodoDe")}</p>
             {/* Selector de método */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
@@ -4543,7 +4467,7 @@ function QuoteDetailModal({
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
                   {m === "transferencia" && <Banknote className="w-5 h-5" />}
                   {m === "efectivo" && <Receipt className="w-5 h-5" />}
-                  {m === "tarjeta" ? "Tarjeta" : m === "transferencia" ? "Transferencia" : "Efectivo"}
+                  {m === "tarjeta" ? t("crmQuotes.tarjeta") : m === "transferencia" ? t("crmQuotes.transferencia") : t("crmQuotes.efectivo")}
                 </button>
               ))}
             </div>
@@ -4551,20 +4475,18 @@ function QuoteDetailModal({
             {paymentMethodSelected === "tarjeta" && (
               <div className="space-y-2">
                 <div className="space-y-1.5">
-                  <Label className="text-foreground/70 text-xs">Nº operación TPV {!selectedTpvOpIdForConfirm ? "*" : "(auto)"}</Label>
-                  <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder="Ej: 000123456789" disabled={!!selectedTpvOpIdForConfirm} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
+                  <Label className="text-foreground/70 text-xs">{t("crmQuotes.nOperacionTpv2")}{" "}{!selectedTpvOpIdForConfirm ? "*" : "(auto)"}</Label>
+                  <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder={t("crmQuotes.ej000123456789")} disabled={!!selectedTpvOpIdForConfirm} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />
-                    Vincular operación TPV
-                  </div>
+                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />{t("crmQuotes.vincularOperacionTpv")}</div>
                   {!selectedTpvOpIdForConfirm && (
                     <button
                       className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
                       onClick={() => setShowTpvOpSearchForConfirm(!showTpvOpSearchForConfirm)}
                     >
-                      {showTpvOpSearchForConfirm ? "Ocultar" : "Buscar operación"}
+                      {showTpvOpSearchForConfirm ? t("crmQuotes.ocultar2") : t("crmQuotes.buscarOperacion")}
                     </button>
                   )}
                 </div>
@@ -4575,11 +4497,11 @@ function QuoteDetailModal({
                     return (
                       <div className="rounded-md border border-violet-500/30 bg-violet-500/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-violet-300">Operación TPV vinculada</span>
-                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setViewTpvOp(""); }}>×</button>
+                          <span className="font-medium text-violet-300">{t("crmQuotes.operacionTpvVinculada")}</span>
+                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setViewTpvOp(""); }}>{t("crmQuotes.texto")}</button>
                         </div>
                         <div className="text-foreground/70 font-mono">{op.operationNumber ?? "–"}</div>
-                        <div className="text-violet-400 font-medium">{op.amount != null ? `${Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</div>
+                        <div className="text-violet-400 font-medium">{op.amount != null ? `${format.number(Number(op.amount), { minimumFractionDigits: 2 })} €` : "–"}</div>
                       </div>
                     );
                   })()
@@ -4587,15 +4509,15 @@ function QuoteDetailModal({
                   <div className="space-y-2">
                     <input
                       className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
-                      placeholder="Buscar por Nº operación, tarjeta..."
+                      placeholder={t("crmQuotes.buscarPorNOperacion")}
                       value={tpvOpSearchForConfirm}
                       onChange={(e) => setTpvOpSearchForConfirm(e.target.value)}
                     />
                     <div className="max-h-40 overflow-y-auto rounded-md border border-white/10 divide-y divide-white/5">
                       {tpvOpsForConfirmQ.isLoading ? (
-                        <div className="p-3 text-xs text-foreground/40 text-center">Buscando...</div>
+                        <div className="p-3 text-xs text-foreground/40 text-center">{t("crmQuotes.buscando")}</div>
                       ) : (tpvOpsForConfirmQ.data?.data as any[] | undefined)?.length === 0 ? (
-                        <div className="p-3 text-xs text-foreground/40 text-center">No hay operaciones pendientes</div>
+                        <div className="p-3 text-xs text-foreground/40 text-center">{t("crmQuotes.noHayOperacionesPendientes")}</div>
                       ) : (
                         (tpvOpsForConfirmQ.data?.data as any[] | undefined)?.map((op: any) => (
                           <button
@@ -4605,9 +4527,9 @@ function QuoteDetailModal({
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
-                              <span className="text-xs text-violet-400 font-medium shrink-0">{Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                              <span className="text-xs text-violet-400 font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
                             </div>
-                            <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {new Date(op.operationDatetime).toLocaleDateString("es-ES")}</div>
+                            <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {format.date(op.operationDatetime, {})}</div>
                           </button>
                         ))
                       )}
@@ -4618,8 +4540,7 @@ function QuoteDetailModal({
             )}
             {paymentMethodSelected === "transferencia" && (
               <div className="space-y-2">
-                <div className="text-xs text-foreground/60 font-medium uppercase tracking-wide">
-                  Justificante {selectedBankMovementIdForConfirm ? "(opcional)" : "(obligatorio si no vinculas movimiento)"}
+                <div className="text-xs text-foreground/60 font-medium uppercase tracking-wide">{t("crmQuotes.justificante")}{" "}{selectedBankMovementIdForConfirm ? "(opcional)" : t("crmQuotes.obligatorioSiNoVinculas")}
                 </div>
                 {!viewProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
@@ -4627,32 +4548,30 @@ function QuoteDetailModal({
                   }`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleViewProofFileChange} disabled={isUploadingViewProof} />
                     {isUploadingViewProof ? (
-                      <><RefreshCw className="w-5 h-5 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">Subiendo...</span></>
+                      <><RefreshCw className="w-5 h-5 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">{t("crmQuotes.subiendo")}</span></>
                     ) : (
-                      <><Upload className="w-5 h-5 text-foreground/50" /><span className="text-xs text-foreground/60">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
+                      <><Upload className="w-5 h-5 text-foreground/50" /><span className="text-xs text-foreground/60">{t("crmQuotes.hazClicOArrastra")}</span></>
                     )}
                   </label>
                 ) : (
                   <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Justificante subido correctamente</span>
-                    <a href={viewProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
-                    <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
+                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmQuotes.justificanteSubidoCorrectament")}</span>
+                    <a href={viewProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">{t("crmQuotes.ver")}</a>
+                    <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">{t("crmQuotes.texto")}</button>
                   </div>
                 )}
 
                 {/* Bank movement linking block */}
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <Banknote className="w-3.5 h-3.5 text-blue-400" />
-                    Vincular movimiento bancario
-                  </div>
+                    <Banknote className="w-3.5 h-3.5 text-blue-400" />{t("crmQuotes.vincularMovimientoBancario")}</div>
                   {!selectedBankMovementIdForConfirm && (
                     <button
                       className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
                       onClick={() => setShowBankMovementSearchForConfirm(!showBankMovementSearchForConfirm)}
                     >
-                      {showBankMovementSearchForConfirm ? "Ocultar" : "Buscar movimiento"}
+                      {showBankMovementSearchForConfirm ? t("crmQuotes.ocultar2") : t("crmQuotes.buscarMovimiento")}
                     </button>
                   )}
                 </div>
@@ -4660,20 +4579,20 @@ function QuoteDetailModal({
                 {selectedBankMovementIdForConfirm ? (
                   (() => {
                     const mv = (bankMovementsForConfirmQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementIdForConfirm)
-                      ?? { id: selectedBankMovementIdForConfirm, fecha: "–", movimiento: "Movimiento seleccionado", importe: "–" };
+                      ?? { id: selectedBankMovementIdForConfirm, fecha: "–", movimiento: t("crmQuotes.movimientoSeleccionado"), importe: "–" };
                     return (
                       <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-emerald-300">Movimiento vinculado</span>
+                          <span className="font-medium text-emerald-300">{t("crmQuotes.movimientoVinculado")}</span>
                           <button
                             className="text-foreground/40 hover:text-foreground/70 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); }}
-                          >×</button>
+                          >{t("crmQuotes.texto")}</button>
                         </div>
                         <div className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                         <div className="flex gap-3 text-foreground/50">
                           <span>{mv.fecha ?? "–"}</span>
-                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                         </div>
                       </div>
                     );
@@ -4682,14 +4601,14 @@ function QuoteDetailModal({
                   <div className="space-y-2">
                     <input
                       className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-                      placeholder="Buscar por concepto, importe o fecha..."
+                      placeholder={t("crmQuotes.buscarPorConceptoImporte")}
                       value={bankMovementSearchForConfirm}
                       onChange={(e) => setBankMovementSearchForConfirm(e.target.value)}
                     />
                     {bankMovementsForConfirmQ.isLoading ? (
-                      <div className="text-xs text-foreground/40 py-2 text-center">Buscando...</div>
+                      <div className="text-xs text-foreground/40 py-2 text-center">{t("crmQuotes.buscando")}</div>
                     ) : (bankMovementsForConfirmQ.data?.data as any[] | undefined)?.length === 0 ? (
-                      <div className="text-xs text-foreground/40 py-2 text-center">No hay movimientos pendientes</div>
+                      <div className="text-xs text-foreground/40 py-2 text-center">{t("crmQuotes.noHayMovimientosPendientes2")}</div>
                     ) : (
                       <div className="space-y-1 max-h-40 overflow-y-auto">
                         {(bankMovementsForConfirmQ.data?.data as any[] | undefined)?.map((mv: any) => (
@@ -4701,7 +4620,7 @@ function QuoteDetailModal({
                             <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                             <div className="flex gap-3 mt-0.5 text-xs text-white/50">
                               <span>{mv.fecha ?? "–"}</span>
-                              <span className="text-emerald-400">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                              <span className="text-emerald-400">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                             </div>
                           </button>
                         ))}
@@ -4713,13 +4632,13 @@ function QuoteDetailModal({
             )}
             {paymentMethodSelected === "efectivo" && (
               <div className="space-y-1.5">
-                <Label className="text-foreground/70 text-xs">Justificación *</Label>
-                <Textarea value={viewPayNote} onChange={(e) => setViewPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
+                <Label className="text-foreground/70 text-xs">{t("crmQuotes.justificacion")}</Label>
+                <Textarea value={viewPayNote} onChange={(e) => setViewPayNote(e.target.value)} placeholder={t("crmQuotes.ejCobradoEnRecepcion2")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}>Cancelar</Button>
+            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}>{t("crmQuotes.cancelar")}</Button>
             <Button
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={
@@ -4743,11 +4662,11 @@ function QuoteDetailModal({
               }}
             >
               {confirmPaymentWithMethod.isPending ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Procesando...</>
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />{" "}{t("crmQuotes.procesando")}</>
               ) : (selectedBankMovementIdForConfirm && paymentMethodSelected === "transferencia") || (selectedTpvOpIdForConfirm && paymentMethodSelected === "tarjeta") ? (
-                <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y conciliar</>
+                <><CheckCircle className="w-4 h-4 mr-2" />{" "}{t("crmQuotes.confirmarYConciliar")}</>
               ) : (
-                <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y generar factura</>
+                <><CheckCircle className="w-4 h-4 mr-2" />{" "}{t("crmQuotes.confirmarYGenerarFactura")}</>
               )}
             </Button>
           </DialogFooter>
@@ -4759,14 +4678,12 @@ function QuoteDetailModal({
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-400" />
-              Registrar pago pendiente
-            </DialogTitle>
+              <Clock className="w-5 h-5 text-amber-400" />{t("crmQuotes.registrarPagoPendiente")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-foreground/65 text-sm">Se creará un registro de pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
+            <p className="text-foreground/65 text-sm">{t("crmQuotes.seCrearaUnRegistro")}</p>
             <div className="space-y-1.5">
-              <Label className="text-foreground/70 text-xs">Fecha límite de pago *</Label>
+              <Label className="text-foreground/70 text-xs">{t("crmQuotes.fechaLimiteDePago")}</Label>
               <Input
                 type="date"
                 value={pendingDueDate}
@@ -4776,18 +4693,18 @@ function QuoteDetailModal({
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-foreground/70 text-xs">Motivo / nota interna (opcional)</Label>
+              <Label className="text-foreground/70 text-xs">{t("crmQuotes.motivoNotaInternaOpcional")}</Label>
               <Textarea
                 value={pendingReason}
                 onChange={(e) => setPendingReason(e.target.value)}
-                placeholder="Ej: Cliente confirma pago por transferencia la próxima semana..."
+                placeholder={t("crmQuotes.ejClienteConfirmaPago")}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none"
                 rows={3}
               />
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => setShowPendingPaymentModal(false)}>Cancelar</Button>
+            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => setShowPendingPaymentModal(false)}>{t("crmQuotes.cancelar")}</Button>
             <Button
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={!pendingDueDate || createPendingPayment.isPending}
@@ -4807,9 +4724,9 @@ function QuoteDetailModal({
               }}
             >
               {createPendingPayment.isPending ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Registrando...</>
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />{" "}{t("crmQuotes.registrando")}</>
               ) : (
-                <><Clock className="w-4 h-4 mr-2" /> Registrar pago pendiente</>
+                <><Clock className="w-4 h-4 mr-2" />{" "}{t("crmQuotes.registrarPagoPendiente")}</>
               )}
             </Button>
           </DialogFooter>
@@ -4817,8 +4734,8 @@ function QuoteDetailModal({
       </Dialog>
       <ConfirmDialog
         open={confirmDeletePlan}
-        title="Eliminar el plan de pago"
-        description="Se eliminará el plan de pago fraccionado de este presupuesto."
+        title={t("crmQuotes.eliminarElPlanDe")}
+        description={t("crmQuotes.seEliminaraElPlan")}
         onCancel={() => setConfirmDeletePlan(false)}
         onConfirm={() => { setConfirmDeletePlan(false); deletePlan.mutate({ quoteId }); }}
       />
@@ -4841,6 +4758,7 @@ function ReservationDetailModal({
   onGenerateInvoice?: (id: number) => void;
   onCancel?: (id: number, name: string) => void;
 }) {
+  const { t, format } = useI18n();
   const voc = useVocabulary();
   const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
   const planQuery = trpc.crm.paymentPlans.get.useQuery(
@@ -4853,17 +4771,17 @@ function ReservationDetailModal({
     reservation_updated:   `${voc.Order} ${voc.agree("actualizado", "actualizada")}`,
     reservation_paid:      `${voc.Order} ${voc.agree("pagado", "pagada")} online`,
     reservation_cancelled: `${voc.Order} ${voc.agree("cancelado", "cancelada")}`,
-    payment_confirmed:     "Pago confirmado",
-    transfer_validated:    "Transferencia bancaria validada",
-    invoice_generated:     "Factura generada",
-    booking_created:       voc.licensed ? "Servicio programado" : "Actividad programada",
-    booking_confirmed:     voc.licensed ? "Servicio confirmado" : "Actividad confirmada",
-    booking_completed:     voc.licensed ? "Servicio completado" : "Actividad completada",
-    email_sent:            "Email enviado al cliente",
-    discount_applied:      "Descuento / bono aplicado",
-    email_resent:          "Email de confirmación reenviado",
-    date_changed:          voc.licensed ? "Fecha de servicio modificada" : "Fecha de reserva modificada",
-    status_updated:        "Estado actualizado",
+    payment_confirmed:     t("crmReservations.pagoConfirmado"),
+    transfer_validated:    t("crmReservations.transferenciaBancariaValidada"),
+    invoice_generated:     t("crmReservations.facturaGenerada"),
+    booking_created:       voc.licensed ? t("crmReservations.servicioProgramado") : t("crmReservations.actividadProgramada"),
+    booking_confirmed:     voc.licensed ? t("crmReservations.servicioConfirmado") : t("crmReservations.actividadConfirmada"),
+    booking_completed:     voc.licensed ? t("crmReservations.servicioCompletado") : t("crmReservations.actividadCompletada"),
+    email_sent:            t("crmReservations.emailEnviadoAlCliente"),
+    discount_applied:      t("crmReservations.descuentoBonoAplicado"),
+    email_resent:          t("crmReservations.emailDeConfirmacionReenviado"),
+    date_changed:          voc.licensed ? t("crmReservations.fechaDeServicioModificada") : t("crmReservations.fechaDeReservaModificada"),
+    status_updated:        t("crmReservations.estadoActualizado"),
   };
   const translateAction = (action: string) =>
     ACTION_LABELS[action] ?? action.replace(/_/g, " ");
@@ -4871,10 +4789,10 @@ function ReservationDetailModal({
   const getStatusBadge = (status: string) => {
     const map: Record<string, { label: string; cls: string }> = {
       paid:            { label: `✅ ${voc.agree("Confirmado", "Confirmada")}`, cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-      pending_payment: { label: "⏳ Pendiente de pago", cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+      pending_payment: { label: t("crmReservations.pendienteDePago"), cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
       cancelled:       { label: `❌ ${voc.agree("Cancelado", "Cancelada")}`, cls: "bg-red-500/15 text-red-400 border-red-500/30" },
       failed:          { label: `⚠️ ${voc.agree("Fallido", "Fallida")}`, cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-      draft:           { label: "📝 Borrador",           cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
+      draft:           { label: t("crmReservations.borrador"),           cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
       completed:       { label: `🏁 ${voc.agree("Completado", "Completada")}`, cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
     };
     const s = map[status] ?? { label: status, cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" };
@@ -4888,13 +4806,13 @@ function ReservationDetailModal({
   const getPaymentBadge = (method: string | null) => {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
-      tarjeta_fisica: { label: voc.licensed ? "Tarjeta en datáfono" : "Tarjeta Física",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta_redsys: { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      redsys:         { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta:        { label: "Tarjeta",          cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      transferencia:  { label: "Transferencia",    cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
-      efectivo:       { label: "Efectivo",         cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
-      otro:           { label: "Otro",             cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
+      tarjeta_fisica: { label: voc.licensed ? t("crmReservations.tarjetaEnDatafono") : t("crmReservations.tarjetaFisica"),  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta_redsys: { label: voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys"),  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      redsys:         { label: voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys"),  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta:        { label: t("crmReservations.tarjeta"),          cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      transferencia:  { label: t("crmReservations.transferencia2"),    cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
+      efectivo:       { label: t("crmReservations.efectivo2"),         cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      otro:           { label: t("crmReservations.otro2"),             cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
     };
     const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
     return (
@@ -4946,8 +4864,8 @@ function ReservationDetailModal({
             <div className="mb-3 flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 rounded-xl px-4 py-2.5">
               <span className="text-orange-400 text-sm">⚠️</span>
               <div>
-                <p className="text-orange-400 text-xs font-bold">Solicitud de anulación vinculada</p>
-                <p className="text-orange-300/70 text-xs">Expediente #{res.cancellationRequestId}</p>
+                <p className="text-orange-400 text-xs font-bold">{t("crmReservations.solicitudDeAnulacionVinculada")}</p>
+                <p className="text-orange-300/70 text-xs">{t("crmReservations.expediente", { cancellationRequestId: res.cancellationRequestId })}</p>
               </div>
             </div>
           )}
@@ -4956,54 +4874,37 @@ function ReservationDetailModal({
             {getPaymentBadge(res.paymentMethod)}
             {planQuery.data && planQuery.data.installments.length > 0 && (
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2.5 py-1 rounded-full">
-                <CreditCard className="w-3 h-3" /> Plan de Pagos
-              </span>
+                <CreditCard className="w-3 h-3" />{" "}{t("crmReservations.planDePagos")}</span>
             )}
             {res.channel === "TPV_FISICO" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 rounded-full">
-                🖥️ TPV Presencial
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.tpvPresencial")}</span>
             )}
             {res.channel === "VENTA_DELEGADA" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full">
-                💼 CRM Delegado
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.crmDelegado")}</span>
             )}
             {(res.channel === "ONLINE_DIRECTO" || !res.channel) && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-full">
-                🌐 Online directo
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.onlineDirecto")}</span>
             )}
             {res.channel === "ONLINE_ASISTIDO" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full">
-                🤝 Online asistido
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.onlineAsistido")}</span>
             )}
             {res.channel === "TELEFONO" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                📞 Teléfono
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.telefono2")}</span>
             )}
             {res.channel === "EMAIL" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-full">
-                ✉️ Email
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.email3")}</span>
             )}
             {res.channel === "PARTNER" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-300 bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 rounded-full">
-                🤝 Partner
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-300 bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.partner")}</span>
             )}
             {res.channel === "TICKETING" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-pink-300 bg-pink-500/15 border border-pink-500/30 px-2 py-0.5 rounded-full">
-                🎟️ Ticketing
-              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-pink-300 bg-pink-500/15 border border-pink-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.ticketing")}</span>
             )}
           </div>
           {/* Info de ticket TPV si aplica */}
           {res.channel === "TPV_FISICO" && res.notes?.includes("[ORIGEN_TPV]") && (
             <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
-              <div className="text-xs font-semibold text-violet-300 mb-1">🖥️ Venta en caja</div>
+              <div className="text-xs font-semibold text-violet-300 mb-1">{t("crmReservations.ventaEnCaja")}</div>
               <div className="text-xs text-violet-200/70">
                 {res.notes.replace("[ORIGEN_TPV] ", "")}
               </div>
@@ -5012,21 +4913,21 @@ function ReservationDetailModal({
 
           {/* Datos del cliente */}
           <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
-            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Datos del cliente</h4>
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">{t("crmReservations.datosDelCliente")}</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs text-foreground/50 mb-0.5">Nombre</div>
+                <div className="text-xs text-foreground/50 mb-0.5">{t("crmReservations.nombre")}</div>
                 <div className="text-sm text-white font-medium">{res.customerName}</div>
               </div>
               <div>
-                <div className="text-xs text-foreground/50 mb-0.5">Email</div>
+                <div className="text-xs text-foreground/50 mb-0.5">{t("crmReservations.email4")}</div>
                 <a href={`mailto:${res.customerEmail}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
                   {res.customerEmail}
                 </a>
               </div>
               {res.customerPhone && (
                 <div>
-                  <div className="text-xs text-foreground/50 mb-0.5">Teléfono</div>
+                  <div className="text-xs text-foreground/50 mb-0.5">{t("crmReservations.telefono")}</div>
                   <a href={`tel:${res.customerPhone}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
                     {res.customerPhone}
                   </a>
@@ -5037,10 +4938,10 @@ function ReservationDetailModal({
 
           {/* Detalles de la reserva */}
           <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
-            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Detalles {voc.licensed ? "del pedido" : "de la reserva"}</h4>
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">{t("crmReservations.detalles")}{" "}{voc.licensed ? t("crmReservations.delPedido") : t("crmReservations.deLaReserva")}</h4>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-foreground/60">Producto</span>
+                <span className="text-foreground/60">{t("crmReservations.producto")}</span>
                 <span className="text-white font-medium text-right max-w-[60%]">{res.productName}</span>
               </div>
               <div className="flex justify-between text-sm">
@@ -5049,49 +4950,47 @@ function ReservationDetailModal({
               </div>
               {res.selectedTime && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-foreground/60">Hora solicitada</span>
+                  <span className="text-foreground/60">{t("crmReservations.horaSolicitada")}</span>
                   <span className="text-white font-medium">{res.selectedTime}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
-                <span className="text-foreground/60">Personas</span>
-                <span className="text-white font-medium">{res.people} pax</span>
+                <span className="text-foreground/60">{t("crmReservations.personas")}</span>
+                <span className="text-white font-medium">{t("crmReservations.pax", { people: res.people })}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-foreground/60">Importe total</span>
+                <span className="text-foreground/60">{t("crmReservations.importeTotal2")}</span>
                 <span className="text-orange-400 font-bold">{totalEur} €</span>
               </div>
               {Number((res as any).discountAmount ?? (res as any).discount_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-emerald-400/80">
-                    Descuento
-                    {((res as any).discountReason ?? (res as any).discount_reason) && (
+                  <span className="text-emerald-400/80">{t("crmReservations.descuento")}{((res as any).discountReason ?? (res as any).discount_reason) && (
                       <span className="text-foreground/40 text-xs ml-1">— {(res as any).discountReason ?? (res as any).discount_reason}</span>
                     )}
                   </span>
                   <span className="text-emerald-400 font-semibold">
-                    −{formatEur(Number((res as any).discountAmount ?? (res as any).discount_amount))}
+                    −{format.currency(Number((res as any).discountAmount ?? (res as any).discount_amount), "EUR", EUR2)}
                   </span>
                 </div>
               )}
               {res.amountPaid !== res.amountTotal && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-foreground/60">Importe cobrado</span>
+                  <span className="text-foreground/60">{t("crmReservations.importeCobrado2")}</span>
                   <span className="text-emerald-400 font-bold">{amountEur} €</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
-                <span className="text-foreground/60">Referencia</span>
+                <span className="text-foreground/60">{t("crmReservations.referencia")}</span>
                 <span className="font-mono text-foreground/65 text-xs">{res.merchantOrder}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-foreground/60">Creada el</span>
-                <span className="text-foreground/65">{new Date(res.createdAt).toLocaleString("es-ES")}</span>
+                <span className="text-foreground/60">{t("crmReservations.creadaEl")}</span>
+                <span className="text-foreground/65">{format.dateTime(res.createdAt, DT_FULL)}</span>
               </div>
               {res.paidAt && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-foreground/60">Pagada el</span>
-                  <span className="text-emerald-400">{new Date(res.paidAt).toLocaleString("es-ES")}</span>
+                  <span className="text-foreground/60">{t("crmReservations.pagadaEl")}</span>
+                  <span className="text-emerald-400">{format.dateTime(res.paidAt, DT_FULL)}</span>
                 </div>
               )}
             </div>
@@ -5102,9 +5001,7 @@ function ReservationDetailModal({
             <div className="bg-violet-950/30 border border-violet-500/30 rounded-xl p-4 space-y-2">
               <div className="flex items-center justify-between mb-1">
                 <h4 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-violet-400" />
-                  Plan de Pago Fraccionado
-                </h4>
+                  <CreditCard className="w-4 h-4 text-violet-400" />{t("crmReservations.planDePagoFraccionado")}</h4>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
                   planQuery.data.installments.every(i => i.status === "paid")
                     ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
@@ -5113,10 +5010,10 @@ function ReservationDetailModal({
                     : "bg-violet-500/20 text-violet-300 border-violet-500/30"
                 }`}>
                   {planQuery.data.installments.every(i => i.status === "paid")
-                    ? "Completado"
+                    ? t("crmReservations.completado")
                     : planQuery.data.installments.some(i => i.status === "paid")
-                    ? "En curso"
-                    : "Pendiente"}
+                    ? t("crmReservations.enCurso")
+                    : t("crmReservations.pendiente2")}
                 </span>
               </div>
               <div className="space-y-1">
@@ -5125,10 +5022,10 @@ function ReservationDetailModal({
                     <div className="flex items-center gap-2">
                       <span className="text-foreground/40 w-5">#{inst.installmentNumber}</span>
                       <span className={inst.status === "paid" ? "text-emerald-300 font-medium" : "text-foreground/80"}>
-                        {(inst.amountCents / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                        {format.currency((inst.amountCents / 100))}
                       </span>
                       {inst.isRequiredForConfirmation && (
-                        <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">Inaplazable</span>
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">{t("crmReservations.inaplazable")}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -5138,7 +5035,7 @@ function ReservationDetailModal({
                           ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                           : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
                       }`}>
-                        {inst.status === "paid" ? "Pagada" : "Pendiente"}
+                        {inst.status === "paid" ? t("crmReservations.pagada") : t("crmReservations.pendiente2")}
                       </span>
                     </div>
                   </div>
@@ -5149,8 +5046,8 @@ function ReservationDetailModal({
                 const pendingTotal = planQuery.data.installments.filter(i => i.status !== "paid").reduce((s, i) => s + i.amountCents, 0);
                 return (
                   <div className="flex justify-between pt-1 text-xs text-foreground/60">
-                    <span>Cobrado: <span className="text-emerald-300 font-medium">{(paidTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
-                    <span>Pendiente: <span className="text-amber-300 font-medium">{(pendingTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                    <span>{t("crmReservations.cobrado")}{" "}<span className="text-emerald-300 font-medium">{format.currency((paidTotal / 100))}</span></span>
+                    <span>{t("crmReservations.pendiente")}{" "}<span className="text-amber-300 font-medium">{format.currency((pendingTotal / 100))}</span></span>
                   </div>
                 );
               })()}
@@ -5160,16 +5057,14 @@ function ReservationDetailModal({
           {/* Justificante de transferencia */}
           {res.transferProofUrl && (
             <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-4">
-              <h4 className="text-xs font-semibold text-sky-300 uppercase tracking-wider mb-2">Justificante de transferencia</h4>
+              <h4 className="text-xs font-semibold text-sky-300 uppercase tracking-wider mb-2">{t("crmReservations.justificanteDeTransferencia")}</h4>
               <a
                 href={res.transferProofUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 text-sm text-sky-400 hover:text-sky-300 transition-colors"
               >
-                <Paperclip className="w-4 h-4" />
-                Ver justificante adjunto
-                <ExternalLink className="w-3 h-3" />
+                <Paperclip className="w-4 h-4" />{t("crmReservations.verJustificanteAdjunto")}<ExternalLink className="w-3 h-3" />
               </a>
             </div>
           )}
@@ -5177,7 +5072,7 @@ function ReservationDetailModal({
           {/* Notas internas */}
           {res.notes && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
-              <h4 className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">Notas internas</h4>
+              <h4 className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">{t("crmReservations.notasInternas")}</h4>
               <p className="text-sm text-foreground/70">{res.notes}</p>
             </div>
           )}
@@ -5194,25 +5089,25 @@ function ReservationDetailModal({
             const reavItems = allItems.filter(i => i.fiscalRegime === "reav");
             return (
               <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
-                <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Líneas del pedido</h4>
+                <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">{t("crmReservations.lineasDelPedido")}</h4>
                 <div className="space-y-1">
                   {/* Header */}
                   <div className="grid grid-cols-12 gap-2 text-xs text-foreground/40 font-medium pb-1 border-b border-foreground/[0.10]">
-                    <div className="col-span-6">Concepto</div>
-                    <div className="col-span-2 text-center">Cant.</div>
-                    <div className="col-span-2 text-right">P.Unit.</div>
-                    <div className="col-span-2 text-right">Total</div>
+                    <div className="col-span-6">{t("crmReservations.concepto")}</div>
+                    <div className="col-span-2 text-center">{t("crmReservations.cant")}</div>
+                    <div className="col-span-2 text-right">{t("crmReservations.pUnit")}</div>
+                    <div className="col-span-2 text-right">{t("crmReservations.total")}</div>
                   </div>
                   {/* General items */}
                   {generalItems.length > 0 && (
                     <>
-                      <div className="text-xs font-semibold text-foreground/60 pt-1 pb-0.5">Régimen General (IVA 21%)</div>
+                      <div className="text-xs font-semibold text-foreground/60 pt-1 pb-0.5">{t("crmReservations.regimenGeneralIva21")}</div>
                       {generalItems.map((item, i) => (
                         <div key={`g-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
                           <div className="col-span-6 text-foreground/80">{item.description}</div>
                           <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
-                          <div className="col-span-2 text-right text-foreground/65">{formatEur(Number(item.unitPrice))}</div>
-                          <div className="col-span-2 text-right text-orange-400 font-medium">{formatEur(Number(item.total))}</div>
+                          <div className="col-span-2 text-right text-foreground/65">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</div>
+                          <div className="col-span-2 text-right text-orange-400 font-medium">{format.currency(Number(item.total), "EUR", EUR2)}</div>
                         </div>
                       ))}
                     </>
@@ -5220,16 +5115,16 @@ function ReservationDetailModal({
                   {/* REAV items */}
                   {reavItems.length > 0 && (
                     <>
-                      <div className="text-xs font-semibold text-amber-400/70 pt-1 pb-0.5">REAV — Sin IVA (Régimen Especial Agencias de Viaje)</div>
+                      <div className="text-xs font-semibold text-amber-400/70 pt-1 pb-0.5">{t("crmReservations.reavSinIvaRegimen")}</div>
                       {reavItems.map((item, i) => (
                         <div key={`r-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
                           <div className="col-span-6 text-foreground/80 flex items-center gap-1.5">
                             {item.description}
-                            <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1 py-0.5 rounded">REAV</span>
+                            <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1 py-0.5 rounded">{t("crmReservations.reav")}</span>
                           </div>
                           <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
-                          <div className="col-span-2 text-right text-foreground/65">{formatEur(Number(item.unitPrice))}</div>
-                          <div className="col-span-2 text-right text-orange-400 font-medium">{formatEur(Number(item.total))}</div>
+                          <div className="col-span-2 text-right text-foreground/65">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</div>
+                          <div className="col-span-2 text-right text-orange-400 font-medium">{format.currency(Number(item.total), "EUR", EUR2)}</div>
                         </div>
                       ))}
                     </>
@@ -5238,19 +5133,19 @@ function ReservationDetailModal({
                   <div className="border-t border-foreground/[0.10] pt-2 mt-1 space-y-1">
                     {generalItems.length > 0 && reavItems.length > 0 && (
                       <div className="flex justify-between text-xs text-foreground/50">
-                        <span>Subtotal rég. general</span>
-                        <span>{formatEur(generalItems.reduce((s, i) => s + Number(i.total), 0))}</span>
+                        <span>{t("crmReservations.subtotalRegGeneral")}</span>
+                        <span>{format.currency(generalItems.reduce((s, i) => s + Number(i.total), 0), "EUR", EUR2)}</span>
                       </div>
                     )}
                     {reavItems.length > 0 && (
                       <div className="flex justify-between text-xs text-amber-400/60">
-                        <span>Subtotal REAV (sin IVA)</span>
-                        <span>{formatEur(reavItems.reduce((s, i) => s + Number(i.total), 0))}</span>
+                        <span>{t("crmReservations.subtotalReavSinIva")}</span>
+                        <span>{format.currency(reavItems.reduce((s, i) => s + Number(i.total), 0), "EUR", EUR2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm font-bold text-foreground">
-                      <span>Total</span>
-                      <span className="text-orange-400">{formatEur(allItems.reduce((s, i) => s + Number(i.total), 0))}</span>
+                      <span>{t("crmReservations.total")}</span>
+                      <span className="text-orange-400">{format.currency(allItems.reduce((s, i) => s + Number(i.total), 0), "EUR", EUR2)}</span>
                     </div>
                   </div>
                 </div>
@@ -5261,18 +5156,18 @@ function ReservationDetailModal({
           {/* Facturas asociadas */}
           {relatedInvoices.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Facturas asociadas</h4>
+              <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmReservations.facturasAsociadas")}</h4>
               <div className="space-y-2">
                 {relatedInvoices.map((inv: any) => (
                   <div key={inv.id} className="flex items-center justify-between bg-foreground/[0.05] border border-foreground/[0.10] rounded-xl px-4 py-3">
                     <div>
                       <div className="text-sm font-mono font-bold text-foreground">{inv.invoiceNumber}</div>
                       <div className="text-xs text-foreground/50 mt-0.5">
-                        {new Date(inv.createdAt).toLocaleDateString("es-ES")} · {inv.status}
+                        {format.date(inv.createdAt, {})} · {inv.status}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-orange-400">{formatEur(Number(inv.total))}</span>
+                      <span className="text-sm font-bold text-orange-400">{format.currency(Number(inv.total), "EUR", EUR2)}</span>
                       {inv.pdfUrl && (
                         <a
                           href={inv.pdfUrl}
@@ -5280,8 +5175,7 @@ function ReservationDetailModal({
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
                         >
-                          <FileDown className="w-3.5 h-3.5" /> PDF
-                        </a>
+                          <FileDown className="w-3.5 h-3.5" />{" "}{t("crmReservations.pdf")}</a>
                       )}
                     </div>
                   </div>
@@ -5293,7 +5187,7 @@ function ReservationDetailModal({
           {/* Historial de actividad */}
           {activity.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Historial de actividad</h4>
+              <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmReservations.historialDeActividad")}</h4>
               <div className="space-y-1.5">
                 {activity.map((log: any) => (
                   <div key={log.id} className="flex items-start gap-3 py-2 border-b border-foreground/[0.08] last:border-0">
@@ -5305,7 +5199,7 @@ function ReservationDetailModal({
                       )}
                     </div>
                     <div className="text-xs text-foreground/40 shrink-0">
-                      {new Date(log.createdAt).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      {format.dateTime(log.createdAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
                 ))}
@@ -5316,9 +5210,7 @@ function ReservationDetailModal({
       </div>
 
       <DialogFooter className="px-6 py-4 border-t border-foreground/[0.10] flex gap-2 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">
-          Cerrar
-        </Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmReservations.cerrar")}</Button>
         <Button
           size="sm"
           variant="outline"
@@ -5333,8 +5225,7 @@ function ReservationDetailModal({
             className="bg-primary hover:bg-primary/90 text-primary-foreground"
             onClick={() => { onClose(); onGenerateInvoice(res.id); }}
           >
-            <FilePlus className="w-4 h-4 mr-1" /> Generar factura
-          </Button>
+            <FilePlus className="w-4 h-4 mr-1" />{" "}{t("crmReservations.generarFactura")}</Button>
         )}
         {relatedInvoices[0]?.pdfUrl && (
           <Button
@@ -5342,8 +5233,7 @@ function ReservationDetailModal({
             className="bg-primary hover:bg-primary/90 text-primary-foreground"
             onClick={() => window.open(relatedInvoices[0].pdfUrl ?? undefined, "_blank")}
           >
-            <FileDown className="w-4 h-4 mr-1" /> Descargar factura PDF
-          </Button>
+            <FileDown className="w-4 h-4 mr-1" />{" "}{t("crmReservations.descargarFacturaPdf")}</Button>
         )}
         {/* Anular reserva — solo si no está ya cancelada y no tiene expediente activo */}
         {onCancel && res.status !== "cancelled" && !res.cancellationRequestId && (
@@ -5357,9 +5247,7 @@ function ReservationDetailModal({
           </Button>
         )}
         {res.cancellationRequestId && (
-          <span className="ml-auto text-xs text-orange-400/70 border border-orange-500/20 rounded px-2 py-1">
-            ⚠️ Expediente #{res.cancellationRequestId} activo
-          </span>
+          <span className="ml-auto text-xs text-orange-400/70 border border-orange-500/20 rounded px-2 py-1">{t("crmReservations.expedienteActivo", { cancellationRequestId: res.cancellationRequestId })}</span>
         )}
       </DialogFooter>
     </DialogContent>
@@ -5381,11 +5269,12 @@ function CrmTableState({
   onAction?: () => void;
   onClearFilters?: () => void;
 }) {
+  const { t } = useI18n();
   if (loading) {
     return (
       <tr><td colSpan={colSpan} className="text-center py-12 text-foreground/60" role="status">
         <RefreshCw className="w-5 h-5 animate-spin mx-auto" aria-hidden="true" />
-        <span className="sr-only">Cargando…</span>
+        <span className="sr-only">{t("crmShared.cargando")}</span>
       </td></tr>
     );
   }
@@ -5396,8 +5285,7 @@ function CrmTableState({
           <AlertCircle className="w-6 h-6 text-red-400" aria-hidden="true" />
           <p className="text-sm text-foreground/80">{errorMessage(error)}</p>
           <Button size="sm" variant="outline" onClick={onRetry}>
-            <RefreshCw className="w-4 h-4 mr-1.5" aria-hidden="true" /> Reintentar
-          </Button>
+            <RefreshCw className="w-4 h-4 mr-1.5" aria-hidden="true" />{" "}{t("crmShared.reintentar")}</Button>
         </div>
       </td></tr>
     );
@@ -5405,10 +5293,10 @@ function CrmTableState({
   return (
     <tr><td colSpan={colSpan} className="text-center py-12 px-4">
       <div className="flex flex-col items-center gap-2">
-        <p className="text-sm font-medium text-foreground/80">{filtered ? "Ningún resultado con estos filtros" : emptyTitle}</p>
+        <p className="text-sm font-medium text-foreground/80">{filtered ? t("crmShared.ningunResultadoConEstos") : emptyTitle}</p>
         {!filtered && emptyHint && <p className="text-xs text-foreground/60 max-w-md">{emptyHint}</p>}
         {filtered && onClearFilters ? (
-          <Button size="sm" variant="outline" className="mt-2" onClick={onClearFilters}>Quitar filtros</Button>
+          <Button size="sm" variant="outline" className="mt-2" onClick={onClearFilters}>{t("crmShared.quitarFiltros")}</Button>
         ) : !filtered && actionLabel && onAction ? (
           <Button size="sm" className="mt-2" onClick={onAction}>
             <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {actionLabel}
@@ -5422,6 +5310,7 @@ function CrmTableState({
 // ─── MAIN CRM DASHBOARD ───────────────────────────────────────────────────────
 
 export default function CRMDashboard() {
+  const { t, format } = useI18n();
   // Empresas con licencias por capacidad: vocabulario genérico (pedidos en lugar de reservas)
   const panelSub = usePanelSubscription();
   const voc = useVocabulary();
@@ -5661,7 +5550,7 @@ export default function CRMDashboard() {
   const { data: auditData } = auditQuery;
   const setInvoiceExempt = trpc.crm.reservations.setInvoiceExempt.useMutation({
     onSuccess: () => {
-      toast.success("Aviso ignorado");
+      toast.success(t("crmDashboard.avisoIgnorado"));
       auditQuery.refetch();
     },
     onError: (e) => toast.error(errorToastMessage(e, "No se ha podido ignorar el aviso.")),
@@ -5680,7 +5569,7 @@ export default function CRMDashboard() {
   });
   const deleteAnulMutation = trpc.cancellations.deleteRequest.useMutation({
     onSuccess: () => {
-      toast.success("Solicitud eliminada");
+      toast.success(t("crmDashboard.solicitudEliminada"));
       setDeleteAnulId(null);
       utils.cancellations.listRequests.invalidate();
     },
@@ -5693,15 +5582,15 @@ export default function CRMDashboard() {
 
   // ─── Acciones masivas ─────────────────────────────────────────────────────────
   const bulkDeleteLeads = trpc.crm.leads.bulkDelete.useMutation({
-    onSuccess: (r) => { toast.success(`${r.deleted} lead(s) eliminados`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
+    onSuccess: (r) => { toast.success(t("crmDashboard.leadSEliminados", { deleted: r.deleted })); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkMarkSeenLeads = trpc.crm.leads.bulkMarkSeen.useMutation({
-    onSuccess: (r) => { toast.success(`${r.updated} lead(s) marcados como leídos`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
+    onSuccess: (r) => { toast.success(t("crmDashboard.leadSMarcadosComo", { updated: r.updated })); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkUpdateLeadsStatus = trpc.crm.leads.bulkUpdateStatus.useMutation({
-    onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} lead(s)`); setSelectedLeads(new Set()); setBulkLeadsStatus(""); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
+    onSuccess: (r) => { toast.success(t("crmDashboard.estadoActualizadoEnLead", { updated: r.updated })); setSelectedLeads(new Set()); setBulkLeadsStatus(""); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const markLeadContacted = trpc.crm.leads.markContacted.useMutation({
@@ -5714,19 +5603,19 @@ export default function CRMDashboard() {
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkDeleteQuotes = trpc.crm.quotes.bulkDelete.useMutation({
-    onSuccess: (r) => { toast.success(`${r.deleted} presupuesto(s) eliminados`); setSelectedQuotes(new Set()); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
+    onSuccess: (r) => { toast.success(t("crmDashboard.presupuestoSEliminados", { deleted: r.deleted })); setSelectedQuotes(new Set()); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkUpdateQuotesStatus = trpc.crm.quotes.bulkUpdateStatus.useMutation({
-    onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} presupuesto(s)`); setSelectedQuotes(new Set()); setBulkQuotesStatus(""); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
+    onSuccess: (r) => { toast.success(t("crmDashboard.estadoActualizadoEnPresupuesto", { updated: r.updated })); setSelectedQuotes(new Set()); setBulkQuotesStatus(""); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkDeleteRes = trpc.crm.reservations.bulkDelete.useMutation({
-    onSuccess: (r) => { toast.success(`${r.deleted} reserva(s) eliminadas${r.skipped > 0 ? ` (${r.skipped} omitidas por estar pagadas)` : ""}`); setSelectedRes(new Set()); utils.crm.reservations.list.invalidate(); },
+    onSuccess: (r) => { toast.success(t("crmDashboard.reservasEliminadas", { deleted: r.deleted }) + (r.skipped > 0 ? t("crmDashboard.omitidasPorEstarPagadas", { skipped: r.skipped }) : "")); setSelectedRes(new Set()); utils.crm.reservations.list.invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkUpdateResStatus = trpc.crm.reservations.bulkUpdateStatus.useMutation({
-    onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} reserva(s)`); setSelectedRes(new Set()); setBulkResStatus(""); utils.crm.reservations.list.invalidate(); },
+    onSuccess: (r) => { toast.success(t("crmDashboard.estadoActualizadoEnReserva", { updated: r.updated })); setSelectedRes(new Set()); setBulkResStatus(""); utils.crm.reservations.list.invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
@@ -5741,7 +5630,7 @@ export default function CRMDashboard() {
   });
   const deleteQuote = trpc.crm.quotes.delete.useMutation({
     onSuccess: () => {
-      toast.success("Presupuesto eliminado");
+      toast.success(t("crmDashboard.presupuestoEliminado"));
       setDeleteQuoteId(null);
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
@@ -5807,8 +5696,8 @@ export default function CRMDashboard() {
     const file = e.target.files?.[0];
     if (!file) return;
     const allowed = ["image/jpeg", "image/png", "application/pdf"];
-    if (!allowed.includes(file.type)) { toast.error("Solo se permiten archivos JPG, PNG o PDF"); return; }
-    if (file.size > 10 * 1024 * 1024) { toast.error("El archivo no puede superar 10 MB"); return; }
+    if (!allowed.includes(file.type)) { toast.error(t("crmDashboard.soloSePermitenArchivos")); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error(t("crmDashboard.elArchivoNoPuede")); return; }
     setIsUploadingRowProof(true);
     try {
       const reader = new FileReader();
@@ -5823,7 +5712,7 @@ export default function CRMDashboard() {
         setConfirmPayRowProofUrl(result.url);
         setConfirmPayRowProofKey(result.fileKey);
         setIsUploadingRowProof(false);
-        toast.success("Justificante subido correctamente");
+        toast.success(t("crmDashboard.justificanteSubidoCorrectament"));
       };
       reader.readAsDataURL(file);
     } catch (_) {
@@ -5833,7 +5722,7 @@ export default function CRMDashboard() {
 
   const convertReservationMutation = trpc.crm.quotes.convertToReservation.useMutation({
     onSuccess: () => {
-      toast.success(`Convertido a ${voc.order} (pendiente de cobro)`);
+      toast.success(t("crmDashboard.convertidoAPendienteDe", { order: voc.order }));
       setConvertReservationId(null);
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
@@ -5861,7 +5750,7 @@ export default function CRMDashboard() {
 
   const markLostQuoteMutation = trpc.crm.quotes.markLost.useMutation({
     onSuccess: () => {
-      toast.success("Presupuesto marcado como perdido");
+      toast.success(t("crmDashboard.presupuestoMarcadoComoPerdido"));
       setMarkLostQuoteId(null);
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
@@ -5872,7 +5761,7 @@ export default function CRMDashboard() {
 
   const duplicateQuoteMutation = trpc.crm.quotes.duplicate.useMutation({
     onSuccess: (data) => {
-      toast.success(`Presupuesto duplicado: ${data.quoteNumber}`);
+      toast.success(t("crmDashboard.presupuestoDuplicado", { quoteNumber: data.quoteNumber }));
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
     },
@@ -5895,7 +5784,7 @@ export default function CRMDashboard() {
   });
 
   const resendResMutation = trpc.crm.reservations.resendConfirmation.useMutation({
-    onSuccess: (data) => toast.success(`Email reenviado a ${data.sentTo}`),
+    onSuccess: (data) => toast.success(t("crmDashboard.emailReenviadoA", { sentTo: data.sentTo })),
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
@@ -5911,7 +5800,7 @@ export default function CRMDashboard() {
 
   const updateStatusesMutation = trpc.crm.reservations.updateStatuses.useMutation({
     onSuccess: () => {
-      toast.success("Estados actualizados");
+      toast.success(t("crmDashboard.estadosActualizados"));
       utils.crm.reservations.list.invalidate();
     },
     onError: (e) => toast.error(errorToastMessage(e)),
@@ -5919,7 +5808,7 @@ export default function CRMDashboard() {
 
   const changeDateMutation = trpc.crm.reservations.changeDate.useMutation({
     onSuccess: () => {
-      toast.success(`${voc.serviceDateLabel} actualizada`);
+      toast.success(t("crmDashboard.actualizada", { serviceDateLabel: voc.serviceDateLabel }));
       setShowChangeDateSection(false);
       setEditResNewDate("");
       setEditResDateReason("");
@@ -5931,7 +5820,7 @@ export default function CRMDashboard() {
   const downloadResPdfMutation = trpc.crm.reservations.downloadPdf.useMutation({
     onSuccess: (data) => {
       window.open(data.url, "_blank");
-      toast.success("PDF generado correctamente");
+      toast.success(t("crmDashboard.pdfGeneradoCorrectamente"));
     },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
@@ -5954,7 +5843,7 @@ export default function CRMDashboard() {
   const genInvoiceErrors = validateTicketInvoiceRecipient(genInvoiceRecipient);
   const generateInvoiceMutation = trpc.crm.reservations.generateInvoice.useMutation({
     onSuccess: (data) => {
-      toast.success(`✅ Factura ${data.invoiceNumber} generada correctamente`);
+      toast.success(t("crmDashboard.facturaGeneradaCorrectamente", { invoiceNumber: data.invoiceNumber }));
       closeGenInvoice();
       utils.crm.reservations.list.invalidate();
       utils.crm.invoices.listAll.invalidate();
@@ -5963,7 +5852,7 @@ export default function CRMDashboard() {
   });
 
   const downloadQuotePdf = async (quoteId: number, quoteNumber: string) => {
-    const toastId = toast.loading(`Generando PDF ${quoteNumber}...`);
+    const toastId = toast.loading(t("crmDashboard.generandoPdf", { quoteNumber }));
     try {
       const result = await generatePdfMutation.mutateAsync({ id: quoteId });
       // Open the S3 URL directly in a new tab for download
@@ -5974,16 +5863,16 @@ export default function CRMDashboard() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      toast.success("PDF generado correctamente", { id: toastId });
+      toast.success(t("crmDashboard.pdfGeneradoCorrectamente"), { id: toastId });
     } catch {
-      toast.error("Error al generar el PDF", { id: toastId });
+      toast.error(t("crmDashboard.errorAlGenerarEl"), { id: toastId });
     }
   };
 
   // ─── MUTACIONES DE FACTURAS ────────────────────────────────────────────────────────────────────────────────
   const confirmManualPaymentMutation = trpc.crm.invoices.confirmManualPayment.useMutation({
     onSuccess: () => {
-      toast.success("✅ Pago confirmado manualmente");
+      toast.success(t("crmDashboard.pagoConfirmadoManualmente"));
       setConfirmPaymentInvoiceId(null);
       utils.crm.invoices.listAll.invalidate();
       utils.crm.reservations.list.invalidate();
@@ -5994,7 +5883,7 @@ export default function CRMDashboard() {
 
   const resendInvoiceMutation = trpc.crm.invoices.resend.useMutation({
     onSuccess: (data) => {
-      toast.success(`Factura reenviada a ${data.sentTo}`);
+      toast.success(t("crmDashboard.facturaReenviadaA", { sentTo: data.sentTo }));
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
@@ -6003,7 +5892,7 @@ export default function CRMDashboard() {
 
   const voidInvoiceMutation = trpc.crm.invoices.void.useMutation({
     onSuccess: (data) => {
-      toast.success(`Factura anulada con el abono ${data.creditNoteNumber}`);
+      toast.success(t("crmDashboard.facturaAnuladaConEl", { creditNoteNumber: data.creditNoteNumber }));
       setVoidInvoiceId(null);
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
@@ -6023,7 +5912,7 @@ export default function CRMDashboard() {
     if (invoice.pdfUrl) {
       window.open(invoice.pdfUrl, "_blank");
     } else {
-      toast.error("No hay PDF disponible para esta factura");
+      toast.error(t("crmDashboard.noHayPdfDisponible"));
     }
   };
 
@@ -6049,11 +5938,11 @@ export default function CRMDashboard() {
 
   const getInvoiceStatusBadge = (status: string) => {
     const map: Record<string, { label: string; cls: string }> = {
-      generada: { label: "Generada", cls: "bg-muted text-muted-foreground border-border" },
-      enviada: { label: "Enviada", cls: "bg-info/10 text-info border-info/40" },
-      cobrada: { label: "Cobrada", cls: "bg-success/10 text-success border-success/40" },
-      anulada: { label: "Anulada", cls: "bg-danger/10 text-danger border-danger/40" },
-      abonada: { label: "Abonada", cls: "bg-info/10 text-info border-info/40" },
+      generada: { label: t("crmDashboard.generada"), cls: "bg-muted text-muted-foreground border-border" },
+      enviada: { label: t("crmDashboard.enviada"), cls: "bg-info/10 text-info border-info/40" },
+      cobrada: { label: t("crmDashboard.cobrada"), cls: "bg-success/10 text-success border-success/40" },
+      anulada: { label: t("crmDashboard.anulada"), cls: "bg-danger/10 text-danger border-danger/40" },
+      abonada: { label: t("crmDashboard.abonada"), cls: "bg-info/10 text-info border-info/40" },
     };
     const s = map[status] ?? { label: status, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.12]" };
     return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
@@ -6062,13 +5951,13 @@ export default function CRMDashboard() {
   const getPaymentMethodLabel = (method: string | null) => {
     if (!method) return null;
     const map: Record<string, string> = {
-      tarjeta_fisica: "💳 Tarjeta Física",
-      tarjeta_redsys: voc.licensed ? "💳 Tarjeta (pago online)" : "💳 Tarjeta Redsys",
-      redsys:         voc.licensed ? "💳 Tarjeta (pago online)" : "💳 Tarjeta Redsys",
-      tarjeta:        "💳 Tarjeta",
-      transferencia:  "🏦 Transferencia",
-      efectivo:       "💵 Efectivo",
-      otro:           "❓ Otro",
+      tarjeta_fisica: t("crmDashboard.tarjetaFisica"),
+      tarjeta_redsys: voc.licensed ? t("crmDashboard.tarjetaPagoOnline") : t("crmDashboard.tarjetaRedsys"),
+      redsys:         voc.licensed ? t("crmDashboard.tarjetaPagoOnline") : t("crmDashboard.tarjetaRedsys"),
+      tarjeta:        t("crmDashboard.tarjeta"),
+      transferencia:  t("crmDashboard.transferencia"),
+      efectivo:       t("crmDashboard.efectivo"),
+      otro:           t("crmDashboard.otro"),
     };
     return map[method] ?? method;
   };
@@ -6076,14 +5965,14 @@ export default function CRMDashboard() {
   const getPaymentMethodBadge = (method: string | null) => {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
-      tarjeta_fisica: { label: "Tarjeta Física", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta_redsys: { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      redsys:         { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta:        { label: "Tarjeta",        cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      transferencia:  { label: "Transferencia",  cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
-      efectivo:       { label: "Efectivo",       cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
-      otro:           { label: "Otro",           cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
-      abono:          { label: "Abono",          cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" },
+      tarjeta_fisica: { label: t("crmDashboard.tarjetaFisica2"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta_redsys: { label: voc.licensed ? t("crmDashboard.tarjetaPagoOnline2") : t("crmDashboard.tarjetaRedsys2"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      redsys:         { label: voc.licensed ? t("crmDashboard.tarjetaPagoOnline2") : t("crmDashboard.tarjetaRedsys2"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta:        { label: t("crmDashboard.tarjeta2"),        cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      transferencia:  { label: t("crmDashboard.transferencia2"),  cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
+      efectivo:       { label: t("crmDashboard.efectivo2"),       cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      otro:           { label: t("crmDashboard.otro2"),           cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
+      abono:          { label: t("crmDashboard.abono"),          cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" },
     };
     const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
     return (
@@ -6127,18 +6016,15 @@ export default function CRMDashboard() {
           return (
             <div className="mx-4 sm:mx-6 mt-4 rounded-xl border border-red-500/30 bg-red-500/8 p-3 space-y-1.5">
               <p className="text-xs font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5" /> Incidencias de pagos fraccionados
-              </p>
+                <AlertCircle className="w-3.5 h-3.5" />{" "}{t("crmDashboard.incidenciasDePagosFraccionados")}</p>
               {overdue.length > 0 && (
                 <p className="text-sm text-red-300">
-                  <strong>{overdue.length}</strong> cuota{overdue.length > 1 ? "s" : ""} vencida{overdue.length > 1 ? "s" : ""} sin cobrar
-                  {" — "}{overdue.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+                  <strong>{overdue.length}</strong>{" "}{t("crmDashboard.cuota", { n: overdue.length })}{" "}{t("crmDashboard.vencida", { n: overdue.length })}{" "}{t("crmDashboard.sinCobrar", { v: " — " })}{overdue.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
                 </p>
               )}
               {dueToday.length > 0 && (
                 <p className="text-sm text-amber-300">
-                  <strong>{dueToday.length}</strong> cuota{dueToday.length > 1 ? "s" : ""} vence hoy
-                  {" — "}{dueToday.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+                  <strong>{dueToday.length}</strong>{" "}{t("crmDashboard.cuota", { n: dueToday.length })}{" "}{t("crmDashboard.venceHoy", { v: " — " })}{dueToday.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
                 </p>
               )}
             </div>
@@ -6158,38 +6044,34 @@ export default function CRMDashboard() {
                 <>
                   {(leadCounters?.ganada ?? 0) > 0 && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-[11px] font-medium">
-                      <Star className="w-2.5 h-2.5" />{leadCounters?.ganada} ganadas
-                    </span>
+                      <Star className="w-2.5 h-2.5" />{t("crmDashboard.ganadas", { ganada: leadCounters?.ganada })}</span>
                   )}
                   {(leadCounters?.enviada ?? 0) > 0 && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-medium">
-                      <Send className="w-2.5 h-2.5" />{leadCounters?.enviada} enviadas
-                    </span>
+                      <Send className="w-2.5 h-2.5" />{t("crmDashboard.enviadas", { enviada: leadCounters?.enviada })}</span>
                   )}
                   {(resCounters?.confirmadas ?? 0) > 0 && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-medium">
                       <CheckCircle className="w-2.5 h-2.5" />{resCounters?.confirmadas} {voc.ordersLower}
-                      {(resCounters?.importeConfirmadas ?? 0) > 0 && <span className="opacity-60">· {Math.round(resCounters!.importeConfirmadas).toLocaleString("es-ES")} €</span>}
+                      {(resCounters?.importeConfirmadas ?? 0) > 0 && <span className="opacity-60">· {format.number(Math.round(resCounters!.importeConfirmadas))} €</span>}
                     </span>
                   )}
                   {(resCounters?.pendientePago ?? 0) > 0 && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-medium">
-                      <Clock className="w-2.5 h-2.5" />{resCounters?.pendientePago} pend. pago
-                    </span>
+                      <Clock className="w-2.5 h-2.5" />{t("crmDashboard.pendPago", { pendientePago: resCounters?.pendientePago })}</span>
                   )}
                   {(anulCounters?.pending ?? 0) > 0 && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] font-medium">
-                      <AlertTriangle className="w-2.5 h-2.5" />{anulCounters?.pending} anulaciones
-                    </span>
+                      <AlertTriangle className="w-2.5 h-2.5" />{t("crmDashboard.anulaciones", { pending: anulCounters?.pending })}</span>
                   )}
                 </>
               )}
               {kpisExpanded && (
-                <span className="text-xs text-foreground/40 font-medium">Panel de indicadores</span>
+                <span className="text-xs text-foreground/40 font-medium">{t("crmDashboard.panelDeIndicadores")}</span>
               )}
             </div>
             <div className="flex items-center gap-1.5 text-foreground/40 group-hover:text-foreground/70 transition-colors flex-shrink-0">
-              <span className="text-[11px]">{kpisExpanded ? "Ocultar" : "Ver KPIs"}</span>
+              <span className="text-[11px]">{kpisExpanded ? t("crmDashboard.ocultar") : t("crmDashboard.verKpis")}</span>
               {kpisExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </div>
           </button>
@@ -6203,35 +6085,35 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-400 to-blue-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.licensed ? "Embudo de oportunidades" : "Pipeline de Oportunidades"}</span>
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.licensed ? t("crmDashboard.embudoDeOportunidades") : t("crmDashboard.pipelineDeOportunidades")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(leadCounters?.total ?? 0) > 0 && (
-                <span className="text-xs text-muted-foreground">{leadCounters?.total ?? 0} {voc.licensed ? ((leadCounters?.total ?? 0) === 1 ? "oportunidad en total" : "oportunidades en total") : "leads totales"}</span>
+                <span className="text-xs text-muted-foreground">{leadCounters?.total ?? 0} {voc.licensed ? ((leadCounters?.total ?? 0) === 1 ? t("crmDashboard.oportunidadEnTotal") : t("crmDashboard.oportunidadesEnTotal")) : t("crmDashboard.leadsTotales")}</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <CounterCard
-                label="Nueva Oportunidad"
+                label={t("crmDashboard.nuevaOportunidad")}
                 value={leadCounters?.nueva ?? 0}
                 icon={Users}
                 color="blue"
-                subtitle={`${voc.leads} sin gestionar`}
+                subtitle={t("crmDashboard.sinGestionar", { leads: voc.leads })}
                 amount={leadCounters?.valorNueva}
                 active={tab === "leads" && filterStatus === "nueva"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("nueva"); }}
               />
               <CounterCard
-                label="Oportunidad Enviada"
+                label={t("crmDashboard.oportunidadEnviada")}
                 value={leadCounters?.enviada ?? 0}
                 icon={Send}
                 color="blue"
-                subtitle="Presupuesto en cliente"
+                subtitle={t("crmDashboard.presupuestoEnCliente")}
                 amount={leadCounters?.valorEnviada}
                 active={tab === "leads" && filterStatus === "enviada"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("enviada"); }}
               />
               <CounterCard
-                label="Oportunidad Ganada"
+                label={t("crmDashboard.oportunidadGanada")}
                 value={leadCounters?.ganada ?? 0}
                 icon={Star}
                 color="blue"
@@ -6241,11 +6123,11 @@ export default function CRMDashboard() {
                 onClick={() => { handleTabChange("leads"); setFilterStatus("ganada"); }}
               />
               <CounterCard
-                label="Oportunidad Perdida"
+                label={t("crmDashboard.oportunidadPerdida")}
                 value={leadCounters?.perdida ?? 0}
                 icon={XCircle}
                 color="blue"
-                subtitle="Descartadas manualmente"
+                subtitle={t("crmDashboard.descartadasManualmente")}
                 amount={leadCounters?.valorPerdida}
                 active={tab === "leads" && filterStatus === "perdida"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("perdida"); }}
@@ -6257,37 +6139,37 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-orange-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Presupuestos &amp; Ingresos</span>
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.presupuestosIngresos")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <CounterCard
-                label="En Borrador"
+                label={t("crmDashboard.enBorrador")}
                 value={quoteCounters?.borrador ?? 0}
                 icon={FileText}
                 color="orange"
-                subtitle="Pendientes de enviar"
+                subtitle={t("crmDashboard.pendientesDeEnviar")}
                 amount={quoteCounters?.importeBorrador}
                 active={tab === "quotes" && filterStatus === "borrador"}
                 onClick={() => { handleTabChange("quotes"); setFilterStatus("borrador"); }}
               />
               <CounterCard
-                label="Enviados al Cliente"
+                label={t("crmDashboard.enviadosAlCliente")}
                 value={quoteCounters?.enviado ?? 0}
                 icon={Clock}
                 color="orange"
-                subtitle="Esperando respuesta"
+                subtitle={t("crmDashboard.esperandoRespuesta")}
                 amount={quoteCounters?.importeEnviado}
                 active={tab === "quotes" && filterStatus === "enviado"}
                 onClick={() => { handleTabChange("quotes"); setFilterStatus("enviado"); }}
               />
               {(quoteCounters?.pagoFallido ?? 0) > 0 && (
                 <CounterCard
-                  label="Pago Fallido"
+                  label={t("crmDashboard.pagoFallido")}
                   value={quoteCounters?.pagoFallido ?? 0}
                   icon={XCircle}
                   color="orange"
-                  subtitle="Recuperables"
+                  subtitle={t("crmDashboard.recuperables")}
                   amount={quoteCounters?.importePagoFallido}
                   active={tab === "quotes" && filterStatus === "pago_fallido"}
                   onClick={() => { handleTabChange("quotes"); setFilterStatus("pago_fallido"); }}
@@ -6304,7 +6186,7 @@ export default function CRMDashboard() {
                 onClick={() => handleTabChange("reservations")}
               />
               <CounterCard
-                label="Ingresos Totales"
+                label={t("crmDashboard.ingresosTotales")}
                 value={`${Number(resCounters?.ingresos ?? 0).toFixed(0)} €`}
                 icon={Banknote}
                 color="orange"
@@ -6335,11 +6217,11 @@ export default function CRMDashboard() {
                 onClick={() => handleTabChange("reservations")}
               />
               <CounterCard
-                label="Pendiente de Pago"
+                label={t("crmDashboard.pendienteDePago")}
                 value={resCounters?.pendientePago ?? 0}
                 icon={Clock}
                 color="green"
-                subtitle="Esperando cobro"
+                subtitle={t("crmDashboard.esperandoCobro")}
                 amount={resCounters?.importePendientePago}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
@@ -6355,7 +6237,7 @@ export default function CRMDashboard() {
                 onClick={() => handleTabChange("reservations")}
               />
               <CounterCard
-                label="Próximos 7 días"
+                label={t("crmDashboard.proximos7Dias")}
                 value={resCounters?.proximasSemana ?? 0}
                 icon={Calendar}
                 color="green"
@@ -6365,7 +6247,7 @@ export default function CRMDashboard() {
                 onClick={() => handleTabChange("reservations")}
               />
               <CounterCard
-                label="Este Mes"
+                label={t("crmDashboard.esteMes")}
                 value={resCounters?.esteMes ?? 0}
                 icon={Banknote}
                 color="green"
@@ -6392,39 +6274,39 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-red-400 to-red-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Anulaciones</span>
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.anulaciones2")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(anulCounters?.total ?? 0) > 0 && (
-                <span className="text-xs text-foreground/40">{anulCounters?.total ?? 0} totales</span>
+                <span className="text-xs text-foreground/40">{t("crmDashboard.totales", { v: anulCounters?.total ?? 0 })}</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <CounterCard
-                label="Pendientes"
+                label={t("crmDashboard.pendientes")}
                 value={anulCounters?.pending ?? 0}
                 icon={AlertTriangle}
                 color="red"
-                subtitle="Sin resolver"
+                subtitle={t("crmDashboard.sinResolver")}
                 amount={anulCounters?.importePendiente}
                 active={tab === "anulaciones"}
                 onClick={() => handleTabChange("anulaciones")}
               />
               <CounterCard
-                label="Incidencias"
+                label={t("crmDashboard.incidencias")}
                 value={anulCounters?.incidencias ?? 0}
                 icon={AlertCircle}
                 color="red"
-                subtitle="Requieren atención"
+                subtitle={t("crmDashboard.requierenAtencion")}
                 amount={anulCounters?.importeIncidencias}
                 active={tab === "anulaciones"}
                 onClick={() => handleTabChange("anulaciones")}
               />
               <CounterCard
-                label="Total"
+                label={t("crmDashboard.total")}
                 value={anulCounters?.total ?? 0}
                 icon={Archive}
                 color="red"
-                subtitle="Todas las solicitudes"
+                subtitle={t("crmDashboard.todasLasSolicitudes")}
                 amount={anulCounters?.importeTotal}
                 active={tab === "anulaciones"}
                 onClick={() => handleTabChange("anulaciones")}
@@ -6444,40 +6326,40 @@ export default function CRMDashboard() {
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-1 h-4 rounded-full bg-gradient-to-b from-violet-400 to-violet-600" />
-                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Próximos Pagos Fraccionados</span>
+                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.proximosPagosFraccionados")}</span>
                   <div className="flex-1 h-px bg-foreground/[0.05]" />
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <CounterCard
-                    label="Vencen en 7 días"
+                    label={t("crmDashboard.vencenEn7Dias")}
                     value={upcomingInstallments.filter(i => i.status === "pending" && i.dueDate >= today).length}
                     icon={CreditCard}
                     color="violet"
-                    subtitle="Cuotas pendientes"
+                    subtitle={t("crmDashboard.cuotasPendientes")}
                     amount={upcomingInstallments.filter(i => i.status === "pending" && i.dueDate >= today).reduce((s, i) => s + i.amountCents, 0) / 100}
                   />
                   <CounterCard
-                    label="Vencen Hoy"
+                    label={t("crmDashboard.vencenHoy")}
                     value={vencenHoy.length}
                     icon={AlertCircle}
                     color={vencenHoy.length > 0 ? "amber" : "slate"}
-                    subtitle="Requieren cobro"
+                    subtitle={t("crmDashboard.requierenCobro")}
                     amount={vencenHoy.reduce((s, i) => s + i.amountCents, 0) / 100}
                   />
                   <CounterCard
-                    label="En Deuda"
+                    label={t("crmDashboard.enDeuda")}
                     value={enDeuda.length}
                     icon={AlertTriangle}
                     color={enDeuda.length > 0 ? "red" : "slate"}
-                    subtitle="Vencidas sin pagar"
+                    subtitle={t("crmDashboard.vencidasSinPagar")}
                     amount={enDeuda.reduce((s, i) => s + i.amountCents, 0) / 100}
                   />
                   <CounterCard
-                    label="Total Pendiente"
-                    value={`${(totalPendienteCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 0 })} €`}
+                    label={t("crmDashboard.totalPendiente")}
+                    value={`${format.number((totalPendienteCents / 100), { minimumFractionDigits: 0 })} €`}
                     icon={Banknote}
                     color="violet"
-                    subtitle="Suma cuotas activas"
+                    subtitle={t("crmDashboard.sumaCuotasActivas")}
                   />
                 </div>
                 {/* Mini-tabla de cuotas próximas */}
@@ -6485,11 +6367,11 @@ export default function CRMDashboard() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
-                        <th className="text-left px-3 py-2 text-foreground/45 font-medium">Presupuesto</th>
-                        <th className="text-left px-3 py-2 text-foreground/45 font-medium">Cuota</th>
-                        <th className="text-right px-3 py-2 text-foreground/45 font-medium">Importe</th>
-                        <th className="text-center px-3 py-2 text-foreground/45 font-medium">Vencimiento</th>
-                        <th className="text-center px-3 py-2 text-foreground/45 font-medium">Estado</th>
+                        <th className="text-left px-3 py-2 text-foreground/45 font-medium">{t("crmDashboard.presupuesto")}</th>
+                        <th className="text-left px-3 py-2 text-foreground/45 font-medium">{t("crmDashboard.cuota2")}</th>
+                        <th className="text-right px-3 py-2 text-foreground/45 font-medium">{t("crmDashboard.importe")}</th>
+                        <th className="text-center px-3 py-2 text-foreground/45 font-medium">{t("crmDashboard.vencimiento")}</th>
+                        <th className="text-center px-3 py-2 text-foreground/45 font-medium">{t("crmDashboard.estado")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -6500,15 +6382,15 @@ export default function CRMDashboard() {
                           <tr key={inst.id} className="border-b border-foreground/[0.06] last:border-0 hover:bg-foreground/[0.03]">
                             <td className="px-3 py-2 text-foreground/70">{inst.quoteNumber}</td>
                             <td className="px-3 py-2 text-foreground/55">#{inst.installmentNumber}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-white">{(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</td>
+                            <td className="px-3 py-2 text-right font-semibold text-white">{format.number((inst.amountCents / 100), { minimumFractionDigits: 2 })} €</td>
                             <td className="px-3 py-2 text-center text-foreground/55">{inst.dueDate}</td>
                             <td className="px-3 py-2 text-center">
                               {isOverdue ? (
-                                <span className="bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">Vencida</span>
+                                <span className="bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">{t("crmDashboard.vencida2")}</span>
                               ) : isToday ? (
-                                <span className="bg-amber-500/15 text-amber-400 border border-amber-500/25 px-1.5 py-0.5 rounded">Hoy</span>
+                                <span className="bg-amber-500/15 text-amber-400 border border-amber-500/25 px-1.5 py-0.5 rounded">{t("crmDashboard.hoy")}</span>
                               ) : (
-                                <span className="bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">Pendiente</span>
+                                <span className="bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">{t("crmDashboard.pendiente")}</span>
                               )}
                             </td>
                           </tr>
@@ -6525,35 +6407,35 @@ export default function CRMDashboard() {
           {voc.showCoupons && <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-purple-400 to-purple-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Bonos compensatorios</span>
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.bonosCompensatorios")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <CounterCard
-                label="Activos"
+                label={t("crmDashboard.activos")}
                 value={voucherCounters?.activos ?? 0}
                 icon={Gift}
                 color="purple"
-                subtitle="Pendientes de canjear"
+                subtitle={t("crmDashboard.pendientesDeCanjear")}
                 amount={voucherCounters?.importePendiente}
                 active={tab === "bonos"}
                 onClick={() => handleTabChange("bonos")}
               />
               <CounterCard
-                label="Canjeados"
+                label={t("crmDashboard.canjeados")}
                 value={voucherCounters?.canjeados ?? 0}
                 icon={CheckCircle}
                 color="purple"
-                subtitle="Usados por clientes"
+                subtitle={t("crmDashboard.usadosPorClientes")}
                 active={tab === "bonos"}
                 onClick={() => handleTabChange("bonos")}
               />
               <CounterCard
-                label="Caducados"
+                label={t("crmDashboard.caducados")}
                 value={voucherCounters?.caducados ?? 0}
                 icon={Clock}
                 color="purple"
-                subtitle="Sin canjear a tiempo"
+                subtitle={t("crmDashboard.sinCanjearATiempo")}
                 active={tab === "bonos"}
                 onClick={() => handleTabChange("bonos")}
               />
@@ -6568,22 +6450,21 @@ export default function CRMDashboard() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-1 h-4 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600" />
-                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Ratio de Conversión</span>
+                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.ratioDeConversion")}</span>
                   {(leadCounters?.sinLeer ?? 0) > 0 && (
                     <span className="flex items-center gap-1 text-xs text-blue-400 font-medium">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
                       </span>
-                      {leadCounters?.sinLeer ?? 0} sin leer
-                    </span>
+                      {t("crmDashboard.sinLeer", { v: leadCounters?.sinLeer ?? 0 })}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-4 text-xs text-foreground/50">
                   <span className="text-emerald-400 font-bold text-sm">
                     {leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0}%
                   </span>
-                  <span>{leadCounters?.ganada ?? 0} {(leadCounters?.ganada ?? 0) === 1 ? voc.agreeLead("ganado", "ganada") : voc.agreeLead("ganados", "ganadas")} de {leadCounters?.total ?? 0} {(leadCounters?.total ?? 0) === 1 ? voc.lead : voc.leadsLower}</span>
+                  <span>{leadCounters?.ganada ?? 0} {(leadCounters?.ganada ?? 0) === 1 ? voc.agreeLead("ganado", "ganada") : voc.agreeLead("ganados", "ganadas")}{" "}{t("crmDashboard.de", { v: leadCounters?.total ?? 0, v2: (leadCounters?.total ?? 0) === 1 ? voc.lead : voc.leadsLower })}</span>
                 </div>
               </div>
               {/* Barra segmentada */}
@@ -6613,21 +6494,13 @@ export default function CRMDashboard() {
               {/* Leyenda */}
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  Ganadas ({leadCounters?.ganada ?? 0})
-                </div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />{t("crmDashboard.ganadas2", { v: leadCounters?.ganada ?? 0 })}</div>
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
-                  Enviadas ({leadCounters?.enviada ?? 0})
-                </div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />{t("crmDashboard.enviadas2", { v: leadCounters?.enviada ?? 0 })}</div>
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500/40" />
-                  Nuevas ({leadCounters?.nueva ?? 0})
-                </div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500/40" />{t("crmDashboard.nuevas", { v: leadCounters?.nueva ?? 0 })}</div>
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
-                  Perdidas ({leadCounters?.perdida ?? 0})
-                </div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/40" />{t("crmDashboard.perdidas", { v: leadCounters?.perdida ?? 0 })}</div>
               </div>
             </div>
           </div>
@@ -6638,9 +6511,7 @@ export default function CRMDashboard() {
         {auditData && (auditData.sinFacturaCount > 0 || auditData.sinReavCount > 0) && (
           <div className="mx-6 mb-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              Revisión de facturación: hay {voc.ordersLower} {voc.agree("cobrados", "cobradas")} sin factura
-            </div>
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />{t("crmDashboard.revisionDeFacturacionHay", { ordersLower: voc.ordersLower })}{" "}{voc.agree("cobrados", "cobradas")}{" "}{t("crmDashboard.sinFactura")}</div>
             {auditData.sinFacturaCount > 0 && (() => {
               const cashItems = auditData.sinFactura.filter((r: any) => r.paymentMethod === "efectivo");
               const otherItems = auditData.sinFactura.filter((r: any) => r.paymentMethod !== "efectivo");
@@ -6649,8 +6520,7 @@ export default function CRMDashboard() {
                   {cashItems.length > 0 && (
                     <div>
                       <p className="text-xs text-blue-300/80 font-medium mb-1">
-                        {cashItems.length} {voc.order}{cashItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{cashItems.length !== 1 ? "s" : ""} en efectivo sin factura ni ticket. Emite la factura o márcalo como que no la necesita:
-                      </p>
+                        {cashItems.length} {voc.order}{cashItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{cashItems.length !== 1 ? "s" : ""}{" "}{t("crmDashboard.enEfectivoSinFactura")}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {cashItems.map((r: any) => (
                           <span key={r.id} className="inline-flex items-center text-[11px] bg-blue-900/40 text-blue-200 rounded overflow-hidden">
@@ -6662,13 +6532,13 @@ export default function CRMDashboard() {
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
                               <span className="text-blue-300/60">·</span>
                               <span>{r.customerName}</span>
-                              {r.amountEur > 0 && <span className="text-blue-300/70">{fmtAmount(r.amountEur)}</span>}
+                              {r.amountEur > 0 && <span className="text-blue-300/70">{fmtAmount(r.amountEur, format)}</span>}
                               <FilePlus className="w-3 h-3 text-blue-400 ml-0.5" />
                             </button>
                             <button
                               onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
                               className="px-1.5 py-1 hover:bg-blue-700/60 text-blue-400 hover:text-blue-200 transition-colors border-l border-blue-700/40"
-                              title="Ignorar — marcar como no requiere factura"
+                              title={t("crmDashboard.ignorarMarcarComoNo")}
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -6680,8 +6550,7 @@ export default function CRMDashboard() {
                   {otherItems.length > 0 && (
                     <div>
                       <p className="text-xs text-amber-300/80 font-medium mb-1">
-                        {otherItems.length} {voc.order}{otherItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{otherItems.length !== 1 ? "s" : ""} sin factura. Emite la factura o márcalo como que no la necesita:
-                      </p>
+                        {otherItems.length} {voc.order}{otherItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{otherItems.length !== 1 ? "s" : ""}{" "}{t("crmDashboard.sinFacturaEmiteLa")}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {otherItems.map((r: any) => (
                           <span key={r.id} className="inline-flex items-center text-[11px] bg-amber-900/40 text-amber-200 rounded overflow-hidden">
@@ -6693,13 +6562,13 @@ export default function CRMDashboard() {
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
                               <span className="text-amber-300/60">·</span>
                               <span>{r.customerName}</span>
-                              {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur)}</span>}
+                              {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur, format)}</span>}
                               <FilePlus className="w-3 h-3 text-amber-400 ml-0.5" />
                             </button>
                             <button
                               onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
                               className="px-1.5 py-1 hover:bg-amber-700/60 text-amber-400 hover:text-amber-200 transition-colors border-l border-amber-700/40"
-                              title="Ignorar — marcar como no requiere factura"
+                              title={t("crmDashboard.ignorarMarcarComoNo")}
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -6714,15 +6583,14 @@ export default function CRMDashboard() {
             {voc.showReav && auditData.sinReavCount > 0 && (
               <div>
                 <p className="text-xs text-amber-300/80 font-medium mb-1">
-                  {auditData.sinReavCount} reserva{auditData.sinReavCount !== 1 ? "s" : ""} REAV sin expediente (revisar en Fiscal REAV):
-                </p>
+                  {t("crmDashboard.reserva", { sinReavCount: auditData.sinReavCount })}{" "}{t("crmDashboard.reavSinExpedienteRevisar")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {auditData.sinReav.map(r => (
                     <button
                       key={r.id}
                       onClick={() => { handleTabChange("reservations"); setViewResId(r.id); }}
                       className="inline-flex items-center gap-1.5 text-[11px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 rounded px-2 py-1 transition-colors cursor-pointer"
-                      title="Ver reserva"
+                      title={t("crmDashboard.verReserva")}
                     >
                       <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
                       <span className="text-amber-300/60">·</span>
@@ -6741,28 +6609,18 @@ export default function CRMDashboard() {
           (expenseStats && (expenseStats.candidatesCount > 0 || expenseStats.staleExpensesCount > 0))) && (
           <div className="mx-4 sm:mx-6 mb-2 rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 flex flex-col gap-1.5">
             <div className="flex items-center gap-2 text-blue-400 font-semibold text-sm">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              Coherencia financiera — incidencias detectadas
-            </div>
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />{t("crmDashboard.coherenciaFinancieraIncidencia")}</div>
             {(tpvPaymentAlerts?.unlinkedTpvOps ?? 0) > 0 && (
-              <a href="/admin/contabilidad/operaciones-tpv" className="text-xs text-blue-300/80 hover:text-blue-200 transition-colors">
-                • {tpvPaymentAlerts!.unlinkedTpvOps} operación{tpvPaymentAlerts!.unlinkedTpvOps !== 1 ? "es" : ""} TPV sin vincular a {voc.order}/factura → Operaciones TPV
-              </a>
+              <a href="/admin/contabilidad/operaciones-tpv" className="text-xs text-blue-300/80 hover:text-blue-200 transition-colors">{t("crmDashboard.operacion", { unlinkedTpvOps: tpvPaymentAlerts!.unlinkedTpvOps })}{" "}{t("crmDashboard.tpvSinVincularA", { order: voc.order })}</a>
             )}
             {(tpvPaymentAlerts?.staleFailedPayments ?? 0) > 0 && (
-              <span className="text-xs text-amber-300/80">
-                • {tpvPaymentAlerts!.staleFailedPayments} presupuesto{tpvPaymentAlerts!.staleFailedPayments !== 1 ? "s" : ""} con pago fallido sin resolver +48h
-              </span>
+              <span className="text-xs text-amber-300/80">{t("crmDashboard.presupuesto2", { staleFailedPayments: tpvPaymentAlerts!.staleFailedPayments })}{" "}{t("crmDashboard.conPagoFallidoSin")}</span>
             )}
             {(expenseStats?.candidatesCount ?? 0) > 0 && (
-              <a href="/admin/contabilidad/gastos" className="text-xs text-violet-300/80 hover:text-violet-200 transition-colors">
-                • {expenseStats!.candidatesCount} cargo{expenseStats!.candidatesCount !== 1 ? "s" : ""} bancario{expenseStats!.candidatesCount !== 1 ? "s" : ""} sin registrar como gasto → Gastos
-              </a>
+              <a href="/admin/contabilidad/gastos" className="text-xs text-violet-300/80 hover:text-violet-200 transition-colors">{t("crmDashboard.cargo", { candidatesCount: expenseStats!.candidatesCount })}{" "}{t("crmDashboard.sinRegistrarComoGasto")}</a>
             )}
             {(expenseStats?.staleExpensesCount ?? 0) > 0 && (
-              <a href="/admin/contabilidad/gastos" className="text-xs text-yellow-300/80 hover:text-yellow-200 transition-colors">
-                • {expenseStats!.staleExpensesCount} gasto{expenseStats!.staleExpensesCount !== 1 ? "s" : ""} pendiente{expenseStats!.staleExpensesCount !== 1 ? "s" : ""} sin justificar +30 días → Gastos
-              </a>
+              <a href="/admin/contabilidad/gastos" className="text-xs text-yellow-300/80 hover:text-yellow-200 transition-colors">{t("crmDashboard.gasto", { staleExpensesCount: expenseStats!.staleExpensesCount })}{" "}{t("crmDashboard.sinJustificar30Dias")}</a>
             )}
           </div>
         )}
@@ -6809,35 +6667,34 @@ export default function CRMDashboard() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label="Buscar"
+              aria-label={t("crmDashboard.buscar")}
               placeholder={`Buscar ${tab === "leads" ? voc.leadsLower : tab === "quotes" ? "presupuestos" : tab === "reservations" ? voc.ordersLower : "facturas"}...`}
               className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40"
             />
           </div>
           {filterStatus !== "all" && (
             <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 text-xs" onClick={() => setFilterStatus("all")}>
-              <Filter className="w-3.5 h-3.5 mr-1" /> Limpiar filtro
-            </Button>
+              <Filter className="w-3.5 h-3.5 mr-1" />{" "}{t("crmDashboard.limpiarFiltro")}</Button>
           )}
           {/* Filtro por canal — visible solo en el tab de reservas */}
           {tab === "reservations" && (
             <Select value={resChannelFilter} onValueChange={setResChannelFilter}>
               <SelectTrigger className="w-full sm:w-40 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
-                <SelectValue placeholder="Canal" />
+                <SelectValue placeholder={t("crmDashboard.canal")} />
               </SelectTrigger>
               <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
-                <SelectItem value="all" className="text-foreground/70 text-xs">📊 Todos los canales</SelectItem>
-                <SelectItem value="TPV_FISICO" className="text-violet-300 text-xs">🖥️ TPV Presencial</SelectItem>
-                <SelectItem value="ONLINE_DIRECTO" className="text-sky-300 text-xs">🌐 Online directo</SelectItem>
-                <SelectItem value="ONLINE_ASISTIDO" className="text-blue-300 text-xs">🤝 Online asistido</SelectItem>
-                <SelectItem value="VENTA_DELEGADA" className="text-purple-300 text-xs">💼 CRM Delegado</SelectItem>
-                <SelectItem value="TELEFONO" className="text-amber-300 text-xs">📞 Teléfono</SelectItem>
-                <SelectItem value="EMAIL" className="text-cyan-300 text-xs">✉️ Email</SelectItem>
-                <SelectItem value="PARTNER" className="text-orange-300 text-xs">🤝 Partner</SelectItem>
-                <SelectItem value="TICKETING" className="text-pink-300 text-xs">🎟️ Ticketing</SelectItem>
-                <SelectItem value="coupon" className="text-orange-300 text-xs">🎫 Cupón (origen)</SelectItem>
-                <SelectItem value="MANUAL" className="text-foreground/60 text-xs">❓ Manual / Otro</SelectItem>
-                <SelectItem value="API" className="text-foreground/60 text-xs">🔌 API</SelectItem>
+                <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosCanales")}</SelectItem>
+                <SelectItem value="TPV_FISICO" className="text-violet-300 text-xs">{t("crmDashboard.tpvPresencial")}</SelectItem>
+                <SelectItem value="ONLINE_DIRECTO" className="text-sky-300 text-xs">{t("crmDashboard.onlineDirecto")}</SelectItem>
+                <SelectItem value="ONLINE_ASISTIDO" className="text-blue-300 text-xs">{t("crmDashboard.onlineAsistido")}</SelectItem>
+                <SelectItem value="VENTA_DELEGADA" className="text-purple-300 text-xs">{t("crmDashboard.crmDelegado")}</SelectItem>
+                <SelectItem value="TELEFONO" className="text-amber-300 text-xs">{t("crmDashboard.telefono")}</SelectItem>
+                <SelectItem value="EMAIL" className="text-cyan-300 text-xs">{t("crmDashboard.email")}</SelectItem>
+                <SelectItem value="PARTNER" className="text-orange-300 text-xs">{t("crmDashboard.partner")}</SelectItem>
+                <SelectItem value="TICKETING" className="text-pink-300 text-xs">{t("crmDashboard.ticketing")}</SelectItem>
+                <SelectItem value="coupon" className="text-orange-300 text-xs">{t("crmDashboard.cuponOrigen")}</SelectItem>
+                <SelectItem value="MANUAL" className="text-foreground/60 text-xs">{t("crmDashboard.manualOtro")}</SelectItem>
+                <SelectItem value="API" className="text-foreground/60 text-xs">{t("crmDashboard.api")}</SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -6845,12 +6702,12 @@ export default function CRMDashboard() {
           {tab === "leads" && (
             <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" || v === "web" ? v : Number(v))}>
               <SelectTrigger className="w-full sm:w-44 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
-                <SelectValue placeholder="Origen" />
+                <SelectValue placeholder={t("crmDashboard.origen")} />
               </SelectTrigger>
               <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
-                <SelectItem value="all" className="text-foreground/70 text-xs">Todos los orígenes</SelectItem>
+                <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosOrigenes")}</SelectItem>
                 {/* Solicitudes de información o de plaza hechas desde la ficha de un producto */}
-                <SelectItem value="web" className="text-sky-300 text-xs">Solicitudes web</SelectItem>
+                <SelectItem value="web" className="text-sky-300 text-xs">{t("crmDashboard.solicitudesWeb")}</SelectItem>
                 {(leadSourcesData ?? []).map((src: any) => (
                   <SelectItem key={src.id} value={String(src.id)} className="text-xs">
                     <span style={{ color: src.color ?? undefined }}>{src.name}</span>
@@ -6884,7 +6741,7 @@ export default function CRMDashboard() {
               onClick={() => setShowDirectQuoteModal(true)}
               className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white sm:ml-auto"
             >
-              <Plus className="w-4 h-4 mr-1.5" /> {voc.licensed ? "Nuevo presupuesto" : "Nuevo Presupuesto"}
+              <Plus className="w-4 h-4 mr-1.5" /> {voc.licensed ? t("crmDashboard.nuevoPresupuesto") : t("crmDashboard.nuevoPresupuesto2")}
             </Button>
           )}
         </div>
@@ -6897,20 +6754,18 @@ export default function CRMDashboard() {
             {/* Barra acción masiva leads */}
             {selectedLeads.size > 0 && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
-                <span className="text-xs text-blue-300 font-medium shrink-0">{selectedLeads.size} seleccionado(s)</span>
+                <span className="text-xs text-blue-300 font-medium shrink-0">{t("crmLeads.seleccionadoS", { size: selectedLeads.size })}</span>
                 <button onClick={() => bulkMarkSeenLeads.mutate({ ids: Array.from(selectedLeads) })} disabled={bulkMarkSeenLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-foreground/20 hover:bg-foreground/10 transition-colors disabled:opacity-40">
-                  <Eye className="w-3.5 h-3.5" /> Marcar leídos
-                </button>
+                  <Eye className="w-3.5 h-3.5" />{" "}{t("crmLeads.marcarLeidos")}</button>
                 <select value={bulkLeadsStatus} onChange={e => { if (e.target.value) bulkUpdateLeadsStatus.mutate({ ids: Array.from(selectedLeads), status: e.target.value as any }); }} disabled={bulkUpdateLeadsStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                  <option value="">Cambiar estado…</option>
-                  <option value="nueva">Nueva</option>
-                  <option value="enviada">Enviada</option>
-                  <option value="ganada">Ganada</option>
-                  <option value="perdida">Perdida</option>
+                  <option value="">{t("crmLeads.cambiarEstado2")}</option>
+                  <option value="nueva">{t("crmLeads.nueva")}</option>
+                  <option value="enviada">{t("crmLeads.enviada")}</option>
+                  <option value="ganada">{t("crmLeads.ganada")}</option>
+                  <option value="perdida">{t("crmLeads.perdida")}</option>
                 </select>
                 <button type="button" onClick={() => setBulkConfirm("leads")} disabled={bulkDeleteLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
-                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
-                </button>
+                  <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmLeads.eliminar")}</button>
                 <button onClick={() => setSelectedLeads(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
               </div>
             )}
@@ -6921,13 +6776,13 @@ export default function CRMDashboard() {
                     <th className="w-10 px-3 py-3">
                       <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!leadsData?.rows?.length && selectedLeads.size === leadsData.rows.length} onChange={e => setSelectedLeads(e.target.checked ? new Set(leadsData?.rows?.map((l: any) => l.id)) : new Set())} />
                     </th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Recibido</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmLeads.recibido")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmLeads.cliente")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmLeads.producto")}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">{voc.serviceDateColumn}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">Origen</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">{t("crmLeads.origen")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmLeads.estado")}</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmLeads.acciones")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6950,8 +6805,8 @@ export default function CRMDashboard() {
                         <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedLeads.has(lead.id)} onChange={e => setSelectedLeads(prev => { const s = new Set(prev); e.target.checked ? s.add(lead.id) : s.delete(lead.id); return s; })} />
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-foreground/70 font-medium">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
-                        <div className="text-[11px] text-foreground/40">{new Date(lead.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</div>
+                        <div className="text-xs text-foreground/70 font-medium">{format.date(lead.createdAt, {})}</div>
+                        <div className="text-[11px] text-foreground/40">{format.time(lead.createdAt, { hour: "2-digit", minute: "2-digit" })}</div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
@@ -6975,7 +6830,7 @@ export default function CRMDashboard() {
                               ) : (
                                 <span className="text-sm font-medium text-foreground">{lead.name}</span>
                               )}
-                              {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">Nuevo</span>}
+                              {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">{t("crmLeads.nuevo")}</span>}
                             </div>
                             <div className="text-xs text-foreground/50">{lead.email}</div>
                           </div>
@@ -6987,11 +6842,11 @@ export default function CRMDashboard() {
                             {(lead.activitiesJson as any[]).slice(0, 2).map((act: any, i: number) => (
                               <div key={i} className="flex items-center gap-1.5">
                                 <span className="text-sm text-foreground/80">{act.experienceTitle}</span>
-                                <span className="text-xs text-orange-400 font-semibold">{act.participants}p</span>
+                                <span className="text-xs text-orange-400 font-semibold">{t("crmLeads.p", { participants: act.participants })}</span>
                               </div>
                             ))}
                             {(lead.activitiesJson as any[]).length > 2 && (
-                              <span className="text-xs text-foreground/40">+{(lead.activitiesJson as any[]).length - 2} más</span>
+                              <span className="text-xs text-foreground/40">{t("crmLeads.mas", { v: (lead.activitiesJson as any[]).length - 2 })}</span>
                             )}
                           </div>
                         ) : (
@@ -6999,7 +6854,7 @@ export default function CRMDashboard() {
                         )}
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        <div className="text-sm text-foreground/60">{lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString("es-ES") : "—"}</div>
+                        <div className="text-sm text-foreground/60">{lead.preferredDate ? format.date(lead.preferredDate, {}) : "—"}</div>
                       </td>
                       <td className="px-4 py-3 hidden xl:table-cell">
                         {lead.lsName ? (
@@ -7027,7 +6882,7 @@ export default function CRMDashboard() {
                             variant="ghost"
                             className="text-foreground/60 hover:text-foreground h-7 px-2 text-xs"
                             onClick={() => setSelectedLeadId(lead.id)}
-                            title="Ver ficha"
+                            title={t("crmLeads.verFicha")}
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
@@ -7036,7 +6891,7 @@ export default function CRMDashboard() {
                             variant="ghost"
                             className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs"
                             onClick={() => setEditLeadId(lead.id)}
-                            title={voc.licensed ? "Editar oportunidad" : "Editar lead"}
+                            title={voc.licensed ? t("crmLeads.editarOportunidad") : t("crmLeads.editarLead")}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
@@ -7058,7 +6913,7 @@ export default function CRMDashboard() {
                             variant="ghost"
                             className="text-orange-400 hover:text-orange-300 h-7 px-2 text-xs"
                             onClick={() => { setConvertLeadId(lead.id); setConvertLeadName(lead.name); }}
-                            title="Crear presupuesto"
+                            title={t("crmLeads.crearPresupuesto2")}
                           >
                             <FileText className="w-3.5 h-3.5" />
                           </Button>
@@ -7067,7 +6922,7 @@ export default function CRMDashboard() {
                             variant="ghost"
                             className="text-red-400 hover:text-red-300 h-7 px-2 text-xs"
                             onClick={() => setDeleteLeadId(lead.id)}
-                            title={voc.licensed ? "Eliminar oportunidad" : "Eliminar lead"}
+                            title={voc.licensed ? t("crmLeads.eliminarOportunidad") : t("crmLeads.eliminarLead")}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -7082,8 +6937,8 @@ export default function CRMDashboard() {
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
                   {leadsData.total <= PAGE_SIZE
-                    ? `Mostrando ${leadsData.total} de ${leadsData.total} ${voc.leadsLower}`
-                    : `Página ${leadsPage + 1} de ${Math.ceil(leadsData.total / PAGE_SIZE)} · ${leadsData.total} ${voc.leadsLower}`}
+                    ? t("crmLeads.mostrandoDe", { total: leadsData.total, total2: leadsData.total, leadsLower: voc.leadsLower })
+                    : t("crmLeads.paginaDe", { v: leadsPage + 1, ceil: Math.ceil(leadsData.total / PAGE_SIZE), total: leadsData.total, leadsLower: voc.leadsLower })}
                 </span>
                 {leadsData.total > PAGE_SIZE && (
                   <div className="flex gap-2">
@@ -7091,12 +6946,12 @@ export default function CRMDashboard() {
                       onClick={() => setLeadsPage(p => p - 1)}
                       disabled={leadsPage === 0}
                       className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                    >← Anterior</button>
+                    >{t("crmLeads.anterior")}</button>
                     <button
                       onClick={() => setLeadsPage(p => p + 1)}
                       disabled={(leadsPage + 1) * PAGE_SIZE >= leadsData.total}
                       className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                    >Siguiente →</button>
+                    >{t("crmLeads.siguiente")}</button>
                   </div>
                 )}
               </div>
@@ -7109,19 +6964,18 @@ export default function CRMDashboard() {
             {/* Barra acción masiva quotes */}
             {selectedQuotes.size > 0 && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
-                <span className="text-xs text-blue-300 font-medium shrink-0">{selectedQuotes.size} seleccionado(s)</span>
+                <span className="text-xs text-blue-300 font-medium shrink-0">{t("crmQuotes.seleccionadoS", { size: selectedQuotes.size })}</span>
                 <select value={bulkQuotesStatus} onChange={e => { if (e.target.value) bulkUpdateQuotesStatus.mutate({ ids: Array.from(selectedQuotes), status: e.target.value as any }); }} disabled={bulkUpdateQuotesStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                  <option value="">Cambiar estado…</option>
-                  <option value="borrador">Borrador</option>
-                  <option value="enviado">Enviado</option>
-                  <option value="aceptado">Aceptado</option>
-                  <option value="rechazado">Rechazado</option>
-                  <option value="perdido">Perdido</option>
-                  <option value="expirado">Expirado</option>
+                  <option value="">{t("crmQuotes.cambiarEstado")}</option>
+                  <option value="borrador">{t("crmQuotes.borrador")}</option>
+                  <option value="enviado">{t("crmQuotes.enviado")}</option>
+                  <option value="aceptado">{t("crmQuotes.aceptado")}</option>
+                  <option value="rechazado">{t("crmQuotes.rechazado")}</option>
+                  <option value="perdido">{t("crmQuotes.perdido")}</option>
+                  <option value="expirado">{t("crmQuotes.expirado")}</option>
                 </select>
                 <button type="button" onClick={() => setBulkConfirm("quotes")} disabled={bulkDeleteQuotes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
-                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
-                </button>
+                  <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmQuotes.eliminar2")}</button>
                 <button onClick={() => setSelectedQuotes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
               </div>
             )}
@@ -7132,13 +6986,13 @@ export default function CRMDashboard() {
                     <th className="w-10 px-3 py-3">
                       <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!quotesData?.rows?.length && selectedQuotes.size === quotesData.rows.length} onChange={e => setSelectedQuotes(e.target.checked ? new Set(quotesData?.rows?.map((q: any) => q.id)) : new Set())} />
                     </th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Referencia</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Título</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Total</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Fecha</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.referencia")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.cliente")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmQuotes.titulo2")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.estado")}</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.total")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmQuotes.fecha")}</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.acciones")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -7162,7 +7016,7 @@ export default function CRMDashboard() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="text-sm font-mono font-medium text-orange-400">{quote.quoteNumber}</div>
-                        <div className="text-[10px] text-foreground/40 mt-0.5">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
+                        <div className="text-[10px] text-foreground/40 mt-0.5">{format.date(quote.createdAt, {})}</div>
                       </td>
                       <td className="px-4 py-3">
                         {(quote as typeof quote & { clientId?: number }).clientId ? (
@@ -7184,86 +7038,77 @@ export default function CRMDashboard() {
                           <QuoteStatusBadge status={quote.status as QuoteStatus} />
                           {quote.status === "aceptado" && !quote.paidAt && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                              Pendiente cobro
-                            </span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t("crmQuotes.pendienteCobro")}</span>
                           )}
                           {quote.paidAt && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
-                              <CheckCircle className="w-2.5 h-2.5" />
-                              Cobrado
-                            </span>
+                              <CheckCircle className="w-2.5 h-2.5" />{t("crmQuotes.cobrado2")}</span>
                           )}
                           {quote.isAutoGenerated && (
                             <span
                               className="inline-flex items-center gap-1 text-[10px] font-medium text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full"
-                              title={voc.licensed ? "Generado automáticamente desde los productos o servicios de la oportunidad" : "Generado automáticamente desde las actividades del lead"}
+                              title={voc.licensed ? t("crmQuotes.generadoAutomaticamenteDesdeLo") : t("crmQuotes.generadoAutomaticamenteDesdeLa")}
                             >
-                              <Sparkles className="w-2.5 h-2.5" />
-                              Auto-IA
-                            </span>
+                              <Sparkles className="w-2.5 h-2.5" />{t("crmQuotes.autoIa")}</span>
                           )}
                           {quote.viewedAt && !quote.paidAt && (
                             <span
                               className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded-full"
-                              title={`Visto por el cliente el ${new Date(quote.viewedAt).toLocaleString("es-ES")}`}
+                              title={t("crmQuotes.vistoPorElClienteEl", { date: format.dateTime(quote.viewedAt, DT_FULL) })}
                             >
-                              <Eye className="w-2.5 h-2.5" />
-                              Visto {new Date(quote.viewedAt).toLocaleDateString("es-ES")}
+                              <Eye className="w-2.5 h-2.5" />{t("crmQuotes.visto2")}{" "}{format.date(quote.viewedAt, {})}
                             </span>
                           )}
                           {quote.sentAt && !quote.viewedAt && !quote.paidAt &&
                             quote.status !== "pago_fallido" && quote.status !== "convertido_carrito" && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-medium text-foreground/40 bg-foreground/[0.05] border border-foreground/[0.12] px-1.5 py-0.5 rounded-full">
-                              <Eye className="w-2.5 h-2.5" />
-                              No visto
-                            </span>
+                              <Eye className="w-2.5 h-2.5" />{t("crmQuotes.noVisto")}</span>
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-bold text-foreground">{formatEur(Number(quote.total))}</span>
+                        <span className="text-sm font-bold text-foreground">{format.currency(Number(quote.total), "EUR", EUR2)}</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="text-xs text-foreground/50">
                           {quote.sentAt ? (
-                            <span className="text-info">Env. {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>
+                            <span className="text-info">{t("crmQuotes.env")}{" "}{format.date(quote.sentAt, {})}</span>
                           ) : (
-                            new Date(quote.createdAt).toLocaleDateString("es-ES")
+                            format.date(quote.createdAt, {})
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title="Ver detalle">
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title={t("crmQuotes.verDetalle")}>
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           {/* Editar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title="Editar">
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title={t("crmQuotes.editar")}>
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           {/* Enviar al cliente (solo borrador) */}
                           {(quote.status === "borrador") && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title="Enviar al cliente">
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title={t("crmQuotes.enviarAlCliente")}>
                               <Send className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Reenviar (usa resend para no resetear el status) */}
                           {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
-                              onClick={() => resendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title="Reenviar al cliente">
+                              onClick={() => resendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title={t("crmQuotes.reenviarAlCliente")}>
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Confirmar pago — solo sin plan fraccionado; con plan, hacerlo cuota a cuota desde el detalle */}
                           {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && !quote.paymentPlanId && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title="Confirmar pago recibido">
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title={t("crmQuotes.confirmarPagoRecibido")}>
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-violet-300 h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title="Plan fraccionado — confirma cuotas en el detalle">
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-violet-300 h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title={t("crmQuotes.planFraccionadoConfirmaCuotas")}>
                               <CalendarDays className="w-3.5 h-3.5" />
                             </Button>
                           )}
@@ -7277,30 +7122,30 @@ export default function CRMDashboard() {
                                 setRowPendingPayDueDate("");
                                 setRowPendingPayReason("");
                               }}
-                              title={`Convertir a ${voc.order} pendiente de cobro`}
+                              title={t("crmQuotes.convertirAPendienteDe", { order: voc.order })}
                             >
                               <Clock className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Marcar perdido */}
                           {(quote.status === "borrador" || quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title="Marcar como perdido">
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title={t("crmQuotes.marcarComoPerdido")}>
                               <XCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Descargar PDF */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
-                            onClick={() => downloadQuotePdf(quote.id, quote.quoteNumber)} title="Descargar presupuesto en PDF"
+                            onClick={() => downloadQuotePdf(quote.id, quote.quoteNumber)} title={t("crmQuotes.descargarPresupuestoEnPdf")}
                             disabled={generatePdfMutation.isPending}>
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
                           {/* Duplicar */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground/70 h-7 w-7 p-0"
-                            onClick={() => duplicateQuoteMutation.mutate({ id: quote.id })} title="Duplicar presupuesto">
+                            onClick={() => duplicateQuoteMutation.mutate({ id: quote.id })} title={t("crmQuotes.duplicarPresupuesto")}>
                             <Copy className="w-3.5 h-3.5" />
                           </Button>
                           {/* Eliminar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" onClick={() => setDeleteQuoteId(quote.id)} title="Eliminar">
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" onClick={() => setDeleteQuoteId(quote.id)} title={t("crmQuotes.eliminar2")}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -7314,8 +7159,8 @@ export default function CRMDashboard() {
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
                   {quotesData.total <= PAGE_SIZE
-                    ? `Mostrando ${quotesData.total} de ${quotesData.total} presupuestos`
-                    : `Página ${quotesPage + 1} de ${Math.ceil(quotesData.total / PAGE_SIZE)} · ${quotesData.total} presupuestos`}
+                    ? t("crmQuotes.mostrandoDePresupuestos", { total: quotesData.total, total2: quotesData.total })
+                    : t("crmQuotes.paginaDePresupuestos", { v: quotesPage + 1, ceil: Math.ceil(quotesData.total / PAGE_SIZE), total: quotesData.total })}
                 </span>
                 {quotesData.total > PAGE_SIZE && (
                 <div className="flex gap-2">
@@ -7323,12 +7168,12 @@ export default function CRMDashboard() {
                     onClick={() => setQuotesPage(p => p - 1)}
                     disabled={quotesPage === 0}
                     className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >← Anterior</button>
+                  >{t("crmQuotes.anterior")}</button>
                   <button
                     onClick={() => setQuotesPage(p => p + 1)}
                     disabled={(quotesPage + 1) * PAGE_SIZE >= quotesData.total}
                     className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >Siguiente →</button>
+                  >{t("crmQuotes.siguiente")}</button>
                 </div>
                 )}
               </div>
@@ -7341,16 +7186,15 @@ export default function CRMDashboard() {
             {/* Barra acción masiva reservas */}
             {selectedRes.size > 0 && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
-                <span className="text-xs text-blue-300 font-medium shrink-0">{selectedRes.size} seleccionado(s)</span>
+                <span className="text-xs text-blue-300 font-medium shrink-0">{t("crmReservations.seleccionadoS", { size: selectedRes.size })}</span>
                 <select value={bulkResStatus} onChange={e => { if (e.target.value) bulkUpdateResStatus.mutate({ ids: Array.from(selectedRes), status: e.target.value as any }); }} disabled={bulkUpdateResStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                  <option value="">Cambiar estado…</option>
-                  <option value="paid">Pagada</option>
-                  <option value="pending_payment">Pendiente pago</option>
-                  <option value="cancelled">Cancelada</option>
+                  <option value="">{t("crmReservations.cambiarEstado")}</option>
+                  <option value="paid">{t("crmReservations.pagada")}</option>
+                  <option value="pending_payment">{t("crmReservations.pendientePago")}</option>
+                  <option value="cancelled">{t("crmReservations.cancelada")}</option>
                 </select>
                 <button type="button" onClick={() => setBulkConfirm("reservations")} disabled={bulkDeleteRes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
-                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
-                </button>
+                  <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmReservations.eliminar")}</button>
                 <button onClick={() => setSelectedRes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
               </div>
             )}
@@ -7379,15 +7223,15 @@ export default function CRMDashboard() {
                       <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!resData?.rows?.length && selectedRes.size === resData.rows.length} onChange={e => setSelectedRes(e.target.checked ? new Set(resData?.rows?.map((r: any) => r.id)) : new Set())} />
                     </th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{voc.orderNumber}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmReservations.cliente")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmReservations.producto")}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{voc.orderStatus}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Est. Pago</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell whitespace-nowrap">Canal</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">F. Compra</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{t("crmReservations.estPago")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell whitespace-nowrap">{t("crmReservations.canal")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">{t("crmReservations.fCompra")}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">{voc.serviceDateShort}</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Importe</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Acciones</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{t("crmReservations.importe")}</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{t("crmReservations.acciones")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -7463,11 +7307,11 @@ export default function CRMDashboard() {
                             res.statusReservation === "ANULADA" ? "bg-red-500/15 text-red-400 border-red-500/30" :
                             "bg-slate-500/15 text-slate-400 border-slate-500/30"
                           }`}>
-                            {res.statusReservation === "PENDIENTE_CONFIRMACION" ? "Pend. conf." :
+                            {res.statusReservation === "PENDIENTE_CONFIRMACION" ? t("crmReservations.pendConf") :
                              res.statusReservation === "CONFIRMADA" ? `✅ ${voc.agree("Confirmado", "Confirmada")}` :
-                             res.statusReservation === "EN_CURSO" ? "▶ En curso" :
+                             res.statusReservation === "EN_CURSO" ? t("crmReservations.enCurso2") :
                              res.statusReservation === "FINALIZADA" ? voc.agree("Finalizado", "Finalizada") :
-                             res.statusReservation === "NO_SHOW" ? "⚠️ No show" :
+                             res.statusReservation === "NO_SHOW" ? t("crmReservations.noShow2") :
                              res.statusReservation === "ANULADA" ? `❌ ${voc.agree("Anulado", "Anulada")}` :
                              res.statusReservation}
                           </span>
@@ -7480,18 +7324,18 @@ export default function CRMDashboard() {
                             "bg-slate-500/15 text-slate-400 border-slate-500/30"
                           }`}>
                             {res.status === "paid" || res.status === "confirmed" ? `✅ ${voc.agree("Confirmado", "Confirmada")}` :
-                             res.status === "pending_payment" ? "⏳ Pendiente" :
+                             res.status === "pending_payment" ? t("crmReservations.pendiente3") :
                              res.status === "cancelled" ? `❌ ${voc.agree("Cancelado", "Cancelada")}` : res.status}
                           </span>
                         )}
                         {res.cancellationRequestId && (
                           <div className="mt-1">
-                            <span className="inline-flex items-center text-[9px] font-bold text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded">⚠️ ANULACIÓN #{res.cancellationRequestId}</span>
+                            <span className="inline-flex items-center text-[9px] font-bold text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded">{t("crmReservations.anulacion", { cancellationRequestId: res.cancellationRequestId })}</span>
                           </div>
                         )}
                         {res.dateModified && (
                           <div className="mt-1">
-                            <span className="inline-flex items-center text-[9px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">⚠️ FECHA MOD.</span>
+                            <span className="inline-flex items-center text-[9px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">{t("crmReservations.fechaMod")}</span>
                           </div>
                         )}
                       </td>
@@ -7504,17 +7348,17 @@ export default function CRMDashboard() {
                             res.statusPayment === "PENDIENTE_VALIDACION" ? "bg-violet-500/15 text-violet-400 border-violet-500/30" :
                             "bg-amber-500/15 text-amber-400 border-amber-500/30"
                           }`}>
-                            {res.statusPayment === "PAGADO" ? "💰 Pagado" :
-                             res.statusPayment === "PAGO_PARCIAL" ? "⚡ Parcial" :
-                             res.statusPayment === "PENDIENTE_VALIDACION" ? "🔍 Validación" :
-                             "⏳ Pendiente"}
+                            {res.statusPayment === "PAGADO" ? t("crmReservations.pagado2") :
+                             res.statusPayment === "PAGO_PARCIAL" ? t("crmReservations.parcial") :
+                             res.statusPayment === "PENDIENTE_VALIDACION" ? t("crmReservations.validacion") :
+                             t("crmReservations.pendiente3")}
                           </span>
                         ) : (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                             res.status === "paid" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
                             "bg-amber-500/15 text-amber-400 border-amber-500/30"
                           }`}>
-                            {res.status === "paid" ? "💰 Pagado" : "⏳ Pendiente"}
+                            {res.status === "paid" ? t("crmReservations.pagado2") : t("crmReservations.pendiente3")}
                           </span>
                         )}
                       </td>
@@ -7532,17 +7376,17 @@ export default function CRMDashboard() {
                           res.channel === "TICKETING" ? "text-pink-300 bg-pink-500/15 border-pink-500/30" :
                           "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
                         }`}>
-                          {res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? "Cupón"}` :
-                           res.channel === "TPV_FISICO" ? "🖥️ TPV" :
-                           res.channel === "VENTA_DELEGADA" ? "💼 Delegada" :
-                           res.channel === "ONLINE_DIRECTO" ? "🌐 Online" :
-                           res.channel === "ONLINE_ASISTIDO" ? "🤝 Asistido" :
-                           res.channel === "TELEFONO" ? "📞 Tel." :
-                           res.channel === "EMAIL" ? "✉️ Email" :
-                           res.channel === "PARTNER" ? "🤝 Partner" :
-                           res.channel === "TICKETING" ? "🎟️ Ticketing" :
-                           res.channel === "MANUAL" ? "❓ Manual" :
-                           res.channel === "API" ? "🔌 API" :
+                          {res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? t("crmReservations.cupon")}` :
+                           res.channel === "TPV_FISICO" ? t("crmReservations.tpv") :
+                           res.channel === "VENTA_DELEGADA" ? t("crmReservations.delegada") :
+                           res.channel === "ONLINE_DIRECTO" ? t("crmReservations.online") :
+                           res.channel === "ONLINE_ASISTIDO" ? t("crmReservations.asistido") :
+                           res.channel === "TELEFONO" ? t("crmReservations.tel") :
+                           res.channel === "EMAIL" ? t("crmReservations.email3") :
+                           res.channel === "PARTNER" ? t("crmReservations.partner") :
+                           res.channel === "TICKETING" ? t("crmReservations.ticketing") :
+                           res.channel === "MANUAL" ? t("crmReservations.manual2") :
+                           res.channel === "API" ? t("crmReservations.api2") :
                            res.channel ?? "—"}
                         </span>
                         {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
@@ -7558,7 +7402,7 @@ export default function CRMDashboard() {
                       </td>
                       {/* F. Compra */}
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        <div className="text-xs text-foreground/60">{new Date(res.createdAt).toLocaleDateString("es-ES")}</div>
+                        <div className="text-xs text-foreground/60">{format.date(res.createdAt, {})}</div>
                       </td>
                       {/* F. Actividad */}
                       <td className="px-4 py-3 hidden lg:table-cell">
@@ -7571,9 +7415,9 @@ export default function CRMDashboard() {
                       {/* Importe */}
                       <td className="px-4 py-3 text-right whitespace-nowrap align-top">
                         <div className="flex flex-col items-end leading-tight">
-                          <span className="text-sm font-bold text-orange-400">{formatEur(((res.amountPaid ?? 0) / 100))}</span>
+                          <span className="text-sm font-bold text-orange-400">{format.currency(((res.amountPaid ?? 0) / 100), "EUR", EUR2)}</span>
                           {res.amountPaid !== res.amountTotal && (
-                            <span className="text-xs text-foreground/40 whitespace-nowrap">{formatEur(((res.amountTotal ?? 0) / 100))} total</span>
+                            <span className="text-xs text-foreground/40 whitespace-nowrap">{t("crmReservations.total2", { formatEur: format.currency(((res.amountTotal ?? 0) / 100), "EUR", EUR2) })}</span>
                           )}
                         </div>
                       </td>
@@ -7582,7 +7426,7 @@ export default function CRMDashboard() {
                           {/* Ver detalles */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-sky-300 h-7 w-7 p-0"
                             onClick={() => setViewResId(res.id)}
-                            title="Ver detalles">
+                            title={t("crmReservations.verDetalles")}>
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           {/* Editar */}
@@ -7607,7 +7451,7 @@ export default function CRMDashboard() {
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
                             onClick={() => resendResMutation.mutate({ id: res.id })}
                             disabled={resendResMutation.isPending}
-                            title="Reenviar confirmación al cliente">
+                            title={t("crmReservations.reenviarConfirmacionAlCliente")}>
                             {resendResMutation.isPending
                               ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               : <Send className="w-3.5 h-3.5" />}
@@ -7615,7 +7459,7 @@ export default function CRMDashboard() {
                           {/* Imprimir ticket térmico */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0"
                             onClick={() => setPrintTicketRes(res)}
-                            title="Imprimir ticket (80mm)">
+                            title={t("crmReservations.imprimirTicket80mm")}>
                             <Printer className="w-3.5 h-3.5" />
                           </Button>
                           {/* Descargar PDF factura */}
@@ -7623,14 +7467,14 @@ export default function CRMDashboard() {
                             className={`h-7 w-7 p-0 ${(res as any).invoicePdfUrl ? "text-foreground/50 hover:text-emerald-300" : "text-foreground/20 cursor-not-allowed"}`}
                             onClick={() => (res as any).invoicePdfUrl && window.open((res as any).invoicePdfUrl, "_blank")}
                             disabled={!(res as any).invoicePdfUrl}
-                            title={(res as any).invoicePdfUrl ? "Descargar factura PDF" : "Sin factura PDF"}>
+                            title={(res as any).invoicePdfUrl ? t("crmReservations.descargarFacturaPdf") : t("crmReservations.sinFacturaPdf")}>
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
                           {/* Generar factura — cualquier reserva sin factura */}
                           {!res.invoiceId && !res.invoiceNumber && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-violet-300 h-7 w-7 p-0"
                               onClick={() => setGenInvoiceResId(res.id)}
-                              title="Generar factura">
+                              title={t("crmReservations.generarFactura")}>
                               <FilePlus className="w-3.5 h-3.5" />
                             </Button>
                           )}
@@ -7660,8 +7504,8 @@ export default function CRMDashboard() {
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
                   {resData.total <= PAGE_SIZE
-                    ? `Mostrando ${resData.total} de ${resData.total} ${voc.ordersLower}`
-                    : `Página ${resPage + 1} de ${Math.ceil(resData.total / PAGE_SIZE)} · ${resData.total} ${voc.ordersLower}`}
+                    ? t("crmReservations.mostrandoDe", { total: resData.total, total2: resData.total, ordersLower: voc.ordersLower })
+                    : t("crmReservations.paginaDe", { v: resPage + 1, ceil: Math.ceil(resData.total / PAGE_SIZE), total: resData.total, ordersLower: voc.ordersLower })}
                 </span>
                 {resData.total > PAGE_SIZE && (
                 <div className="flex gap-2">
@@ -7669,12 +7513,12 @@ export default function CRMDashboard() {
                     onClick={() => setResPage(p => p - 1)}
                     disabled={resPage === 0}
                     className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >← Anterior</button>
+                  >{t("crmReservations.anterior")}</button>
                   <button
                     onClick={() => setResPage(p => p + 1)}
                     disabled={(resPage + 1) * PAGE_SIZE >= resData.total}
                     className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >Siguiente →</button>
+                  >{t("crmReservations.siguiente")}</button>
                 </div>
                 )}
               </div>
@@ -7687,12 +7531,10 @@ export default function CRMDashboard() {
             <div>
               <div className="flex justify-end gap-2 mb-3">
                 <Button size="sm" variant="outline" onClick={() => setGestoriaExportOpen(true)}>
-                  <Download className="w-4 h-4 mr-1" /> Exportar para la gestoría
-                </Button>
+                  <Download className="w-4 h-4 mr-1" />{" "}{t("crmInvoices.exportarParaLaGestoria")}</Button>
                 <GestoriaExportDialog open={gestoriaExportOpen} onOpenChange={setGestoriaExportOpen} />
                 <Button size="sm" onClick={() => setNewInvoiceOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Plus className="w-4 h-4 mr-1" /> Nueva factura
-                </Button>
+                  <Plus className="w-4 h-4 mr-1" />{" "}{t("crmInvoices.nuevaFactura")}</Button>
                 <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
               </div>
               {/* Filtros de facturas */}
@@ -7707,21 +7549,21 @@ export default function CRMDashboard() {
                         : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
                     }`}
                   >
-                    {s === "all" ? "Todas" : s.charAt(0).toUpperCase() + s.slice(1)}
+                    {s === "all" ? t("crmInvoices.todas") : s.charAt(0).toUpperCase() + s.slice(1)}
                   </button>
                 ))}
                 <div className="ml-auto flex gap-2">
-                  {(["all", "factura", "abono"] as const).map(t => (
+                  {(["all", "factura", "abono"] as const).map(ty => (
                     <button
-                      key={t}
-                      onClick={() => setInvoiceTypeFilter(t)}
+                      key={ty}
+                      onClick={() => setInvoiceTypeFilter(ty)}
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
-                        invoiceTypeFilter === t
+                        invoiceTypeFilter === ty
                           ? "bg-violet-600 text-white border-violet-600"
                           : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
                       }`}
                     >
-                      {t === "all" ? "Todos los tipos" : t.charAt(0).toUpperCase() + t.slice(1)}
+                      {ty === "all" ? t("crmInvoices.todosLosTipos") : ty === "factura" ? t("crmInvoices.tipoFactura") : t("crmInvoices.tipoAbono")}
                     </button>
                   ))}
                 </div>
@@ -7732,18 +7574,18 @@ export default function CRMDashboard() {
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2 text-foreground/60 text-xs">
                     <Calendar className="w-3.5 h-3.5" />
-                    <span className="font-medium">Período:</span>
+                    <span className="font-medium">{t("crmInvoices.periodo")}</span>
                   </div>
                   {/* Accesos rápidos */}
                   {([
-                    { label: "Hoy", fn: () => { const d = new Date().toISOString().slice(0,10); setInvoiceDateFrom(d); setInvoiceDateTo(d); } },
-                    { label: "Esta semana", fn: () => { const now = new Date(); const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); setInvoiceDateFrom(mon.toISOString().slice(0,10)); setInvoiceDateTo(sun.toISOString().slice(0,10)); } },
-                    { label: "Este mes", fn: () => { const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth(), 1); const last = new Date(now.getFullYear(), now.getMonth() + 1, 0); setInvoiceDateFrom(first.toISOString().slice(0,10)); setInvoiceDateTo(last.toISOString().slice(0,10)); } },
-                    { label: "T1", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-03-31`); } },
-                    { label: "T2", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-04-01`); setInvoiceDateTo(`${y}-06-30`); } },
-                    { label: "T3", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-07-01`); setInvoiceDateTo(`${y}-09-30`); } },
-                    { label: "T4", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-10-01`); setInvoiceDateTo(`${y}-12-31`); } },
-                    { label: "Este año", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-12-31`); } },
+                    { label: t("crmInvoices.hoy"), fn: () => { const d = new Date().toISOString().slice(0,10); setInvoiceDateFrom(d); setInvoiceDateTo(d); } },
+                    { label: t("crmInvoices.estaSemana"), fn: () => { const now = new Date(); const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); setInvoiceDateFrom(mon.toISOString().slice(0,10)); setInvoiceDateTo(sun.toISOString().slice(0,10)); } },
+                    { label: t("crmInvoices.esteMes"), fn: () => { const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth(), 1); const last = new Date(now.getFullYear(), now.getMonth() + 1, 0); setInvoiceDateFrom(first.toISOString().slice(0,10)); setInvoiceDateTo(last.toISOString().slice(0,10)); } },
+                    { label: t("crmInvoices.t1"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-03-31`); } },
+                    { label: t("crmInvoices.t2"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-04-01`); setInvoiceDateTo(`${y}-06-30`); } },
+                    { label: t("crmInvoices.t3"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-07-01`); setInvoiceDateTo(`${y}-09-30`); } },
+                    { label: t("crmInvoices.t4"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-10-01`); setInvoiceDateTo(`${y}-12-31`); } },
+                    { label: t("crmInvoices.esteAno"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-12-31`); } },
                   ]).map(({ label, fn }) => (
                     <button key={label} onClick={fn}
                       className="px-2.5 py-1 rounded-lg text-xs font-medium bg-foreground/[0.05] text-foreground/65 border border-foreground/[0.12] hover:bg-sky-600/30 hover:text-sky-300 hover:border-sky-500/40 transition-all">
@@ -7779,28 +7621,28 @@ export default function CRMDashboard() {
               {invoicesData?.summary && (
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
                   <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
-                    <div className="text-xs text-foreground/50 mb-1">Docs. en período</div>
+                    <div className="text-xs text-foreground/50 mb-1">{t("crmInvoices.docsEnPeriodo")}</div>
                     <div className="text-lg font-bold text-foreground">{invoicesData.total}</div>
                   </div>
                   <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
-                    <div className="text-xs text-foreground/50 mb-1">Base imponible</div>
-                    <div className="text-lg font-bold text-info">{formatEur(invoicesData.summary.subtotal)}</div>
+                    <div className="text-xs text-foreground/50 mb-1">{t("crmInvoices.baseImponible")}</div>
+                    <div className="text-lg font-bold text-info">{format.currency(invoicesData.summary.subtotal, "EUR", EUR2)}</div>
                   </div>
                   <div className="bg-warning/10 border border-warning/40 rounded-xl p-3 text-center">
-                    <div className="text-xs text-warning mb-1">Bruto (IVA incl.)</div>
-                    <div className="text-lg font-bold text-warning">{formatEur(invoicesData.summary.grandTotal)}</div>
-                    <div className="text-xs text-muted-foreground">IVA: {formatEur(invoicesData.summary.tax)}</div>
+                    <div className="text-xs text-warning mb-1">{t("crmInvoices.brutoIvaIncl")}</div>
+                    <div className="text-lg font-bold text-warning">{format.currency(invoicesData.summary.grandTotal, "EUR", EUR2)}</div>
+                    <div className="text-xs text-muted-foreground">{t("crmInvoices.iva", { formatEur: format.currency(invoicesData.summary.tax, "EUR", EUR2) })}</div>
                   </div>
                   {(invoicesData.summary as any).abonosTotal > 0 && (
                     <div className="bg-info/10 border border-info/40 rounded-xl p-3 text-center">
-                      <div className="text-xs text-info mb-1">Total abonos</div>
-                      <div className="text-lg font-bold text-info">-{formatEur((invoicesData.summary as any).abonosTotal)}</div>
+                      <div className="text-xs text-info mb-1">{t("crmInvoices.totalAbonos")}</div>
+                      <div className="text-lg font-bold text-info">-{format.currency((invoicesData.summary as any).abonosTotal, "EUR", EUR2)}</div>
                     </div>
                   )}
                   {(invoicesData.summary as any).abonosTotal > 0 && (
                     <div className="bg-success/10 border border-success/40 rounded-xl p-3 text-center">
-                      <div className="text-xs text-success mb-1">Neto real</div>
-                      <div className="text-lg font-bold text-success">{formatEur((invoicesData.summary as any).netTotal)}</div>
+                      <div className="text-xs text-success mb-1">{t("crmInvoices.netoReal")}</div>
+                      <div className="text-lg font-bold text-success">{format.currency((invoicesData.summary as any).netTotal, "EUR", EUR2)}</div>
                     </div>
                   )}
                 </div>
@@ -7810,13 +7652,13 @@ export default function CRMDashboard() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Número</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Método pago</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
-                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Total</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Fecha</th>
-                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.numero")}</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.cliente")}</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmInvoices.metodoPago")}</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.estado")}</th>
+                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.total")}</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmInvoices.fecha")}</th>
+                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.acciones")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -7839,7 +7681,7 @@ export default function CRMDashboard() {
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="text-sm font-mono font-bold text-foreground whitespace-nowrap">{inv.invoiceNumber}</span>
                             {inv.invoiceType === "abono" && (
-                              <span className="inline-flex items-center text-[10px] font-bold text-info bg-info/10 border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">ABONO</span>
+                              <span className="inline-flex items-center text-[10px] font-bold text-info bg-info/10 border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">{t("crmInvoices.abono")}</span>
                             )}
                           </div>
                           {/* Factura abonada → mostrar el nº del abono emitido */}
@@ -7848,10 +7690,9 @@ export default function CRMDashboard() {
                               <button
                                 onClick={() => setInvoiceSearch(inv.creditNoteNumber)}
                                 className="text-[11px] text-info hover:underline transition-colors flex items-center gap-1 whitespace-nowrap"
-                                title="Ver factura de abono"
+                                title={t("crmInvoices.verFacturaDeAbono")}
                               >
-                                <RotateCcw className="w-2.5 h-2.5" />
-                                Abono: {inv.creditNoteNumber}
+                                <RotateCcw className="w-2.5 h-2.5" />{t("crmInvoices.abono2", { creditNoteNumber: inv.creditNoteNumber })}
                               </button>
                             </div>
                           )}
@@ -7861,10 +7702,9 @@ export default function CRMDashboard() {
                               <button
                                 onClick={() => setInvoiceSearch(inv.originalInvoiceNumber)}
                                 className="text-[11px] text-warning hover:underline transition-colors flex items-center gap-1 whitespace-nowrap"
-                                title="Ver factura original"
+                                title={t("crmInvoices.verFacturaOriginal")}
                               >
-                                <Receipt className="w-2.5 h-2.5" />
-                                Rectifica: {inv.originalInvoiceNumber}
+                                <Receipt className="w-2.5 h-2.5" />{t("crmInvoices.rectifica", { originalInvoiceNumber: inv.originalInvoiceNumber })}
                               </button>
                             </div>
                           )}
@@ -7882,11 +7722,9 @@ export default function CRMDashboard() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-xs text-info hover:underline transition-colors"
-                                title="Ver justificante de transferencia"
+                                title={t("crmInvoices.verJustificanteDeTransferencia")}
                               >
-                                <Paperclip className="w-3 h-3" />
-                                Justificante
-                              </a>
+                                <Paperclip className="w-3 h-3" />{t("crmInvoices.justificante")}</a>
                             )}
                           </div>
                         </td>
@@ -7894,27 +7732,25 @@ export default function CRMDashboard() {
                           {getInvoiceStatusBadge(inv.status)}
                           {inv.invoiceType === "abono" && (
                             <div className="mt-1">
-                              <span className="inline-flex items-center text-[10px] font-bold text-info border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">
-                                Fact. rectificativa
-                              </span>
+                              <span className="inline-flex items-center text-[10px] font-bold text-info border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">{t("crmInvoices.factRectificativa")}</span>
                             </div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {inv.invoiceType === "abono" ? (
-                            <span className="text-sm font-bold text-info whitespace-nowrap">{formatEur(Number(inv.total))}</span>
+                            <span className="text-sm font-bold text-info whitespace-nowrap">{format.currency(Number(inv.total), "EUR", EUR2)}</span>
                           ) : (
-                            <span className="text-sm font-bold text-foreground whitespace-nowrap">{formatEur(Number(inv.total))}</span>
+                            <span className="text-sm font-bold text-foreground whitespace-nowrap">{format.currency(Number(inv.total), "EUR", EUR2)}</span>
                           )}
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
-                          <div className="text-xs text-foreground/50">{new Date(inv.createdAt).toLocaleDateString("es-ES")}</div>
+                          <div className="text-xs text-foreground/50">{format.date(inv.createdAt, {})}</div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             {/* PDF: ver si existe (o generarlo); descargar siempre, también los abonos */}
                             {inv.pdfUrl ? (
-                              <button onClick={() => viewInvoicePdf(inv)} title={inv.invoiceType === "abono" ? "Visualizar abono" : "Visualizar factura"}
+                              <button onClick={() => viewInvoicePdf(inv)} title={inv.invoiceType === "abono" ? t("crmInvoices.visualizarAbono") : t("crmInvoices.visualizarFactura")}
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
                                 <Eye className="w-4 h-4" />
                               </button>
@@ -7922,7 +7758,7 @@ export default function CRMDashboard() {
                               <button
                                 onClick={() => regenerateInvoicePdfMutation.mutate({ invoiceId: inv.id })}
                                 disabled={regenerateInvoicePdfMutation.isPending}
-                                title="Generar PDF"
+                                title={t("crmInvoices.generarPdf")}
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-amber-400 transition-colors disabled:opacity-40">
                                 {regenerateInvoicePdfMutation.isPending
                                   ? <RefreshCw className="w-4 h-4 animate-spin" />
@@ -7930,7 +7766,7 @@ export default function CRMDashboard() {
                               </button>
                             )}
                             <button onClick={() => downloadInvoicePdf(inv)} disabled={downloadingInvoiceId === inv.id}
-                              title={inv.invoiceType === "abono" ? "Descargar abono" : "Descargar factura"}
+                              title={inv.invoiceType === "abono" ? t("crmInvoices.descargarAbono") : t("crmInvoices.descargarFactura")}
                               aria-label={`Descargar ${inv.invoiceType === "abono" ? "abono" : "factura"} ${inv.invoiceNumber} en PDF`}
                               className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors disabled:opacity-40">
                               {downloadingInvoiceId === inv.id
@@ -7939,28 +7775,28 @@ export default function CRMDashboard() {
                             </button>
                             {/* Reenviar */}
                             {["generada", "enviada"].includes(inv.status) && (
-                              <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title="Reenviar por email"
+                              <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title={t("crmInvoices.reenviarPorEmail")}
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
                                 <Send className="w-4 h-4" />
                               </button>
                             )}
                             {/* Confirmar pago manual */}
                             {["generada", "enviada"].includes(inv.status) && inv.invoiceType !== "abono" && (
-                              <button onClick={() => setConfirmPaymentInvoiceId(inv.id)} title="Confirmar pago manual"
+                              <button onClick={() => setConfirmPaymentInvoiceId(inv.id)} title={t("crmInvoices.confirmarPagoManual")}
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
                                 <CreditCard className="w-4 h-4" />
                               </button>
                             )}
                             {/* Emitir abono (total o parcial) */}
                             {["generada", "enviada", "cobrada"].includes(inv.status) && inv.invoiceType !== "abono" && (
-                              <button onClick={() => setCreditNoteInvoiceId(inv.id)} title="Emitir abono"
+                              <button onClick={() => setCreditNoteInvoiceId(inv.id)} title={t("crmInvoices.emitirAbono")}
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-violet-400 transition-colors">
                                 <RotateCcw className="w-4 h-4" />
                               </button>
                             )}
                             {/* Anular */}
                             {!["anulada", "abonada"].includes(inv.status) && (
-                              <button onClick={() => setVoidInvoiceId(inv.id)} title="Anular factura"
+                              <button onClick={() => setVoidInvoiceId(inv.id)} title={t("crmInvoices.anularFactura")}
                                 className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-red-400 transition-colors">
                                 <Ban className="w-4 h-4" />
                               </button>
@@ -7976,8 +7812,8 @@ export default function CRMDashboard() {
                 <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                   <span className="text-sm text-foreground/50">
                     {invoicesData.total <= PAGE_SIZE
-                      ? `Mostrando ${invoicesData.total} de ${invoicesData.total} facturas`
-                      : `Página ${invoicesPage + 1} de ${Math.ceil(invoicesData.total / PAGE_SIZE)} · ${invoicesData.total} facturas`}
+                      ? t("crmInvoices.mostrandoDeFacturas", { total: invoicesData.total, total2: invoicesData.total })
+                      : t("crmInvoices.paginaDeFacturas", { v: invoicesPage + 1, ceil: Math.ceil(invoicesData.total / PAGE_SIZE), total: invoicesData.total })}
                   </span>
                   {invoicesData.total > PAGE_SIZE && (
                     <div className="flex gap-2">
@@ -7985,12 +7821,12 @@ export default function CRMDashboard() {
                         onClick={() => setInvoicesPage(p => p - 1)}
                         disabled={invoicesPage === 0}
                         className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                      >← Anterior</button>
+                      >{t("crmInvoices.anterior")}</button>
                       <button
                         onClick={() => setInvoicesPage(p => p + 1)}
                         disabled={(invoicesPage + 1) * PAGE_SIZE >= invoicesData.total}
                         className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                      >Siguiente →</button>
+                      >{t("crmInvoices.siguiente")}</button>
                     </div>
                   )}
                 </div>
@@ -8004,12 +7840,12 @@ export default function CRMDashboard() {
               {anulKpis && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                   {[
-                    { label: "Total", value: anulKpis.total, color: "border-foreground/[0.08]" },
-                    { label: "Recibidas", value: anulKpis.recibidas, color: "border-blue-500/20" },
-                    { label: "En revisión", value: anulKpis.enRevision, color: "border-amber-500/20" },
-                    { label: "Pend. docs", value: anulKpis.pendienteDocumentacion, color: "border-orange-500/20" },
-                    { label: "Incidencias", value: anulKpis.incidencias, color: "border-red-500/20" },
-                    { label: "Cerradas", value: anulKpis.cerradas, color: "border-gray-500/20" },
+                    { label: t("crmCancellations.total"), value: anulKpis.total, color: "border-foreground/[0.08]" },
+                    { label: t("crmCancellations.recibidas"), value: anulKpis.recibidas, color: "border-blue-500/20" },
+                    { label: t("crmCancellations.enRevision"), value: anulKpis.enRevision, color: "border-amber-500/20" },
+                    { label: t("crmCancellations.pendDocs"), value: anulKpis.pendienteDocumentacion, color: "border-orange-500/20" },
+                    { label: t("crmCancellations.incidencias"), value: anulKpis.incidencias, color: "border-red-500/20" },
+                    { label: t("crmCancellations.cerradas"), value: anulKpis.cerradas, color: "border-gray-500/20" },
                   ].map(({ label, value, color }) => (
                     <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
                       <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
@@ -8022,10 +7858,10 @@ export default function CRMDashboard() {
               {anulKpis && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { label: "Aceptadas total", value: anulKpis.resueltasTotal, color: "border-green-500/20" },
-                    { label: "Aceptadas parcial", value: anulKpis.resueltasParcial, color: "border-teal-500/20" },
-                    { label: "Rechazadas", value: anulKpis.rechazadas, color: "border-red-500/20" },
-                    { label: voc.licensed ? "Vales enviados" : "Bonos enviados", value: anulKpis.compensadasBono, color: "border-purple-500/20" },
+                    { label: t("crmCancellations.aceptadasTotal"), value: anulKpis.resueltasTotal, color: "border-green-500/20" },
+                    { label: t("crmCancellations.aceptadasParcial"), value: anulKpis.resueltasParcial, color: "border-teal-500/20" },
+                    { label: t("crmCancellations.rechazadas"), value: anulKpis.rechazadas, color: "border-red-500/20" },
+                    { label: voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados"), value: anulKpis.compensadasBono, color: "border-purple-500/20" },
                   ].map(({ label, value, color }) => (
                     <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
                       <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
@@ -8038,56 +7874,56 @@ export default function CRMDashboard() {
               <div className="flex flex-wrap gap-3">
                 <Select value={anulOpFilter} onValueChange={setAnulOpFilter}>
                   <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder="Estado operativo" />
+                    <SelectValue placeholder={t("crmCancellations.estadoOperativo")} />
                   </SelectTrigger>
                   <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
-                    <SelectItem value="all" className="text-foreground/70 text-xs">Todos los estados</SelectItem>
-                    <SelectItem value="recibida" className="text-foreground/70 text-xs">Recibida</SelectItem>
-                    <SelectItem value="en_revision" className="text-foreground/70 text-xs">En revisión</SelectItem>
-                    <SelectItem value="pendiente_documentacion" className="text-foreground/70 text-xs">Pend. documentación</SelectItem>
-                    <SelectItem value="pendiente_decision" className="text-foreground/70 text-xs">Pend. decisión</SelectItem>
-                    <SelectItem value="resuelta" className="text-foreground/70 text-xs">Resuelta</SelectItem>
-                    <SelectItem value="cerrada" className="text-foreground/70 text-xs">Cerrada</SelectItem>
-                    <SelectItem value="incidencia" className="text-foreground/70 text-xs">Incidencia</SelectItem>
+                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todosLosEstados")}</SelectItem>
+                    <SelectItem value="recibida" className="text-foreground/70 text-xs">{t("crmCancellations.recibida")}</SelectItem>
+                    <SelectItem value="en_revision" className="text-foreground/70 text-xs">{t("crmCancellations.enRevision")}</SelectItem>
+                    <SelectItem value="pendiente_documentacion" className="text-foreground/70 text-xs">{t("crmCancellations.pendDocumentacion")}</SelectItem>
+                    <SelectItem value="pendiente_decision" className="text-foreground/70 text-xs">{t("crmCancellations.pendDecision")}</SelectItem>
+                    <SelectItem value="resuelta" className="text-foreground/70 text-xs">{t("crmCancellations.resuelta")}</SelectItem>
+                    <SelectItem value="cerrada" className="text-foreground/70 text-xs">{t("crmCancellations.cerrada")}</SelectItem>
+                    <SelectItem value="incidencia" className="text-foreground/70 text-xs">{t("crmCancellations.incidencia")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={anulResFilter} onValueChange={setAnulResFilter}>
                   <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder="Resolución" />
+                    <SelectValue placeholder={t("crmCancellations.resolucion")} />
                   </SelectTrigger>
                   <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
-                    <SelectItem value="all" className="text-foreground/70 text-xs">Toda resolución</SelectItem>
-                    <SelectItem value="sin_resolver" className="text-foreground/70 text-xs">Sin resolver</SelectItem>
-                    <SelectItem value="rechazada" className="text-foreground/70 text-xs">Rechazada</SelectItem>
-                    <SelectItem value="aceptada_total" className="text-foreground/70 text-xs">Aceptada total</SelectItem>
-                    <SelectItem value="aceptada_parcial" className="text-foreground/70 text-xs">Aceptada parcial</SelectItem>
+                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todaResolucion")}</SelectItem>
+                    <SelectItem value="sin_resolver" className="text-foreground/70 text-xs">{t("crmCancellations.sinResolver")}</SelectItem>
+                    <SelectItem value="rechazada" className="text-foreground/70 text-xs">{t("crmCancellations.rechazada")}</SelectItem>
+                    <SelectItem value="aceptada_total" className="text-foreground/70 text-xs">{t("crmCancellations.aceptadaTotal")}</SelectItem>
+                    <SelectItem value="aceptada_parcial" className="text-foreground/70 text-xs">{t("crmCancellations.aceptadaParcial")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={anulFinFilter} onValueChange={setAnulFinFilter}>
                   <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder="Estado financiero" />
+                    <SelectValue placeholder={t("crmCancellations.estadoFinanciero")} />
                   </SelectTrigger>
                   <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
-                    <SelectItem value="all" className="text-foreground/70 text-xs">Todo financiero</SelectItem>
-                    <SelectItem value="sin_compensacion" className="text-foreground/70 text-xs">Sin compensación</SelectItem>
-                    <SelectItem value="pendiente_devolucion" className="text-foreground/70 text-xs">Pend. devolución</SelectItem>
-                    <SelectItem value="devuelta_economicamente" className="text-foreground/70 text-xs">Devuelta</SelectItem>
-                    <SelectItem value="pendiente_bono" className="text-foreground/70 text-xs">Pend. bono</SelectItem>
-                    <SelectItem value="compensada_bono" className="text-foreground/70 text-xs">Bono enviado</SelectItem>
-                    <SelectItem value="incidencia_economica" className="text-foreground/70 text-xs">Incidencia ec.</SelectItem>
+                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todoFinanciero")}</SelectItem>
+                    <SelectItem value="sin_compensacion" className="text-foreground/70 text-xs">{t("crmCancellations.sinCompensacion")}</SelectItem>
+                    <SelectItem value="pendiente_devolucion" className="text-foreground/70 text-xs">{t("crmCancellations.pendDevolucion")}</SelectItem>
+                    <SelectItem value="devuelta_economicamente" className="text-foreground/70 text-xs">{t("crmCancellations.devuelta")}</SelectItem>
+                    <SelectItem value="pendiente_bono" className="text-foreground/70 text-xs">{t("crmCancellations.pendBono")}</SelectItem>
+                    <SelectItem value="compensada_bono" className="text-foreground/70 text-xs">{t("crmCancellations.bonoEnviado")}</SelectItem>
+                    <SelectItem value="incidencia_economica" className="text-foreground/70 text-xs">{t("crmCancellations.incidenciaEc")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={anulReasonFilter} onValueChange={setAnulReasonFilter}>
                   <SelectTrigger className="w-40 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder="Motivo" />
+                    <SelectValue placeholder={t("crmCancellations.motivo")} />
                   </SelectTrigger>
                   <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
-                    <SelectItem value="all" className="text-foreground/70 text-xs">Todos los motivos</SelectItem>
-                    <SelectItem value="meteorologicas" className="text-foreground/70 text-xs">Meteorológicas</SelectItem>
-                    <SelectItem value="accidente" className="text-foreground/70 text-xs">Accidente</SelectItem>
-                    <SelectItem value="enfermedad" className="text-foreground/70 text-xs">Enfermedad</SelectItem>
-                    <SelectItem value="desistimiento" className="text-foreground/70 text-xs">Desistimiento</SelectItem>
-                    <SelectItem value="otra" className="text-foreground/70 text-xs">Otra</SelectItem>
+                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todosLosMotivos")}</SelectItem>
+                    <SelectItem value="meteorologicas" className="text-foreground/70 text-xs">{t("crmCancellations.meteorologicas")}</SelectItem>
+                    <SelectItem value="accidente" className="text-foreground/70 text-xs">{t("crmCancellations.accidente")}</SelectItem>
+                    <SelectItem value="enfermedad" className="text-foreground/70 text-xs">{t("crmCancellations.enfermedad")}</SelectItem>
+                    <SelectItem value="desistimiento" className="text-foreground/70 text-xs">{t("crmCancellations.desistimiento")}</SelectItem>
+                    <SelectItem value="otra" className="text-foreground/70 text-xs">{t("crmCancellations.otra")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
@@ -8096,17 +7932,13 @@ export default function CRMDashboard() {
                   onClick={() => refetchAnul()}
                   className="gap-1.5 border-foreground/[0.12] text-foreground/50 hover:text-foreground h-9"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Actualizar
-                </Button>
+                  <RefreshCw className="w-3.5 h-3.5" />{t("crmCancellations.actualizar")}</Button>
                 <Button
                   size="sm"
                   onClick={() => window.open("/solicitar-anulacion", "_blank")}
                   className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground h-9 ml-auto"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Ver formulario público
-                </Button>
+                  <ExternalLink className="w-3.5 h-3.5" />{t("crmCancellations.verFormularioPublico")}</Button>
               </div>
               {/* Tabla */}
               <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
@@ -8115,15 +7947,15 @@ export default function CRMDashboard() {
                     <thead>
                       <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">#</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Solicitante</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.solicitante")}</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{voc.Order}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Motivo</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.motivo")}</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{voc.serviceDateColumn}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado op.</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Resolución</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Financiero</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Fecha</th>
-                        <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.estadoOp")}</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.resolucion")}</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.financiero")}</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.fecha")}</th>
+                        <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.acciones")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -8138,8 +7970,8 @@ export default function CRMDashboard() {
                         <tr>
                           <td colSpan={10} className="text-center py-12">
                             <AlertTriangle className="w-8 h-8 text-red-400/60 mx-auto mb-2" />
-                            <p className="text-red-400/70 text-sm font-medium">Error al cargar las solicitudes</p>
-                            <button onClick={() => refetchAnul()} className="mt-2 text-xs text-foreground/40 hover:text-foreground/70 underline">Reintentar</button>
+                            <p className="text-red-400/70 text-sm font-medium">{t("crmCancellations.errorAlCargarLas")}</p>
+                            <button onClick={() => refetchAnul()} className="mt-2 text-xs text-foreground/40 hover:text-foreground/70 underline">{t("crmCancellations.reintentar")}</button>
                           </td>
                         </tr>
                       )}
@@ -8147,7 +7979,7 @@ export default function CRMDashboard() {
                         <tr>
                           <td colSpan={10} className="text-center py-12">
                             <AlertTriangle className="w-8 h-8 text-foreground/30 mx-auto mb-2" />
-                            <p className="text-foreground/40 text-sm">No hay solicitudes que coincidan con los filtros</p>
+                            <p className="text-foreground/40 text-sm">{t("crmCancellations.noHaySolicitudesQue")}</p>
                           </td>
                         </tr>
                       )}
@@ -8197,21 +8029,21 @@ export default function CRMDashboard() {
                             <AnulFinBadge status={row.financialStatus} />
                           </td>
                           <td className="px-4 py-3 text-foreground/50 text-xs">
-                            {new Date(row.createdAt).toLocaleDateString("es-ES")}
+                            {format.date(row.createdAt, {})}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => setSelectedAnulId(row.id)}
                                 className="p-1.5 rounded-lg text-foreground/50 hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
-                                title="Ver detalle"
+                                title={t("crmCancellations.verDetalle")}
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => setDeleteAnulId(row.id)}
                                 className="p-1.5 rounded-lg text-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                                title="Eliminar"
+                                title={t("crmCancellations.eliminar")}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -8226,8 +8058,8 @@ export default function CRMDashboard() {
                   <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                     <span className="text-sm text-foreground/50">
                       {anulData.total <= PAGE_SIZE
-                        ? `Mostrando ${anulData.total} de ${anulData.total} solicitud${anulData.total !== 1 ? "es" : ""}`
-                        : `Página ${anulPage + 1} de ${Math.ceil(anulData.total / PAGE_SIZE)} · ${anulData.total} solicitudes`}
+                        ? t("crmCancellations.mostrandoDeSolicitudes", { total: anulData.total, total2: anulData.total })
+                        : t("crmCancellations.paginaDeSolicitudes", { v: anulPage + 1, ceil: Math.ceil(anulData.total / PAGE_SIZE), total: anulData.total })}
                     </span>
                     {anulData.total > PAGE_SIZE && (
                       <div className="flex gap-2">
@@ -8235,12 +8067,12 @@ export default function CRMDashboard() {
                           onClick={() => setAnulPage(p => p - 1)}
                           disabled={anulPage === 0}
                           className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                        >← Anterior</button>
+                        >{t("crmCancellations.anterior")}</button>
                         <button
                           onClick={() => setAnulPage(p => p + 1)}
                           disabled={(anulPage + 1) * PAGE_SIZE >= anulData.total}
                           className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                        >Siguiente →</button>
+                        >{t("crmCancellations.siguiente")}</button>
                       </div>
                     )}
                   </div>
@@ -8268,33 +8100,30 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-emerald-400" /> Confirmar pago manual
-            </DialogTitle>
+              <CreditCard className="w-5 h-5 text-emerald-400" />{" "}{t("crmInvoices.confirmarPagoManual")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-foreground/65 text-xs mb-1.5 block">Método de pago</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmInvoices.metodoDePago")}</Label>
               <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
                 <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="transferencia" className="text-white">🏦 Transferencia bancaria</SelectItem>
-                  <SelectItem value="efectivo" className="text-white">💵 Efectivo</SelectItem>
-                  <SelectItem value="otro" className="text-white">❓ Otro</SelectItem>
+                  <SelectItem value="transferencia" className="text-white">{t("crmInvoices.transferenciaBancaria")}</SelectItem>
+                  <SelectItem value="efectivo" className="text-white">{t("crmInvoices.efectivo")}</SelectItem>
+                  <SelectItem value="otro" className="text-white">{t("crmInvoices.otro")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-foreground/50">Se marcará la factura como cobrada y se actualizará {voc.theOrder} {voc.agree("asociado", "asociada")}.</p>
+            <p className="text-xs text-foreground/50">{t("crmInvoices.seMarcaraLaFactura", { theOrder: voc.theOrder })}{" "}{voc.agree("asociado", "asociada")}.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirmPaymentInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setConfirmPaymentInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button size="sm" onClick={() => confirmPaymentInvoiceId !== null && confirmManualPaymentMutation.mutate({ invoiceId: confirmPaymentInvoiceId, paymentMethod })}
               disabled={confirmManualPaymentMutation.isPending}
               className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              {confirmManualPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-              Confirmar cobro
-            </Button>
+              {confirmManualPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}{t("crmInvoices.confirmarCobro")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -8307,19 +8136,16 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" /> Anular factura
-            </DialogTitle>
+              <AlertTriangle className="w-5 h-5 text-red-400" />{" "}{t("crmInvoices.anularFactura")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Se emitirá un abono (factura rectificativa) por el importe pendiente y la factura quedará abonada. Su número se conserva. No se puede deshacer.</p>
+          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seEmitiraUnAbono")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setVoidInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setVoidInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button size="sm"
               onClick={() => voidInvoiceId !== null && voidInvoiceMutation.mutate({ invoiceId: voidInvoiceId })}
               disabled={voidInvoiceMutation.isPending}
               className="bg-destructive hover:bg-destructive/90 text-white">
-              {voidInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}
-              Anular
-            </Button>
+              {voidInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}{t("crmInvoices.anular")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -8389,11 +8215,11 @@ export default function CRMDashboard() {
       {/* Confirmación de eliminación masiva */}
       <ConfirmDialog
         open={bulkConfirm !== null}
-        title="Eliminar definitivamente"
+        title={t("crmInvoices.eliminarDefinitivamente")}
         description={
-          bulkConfirm === "leads" ? `Se eliminarán ${selectedLeads.size} ${voc.leadsLower}. Esta acción no se puede deshacer.`
-          : bulkConfirm === "quotes" ? `Se eliminarán ${selectedQuotes.size} presupuestos. Esta acción no se puede deshacer.`
-          : `Se eliminarán ${selectedRes.size} ${voc.ordersLower}. ${voc.licensed ? "Los pedidos pagados" : "Las reservas pagadas"} se omitirán.`
+          bulkConfirm === "leads" ? t("crmInvoices.seEliminaranEstaAccion", { size: selectedLeads.size, leadsLower: voc.leadsLower })
+          : bulkConfirm === "quotes" ? t("crmInvoices.seEliminaranPresupuestosEsta", { size: selectedQuotes.size })
+          : `Se eliminarán ${selectedRes.size} ${voc.ordersLower}. ${voc.licensed ? t("crmInvoices.losPedidosPagados") : t("crmInvoices.lasReservasPagadas")} se omitirán.`
         }
         onCancel={() => setBulkConfirm(null)}
         onConfirm={() => {
@@ -8410,21 +8236,19 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" /> {voc.licensed ? "Eliminar oportunidad" : "Eliminar lead"}
+              <AlertTriangle className="w-5 h-5 text-red-400" /> {voc.licensed ? t("crmInvoices.eliminarOportunidad") : t("crmInvoices.eliminarLead")}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará {voc.licensed ? "la oportunidad" : "el lead"} y toda su actividad asociada.</p>
+          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.estaAccionEsIrreversible")}{" "}{voc.licensed ? t("crmInvoices.laOportunidad") : t("crmInvoices.elLead")}{" "}{t("crmInvoices.yTodaSuActividad")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => deleteLeadId !== null && deleteLead.mutate({ id: deleteLeadId })}
               disabled={deleteLead.isPending}
               className="bg-destructive hover:bg-destructive/90 text-white"
             >
-              {deleteLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
-              Eliminar
-            </Button>
+              {deleteLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}{t("crmInvoices.eliminar")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -8441,21 +8265,18 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar presupuesto
-            </DialogTitle>
+              <AlertTriangle className="w-5 h-5 text-red-400" />{" "}{t("crmInvoices.eliminarPresupuesto")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará el presupuesto y sus facturas asociadas.</p>
+          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.estaAccionEsIrreversible2")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => deleteQuoteId !== null && deleteQuote.mutate({ id: deleteQuoteId })}
               disabled={deleteQuote.isPending}
               className="bg-destructive hover:bg-destructive/90 text-white"
             >
-              {deleteQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
-              Eliminar
-            </Button>
+              {deleteQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}{t("crmInvoices.eliminar")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -8464,21 +8285,18 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Send className="w-5 h-5 text-orange-400" /> Enviar presupuesto al cliente
-            </DialogTitle>
+              <Send className="w-5 h-5 text-orange-400" />{" "}{t("crmInvoices.enviarPresupuestoAlCliente")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Se enviará el presupuesto por email al cliente y se actualizará el estado a "Enviado".</p>
+          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seEnviaraElPresupuesto")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => sendQuoteId !== null && sendQuoteMutation.mutate({ id: sendQuoteId, origin: window.location.origin })}
               disabled={sendQuoteMutation.isPending}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              {sendQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
-              Enviar
-            </Button>
+              {sendQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}{t("crmInvoices.enviar")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -8488,11 +8306,10 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
-            </DialogTitle>
+              <CheckCircle className="w-5 h-5 text-emerald-400" />{" "}{t("crmInvoices.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-foreground/65 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
+            <p className="text-foreground/65 text-sm">{t("crmInvoices.seleccionaElMetodoDe")}</p>
             {/* Selector de método */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
@@ -8506,7 +8323,7 @@ export default function CRMDashboard() {
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
                   {m === "transferencia" && <Banknote className="w-5 h-5" />}
                   {m === "efectivo" && <Receipt className="w-5 h-5" />}
-                  {m === "tarjeta" ? "Tarjeta" : m === "transferencia" ? "Transferencia" : "Efectivo"}
+                  {m === "tarjeta" ? t("crmInvoices.tarjeta") : m === "transferencia" ? t("crmInvoices.transferencia") : t("crmInvoices.efectivo2")}
                 </button>
               ))}
             </div>
@@ -8514,20 +8331,18 @@ export default function CRMDashboard() {
             {confirmPayMethodRow === "tarjeta" && (
               <div className="space-y-2">
                 <div className="space-y-1.5">
-                  <Label className="text-foreground/70 text-xs">Nº operación TPV {!selectedTpvOpIdForRow ? "*" : "(auto)"}</Label>
-                  <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder="Ej: 000123456789" disabled={!!selectedTpvOpIdForRow} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
+                  <Label className="text-foreground/70 text-xs">{t("crmInvoices.nOperacionTpv")}{" "}{!selectedTpvOpIdForRow ? "*" : "(auto)"}</Label>
+                  <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder={t("crmInvoices.ej000123456789")} disabled={!!selectedTpvOpIdForRow} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />
-                    Vincular operación TPV
-                  </div>
+                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />{t("crmInvoices.vincularOperacionTpv")}</div>
                   {!selectedTpvOpIdForRow && (
                     <button
                       className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
                       onClick={() => setShowTpvOpSearchForRow(!showTpvOpSearchForRow)}
                     >
-                      {showTpvOpSearchForRow ? "Ocultar" : "Buscar operación"}
+                      {showTpvOpSearchForRow ? t("crmInvoices.ocultar") : t("crmInvoices.buscarOperacion")}
                     </button>
                   )}
                 </div>
@@ -8538,11 +8353,11 @@ export default function CRMDashboard() {
                     return (
                       <div className="rounded-md border border-violet-500/30 bg-violet-500/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-violet-300">Operación TPV vinculada</span>
-                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setConfirmPayTpvOp(""); }}>×</button>
+                          <span className="font-medium text-violet-300">{t("crmInvoices.operacionTpvVinculada")}</span>
+                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setConfirmPayTpvOp(""); }}>{t("crmInvoices.texto")}</button>
                         </div>
                         <div className="text-foreground/70 font-mono">{op.operationNumber ?? "–"}</div>
-                        <div className="text-violet-400 font-medium">{op.amount != null ? `${Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</div>
+                        <div className="text-violet-400 font-medium">{op.amount != null ? `${format.number(Number(op.amount), { minimumFractionDigits: 2 })} €` : "–"}</div>
                       </div>
                     );
                   })()
@@ -8550,15 +8365,15 @@ export default function CRMDashboard() {
                   <div className="space-y-2">
                     <input
                       className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
-                      placeholder="Buscar por Nº operación, tarjeta..."
+                      placeholder={t("crmInvoices.buscarPorNOperacion")}
                       value={tpvOpSearchForRow}
                       onChange={(e) => setTpvOpSearchForRow(e.target.value)}
                     />
                     <div className="max-h-40 overflow-y-auto rounded-md border border-white/10 divide-y divide-white/5">
                       {tpvOpsForRowQ.isLoading ? (
-                        <div className="p-3 text-xs text-foreground/40 text-center">Buscando...</div>
+                        <div className="p-3 text-xs text-foreground/40 text-center">{t("crmInvoices.buscando")}</div>
                       ) : (tpvOpsForRowQ.data?.data as any[] | undefined)?.length === 0 ? (
-                        <div className="p-3 text-xs text-foreground/40 text-center">No hay operaciones pendientes</div>
+                        <div className="p-3 text-xs text-foreground/40 text-center">{t("crmInvoices.noHayOperacionesPendientes")}</div>
                       ) : (
                         (tpvOpsForRowQ.data?.data as any[] | undefined)?.map((op: any) => (
                           <button
@@ -8568,9 +8383,9 @@ export default function CRMDashboard() {
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
-                              <span className="text-xs text-violet-400 font-medium shrink-0">{Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                              <span className="text-xs text-violet-400 font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
                             </div>
-                            <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {new Date(op.operationDatetime).toLocaleDateString("es-ES")}</div>
+                            <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {format.date(op.operationDatetime, {})}</div>
                           </button>
                         ))
                       )}
@@ -8581,8 +8396,7 @@ export default function CRMDashboard() {
             )}
             {confirmPayMethodRow === "transferencia" && (
               <div className="space-y-2">
-                <div className="text-xs text-foreground/60 font-medium uppercase tracking-wide">
-                  Justificante {selectedBankMovementIdForRow ? "(opcional)" : "(obligatorio si no vinculas movimiento)"}
+                <div className="text-xs text-foreground/60 font-medium uppercase tracking-wide">{t("crmInvoices.justificante")}{" "}{selectedBankMovementIdForRow ? "(opcional)" : t("crmInvoices.obligatorioSiNoVinculas")}
                 </div>
                 {!confirmPayRowProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
@@ -8590,47 +8404,45 @@ export default function CRMDashboard() {
                   }`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleRowProofFileChange} disabled={isUploadingRowProof} />
                     {isUploadingRowProof ? (
-                      <><RefreshCw className="w-5 h-5 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">Subiendo...</span></>
+                      <><RefreshCw className="w-5 h-5 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">{t("crmInvoices.subiendo")}</span></>
                     ) : (
-                      <><Upload className="w-5 h-5 text-foreground/50" /><span className="text-xs text-foreground/60">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
+                      <><Upload className="w-5 h-5 text-foreground/50" /><span className="text-xs text-foreground/60">{t("crmInvoices.hazClicOArrastra")}</span></>
                     )}
                   </label>
                 ) : (
                   <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Justificante subido correctamente</span>
-                    <a href={confirmPayRowProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
-                    <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
+                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmInvoices.justificanteSubidoCorrectament")}</span>
+                    <a href={confirmPayRowProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">{t("crmInvoices.ver")}</a>
+                    <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">{t("crmInvoices.texto")}</button>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <Banknote className="w-3.5 h-3.5 text-blue-400" />
-                    Vincular movimiento bancario
-                  </div>
+                    <Banknote className="w-3.5 h-3.5 text-blue-400" />{t("crmInvoices.vincularMovimientoBancario")}</div>
                   {!selectedBankMovementIdForRow && (
                     <button
                       className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
                       onClick={() => setShowBankMovementSearchForRow(!showBankMovementSearchForRow)}
                     >
-                      {showBankMovementSearchForRow ? "Ocultar" : "Buscar movimiento"}
+                      {showBankMovementSearchForRow ? t("crmInvoices.ocultar") : t("crmInvoices.buscarMovimiento")}
                     </button>
                   )}
                 </div>
                 {selectedBankMovementIdForRow ? (
                   (() => {
                     const mv = (bankMovementsForRowQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementIdForRow)
-                      ?? { id: selectedBankMovementIdForRow, fecha: "–", movimiento: "Movimiento seleccionado", importe: "–" };
+                      ?? { id: selectedBankMovementIdForRow, fecha: "–", movimiento: t("crmInvoices.movimientoSeleccionado"), importe: "–" };
                     return (
                       <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-emerald-300">Movimiento vinculado</span>
-                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); }}>×</button>
+                          <span className="font-medium text-emerald-300">{t("crmInvoices.movimientoVinculado")}</span>
+                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); }}>{t("crmInvoices.texto")}</button>
                         </div>
                         <div className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                         <div className="flex gap-3 text-foreground/50">
                           <span>{mv.fecha ?? "–"}</span>
-                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                         </div>
                       </div>
                     );
@@ -8639,14 +8451,14 @@ export default function CRMDashboard() {
                   <div className="space-y-2">
                     <input
                       className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-                      placeholder="Buscar por concepto, importe o fecha..."
+                      placeholder={t("crmInvoices.buscarPorConceptoImporte")}
                       value={bankMovementSearchForRow}
                       onChange={(e) => setBankMovementSearchForRow(e.target.value)}
                     />
                     {bankMovementsForRowQ.isLoading ? (
-                      <div className="text-xs text-foreground/40 py-2 text-center">Buscando...</div>
+                      <div className="text-xs text-foreground/40 py-2 text-center">{t("crmInvoices.buscando")}</div>
                     ) : (bankMovementsForRowQ.data?.data as any[] | undefined)?.length === 0 ? (
-                      <div className="text-xs text-foreground/40 py-2 text-center">No hay movimientos pendientes</div>
+                      <div className="text-xs text-foreground/40 py-2 text-center">{t("crmInvoices.noHayMovimientosPendientes")}</div>
                     ) : (
                       <div className="space-y-1 max-h-40 overflow-y-auto">
                         {(bankMovementsForRowQ.data?.data as any[] | undefined)?.map((mv: any) => (
@@ -8658,7 +8470,7 @@ export default function CRMDashboard() {
                             <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                             <div className="flex gap-3 mt-0.5 text-xs text-white/50">
                               <span>{mv.fecha ?? "–"}</span>
-                              <span className="text-emerald-400">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                              <span className="text-emerald-400">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                             </div>
                           </button>
                         ))}
@@ -8670,13 +8482,13 @@ export default function CRMDashboard() {
             )}
             {confirmPayMethodRow === "efectivo" && (
               <div className="space-y-1.5">
-                <Label className="text-foreground/70 text-xs">Justificación *</Label>
-                <Textarea value={confirmPayNote} onChange={(e) => setConfirmPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
+                <Label className="text-foreground/70 text-xs">{t("crmInvoices.justificacion")}</Label>
+                <Textarea value={confirmPayNote} onChange={(e) => setConfirmPayNote(e.target.value)} placeholder={t("crmInvoices.ejCobradoEnRecepcion")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setTpvOpSearchForRow(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setTpvOpSearchForRow(""); }} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               disabled={
@@ -8702,7 +8514,7 @@ export default function CRMDashboard() {
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {confirmPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-              {(selectedBankMovementIdForRow && confirmPayMethodRow === "transferencia") || (selectedTpvOpIdForRow && confirmPayMethodRow === "tarjeta") ? "Confirmar y conciliar" : "Confirmar y generar factura"}
+              {(selectedBankMovementIdForRow && confirmPayMethodRow === "transferencia") || (selectedTpvOpIdForRow && confirmPayMethodRow === "tarjeta") ? t("crmInvoices.confirmarYConciliar") : t("crmInvoices.confirmarYGenerarFactura")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -8716,13 +8528,12 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-400" /> Registrar pago pendiente
-            </DialogTitle>
+              <Clock className="w-5 h-5 text-amber-400" />{" "}{t("crmInvoices.registrarPagoPendiente")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-foreground/65 text-sm">Se creará {voc.theOrder} en estado <strong className="text-amber-400">pendiente de cobro</strong>, se registrará el pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
+            <p className="text-foreground/65 text-sm">{t("crmInvoices.seCrearaEnEstado", { theOrder: voc.theOrder })}{" "}<strong className="text-amber-400">{t("crmInvoices.pendienteDeCobro")}</strong>{t("crmInvoices.seRegistraraElPago")}</p>
             <div className="space-y-1.5">
-              <Label className="text-foreground/70 text-xs">Fecha límite de pago *</Label>
+              <Label className="text-foreground/70 text-xs">{t("crmInvoices.fechaLimiteDePago")}</Label>
               <Input
                 type="date"
                 value={rowPendingPayDueDate}
@@ -8732,18 +8543,18 @@ export default function CRMDashboard() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-foreground/70 text-xs">Motivo / nota interna (opcional)</Label>
+              <Label className="text-foreground/70 text-xs">{t("crmInvoices.motivoNotaInternaOpcional")}</Label>
               <Textarea
                 value={rowPendingPayReason}
                 onChange={(e) => setRowPendingPayReason(e.target.value)}
-                placeholder="Ej: Cliente confirma pago por transferencia la próxima semana..."
+                placeholder={t("crmInvoices.ejClienteConfirmaPago")}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none"
                 rows={3}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); }} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               disabled={!rowPendingPayDueDate || rowPendingPayMutation.isPending}
@@ -8766,9 +8577,9 @@ export default function CRMDashboard() {
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {rowPendingPayMutation.isPending ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Registrando...</>
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />{" "}{t("crmInvoices.registrando")}</>
               ) : (
-                <><Clock className="w-4 h-4 mr-2" /> Registrar pago pendiente</>
+                <><Clock className="w-4 h-4 mr-2" />{" "}{t("crmInvoices.registrarPagoPendiente")}</>
               )}
             </Button>
           </DialogFooter>
@@ -8780,21 +8591,18 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <XCircle className="w-5 h-5 text-red-400" /> Marcar presupuesto como perdido
-            </DialogTitle>
+              <XCircle className="w-5 h-5 text-red-400" />{" "}{t("crmInvoices.marcarPresupuestoComoPerdido")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Se marcará el presupuesto y la oportunidad como perdidos. Esta acción se puede revertir editando el estado manualmente.</p>
+          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seMarcaraElPresupuesto")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setMarkLostQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setMarkLostQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => markLostQuoteId !== null && markLostQuoteMutation.mutate({ id: markLostQuoteId })}
               disabled={markLostQuoteMutation.isPending}
               className="bg-destructive hover:bg-destructive/90 text-white"
             >
-              {markLostQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
-              Marcar perdido
-            </Button>
+              {markLostQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}{t("crmInvoices.marcarPerdido")}</Button>
           </DialogFooter>
 
         </DialogContent>
@@ -8873,31 +8681,31 @@ export default function CRMDashboard() {
             {/* ── Estados separados ── */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-foreground/60 mb-1.5">{voc.licensed ? "Estado del pedido" : "Estado de reserva"}</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">{voc.licensed ? t("crmReservations.estadoDelPedido") : t("crmReservations.estadoDeReserva")}</label>
                 <select
                   value={editResStatusReservation}
                   onChange={(e) => setEditResStatusReservation(e.target.value)}
                   className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
-                  <option value="">-- Sin cambiar --</option>
-                  <option value="PENDIENTE_CONFIRMACION">Pendiente confirmación</option>
-                  <option value="CONFIRMADA">Confirmada</option>
-                  <option value="EN_CURSO">En curso</option>
-                  <option value="FINALIZADA">Finalizada</option>
-                  <option value="NO_SHOW">No show</option>
-                  <option value="ANULADA">Anulada</option>
+                  <option value="">{t("crmReservations.sinCambiar")}</option>
+                  <option value="PENDIENTE_CONFIRMACION">{t("crmReservations.pendienteConfirmacion")}</option>
+                  <option value="CONFIRMADA">{t("crmReservations.confirmada")}</option>
+                  <option value="EN_CURSO">{t("crmReservations.enCurso")}</option>
+                  <option value="FINALIZADA">{t("crmReservations.finalizada")}</option>
+                  <option value="NO_SHOW">{t("crmReservations.noShow")}</option>
+                  <option value="ANULADA">{t("crmReservations.anulada")}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-foreground/60 mb-1.5">Estado de pago</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">{t("crmReservations.estadoDePago")}</label>
                 <select
                   value={editResStatusPayment}
                   onChange={(e) => setEditResStatusPayment(e.target.value)}
                   className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
-                  <option value="">-- Sin cambiar --</option>
-                  <option value="PENDIENTE">Pendiente</option>
-                  <option value="PAGO_PARCIAL">Pago parcial</option>
-                  <option value="PENDIENTE_VALIDACION">Pendiente validación</option>
-                  <option value="PAGADO">Pagado</option>
+                  <option value="">{t("crmReservations.sinCambiar")}</option>
+                  <option value="PENDIENTE">{t("crmReservations.pendiente2")}</option>
+                  <option value="PAGO_PARCIAL">{t("crmReservations.pagoParcial")}</option>
+                  <option value="PENDIENTE_VALIDACION">{t("crmReservations.pendienteValidacion")}</option>
+                  <option value="PAGADO">{t("crmReservations.pagado")}</option>
                 </select>
               </div>
             </div>
@@ -8905,35 +8713,35 @@ export default function CRMDashboard() {
             {/* ── Canal ── */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-foreground/60 mb-1.5">Canal</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">{t("crmReservations.canal")}</label>
                 <select
                   value={editResChannel}
                   onChange={(e) => setEditResChannel(e.target.value)}
                   className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
-                  <option value="">-- Sin cambiar --</option>
-                  <option value="ONLINE_DIRECTO">Online Directo</option>
-                  <option value="ONLINE_ASISTIDO">Online Asistido</option>
-                  <option value="VENTA_DELEGADA">Venta Delegada</option>
-                  <option value="TPV_FISICO">TPV Físico</option>
-                  <option value="PARTNER">Partner</option>
-                  <option value="MANUAL">Manual</option>
-                  <option value="API">API</option>
+                  <option value="">{t("crmReservations.sinCambiar")}</option>
+                  <option value="ONLINE_DIRECTO">{t("crmReservations.onlineDirecto2")}</option>
+                  <option value="ONLINE_ASISTIDO">{t("crmReservations.onlineAsistido2")}</option>
+                  <option value="VENTA_DELEGADA">{t("crmReservations.ventaDelegada")}</option>
+                  <option value="TPV_FISICO">{t("crmReservations.tpvFisico")}</option>
+                  <option value="PARTNER">{t("crmReservations.partner2")}</option>
+                  <option value="MANUAL">{t("crmReservations.manual")}</option>
+                  <option value="API">{t("crmReservations.api")}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-foreground/60 mb-1.5">Detalle canal (ej: Groupon)</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">{t("crmReservations.detalleCanalEjGroupon")}</label>
                 <input
                   type="text"
                   value={editResChannelDetail}
                   onChange={(e) => setEditResChannelDetail(e.target.value)}
-                  placeholder="Ej: Groupon, Booking..."
+                  placeholder={t("crmReservations.ejGrouponBooking")}
                   className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50" />
               </div>
             </div>
 
             {/* ── Notas internas ── */}
             <div>
-              <label className="block text-xs text-foreground/60 mb-1.5">Notas internas (opcional)</label>
+              <label className="block text-xs text-foreground/60 mb-1.5">{t("crmReservations.notasInternasOpcional")}</label>
               <textarea
                 value={editResNotes}
                 onChange={(e) => setEditResNotes(e.target.value)}
@@ -8949,13 +8757,13 @@ export default function CRMDashboard() {
                 onClick={() => setShowChangeDateSection(!showChangeDateSection)}
                 className="flex items-center gap-2 text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors w-full text-left">
                 <Calendar className="w-4 h-4" />
-                {voc.licensed ? "Cambiar fecha de servicio" : "Cambiar fecha de actividad"}
-                <span className="ml-auto text-xs text-foreground/40">{showChangeDateSection ? "▲ Ocultar" : "▼ Expandir"}</span>
+                {voc.licensed ? t("crmReservations.cambiarFechaDeServicio") : t("crmReservations.cambiarFechaDeActividad")}
+                <span className="ml-auto text-xs text-foreground/40">{showChangeDateSection ? t("crmReservations.ocultar") : t("crmReservations.expandir")}</span>
               </button>
               {showChangeDateSection && (
                 <div className="mt-3 space-y-3">
                   <div>
-                    <label className="block text-xs text-foreground/60 mb-1.5">{voc.licensed ? voc.newServiceDate : "Nueva fecha de actividad *"}</label>
+                    <label className="block text-xs text-foreground/60 mb-1.5">{voc.licensed ? voc.newServiceDate : t("crmReservations.nuevaFechaDeActividad")}</label>
                     <input
                       type="date"
                       value={editResNewDate}
@@ -8963,12 +8771,12 @@ export default function CRMDashboard() {
                       className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50" />
                   </div>
                   <div>
-                    <label className="block text-xs text-foreground/60 mb-1.5">Motivo del cambio * (obligatorio)</label>
+                    <label className="block text-xs text-foreground/60 mb-1.5">{t("crmReservations.motivoDelCambioObligatorio")}</label>
                     <textarea
                       value={editResDateReason}
                       onChange={(e) => setEditResDateReason(e.target.value)}
                       rows={2}
-                      placeholder="Ej: Solicitud del cliente por condiciones meteorológicas..."
+                      placeholder={t("crmReservations.ejSolicitudDelCliente")}
                       className="w-full bg-foreground/[0.05] border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-amber-500/50 resize-none" />
                   </div>
                   <Button
@@ -8976,9 +8784,7 @@ export default function CRMDashboard() {
                     onClick={() => editResId !== null && changeDateMutation.mutate({ id: editResId, newDate: editResNewDate, reason: editResDateReason })}
                     disabled={changeDateMutation.isPending || !editResNewDate || editResDateReason.trim().length < 3}
                     className="bg-primary hover:bg-primary/90 text-primary-foreground w-full">
-                    {changeDateMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Calendar className="w-4 h-4 mr-1" />}
-                    Confirmar cambio de fecha
-                  </Button>
+                    {changeDateMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Calendar className="w-4 h-4 mr-1" />}{t("crmReservations.confirmarCambioDeFecha")}</Button>
                 </div>
               )}
             </div>
@@ -8994,10 +8800,10 @@ export default function CRMDashboard() {
               disabled={downloadResPdfMutation.isPending}
               className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
               {downloadResPdfMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileDown className="w-4 h-4 mr-1" />}
-              {voc.licensed ? "Descargar pedido en PDF" : "Descargar reserva PDF"}
+              {voc.licensed ? t("crmReservations.descargarPedidoEnPdf") : t("crmReservations.descargarReservaPdf")}
             </Button>
             <div className="flex gap-2 ml-auto">
-              <Button variant="outline" size="sm" onClick={() => { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+              <Button variant="outline" size="sm" onClick={() => { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); }} className="border-foreground/[0.15] text-foreground/65">{t("crmReservations.cancelar")}</Button>
               <Button
                 size="sm"
                 onClick={() => {
@@ -9021,9 +8827,7 @@ export default function CRMDashboard() {
                 }}
                 disabled={updateResMutation.isPending || updateStatusesMutation.isPending}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                {(updateResMutation.isPending || updateStatusesMutation.isPending) ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />}
-                Guardar cambios
-              </Button>
+                {(updateResMutation.isPending || updateStatusesMutation.isPending) ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />}{t("crmReservations.guardarCambios")}</Button>
             </div>
           </DialogFooter>
         </DialogContent>
@@ -9037,9 +8841,9 @@ export default function CRMDashboard() {
               <AlertTriangle className="w-5 h-5 text-red-400" /> {voc.deleteOrder}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará {voc.theOrder} y sus datos asociados. Las facturas generadas no se eliminarán.</p>
+          <p className="text-sm text-foreground/65 py-2">{t("crmReservations.estaAccionEsIrreversible", { theOrder: voc.theOrder })}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteResId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteResId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmReservations.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => deleteResId !== null && deleteResMutation.mutate({ id: deleteResId })}
@@ -9057,20 +8861,17 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <FilePlus className="w-5 h-5 text-violet-400" /> Generar factura
-            </DialogTitle>
+              <FilePlus className="w-5 h-5 text-violet-400" />{" "}{t("crmReservations.generarFactura")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-foreground/65">
-              Se emitirá una factura completa a partir de los datos {voc.licensed ? "del pedido" : "de la reserva"}. Indica a nombre de quién se hace: la factura debe llevar el nombre o la razón social, el NIF y la dirección del destinatario.
-            </p>
+            <p className="text-sm text-foreground/65">{t("crmReservations.seEmitiraUnaFactura")}{" "}{voc.licensed ? t("crmReservations.delPedido") : t("crmReservations.deLaReserva")}{t("crmReservations.indicaANombreDe")}</p>
             {genInvoiceProposal.data?.fromClient && (
-              <p className="text-xs text-foreground/65">Datos propuestos del cliente vinculado a la venta. Revísalos antes de emitir.</p>
+              <p className="text-xs text-foreground/65">{t("crmReservations.datosPropuestosDelCliente")}</p>
             )}
             {([
-              { k: "name", label: "Nombre o razón social", ph: "Nombre y apellidos o empresa", ac: "organization" },
-              { k: "nif", label: "NIF", ph: "Por ejemplo, B12345674", ac: "off" },
-              { k: "address", label: "Dirección", ph: "Calle y número", ac: "street-address" },
+              { k: "name", label: t("crmReservations.nombreORazonSocial"), ph: t("crmReservations.nombreYApellidosO"), ac: "organization" },
+              { k: "nif", label: t("crmReservations.nif"), ph: t("crmReservations.porEjemploB12345674"), ac: "off" },
+              { k: "address", label: t("crmReservations.direccion"), ph: t("crmReservations.calleYNumero"), ac: "street-address" },
             ] as const).map((f) => (
               <div key={f.k} className="space-y-1">
                 <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-destructive" aria-hidden="true">*</span></Label>
@@ -9089,8 +8890,8 @@ export default function CRMDashboard() {
             ))}
             <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
               {([
-                { k: "postalCode", label: "Código postal", ph: "5 cifras", ac: "postal-code" },
-                { k: "city", label: "Población", ph: "Localidad", ac: "address-level2" },
+                { k: "postalCode", label: t("crmReservations.codigoPostal"), ph: t("crmReservations.n5Cifras"), ac: "postal-code" },
+                { k: "city", label: t("crmReservations.poblacion"), ph: "Localidad", ac: "address-level2" },
               ] as const).map((f) => (
                 <div key={f.k} className="space-y-1">
                   <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-destructive" aria-hidden="true">*</span></Label>
@@ -9110,7 +8911,7 @@ export default function CRMDashboard() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={closeGenInvoice} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={closeGenInvoice} className="border-foreground/[0.15] text-foreground/65">{t("crmReservations.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => {
@@ -9127,9 +8928,7 @@ export default function CRMDashboard() {
               }}
               disabled={generateInvoiceMutation.isPending}
               className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              {generateInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FilePlus className="w-4 h-4 mr-1" />}
-              Generar factura
-            </Button>
+              {generateInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FilePlus className="w-4 h-4 mr-1" />}{t("crmReservations.generarFactura")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -9154,20 +8953,18 @@ export default function CRMDashboard() {
       <Dialog open={deleteAnulId !== null} onOpenChange={(o) => !o && setDeleteAnulId(null)}>
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
-            <DialogTitle>Eliminar solicitud</DialogTitle>
+            <DialogTitle>{t("crmCancellations.eliminarSolicitud")}</DialogTitle>
           </DialogHeader>
-          <p className="text-foreground/65 text-sm">¿Seguro que quieres eliminar esta solicitud de anulación? Esta acción no se puede deshacer.</p>
+          <p className="text-foreground/65 text-sm">{t("crmCancellations.seguroQueQuieresEliminar")}</p>
           <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm" onClick={() => setDeleteAnulId(null)} className="border-foreground/[0.12] text-foreground/65">
-              Cancelar
-            </Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteAnulId(null)} className="border-foreground/[0.12] text-foreground/65">{t("crmCancellations.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => deleteAnulId && deleteAnulMutation.mutate({ id: deleteAnulId })}
               disabled={deleteAnulMutation.isPending}
               className="bg-destructive hover:bg-destructive/90 text-white"
             >
-              {deleteAnulMutation.isPending ? "Eliminando..." : "Eliminar"}
+              {deleteAnulMutation.isPending ? t("crmCancellations.eliminando") : t("crmCancellations.eliminar")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -9222,6 +9019,7 @@ function AnularReservaModal({
   onClose: () => void;
   onCreated: (requestId: number) => void;
 }) {
+  const { t } = useI18n();
   const voc = useVocabulary();
   const [reason, setReason] = useState<"meteorologicas" | "accidente" | "enfermedad" | "desistimiento" | "otra">("otra");
   const [reasonDetail, setReasonDetail] = useState("");
@@ -9229,7 +9027,7 @@ function AnularReservaModal({
 
   const createMutation = trpc.cancellations.createManualRequest.useMutation({
     onSuccess: (data) => {
-      toast.success("Expediente de anulación creado — completa la resolución");
+      toast.success(t("crmReservations.expedienteDeAnulacionCreado"));
       onCreated(data.requestId);
     },
     onError: (e) => toast.error(errorToastMessage(e)),
@@ -9254,7 +9052,7 @@ function AnularReservaModal({
             <XCircle className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h2 className="text-white font-semibold">Iniciar anulación</h2>
+            <h2 className="text-white font-semibold">{t("crmReservations.iniciarAnulacion")}</h2>
             <p className="text-gray-400 text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[280px]">{reservationName}</p>
           </div>
           <button onClick={onClose} className="ml-auto text-gray-500 hover:text-foreground">
@@ -9263,46 +9061,43 @@ function AnularReservaModal({
         </div>
 
         <div className="bg-blue-500/8 border border-blue-500/20 rounded-xl px-4 py-3 mb-5">
-          <p className="text-blue-300 text-xs">
-            Se creará un expediente de anulación. En el siguiente paso podrás revisar el desglose {voc.licensed ? "del pedido" : "de la reserva"},
-            elegir si cancelar líneas específicas y configurar la compensación.
-          </p>
+          <p className="text-blue-300 text-xs">{t("crmReservations.seCrearaUnExpediente")}{" "}{voc.licensed ? t("crmReservations.delPedido") : t("crmReservations.deLaReserva")}{t("crmReservations.elegirSiCancelarLineas")}</p>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-gray-300 text-sm">Motivo de la anulación</label>
+            <label className="text-gray-300 text-sm">{t("crmReservations.motivoDeLaAnulacion")}</label>
             <Select value={reason} onValueChange={(v) => setReason(v as typeof reason)}>
               <SelectTrigger className="bg-[#1a1a1a] border-foreground/[0.12] text-gray-300">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="meteorologicas">Condiciones meteorológicas</SelectItem>
-                <SelectItem value="accidente">Accidente</SelectItem>
-                <SelectItem value="enfermedad">Enfermedad</SelectItem>
-                <SelectItem value="desistimiento">Desistimiento voluntario</SelectItem>
-                <SelectItem value="otra">Otra</SelectItem>
+                <SelectItem value="meteorologicas">{t("crmReservations.condicionesMeteorologicas")}</SelectItem>
+                <SelectItem value="accidente">{t("crmReservations.accidente")}</SelectItem>
+                <SelectItem value="enfermedad">{t("crmReservations.enfermedad")}</SelectItem>
+                <SelectItem value="desistimiento">{t("crmReservations.desistimientoVoluntario")}</SelectItem>
+                <SelectItem value="otra">{t("crmReservations.otra")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-gray-300 text-sm">Detalle del motivo (opcional)</label>
+            <label className="text-gray-300 text-sm">{t("crmReservations.detalleDelMotivoOpcional")}</label>
             <textarea
               value={reasonDetail}
               onChange={(e) => setReasonDetail(e.target.value)}
-              placeholder="Explicación adicional..."
+              placeholder={t("crmReservations.explicacionAdicional")}
               rows={2}
               className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-orange-500/40"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-gray-300 text-sm">Notas internas (opcional)</label>
+            <label className="text-gray-300 text-sm">{t("crmReservations.notasInternasOpcional")}</label>
             <textarea
               value={adminNotes}
               onChange={(e) => setAdminNotes(e.target.value)}
-              placeholder="Anotaciones para el expediente..."
+              placeholder={t("crmReservations.anotacionesParaElExpediente")}
               rows={2}
               className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-foreground/[0.18]"
             />
@@ -9313,15 +9108,13 @@ function AnularReservaModal({
           <button
             onClick={onClose}
             className="flex-1 py-2 rounded-xl border border-foreground/[0.12] text-gray-400 text-sm hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
-          >
-            Cancelar
-          </button>
+          >{t("crmReservations.cancelar")}</button>
           <button
             onClick={handleSubmit}
             disabled={createMutation.isPending}
             className="flex-1 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors disabled:opacity-50"
           >
-            {createMutation.isPending ? "Creando expediente..." : "Continuar →"}
+            {createMutation.isPending ? t("crmReservations.creandoExpediente") : t("crmReservations.continuar")}
           </button>
         </div>
       </div>
@@ -9331,6 +9124,7 @@ function AnularReservaModal({
 
 // ─── BONOS MANAGER ───────────────────────────────────────────────────────────
 function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancellation: (id: number) => void; onOpenReservation: (id: number) => void }) {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const [statusFilter, setStatusFilter] = useState<"all" | "generado" | "enviado" | "canjeado" | "caducado" | "anulado">("all");
   const [search, setSearch] = useState("");
@@ -9353,22 +9147,22 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
   };
 
   const resendMut = trpc.cancellations.resendVoucherEmail.useMutation({
-    onSuccess: () => { toast.success("Email reenviado correctamente"); invalidate(); },
+    onSuccess: () => { toast.success(t("crmVouchers.emailReenviadoCorrectamente")); invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const extendMut = trpc.cancellations.extendVoucherExpiry.useMutation({
-    onSuccess: () => { toast.success("Caducidad ampliada"); setExtendModal(null); invalidate(); },
+    onSuccess: () => { toast.success(t("crmVouchers.caducidadAmpliada")); setExtendModal(null); invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const cancelMut = trpc.cancellations.cancelVoucher.useMutation({
-    onSuccess: () => { toast.success("Bono anulado"); setCancelModal(null); invalidate(); },
+    onSuccess: () => { toast.success(t("crmVouchers.bonoAnulado")); setCancelModal(null); invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const deleteMut = trpc.cancellations.deleteVoucher.useMutation({
-    onSuccess: () => { toast.success("Bono eliminado"); setDeleteConfirm(null); invalidate(); },
+    onSuccess: () => { toast.success(t("crmVouchers.bonoEliminado")); setDeleteConfirm(null); invalidate(); },
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
@@ -9378,19 +9172,19 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
   );
 
   const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-    generado:  { label: "Generado",  cls: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
-    enviado:   { label: "Activo",    cls: "bg-green-500/10 text-green-300 border-green-500/20" },
-    canjeado:  { label: "Canjeado",  cls: "bg-purple-500/10 text-purple-300 border-purple-500/20" },
-    caducado:  { label: "Caducado",  cls: "bg-amber-500/10 text-amber-300 border-amber-500/20" },
-    anulado:   { label: "Anulado",   cls: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
+    generado:  { label: t("crmVouchers.generado"),  cls: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
+    enviado:   { label: t("crmVouchers.activo"),    cls: "bg-green-500/10 text-green-300 border-green-500/20" },
+    canjeado:  { label: t("crmVouchers.canjeado"),  cls: "bg-purple-500/10 text-purple-300 border-purple-500/20" },
+    caducado:  { label: t("crmVouchers.caducado"),  cls: "bg-amber-500/10 text-amber-300 border-amber-500/20" },
+    anulado:   { label: t("crmVouchers.anulado"),   cls: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
   };
 
   const filters: { key: typeof statusFilter; label: string }[] = [
-    { key: "all",      label: "Todos" },
-    { key: "enviado",  label: "Activos" },
-    { key: "canjeado", label: "Canjeados" },
-    { key: "caducado", label: "Caducados" },
-    { key: "anulado",  label: "Anulados" },
+    { key: "all",      label: t("crmVouchers.todos") },
+    { key: "enviado",  label: t("crmVouchers.activos") },
+    { key: "canjeado", label: t("crmVouchers.canjeados") },
+    { key: "caducado", label: t("crmVouchers.caducados") },
+    { key: "anulado",  label: t("crmVouchers.anulados") },
   ];
 
   return (
@@ -9398,11 +9192,11 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: "Total emitidos", value: kpis?.total ?? 0, cls: "border-foreground/[0.08]" },
-          { label: "Activos",        value: kpis?.activos ?? 0, cls: "border-green-500/20" },
-          { label: "Canjeados",      value: kpis?.canjeados ?? 0, cls: "border-purple-500/20" },
-          { label: "Caducados",      value: kpis?.caducados ?? 0, cls: "border-amber-500/20" },
-          { label: "Importe pend.", value: `${formatEur((kpis?.importePendiente ?? 0))}`, cls: "border-green-500/20" },
+          { label: t("crmVouchers.totalEmitidos"), value: kpis?.total ?? 0, cls: "border-foreground/[0.08]" },
+          { label: t("crmVouchers.activos"),        value: kpis?.activos ?? 0, cls: "border-green-500/20" },
+          { label: t("crmVouchers.canjeados"),      value: kpis?.canjeados ?? 0, cls: "border-purple-500/20" },
+          { label: t("crmVouchers.caducados"),      value: kpis?.caducados ?? 0, cls: "border-amber-500/20" },
+          { label: t("crmVouchers.importePend"), value: `${format.currency((kpis?.importePendiente ?? 0), "EUR", EUR2)}`, cls: "border-green-500/20" },
         ].map(({ label, value, cls }) => (
           <div key={label} className={`bg-foreground/[0.03] border ${cls} rounded-xl p-4`}>
             <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
@@ -9429,7 +9223,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Código, cliente, expediente..."
+            placeholder={t("crmVouchers.codigoClienteExpediente")}
             className="pl-8 h-8 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-xs"
           />
         </div>
@@ -9441,22 +9235,22 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
           <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Código</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Valor</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Generado</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Reserva</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Anulación</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Caduca</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
-                <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.codigo")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.cliente")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.valor")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.generado")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.reserva")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.anulacion")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.caduca")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.estado")}</th>
+                <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmVouchers.acciones")}</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr><td colSpan={9} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
               ) : !vouchers || vouchers.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-12 text-foreground/40 text-sm">No se encontraron bonos</td></tr>
+                <tr><td colSpan={9} className="text-center py-12 text-foreground/40 text-sm">{t("crmVouchers.noSeEncontraronBonos")}</td></tr>
               ) : vouchers.map((v) => {
                 const isActive = v.status === "enviado" || v.status === "generado";
                 const badge = STATUS_BADGE[v.status] ?? STATUS_BADGE.generado;
@@ -9477,17 +9271,16 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
                     {/* Valor */}
                     <td className="px-4 py-3">
-                      <span className="text-orange-400 font-bold font-mono">{formatEur(Number(v.value))}</span>
+                      <span className="text-orange-400 font-bold font-mono">{format.currency(Number(v.value), "EUR", EUR2)}</span>
                       {v.redeemedAt && (
-                        <p className="text-purple-300/60 text-xs mt-0.5">
-                          Canjeado {new Date(v.redeemedAt).toLocaleDateString("es-ES")}
+                        <p className="text-purple-300/60 text-xs mt-0.5">{t("crmVouchers.canjeado")}{" "}{format.date(v.redeemedAt, {})}
                         </p>
                       )}
                     </td>
 
                     {/* Generado */}
                     <td className="px-4 py-3 text-foreground/55 text-xs">
-                      {v.issuedAt ? new Date(v.issuedAt).toLocaleDateString("es-ES") : "—"}
+                      {v.issuedAt ? format.date(v.issuedAt, {}) : "—"}
                     </td>
 
                     {/* Reserva */}
@@ -9496,7 +9289,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                         <button
                           onClick={() => onOpenReservation(v.linkedReservationId!)}
                           className="font-mono text-xs text-orange-400 hover:text-orange-300 hover:underline transition-colors"
-                          title="Ver reserva"
+                          title={t("crmVouchers.verReserva")}
                         >
                           {v.reservationNumber}
                         </button>
@@ -9511,7 +9304,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                         <button
                           onClick={() => onOpenCancellation(v.requestId)}
                           className="font-mono text-xs text-amber-400/80 hover:text-amber-300 hover:underline transition-colors"
-                          title="Ver expediente de anulación"
+                          title={t("crmVouchers.verExpedienteDeAnulacion")}
                         >
                           {v.cancellationNumber}
                         </button>
@@ -9524,10 +9317,10 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                     <td className="px-4 py-3">
                       {v.expiresAt ? (
                         <span className={`text-xs font-medium ${isExpired && isActive ? "text-red-400" : "text-foreground/55"}`}>
-                          {isExpired && isActive && "⚠ "}{new Date(v.expiresAt).toLocaleDateString("es-ES")}
+                          {isExpired && isActive && "⚠ "}{format.date(v.expiresAt, {})}
                         </span>
                       ) : (
-                        <span className="text-foreground/25 text-xs italic">Sin límite</span>
+                        <span className="text-foreground/25 text-xs italic">{t("crmVouchers.sinLimite")}</span>
                       )}
                     </td>
 
@@ -9545,7 +9338,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                         <button
                           onClick={() => setViewModal(v.id)}
                           className="p-1.5 rounded-lg text-foreground/40 hover:text-purple-300 hover:bg-purple-500/10 transition-colors"
-                          title="Ver detalle del bono"
+                          title={t("crmVouchers.verDetalleDelBono")}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -9554,7 +9347,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                             onClick={() => resendMut.mutate({ voucherId: v.id })}
                             disabled={resendMut.isPending}
                             className="p-1.5 rounded-lg text-sky-400/60 hover:text-sky-300 hover:bg-sky-500/10 transition-colors"
-                            title="Reenviar email al cliente"
+                            title={t("crmVouchers.reenviarEmailAlCliente")}
                           >
                             <Send className="w-4 h-4" />
                           </button>
@@ -9563,10 +9356,10 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                           <button
                             onClick={() => {
                               setNewExpiry(v.expiresAt ? new Date(v.expiresAt).toISOString().split("T")[0] : "");
-                              setExtendModal({ id: v.id, code: v.code, current: v.expiresAt ? new Date(v.expiresAt).toLocaleDateString("es-ES") : null });
+                              setExtendModal({ id: v.id, code: v.code, current: v.expiresAt ? format.date(v.expiresAt, {}) : null });
                             }}
                             className="p-1.5 rounded-lg text-amber-400/60 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
-                            title="Ampliar fecha de caducidad"
+                            title={t("crmVouchers.ampliarFechaDeCaducidad")}
                           >
                             <CalendarClock className="w-4 h-4" />
                           </button>
@@ -9575,7 +9368,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                           <button
                             onClick={() => { setCancelReason(""); setCancelModal({ id: v.id, code: v.code }); }}
                             className="p-1.5 rounded-lg text-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                            title="Anular bono"
+                            title={t("crmVouchers.anularBono")}
                           >
                             <Ban className="w-4 h-4" />
                           </button>
@@ -9585,7 +9378,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                           <button
                             onClick={() => setDeleteConfirm({ id: v.id, code: v.code })}
                             className="p-1.5 rounded-lg text-foreground/25 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                            title="Eliminar bono permanentemente"
+                            title={t("crmVouchers.eliminarBonoPermanentemente")}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -9605,16 +9398,15 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <CalendarClock className="w-4 h-4 text-amber-400" /> Ampliar caducidad
-            </DialogTitle>
+              <CalendarClock className="w-4 h-4 text-amber-400" />{" "}{t("crmVouchers.ampliarCaducidad")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-xs text-foreground/60">Bono <span className="font-mono text-purple-300">{extendModal?.code}</span></p>
+            <p className="text-xs text-foreground/60">{t("crmVouchers.bono")}{" "}<span className="font-mono text-purple-300">{extendModal?.code}</span></p>
             {extendModal?.current && (
-              <p className="text-xs text-foreground/50">Caducidad actual: <span className="text-amber-300">{extendModal.current}</span></p>
+              <p className="text-xs text-foreground/50">{t("crmVouchers.caducidadActual")}{" "}<span className="text-amber-300">{extendModal.current}</span></p>
             )}
             <div>
-              <Label className="text-foreground/65 text-xs mb-1.5 block">Nueva fecha de caducidad</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmVouchers.nuevaFechaDeCaducidad")}</Label>
               <Input
                 type="date"
                 value={newExpiry}
@@ -9625,14 +9417,14 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setExtendModal(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setExtendModal(null)}>{t("crmVouchers.cancelar")}</Button>
             <Button
               size="sm"
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={!newExpiry || extendMut.isPending}
               onClick={() => extendModal && extendMut.mutate({ voucherId: extendModal.id, newExpiresAt: newExpiry })}
             >
-              {extendMut.isPending ? "Guardando..." : "Confirmar nueva fecha"}
+              {extendMut.isPending ? t("crmVouchers.guardando") : t("crmVouchers.confirmarNuevaFecha")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -9643,34 +9435,30 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <Ban className="w-4 h-4 text-red-400" /> Anular bono
-            </DialogTitle>
+              <Ban className="w-4 h-4 text-red-400" />{" "}{t("crmVouchers.anularBono")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-foreground/70">
-              ¿Confirmas anular el bono <span className="font-mono text-purple-300">{cancelModal?.code}</span>?
-              El código quedará inactivo y el cliente no podrá usarlo.
-            </p>
+            <p className="text-sm text-foreground/70">{t("crmVouchers.confirmasAnularElBono")}{" "}<span className="font-mono text-purple-300">{cancelModal?.code}</span>{t("crmVouchers.elCodigoQuedaraInactivo")}</p>
             <div>
-              <Label className="text-foreground/65 text-xs mb-1.5 block">Motivo (opcional)</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmVouchers.motivoOpcional")}</Label>
               <Textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Ej: Emitido por error, cliente solicitó devolución económica..."
+                placeholder={t("crmVouchers.ejEmitidoPorError")}
                 rows={3}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-gray-600 resize-none text-sm"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setCancelModal(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setCancelModal(null)}>{t("crmVouchers.cancelar")}</Button>
             <Button
               size="sm"
               className="bg-destructive hover:bg-destructive/90 text-white"
               disabled={cancelMut.isPending}
               onClick={() => cancelModal && cancelMut.mutate({ voucherId: cancelModal.id, reason: cancelReason || undefined })}
             >
-              {cancelMut.isPending ? "Anulando..." : "Confirmar anulación"}
+              {cancelMut.isPending ? t("crmVouchers.anulando") : t("crmVouchers.confirmarAnulacion")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -9681,8 +9469,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <Eye className="w-4 h-4 text-purple-400" /> Detalle del bono
-            </DialogTitle>
+              <Eye className="w-4 h-4 text-purple-400" />{" "}{t("crmVouchers.detalleDelBono")}</DialogTitle>
           </DialogHeader>
           {voucherDetail ? (
             <div className="space-y-4 py-1">
@@ -9696,19 +9483,19 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                   voucherDetail.status === "anulado" ? "bg-gray-500/10 text-gray-400 border-gray-500/20" :
                   "bg-blue-500/10 text-blue-300 border-blue-500/20"
                 }`}>
-                  {voucherDetail.status === "enviado" ? "Activo" : voucherDetail.status.charAt(0).toUpperCase() + voucherDetail.status.slice(1)}
+                  {voucherDetail.status === "enviado" ? t("crmVouchers.activo") : voucherDetail.status.charAt(0).toUpperCase() + voucherDetail.status.slice(1)}
                 </span>
               </div>
 
               {/* Valor + actividad */}
               <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
                 <div className="flex justify-between text-sm">
-                  <span className="text-foreground/50">Valor</span>
-                  <span className="text-orange-400 font-bold font-mono">{formatEur(Number(voucherDetail.value))}</span>
+                  <span className="text-foreground/50">{t("crmVouchers.valor")}</span>
+                  <span className="text-orange-400 font-bold font-mono">{format.currency(Number(voucherDetail.value), "EUR", EUR2)}</span>
                 </div>
                 {voucherDetail.activityName && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-foreground/50">Actividad</span>
+                    <span className="text-foreground/50">{t("crmVouchers.actividad")}</span>
                     <span className="text-foreground/80 text-right max-w-[260px] overflow-hidden text-ellipsis whitespace-nowrap">{voucherDetail.activityName}</span>
                   </div>
                 )}
@@ -9716,20 +9503,20 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
               {/* Cliente */}
               <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
-                <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">Cliente</p>
+                <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">{t("crmVouchers.cliente")}</p>
                 <div className="flex justify-between text-sm">
-                  <span className="text-foreground/50">Nombre</span>
+                  <span className="text-foreground/50">{t("crmVouchers.nombre")}</span>
                   <span className="text-white">{voucherDetail.clientName ?? "—"}</span>
                 </div>
                 {voucherDetail.clientEmail && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-foreground/50">Email</span>
+                    <span className="text-foreground/50">{t("crmVouchers.email")}</span>
                     <span className="text-foreground/80">{voucherDetail.clientEmail}</span>
                   </div>
                 )}
                 {voucherDetail.clientPhone && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-foreground/50">Teléfono</span>
+                    <span className="text-foreground/50">{t("crmVouchers.telefono")}</span>
                     <span className="text-foreground/80">{voucherDetail.clientPhone}</span>
                   </div>
                 )}
@@ -9737,16 +9524,16 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
               {/* Fechas */}
               <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
-                <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">Fechas</p>
+                <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">{t("crmVouchers.fechas")}</p>
                 {[
-                  { label: "Generado", val: voucherDetail.issuedAt },
-                  { label: "Enviado", val: voucherDetail.sentAt },
-                  { label: "Caduca", val: voucherDetail.expiresAt },
-                  { label: "Canjeado", val: voucherDetail.redeemedAt },
+                  { label: t("crmVouchers.generado"), val: voucherDetail.issuedAt },
+                  { label: t("crmVouchers.enviado"), val: voucherDetail.sentAt },
+                  { label: t("crmVouchers.caduca"), val: voucherDetail.expiresAt },
+                  { label: t("crmVouchers.canjeado"), val: voucherDetail.redeemedAt },
                 ].map(({ label, val }) => val && (
                   <div key={label} className="flex justify-between text-sm">
                     <span className="text-foreground/50">{label}</span>
-                    <span className="text-foreground/80">{new Date(val).toLocaleDateString("es-ES")}</span>
+                    <span className="text-foreground/80">{format.date(val, {})}</span>
                   </div>
                 ))}
               </div>
@@ -9754,16 +9541,16 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
               {/* Vínculos */}
               {(voucherDetail.cancellationNumber || voucherDetail.reservationNumber) && (
                 <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
-                  <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">Vínculos</p>
+                  <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">{t("crmVouchers.vinculos")}</p>
                   {voucherDetail.cancellationNumber && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-foreground/50">Anulación</span>
+                      <span className="text-foreground/50">{t("crmVouchers.anulacion")}</span>
                       <button onClick={() => { setViewModal(null); onOpenCancellation(voucherDetail.requestId!); }} className="font-mono text-amber-400 hover:underline">{voucherDetail.cancellationNumber}</button>
                     </div>
                   )}
                   {voucherDetail.reservationNumber && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-foreground/50">Reserva</span>
+                      <span className="text-foreground/50">{t("crmVouchers.reserva")}</span>
                       <button onClick={() => { setViewModal(null); onOpenReservation(voucherDetail.linkedReservationId!); }} className="font-mono text-orange-400 hover:underline">{voucherDetail.reservationNumber}</button>
                     </div>
                   )}
@@ -9772,7 +9559,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
               {voucherDetail.notes && (
                 <div className="bg-foreground/[0.05] rounded-xl p-3">
-                  <p className="text-xs text-foreground/40 uppercase tracking-wide mb-1">Notas</p>
+                  <p className="text-xs text-foreground/40 uppercase tracking-wide mb-1">{t("crmVouchers.notas")}</p>
                   <p className="text-sm text-foreground/70">{voucherDetail.notes}</p>
                 </div>
               )}
@@ -9781,7 +9568,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
             <div className="py-8 flex justify-center"><RefreshCw className="w-5 h-5 animate-spin text-foreground/40" /></div>
           )}
           <DialogFooter>
-            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setViewModal(null)}>Cerrar</Button>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setViewModal(null)}>{t("crmVouchers.cerrar")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -9791,24 +9578,22 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <Trash2 className="w-4 h-4 text-red-500" /> Eliminar bono
-            </DialogTitle>
+              <Trash2 className="w-4 h-4 text-red-500" />{" "}{t("crmVouchers.eliminarBono")}</DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <p className="text-sm text-foreground/70">
-              ¿Eliminar permanentemente el bono <span className="font-mono text-purple-300">{deleteConfirm?.code}</span>?
+            <p className="text-sm text-foreground/70">{t("crmVouchers.eliminarPermanentementeElBono")}{" "}<span className="font-mono text-purple-300">{deleteConfirm?.code}</span>?
             </p>
-            <p className="text-xs text-red-400/70 mt-2">Esta acción no se puede deshacer.</p>
+            <p className="text-xs text-red-400/70 mt-2">{t("crmVouchers.estaAccionNoSe")}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setDeleteConfirm(null)}>{t("crmVouchers.cancelar")}</Button>
             <Button
               size="sm"
               className="bg-destructive hover:bg-destructive/90 text-white"
               disabled={deleteMut.isPending}
               onClick={() => deleteConfirm && deleteMut.mutate({ id: deleteConfirm.id })}
             >
-              {deleteMut.isPending ? "Eliminando..." : "Eliminar"}
+              {deleteMut.isPending ? t("crmVouchers.eliminando") : t("crmVouchers.eliminar")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -9819,6 +9604,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
 // ─── PAGOS PENDIENTES TAB ────────────────────────────────────────────────────
 function PagosPendientesTab() {
+  const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -9839,7 +9625,7 @@ function PagosPendientesTab() {
 
   const confirmMut = trpc.crm.pendingPayments.confirm.useMutation({
     onSuccess: () => {
-      toast.success("Pago confirmado correctamente");
+      toast.success(t("crmPayments.pagoConfirmadoCorrectamente"));
       setConfirmId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
@@ -9847,13 +9633,13 @@ function PagosPendientesTab() {
   });
 
   const resendMut = trpc.crm.pendingPayments.resendReminder.useMutation({
-    onSuccess: () => toast.success("Email de recordatorio enviado"),
+    onSuccess: () => toast.success(t("crmPayments.emailDeRecordatorioEnviado")),
     onError: (e: { message: string }) => toast.error(errorToastMessage(e)),
   });
 
   const cancelMut = trpc.crm.pendingPayments.cancel.useMutation({
     onSuccess: () => {
-      toast.success("Pago pendiente cancelado");
+      toast.success(t("crmPayments.pagoPendienteCancelado"));
       setCancelId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
@@ -9862,7 +9648,7 @@ function PagosPendientesTab() {
 
   const deleteMut = trpc.crm.pendingPayments.delete.useMutation({
     onSuccess: () => {
-      toast.success("Registro eliminado");
+      toast.success(t("crmPayments.registroEliminado"));
       setDeleteId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
@@ -9871,10 +9657,10 @@ function PagosPendientesTab() {
 
   const statusBadge = (status: string) => {
     const map: Record<string, { label: string; cls: string }> = {
-      pending:   { label: "Pendiente",  cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-      overdue:   { label: "Vencido",    cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-      confirmed: { label: "Confirmado", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-      cancelled: { label: "Cancelado",  cls: "bg-foreground/[0.08] text-foreground/50 border-foreground/[0.12]" },
+      pending:   { label: t("crmPayments.pendiente"),  cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+      overdue:   { label: t("crmPayments.vencido"),    cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+      confirmed: { label: t("crmPayments.confirmado"), cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+      cancelled: { label: t("crmPayments.cancelado"),  cls: "bg-foreground/[0.08] text-foreground/50 border-foreground/[0.12]" },
     };
     const s = map[status] ?? { label: status, cls: "bg-foreground/[0.08] text-foreground/50 border-foreground/[0.12]" };
     return (
@@ -9890,7 +9676,7 @@ function PagosPendientesTab() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-white font-semibold text-lg">{voc.pendingPayments}</h2>
-          <p className="text-foreground/50 text-sm">{total} registro{total !== 1 ? "s" : ""} en total</p>
+          <p className="text-foreground/50 text-sm">{t("crmPayments.registro", { total })}{" "}{t("crmPayments.enTotal")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -9898,11 +9684,11 @@ function PagosPendientesTab() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-              <SelectItem value="all" className="text-white text-xs">Todos</SelectItem>
-              <SelectItem value="pending" className="text-white text-xs">Pendiente</SelectItem>
-              <SelectItem value="overdue" className="text-white text-xs">Vencido</SelectItem>
-              <SelectItem value="confirmed" className="text-white text-xs">Confirmado</SelectItem>
-              <SelectItem value="cancelled" className="text-white text-xs">Cancelado</SelectItem>
+              <SelectItem value="all" className="text-white text-xs">{t("crmPayments.todos")}</SelectItem>
+              <SelectItem value="pending" className="text-white text-xs">{t("crmPayments.pendiente")}</SelectItem>
+              <SelectItem value="overdue" className="text-white text-xs">{t("crmPayments.vencido")}</SelectItem>
+              <SelectItem value="confirmed" className="text-white text-xs">{t("crmPayments.confirmado")}</SelectItem>
+              <SelectItem value="cancelled" className="text-white text-xs">{t("crmPayments.cancelado")}</SelectItem>
             </SelectContent>
           </Select>
           <button
@@ -9921,13 +9707,13 @@ function PagosPendientesTab() {
             <thead>
               <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                 <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">#</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Presupuesto</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Importe</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Vencimiento</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Motivo</th>
-                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
-                <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmPayments.cliente")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmPayments.presupuesto")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmPayments.importe")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmPayments.vencimiento")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmPayments.motivo")}</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmPayments.estado")}</th>
+                <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmPayments.acciones")}</th>
               </tr>
             </thead>
             <tbody>
@@ -9942,7 +9728,7 @@ function PagosPendientesTab() {
                 <tr>
                   <td colSpan={8} className="text-center py-12">
                     <Clock className="w-8 h-8 text-foreground/30 mx-auto mb-2" />
-                    <p className="text-foreground/40 text-sm">No hay pagos pendientes</p>
+                    <p className="text-foreground/40 text-sm">{t("crmPayments.noHayPagosPendientes")}</p>
                   </td>
                 </tr>
               )}
@@ -9961,20 +9747,20 @@ function PagosPendientesTab() {
                     </td>
                     <td className="px-4 py-3">
                       {row.quoteId ? (
-                        <span className="text-foreground/65 text-xs font-mono">PRES-{row.quoteId}</span>
+                        <span className="text-foreground/65 text-xs font-mono">{t("crmPayments.pres", { quoteId: row.quoteId })}</span>
                       ) : (
                         <span className="text-foreground/30 text-xs">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-white font-semibold text-sm">
-                        {formatEur((row.amountCents / 100))}
+                        {format.currency((row.amountCents / 100), "EUR", EUR2)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       {dueDate ? (
                         <span className={`text-xs ${isOverdue ? "text-red-400 font-semibold" : "text-foreground/65"}`}>
-                          {dueDate.toLocaleDateString("es-ES")}
+                          {format.date(dueDate, {})}
                           {isOverdue && " ⚠"}
                         </span>
                       ) : (
@@ -9991,14 +9777,14 @@ function PagosPendientesTab() {
                           <>
                             <button
                               onClick={() => { setConfirmId(row.id); setConfirmMethod("transferencia"); }}
-                              title="Confirmar pago"
+                              title={t("crmPayments.confirmarPago")}
                               className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition-colors"
                             >
                               <CheckCircle className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => resendMut.mutate({ id: row.id })}
-                              title="Reenviar recordatorio"
+                              title={t("crmPayments.reenviarRecordatorio")}
                               className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors"
                               disabled={resendMut.isPending}
                             >
@@ -10006,7 +9792,7 @@ function PagosPendientesTab() {
                             </button>
                             <button
                               onClick={() => setCancelId(row.id)}
-                              title="Cancelar"
+                              title={t("crmPayments.cancelar")}
                               className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
                             >
                               <XCircle className="w-4 h-4" />
@@ -10015,7 +9801,7 @@ function PagosPendientesTab() {
                         )}
                         <button
                           onClick={() => setDeleteId(row.id)}
-                          title="Eliminar registro"
+                          title={t("crmPayments.eliminarRegistro")}
                           className="p-1.5 rounded-lg bg-foreground/[0.05] hover:bg-red-500/20 text-foreground/30 hover:text-red-400 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -10035,36 +9821,33 @@ function PagosPendientesTab() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
-            </DialogTitle>
+              <CheckCircle className="w-5 h-5 text-emerald-400" />{" "}{t("crmPayments.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-foreground/65 text-xs mb-1.5 block">Método de pago</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmPayments.metodoDePago")}</Label>
               <Select value={confirmMethod} onValueChange={(v) => setConfirmMethod(v as any)}>
                 <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="transferencia" className="text-white">🏦 Transferencia bancaria</SelectItem>
-                  <SelectItem value="tarjeta_fisica" className="text-white">💳 Tarjeta Física</SelectItem>
-                  <SelectItem value="efectivo" className="text-white">💵 Efectivo</SelectItem>
+                  <SelectItem value="transferencia" className="text-white">{t("crmPayments.transferenciaBancaria")}</SelectItem>
+                  <SelectItem value="tarjeta_fisica" className="text-white">{t("crmPayments.tarjetaFisica")}</SelectItem>
+                  <SelectItem value="efectivo" className="text-white">{t("crmPayments.efectivo")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-foreground/50">Se marcará el pago como confirmado y se actualizará {voc.theOrder} {voc.agree("asociado", "asociada")}.</p>
+            <p className="text-xs text-foreground/50">{t("crmPayments.seMarcaraElPago", { theOrder: voc.theOrder })}{" "}{voc.agree("asociado", "asociada")}.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirmId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setConfirmId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmPayments.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => confirmId !== null && confirmMut.mutate({ id: confirmId, paymentMethod: confirmMethod })}
               disabled={confirmMut.isPending}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              {confirmMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-              Confirmar cobro
-            </Button>
+              {confirmMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}{t("crmPayments.confirmarCobro")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -10074,21 +9857,18 @@ function PagosPendientesTab() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <XCircle className="w-5 h-5 text-red-400" /> Cancelar pago pendiente
-            </DialogTitle>
+              <XCircle className="w-5 h-5 text-red-400" />{" "}{t("crmPayments.cancelarPagoPendiente")}</DialogTitle>
           </DialogHeader>
-          <p className="text-foreground/65 text-sm py-2">¿Seguro que quieres cancelar este pago pendiente? El cliente no recibirá más recordatorios.</p>
+          <p className="text-foreground/65 text-sm py-2">{t("crmPayments.seguroQueQuieresCancelar")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setCancelId(null)} className="border-foreground/[0.15] text-foreground/65">Volver</Button>
+            <Button variant="outline" size="sm" onClick={() => setCancelId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmPayments.volver")}</Button>
             <Button
               size="sm"
               onClick={() => cancelId !== null && cancelMut.mutate({ id: cancelId })}
               disabled={cancelMut.isPending}
               className="bg-destructive hover:bg-destructive/90 text-white"
             >
-              {cancelMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
-              Cancelar pago
-            </Button>
+              {cancelMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}{t("crmPayments.cancelarPago")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -10098,26 +9878,21 @@ function PagosPendientesTab() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-400" /> Eliminar registro
-            </DialogTitle>
+              <Trash2 className="w-5 h-5 text-red-400" />{" "}{t("crmPayments.eliminarRegistro")}</DialogTitle>
           </DialogHeader>
           <div className="py-2 space-y-2">
-            <p className="text-foreground/65 text-sm">Esta acción eliminará el registro de forma permanente y no se puede deshacer.</p>
-            <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-              Solo elimina el registro de pago pendiente. {voc.licensed ? "El pedido" : "La reserva"} y el presupuesto asociados no se modifican.
-            </p>
+            <p className="text-foreground/65 text-sm">{t("crmPayments.estaAccionEliminaraEl")}</p>
+            <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{t("crmPayments.soloEliminaElRegistro")}{" "}{voc.licensed ? t("crmPayments.elPedido") : t("crmPayments.laReserva")}{" "}{t("crmPayments.yElPresupuestoAsociados")}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmPayments.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => deleteId !== null && deleteMut.mutate({ id: deleteId })}
               disabled={deleteMut.isPending}
               className="bg-red-700 hover:bg-red-800 text-white"
             >
-              {deleteMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
-              Eliminar definitivamente
-            </Button>
+              {deleteMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}{t("crmPayments.eliminarDefinitivamente")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

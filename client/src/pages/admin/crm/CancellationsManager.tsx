@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
 import { toastError } from "@/lib/errorMessage";
 
+import { useI18n } from "@/i18n/I18nProvider";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type OperationalStatus =
   | "recibida" | "en_revision" | "pendiente_documentacion"
@@ -53,14 +54,15 @@ type FinancialStatus =
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 function OperationalBadge({ status }: { status: OperationalStatus }) {
+  const { t } = useI18n();
   const map: Record<OperationalStatus, { label: string; className: string; icon: React.ReactNode }> = {
-    recibida: { label: "Recibida", className: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: <Clock className="w-3 h-3" /> },
-    en_revision: { label: "En revisión", className: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <Search className="w-3 h-3" /> },
-    pendiente_documentacion: { label: "Pend. docs", className: "bg-orange-500/10 text-orange-400 border-orange-500/20", icon: <FileQuestion className="w-3 h-3" /> },
-    pendiente_decision: { label: "Pend. decisión", className: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: <AlertCircle className="w-3 h-3" /> },
-    resuelta: { label: "Resuelta", className: "bg-green-500/10 text-green-400 border-green-500/20", icon: <CheckCircle2 className="w-3 h-3" /> },
-    cerrada: { label: "Cerrada", className: "bg-gray-500/10 text-gray-400 border-gray-500/20", icon: <Archive className="w-3 h-3" /> },
-    incidencia: { label: "Incidencia", className: "bg-red-500/10 text-red-400 border-red-500/20", icon: <AlertTriangle className="w-3 h-3" /> },
+    recibida: { label: t("crmCancellations.recibida"), className: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: <Clock className="w-3 h-3" /> },
+    en_revision: { label: t("crmCancellations.enRevision"), className: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <Search className="w-3 h-3" /> },
+    pendiente_documentacion: { label: t("crmCancellations.pendDocs"), className: "bg-orange-500/10 text-orange-400 border-orange-500/20", icon: <FileQuestion className="w-3 h-3" /> },
+    pendiente_decision: { label: t("crmCancellations.pendDecision"), className: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: <AlertCircle className="w-3 h-3" /> },
+    resuelta: { label: t("crmCancellations.resuelta"), className: "bg-green-500/10 text-green-400 border-green-500/20", icon: <CheckCircle2 className="w-3 h-3" /> },
+    cerrada: { label: t("crmCancellations.cerrada"), className: "bg-gray-500/10 text-gray-400 border-gray-500/20", icon: <Archive className="w-3 h-3" /> },
+    incidencia: { label: t("crmCancellations.incidencia"), className: "bg-red-500/10 text-red-400 border-red-500/20", icon: <AlertTriangle className="w-3 h-3" /> },
   };
   const { label, className, icon } = map[status] ?? map.recibida;
   return (
@@ -71,11 +73,12 @@ function OperationalBadge({ status }: { status: OperationalStatus }) {
 }
 
 function ResolutionBadge({ status }: { status: ResolutionStatus }) {
+  const { t } = useI18n();
   const map: Record<ResolutionStatus, { label: string; className: string }> = {
-    sin_resolver: { label: "Sin resolver", className: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
-    rechazada: { label: "Rechazada", className: "bg-red-500/10 text-red-400 border-red-500/20" },
-    aceptada_total: { label: "Aceptada total", className: "bg-green-500/10 text-green-400 border-green-500/20" },
-    aceptada_parcial: { label: "Aceptada parcial", className: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+    sin_resolver: { label: t("crmCancellations.sinResolver"), className: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
+    rechazada: { label: t("crmCancellations.rechazada"), className: "bg-red-500/10 text-red-400 border-red-500/20" },
+    aceptada_total: { label: t("crmCancellations.aceptadaTotal"), className: "bg-green-500/10 text-green-400 border-green-500/20" },
+    aceptada_parcial: { label: t("crmCancellations.aceptadaParcial"), className: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
   };
   const { label, className } = map[status] ?? map.sin_resolver;
   return (
@@ -86,14 +89,15 @@ function ResolutionBadge({ status }: { status: ResolutionStatus }) {
 }
 
 function FinancialBadge({ status }: { status: FinancialStatus }) {
+  const { t } = useI18n();
   const map: Record<FinancialStatus, { label: string; className: string; icon: React.ReactNode }> = {
-    sin_compensacion: { label: "Sin comp.", className: "bg-gray-500/10 text-gray-400 border-gray-500/20", icon: null },
-    pendiente_devolucion: { label: "Pend. devolución", className: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <Banknote className="w-3 h-3" /> },
-    devuelta_economicamente: { label: "Devuelta", className: "bg-green-500/10 text-green-400 border-green-500/20", icon: <Banknote className="w-3 h-3" /> },
-    pendiente_bono: { label: "Pend. bono", className: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: <Gift className="w-3 h-3" /> },
-    compensada_bono: { label: "Bono enviado", className: "bg-violet-500/10 text-violet-400 border-violet-500/20", icon: <Gift className="w-3 h-3" /> },
-    compensacion_mixta: { label: "Mixta", className: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20", icon: null },
-    incidencia_economica: { label: "Incidencia ec.", className: "bg-red-500/10 text-red-400 border-red-500/20", icon: <AlertTriangle className="w-3 h-3" /> },
+    sin_compensacion: { label: t("crmCancellations.sinComp"), className: "bg-gray-500/10 text-gray-400 border-gray-500/20", icon: null },
+    pendiente_devolucion: { label: t("crmCancellations.pendDevolucion"), className: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <Banknote className="w-3 h-3" /> },
+    devuelta_economicamente: { label: t("crmCancellations.devuelta"), className: "bg-green-500/10 text-green-400 border-green-500/20", icon: <Banknote className="w-3 h-3" /> },
+    pendiente_bono: { label: t("crmCancellations.pendBono"), className: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: <Gift className="w-3 h-3" /> },
+    compensada_bono: { label: t("crmCancellations.bonoEnviado"), className: "bg-violet-500/10 text-violet-400 border-violet-500/20", icon: <Gift className="w-3 h-3" /> },
+    compensacion_mixta: { label: t("crmCancellations.mixta"), className: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20", icon: null },
+    incidencia_economica: { label: t("crmCancellations.incidenciaEc"), className: "bg-red-500/10 text-red-400 border-red-500/20", icon: <AlertTriangle className="w-3 h-3" /> },
   };
   const { label, className, icon } = map[status] ?? map.sin_compensacion;
   return (
@@ -128,6 +132,7 @@ function KpiCard({ label, value, sub, color }: { label: string; value: number; s
 // ─── Main Component ───────────────────────────────────────────────────────────
 // ─── Modal Nueva Solicitud Manual ────────────────────────────────────────────
 function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { t } = useI18n();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -139,7 +144,7 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   const createMutation = trpc.cancellations.createManualRequest.useMutation({
     onSuccess: () => {
-      toast.success("Solicitud creada correctamente");
+      toast.success(t("crmCancellations.solicitudCreadaCorrectamente"));
       onCreated();
       onClose();
     },
@@ -147,8 +152,8 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
   });
 
   const handleSubmit = () => {
-    if (!fullName.trim()) return toast.error("El nombre es obligatorio");
-    if (!activityDate.trim()) return toast.error("La fecha de actividad es obligatoria");
+    if (!fullName.trim()) return toast.error(t("crmCancellations.elNombreEsObligatorio"));
+    if (!activityDate.trim()) return toast.error(t("crmCancellations.laFechaDeActividad"));
     createMutation.mutate({
       fullName: fullName.trim(),
       email: email.trim() || undefined,
@@ -166,9 +171,7 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
       <div className="bg-[#111] border border-white/10 rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-white font-semibold text-lg flex items-center gap-2">
-            <Plus className="w-5 h-5 text-orange-400" />
-            Nueva solicitud manual
-          </h2>
+            <Plus className="w-5 h-5 text-orange-400" />{t("crmCancellations.nuevaSolicitudManual")}</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
             <XCircle className="w-5 h-5" />
           </button>
@@ -177,24 +180,24 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">Nombre completo *</Label>
+              <Label className="text-gray-300 text-sm">{t("crmCancellations.nombreCompleto")}</Label>
               <Input value={fullName} onChange={(e) => setFullName(e.target.value)}
-                placeholder="Juan García López"
+                placeholder={t("crmCancellations.juanGarciaLopez")}
                 className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">Fecha de actividad *</Label>
+              <Label className="text-gray-300 text-sm">{t("crmCancellations.fechaDeActividad")}</Label>
               <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)}
                 className="bg-[#1a1a1a] border-white/10 text-white" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">Email</Label>
+              <Label className="text-gray-300 text-sm">{t("crmCancellations.email")}</Label>
               <Input value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="cliente@email.com" type="email"
                 className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">Teléfono</Label>
+              <Label className="text-gray-300 text-sm">{t("crmCancellations.telefono")}</Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)}
                 placeholder="+34 600 000 000"
                 className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
@@ -202,53 +205,51 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">Localizador / Nº reserva</Label>
+            <Label className="text-gray-300 text-sm">{t("crmCancellations.localizadorNReserva")}</Label>
             <Input value={locator} onChange={(e) => setLocator(e.target.value)}
-              placeholder="RES-2026-0001"
+              placeholder={t("crmCancellations.res20260001")}
               className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">Motivo</Label>
+            <Label className="text-gray-300 text-sm">{t("crmCancellations.motivo")}</Label>
             <Select value={reason} onValueChange={setReason}>
               <SelectTrigger className="bg-[#1a1a1a] border-white/10 text-gray-300">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="meteorologicas">Meteorológicas</SelectItem>
-                <SelectItem value="accidente">Accidente</SelectItem>
-                <SelectItem value="enfermedad">Enfermedad</SelectItem>
-                <SelectItem value="desistimiento">Desistimiento</SelectItem>
-                <SelectItem value="otra">Otra</SelectItem>
+                <SelectItem value="meteorologicas">{t("crmCancellations.meteorologicas")}</SelectItem>
+                <SelectItem value="accidente">{t("crmCancellations.accidente")}</SelectItem>
+                <SelectItem value="enfermedad">{t("crmCancellations.enfermedad")}</SelectItem>
+                <SelectItem value="desistimiento">{t("crmCancellations.desistimiento")}</SelectItem>
+                <SelectItem value="otra">{t("crmCancellations.otra")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">Detalle del motivo</Label>
+            <Label className="text-gray-300 text-sm">{t("crmCancellations.detalleDelMotivo")}</Label>
             <Textarea value={reasonDetail} onChange={(e) => setReasonDetail(e.target.value)}
-              placeholder="Descripción adicional..."
+              placeholder={t("crmCancellations.descripcionAdicional")}
               className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600 min-h-[80px]" />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">Notas internas (admin)</Label>
+            <Label className="text-gray-300 text-sm">{t("crmCancellations.notasInternasAdmin")}</Label>
             <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)}
-              placeholder="Anotaciones internas..."
+              placeholder={t("crmCancellations.anotacionesInternas")}
               className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600 min-h-[60px]" />
           </div>
         </div>
 
         <div className="flex gap-3 mt-6">
-          <Button variant="outline" className="flex-1 border-white/10 text-gray-400" onClick={onClose}>
-            Cancelar
-          </Button>
+          <Button variant="outline" className="flex-1 border-white/10 text-gray-400" onClick={onClose}>{t("crmCancellations.cancelar")}</Button>
           <Button
             className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
             onClick={handleSubmit}
             disabled={createMutation.isPending}
           >
-            {createMutation.isPending ? "Creando..." : "Crear solicitud"}
+            {createMutation.isPending ? t("crmCancellations.creando") : t("crmCancellations.crearSolicitud")}
           </Button>
         </div>
       </div>
@@ -258,6 +259,7 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CancellationsManager() {
+  const { t, format } = useI18n();
   const voc = useVocabulary();
   const [search, setSearch] = useState("");
   const [opFilter, setOpFilter] = useState("all");
@@ -282,7 +284,7 @@ export default function CancellationsManager() {
 
   const deleteRequest = trpc.cancellations.deleteRequest.useMutation({
     onSuccess: () => {
-      toast.success("Solicitud eliminada");
+      toast.success(t("crmCancellations.solicitudEliminada"));
       setDeleteId(null);
       utils.cancellations.listRequests.invalidate();
     },
@@ -292,9 +294,9 @@ export default function CancellationsManager() {
   const sendTestEmails = trpc.cancellations.sendTestEmails.useMutation({
     onSuccess: (d) => {
       if (d.failed === 0) {
-        toast.success(`${d.total} emails de prueba enviados correctamente`);
+        toast.success(t("crmCancellations.emailsDePruebaEnviados", { total: d.total }));
       } else {
-        toast.error(`${d.failed} de ${d.total} emails fallaron. Revisa los logs del servidor.`);
+        toast.error(t("crmCancellations.deEmailsFallaronRevisa", { failed: d.failed, total: d.total }));
       }
     },
     onError: (err) => toastError(err),
@@ -310,12 +312,8 @@ export default function CancellationsManager() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="w-6 h-6 text-orange-400" />
-            Solicitudes de Anulación
-          </h1>
-          <p className="text-gray-400 text-sm mt-1">
-            Pipeline de gestión de anulaciones y compensaciones
-          </p>
+            <AlertTriangle className="w-6 h-6 text-orange-400" />{t("crmCancellations.solicitudesDeAnulacion")}</h1>
+          <p className="text-gray-400 text-sm mt-1">{t("crmCancellations.pipelineDeGestionDe")}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -324,58 +322,52 @@ export default function CancellationsManager() {
             onClick={() => refetch()}
             className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
           >
-            <RefreshCw className="w-4 h-4" />
-            Actualizar
-          </Button>
+            <RefreshCw className="w-4 h-4" />{t("crmCancellations.actualizar")}</Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => window.open("/solicitar-anulacion", "_blank")}
             className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
-          >
-            Ver formulario público
-          </Button>
+          >{t("crmCancellations.verFormularioPublico")}</Button>
           <Button
             variant="outline"
             size="sm"
             disabled={sendTestEmails.isPending}
             onClick={() => sendTestEmails.mutate({ to: "jorgemgrande@gmail.com" })}
             className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
-            title="Envía los 8 templates de email a jorgemgrande@gmail.com"
+            title={t("crmCancellations.enviaLos8Templates")}
           >
             <Mail className="w-4 h-4" />
-            {sendTestEmails.isPending ? "Enviando..." : "Test emails"}
+            {sendTestEmails.isPending ? t("crmCancellations.enviando") : t("crmCancellations.testEmails")}
           </Button>
           <Button
             size="sm"
             onClick={() => setShowNewModal(true)}
             className="gap-1.5 bg-orange-500 hover:bg-orange-600 text-white"
           >
-            <Plus className="w-4 h-4" />
-            Nueva solicitud
-          </Button>
+            <Plus className="w-4 h-4" />{t("crmCancellations.nuevaSolicitud")}</Button>
         </div>
       </div>
 
       {/* KPIs */}
       {kpis && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          <KpiCard label="Total" value={kpis.total} color="border-white/5" />
-          <KpiCard label="Recibidas" value={kpis.recibidas} color="border-blue-500/20" />
-          <KpiCard label="En revisión" value={kpis.enRevision} color="border-amber-500/20" />
-          <KpiCard label="Pend. docs" value={kpis.pendienteDocumentacion} color="border-orange-500/20" />
-          <KpiCard label="Incidencias" value={kpis.incidencias} color="border-red-500/20" />
-          <KpiCard label="Cerradas" value={kpis.cerradas} color="border-gray-500/20" />
+          <KpiCard label={t("crmCancellations.total")} value={kpis.total} color="border-white/5" />
+          <KpiCard label={t("crmCancellations.recibidas")} value={kpis.recibidas} color="border-blue-500/20" />
+          <KpiCard label={t("crmCancellations.enRevision")} value={kpis.enRevision} color="border-amber-500/20" />
+          <KpiCard label={t("crmCancellations.pendDocs")} value={kpis.pendienteDocumentacion} color="border-orange-500/20" />
+          <KpiCard label={t("crmCancellations.incidencias")} value={kpis.incidencias} color="border-red-500/20" />
+          <KpiCard label={t("crmCancellations.cerradas")} value={kpis.cerradas} color="border-gray-500/20" />
         </div>
       )}
 
       {/* Segunda fila KPIs resolución */}
       {kpis && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <KpiCard label="Aceptadas total" value={kpis.resueltasTotal} color="border-green-500/20" />
-          <KpiCard label="Aceptadas parcial" value={kpis.resueltasParcial} color="border-teal-500/20" />
-          <KpiCard label="Rechazadas" value={kpis.rechazadas} color="border-red-500/20" />
-          <KpiCard label={voc.licensed ? "Vales enviados" : "Bonos enviados"} value={kpis.compensadasBono} color="border-purple-500/20" />
+          <KpiCard label={t("crmCancellations.aceptadasTotal")} value={kpis.resueltasTotal} color="border-green-500/20" />
+          <KpiCard label={t("crmCancellations.aceptadasParcial")} value={kpis.resueltasParcial} color="border-teal-500/20" />
+          <KpiCard label={t("crmCancellations.rechazadas")} value={kpis.rechazadas} color="border-red-500/20" />
+          <KpiCard label={voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")} value={kpis.compensadasBono} color="border-purple-500/20" />
         </div>
       )}
 
@@ -386,62 +378,62 @@ export default function CancellationsManager() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, email, localizador..."
+            placeholder={t("crmCancellations.buscarPorNombreEmail")}
             className="pl-9 bg-[#111] border-white/10 text-white placeholder:text-gray-600"
           />
         </div>
         <Select value={opFilter} onValueChange={setOpFilter}>
           <SelectTrigger className="w-44 bg-[#111] border-white/10 text-gray-300">
-            <SelectValue placeholder="Estado operativo" />
+            <SelectValue placeholder={t("crmCancellations.estadoOperativo")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos los estados</SelectItem>
-            <SelectItem value="recibida">Recibida</SelectItem>
-            <SelectItem value="en_revision">En revisión</SelectItem>
-            <SelectItem value="pendiente_documentacion">Pend. documentación</SelectItem>
-            <SelectItem value="pendiente_decision">Pend. decisión</SelectItem>
-            <SelectItem value="resuelta">Resuelta</SelectItem>
-            <SelectItem value="cerrada">Cerrada</SelectItem>
-            <SelectItem value="incidencia">Incidencia</SelectItem>
+            <SelectItem value="all">{t("crmCancellations.todosLosEstados")}</SelectItem>
+            <SelectItem value="recibida">{t("crmCancellations.recibida")}</SelectItem>
+            <SelectItem value="en_revision">{t("crmCancellations.enRevision")}</SelectItem>
+            <SelectItem value="pendiente_documentacion">{t("crmCancellations.pendDocumentacion")}</SelectItem>
+            <SelectItem value="pendiente_decision">{t("crmCancellations.pendDecision")}</SelectItem>
+            <SelectItem value="resuelta">{t("crmCancellations.resuelta")}</SelectItem>
+            <SelectItem value="cerrada">{t("crmCancellations.cerrada")}</SelectItem>
+            <SelectItem value="incidencia">{t("crmCancellations.incidencia")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={resFilter} onValueChange={setResFilter}>
           <SelectTrigger className="w-44 bg-[#111] border-white/10 text-gray-300">
-            <SelectValue placeholder="Resolución" />
+            <SelectValue placeholder={t("crmCancellations.resolucion")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Toda resolución</SelectItem>
-            <SelectItem value="sin_resolver">Sin resolver</SelectItem>
-            <SelectItem value="rechazada">Rechazada</SelectItem>
-            <SelectItem value="aceptada_total">Aceptada total</SelectItem>
-            <SelectItem value="aceptada_parcial">Aceptada parcial</SelectItem>
+            <SelectItem value="all">{t("crmCancellations.todaResolucion")}</SelectItem>
+            <SelectItem value="sin_resolver">{t("crmCancellations.sinResolver")}</SelectItem>
+            <SelectItem value="rechazada">{t("crmCancellations.rechazada")}</SelectItem>
+            <SelectItem value="aceptada_total">{t("crmCancellations.aceptadaTotal")}</SelectItem>
+            <SelectItem value="aceptada_parcial">{t("crmCancellations.aceptadaParcial")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={finFilter} onValueChange={setFinFilter}>
           <SelectTrigger className="w-44 bg-[#111] border-white/10 text-gray-300">
-            <SelectValue placeholder="Estado financiero" />
+            <SelectValue placeholder={t("crmCancellations.estadoFinanciero")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todo financiero</SelectItem>
-            <SelectItem value="sin_compensacion">Sin compensación</SelectItem>
-            <SelectItem value="pendiente_devolucion">Pend. devolución</SelectItem>
-            <SelectItem value="devuelta_economicamente">Devuelta</SelectItem>
-            <SelectItem value="pendiente_bono">Pend. bono</SelectItem>
-            <SelectItem value="compensada_bono">Bono enviado</SelectItem>
-            <SelectItem value="incidencia_economica">Incidencia ec.</SelectItem>
+            <SelectItem value="all">{t("crmCancellations.todoFinanciero")}</SelectItem>
+            <SelectItem value="sin_compensacion">{t("crmCancellations.sinCompensacion")}</SelectItem>
+            <SelectItem value="pendiente_devolucion">{t("crmCancellations.pendDevolucion")}</SelectItem>
+            <SelectItem value="devuelta_economicamente">{t("crmCancellations.devuelta")}</SelectItem>
+            <SelectItem value="pendiente_bono">{t("crmCancellations.pendBono")}</SelectItem>
+            <SelectItem value="compensada_bono">{t("crmCancellations.bonoEnviado")}</SelectItem>
+            <SelectItem value="incidencia_economica">{t("crmCancellations.incidenciaEc")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={reasonFilter} onValueChange={setReasonFilter}>
           <SelectTrigger className="w-40 bg-[#111] border-white/10 text-gray-300">
-            <SelectValue placeholder="Motivo" />
+            <SelectValue placeholder={t("crmCancellations.motivo")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos los motivos</SelectItem>
-            <SelectItem value="meteorologicas">Meteorológicas</SelectItem>
-            <SelectItem value="accidente">Accidente</SelectItem>
-            <SelectItem value="enfermedad">Enfermedad</SelectItem>
-            <SelectItem value="desistimiento">Desistimiento</SelectItem>
-            <SelectItem value="otra">Otra</SelectItem>
+            <SelectItem value="all">{t("crmCancellations.todosLosMotivos")}</SelectItem>
+            <SelectItem value="meteorologicas">{t("crmCancellations.meteorologicas")}</SelectItem>
+            <SelectItem value="accidente">{t("crmCancellations.accidente")}</SelectItem>
+            <SelectItem value="enfermedad">{t("crmCancellations.enfermedad")}</SelectItem>
+            <SelectItem value="desistimiento">{t("crmCancellations.desistimiento")}</SelectItem>
+            <SelectItem value="otra">{t("crmCancellations.otra")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -453,30 +445,28 @@ export default function CancellationsManager() {
             <thead>
               <tr className="border-b border-white/5">
                 <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">#</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Solicitante</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Reserva</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Motivo</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Fecha actividad</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Estado op.</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Resolución</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Financiero</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Fecha</th>
-                <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">Acciones</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.solicitante")}</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.reserva")}</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.motivo")}</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.fechaActividad")}</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.estadoOp")}</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.resolucion")}</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.financiero")}</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.fecha")}</th>
+                <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.acciones")}</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-500">
-                    Cargando solicitudes...
-                  </td>
+                  <td colSpan={10} className="text-center py-12 text-gray-500">{t("crmCancellations.cargandoSolicitudes")}</td>
                 </tr>
               )}
               {!isLoading && rows.length === 0 && (
                 <tr>
                   <td colSpan={10} className="text-center py-12">
                     <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                    <p className="text-gray-500">No hay solicitudes que coincidan con los filtros</p>
+                    <p className="text-gray-500">{t("crmCancellations.noHaySolicitudesQue")}</p>
                   </td>
                 </tr>
               )}
@@ -500,10 +490,10 @@ export default function CancellationsManager() {
                     <div className="flex items-center gap-1.5">
                       <ReasonIcon reason={row.reason} />
                       <span className="text-gray-300 text-xs capitalize">
-                        {row.reason === "meteorologicas" ? "Meteorológicas" :
-                         row.reason === "accidente" ? "Accidente" :
-                         row.reason === "enfermedad" ? "Enfermedad" :
-                         row.reason === "desistimiento" ? "Desistimiento" : "Otra"}
+                        {row.reason === "meteorologicas" ? t("crmCancellations.meteorologicas") :
+                         row.reason === "accidente" ? t("crmCancellations.accidente") :
+                         row.reason === "enfermedad" ? t("crmCancellations.enfermedad") :
+                         row.reason === "desistimiento" ? t("crmCancellations.desistimiento") : t("crmCancellations.otra")}
                       </span>
                     </div>
                   </td>
@@ -518,21 +508,21 @@ export default function CancellationsManager() {
                     <FinancialBadge status={row.financialStatus as FinancialStatus} />
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-xs">
-                    {new Date(row.createdAt).toLocaleDateString("es-ES")}
+                    {format.date(row.createdAt, {})}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => setSelectedId(row.id)}
                         className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-                        title="Ver detalle"
+                        title={t("crmCancellations.verDetalle")}
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => setDeleteId(row.id)}
                         className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        title="Eliminar"
+                        title={t("crmCancellations.eliminar")}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -545,7 +535,7 @@ export default function CancellationsManager() {
         </div>
         {rows.length > 0 && (
           <div className="px-4 py-3 border-t border-white/5 text-xs text-gray-500">
-            {rows.length} solicitud{rows.length !== 1 ? "es" : ""}
+            {t("crmCancellations.solicitud2", { rowsCount: rows.length })}
           </div>
         )}
       </div>
@@ -580,27 +570,23 @@ export default function CancellationsManager() {
                 <Trash2 className="w-5 h-5 text-red-400" />
               </div>
               <div>
-                <h3 className="text-white font-semibold">Eliminar solicitud</h3>
-                <p className="text-gray-400 text-sm">Solicitud #{deleteId}</p>
+                <h3 className="text-white font-semibold">{t("crmCancellations.eliminarSolicitud")}</h3>
+                <p className="text-gray-400 text-sm">{t("crmCancellations.solicitud3", { deleteId })}</p>
               </div>
             </div>
-            <p className="text-gray-400 text-sm mb-6">
-              Esta acción eliminará permanentemente la solicitud y todo su historial. No se puede deshacer.
-            </p>
+            <p className="text-gray-400 text-sm mb-6">{t("crmCancellations.estaAccionEliminaraPermanentem")}</p>
             <div className="flex gap-3">
               <Button
                 variant="outline"
                 className="flex-1 border-white/10 text-gray-400"
                 onClick={() => setDeleteId(null)}
-              >
-                Cancelar
-              </Button>
+              >{t("crmCancellations.cancelar")}</Button>
               <Button
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white"
                 onClick={() => deleteRequest.mutate({ id: deleteId })}
                 disabled={deleteRequest.isPending}
               >
-                {deleteRequest.isPending ? "Eliminando..." : "Eliminar"}
+                {deleteRequest.isPending ? t("crmCancellations.eliminando") : t("crmCancellations.eliminar")}
               </Button>
             </div>
           </div>

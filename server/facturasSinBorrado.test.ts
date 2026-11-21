@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
+import { srcShows, esDictText } from "./i18nSource";
 const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/CRMDashboard.tsx"), "utf8");
 const router = fs.readFileSync(path.resolve(__dirname, "routers/crm.ts"), "utf8");
 
@@ -18,8 +19,8 @@ describe("acciones de las facturas emitidas", () => {
   });
 
   it("se mantienen «Emitir abono» y «Anular factura»", () => {
-    expect(src).toContain('title="Emitir abono"');
-    expect(src).toContain('title="Anular factura"');
+    expect(srcShows(src, "Emitir abono")).toBe(true);
+    expect(srcShows(src, "Anular factura")).toBe(true);
   });
 
   it("el servidor sigue rechazando el borrado de facturas emitidas", () => {

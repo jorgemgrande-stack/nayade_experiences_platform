@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ordersWithoutInvoice } from "./invoiceAudit";
 
+import { srcShows, esDictText } from "./i18nSource";
 const paid = [
   { id: 1, quoteId: null, invoiceId: null }, // venta de caja en efectivo con ticket
   { id: 2, quoteId: null, invoiceId: null }, // pedido cobrado sin documento
@@ -29,6 +30,6 @@ describe("pedidos cobrados sin factura", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/CRMDashboard.tsx"), "utf8");
     expect(src).not.toContain("Auditoría — se detectaron incidencias");
     expect(src).not.toContain("requieren factura manual");
-    expect(src).toContain("Revisión de facturación");
+    expect(esDictText()).toContain("Revisión de facturación");
   });
 });
