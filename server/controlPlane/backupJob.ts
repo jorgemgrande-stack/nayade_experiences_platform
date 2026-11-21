@@ -63,7 +63,7 @@ import { estimateMonthly } from "../_core/ops/backupEstimate";
 import { rebuildPlatform } from "../_core/ops/disasterRecovery";
 import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers } from "../_core/provisioning/servers";
 import { MysqlSchemaApplier, databaseNameFor } from "../_core/provisioning/mysqlAdapters";
-import { APPROVED_PURGE_PLAN_HASH, applyPurge, planPurge, purgeDatabaseDroppers, purgeMediaDeleter, verifyPurge } from "../_core/ops/purgeTestCompanies";
+import { applyPurge, planPurge, purgeDatabaseDroppers, purgeMediaDeleter, verifyPurge } from "../_core/ops/purgeTestCompanies";
 import { migrateAllTenants } from "../_core/ops/tenantMigrations";
 import { dataExportSchemaStatus } from "../_core/ops/dataExportCheck";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
@@ -418,6 +418,14 @@ async function main() {
         // Purga definitiva de las empresas de prueba (lista cerrada en el código, autorizada por el propietario):
         // simulación siempre; con --apply ejecuta el plan simulado y comprueba que no queda nada ni referencias huérfanas
         const apply = flag("--apply");
+        // Huella del plan autorizado por Dirección (--expected-plan-hash=<64 hex>) y referencia de la ejecución (--audit-ref=<run>:<actor>)
+        const argOf = (name: string) => args.find((a) => a.startsWith(`${name}=`))?.slice(name.length + 1);
+        const expectedPlanHash = argOf("--expected-plan-hash");
+        const auditRef = argOf("--audit-ref");
+        if (expectedPlanHash !== undefined && !/^[0-9a-f]{64}$/.test(expectedPlanHash)) die("--expected-plan-hash debe ser un sha256 en hexadecimal minúsculas (64 caracteres)");
+        if (auditRef !== undefined && !/^[0-9]+:[A-Za-z0-9-]{1,39}$/.test(auditRef)) die("--audit-ref no válido (<id de ejecución>:<usuario>)");
+        // Borrar exige la huella autorizada y la referencia de auditoría: sin ellas no se llega ni a calcular el plan
+        if (apply && (!expectedPlanHash || !auditRef)) die("--apply exige --expected-plan-hash y --audit-ref: no se borra nada");
         const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL");
         const crmPool = mysql.createPool({ uri: crmUrl, connectionLimit: 2 });
         try {
@@ -442,8 +450,8 @@ async function main() {
             yaNoEstan: plan.missing,
             yaNoEstanEmpresas: plan.missingCompanies,
             planHash: plan.planHash,
-            planHashAutorizado: APPROVED_PURGE_PLAN_HASH,
-            coincideConAutorizado: plan.planHash === APPROVED_PURGE_PLAN_HASH,
+            planHashEsperado: expectedPlanHash ?? null,
+            coincideConEsperado: expectedPlanHash ? plan.planHash === expectedPlanHash : null,
             aceptacionesPurgadas: plan.acceptanceEvidence,
             registros: plan.steps.map((s) => ({ base: s.db, tabla: s.table, filas: s.rows })),
             basesDeDatos: plan.databases,
@@ -455,18 +463,19 @@ async function main() {
             seConservan: plan.kept,
           }));
           if (plan.problems.length) die("La simulación tiene problemas: no se purga nada");
+          // Bloqueo previo a cualquier borrado: la huella recalculada debe ser exactamente la autorizada (también en la simulación, para fallar pronto)
+          if (expectedPlanHash && plan.planHash !== expectedPlanHash) die(`El plan recalculado (${plan.planHash}) no coincide con el autorizado (${expectedPlanHash}): no se borra nada`);
           if (!apply) break;
-          // Bloqueo previo a cualquier borrado: la huella recalculada debe ser exactamente la autorizada
-          if (plan.planHash !== APPROVED_PURGE_PLAN_HASH) die(`El plan recalculado (${plan.planHash}) no coincide con el autorizado (${APPROVED_PURGE_PLAN_HASH}): no se borra nada`);
           if (!dbs && plan.databases.some((x) => x.action === "drop")) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL para borrar las bases de los tenants");
           // Borrado de las bases (propias y restauradas) desde el módulo de la purga: solo se ejecuta con esta orden
           const done = await applyPurge(
             { crm: crmPool, registry: pool, ...purgeDatabaseDroppers(dbs, servers ? servers.aliases().map((a) => servers.admin(a)) : null), servers: resources.servers, deleteMedia: purgeMediaDeleter(process.env) },
             plan,
-            APPROVED_PURGE_PLAN_HASH,
+            expectedPlanHash!,
+            auditRef!,
           );
           const check = await verifyPurge({ crm: crmPool, registry: pool, resources });
-          console.log(JSON.stringify({ aplicado: true, planHash: plan.planHash, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check }));
+          console.log(JSON.stringify({ aplicado: true, planHash: plan.planHash, planHashAutorizado: expectedPlanHash, referenciaAuditoria: auditRef, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check }));
           if (!check.ok) process.exitCode = 1;
         } finally {
           await crmPool.end();
