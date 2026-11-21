@@ -239,6 +239,7 @@ import { getBusinessEmail, internalNoticeEmail } from "./config";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
 import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
 import { notificationsRouter } from "./routers/notifications";
+import { uiLocaleRouter } from "./routers/uiLocale";
 import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
@@ -335,6 +336,7 @@ export const appRouter = router({
   cardTerminalOperations: cardTerminalOperationsRouter,
   cardTerminalBatches: cardTerminalBatchesRouter,
   notifications: notificationsRouter,
+  uiLocale: uiLocaleRouter,
   dailyControl: dailyControlRouter,
   emailIngestion: emailIngestionRouter,
   config: configRouter,
