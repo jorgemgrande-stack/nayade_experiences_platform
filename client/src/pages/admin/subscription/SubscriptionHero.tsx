@@ -7,6 +7,7 @@ import { Link } from "wouter";
 import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, CreditCard, Hourglass, Layers, Rocket, ShieldCheck, TrendingUp, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 import { planPresentation, type PlanIconKey } from "@shared/planPresentation";
 import type { HeaderAction, HeaderFact, SubscriptionHeaderModel } from "@shared/subscriptionHeader";
 
@@ -25,6 +26,7 @@ export function SubscriptionHero({
   /** Acción en curso (abrir el portal). */
   busy?: HeaderAction["kind"] | null;
 }) {
+  const { t } = useI18n();
   const pr = planPresentation({ key: planKey ?? "", tagline: null });
   const Icon = PLAN_ICONS[pr.icon];
   return (
@@ -32,8 +34,8 @@ export function SubscriptionHero({
       <div className="relative space-y-5">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/80">Elephant Core</p>
-          <h1 className="mt-1 break-words text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Suscripción</h1>
-          <p className="mt-1 max-w-2xl text-sm text-white/85 sm:text-base">Consulta tu plan, compara, contrata y gestiona tu suscripción. Para ampliar tu plataforma, visita el marketplace.</p>
+          <h1 className="mt-1 break-words text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{t("subscription.hero.title")}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-white/85 sm:text-base">{t("subscription.hero.intro")}</p>
         </div>
 
         {model && (
@@ -101,6 +103,7 @@ export function SubscriptionHero({
 }
 
 function HeroButton({ action, onAction, busy, variant }: { action: HeaderAction; onAction: (a: HeaderAction) => void; busy: boolean; variant: "primary" | "outline" }) {
+  const { t } = useI18n();
   const cls =
     variant === "primary"
       ? "cx-cta h-11 rounded-xl px-5 font-semibold shadow-lg shadow-black/30 hover:bg-transparent"
@@ -117,7 +120,7 @@ function HeroButton({ action, onAction, busy, variant }: { action: HeaderAction;
   }
   return (
     <Button type="button" variant={variant === "primary" ? "default" : "outline"} className={cls} disabled={busy} onClick={() => onAction(action)}>
-      {busy ? "Abriendo…" : action.label}
+      {busy ? t("subscription.common.opening") : action.label}
       {action.kind === "portal" ? <ArrowUpRight className="h-4 w-4" aria-hidden="true" /> : <ArrowRight className="h-4 w-4" aria-hidden="true" />}
     </Button>
   );

@@ -24,6 +24,9 @@ import { capabilitiesOfTier } from "./catalog/capabilities";
 import { mergeRecent } from "./coreHomeDb";
 import fs from "node:fs";
 import path from "node:path";
+import { readFileSync as __readEs } from "node:fs";
+const esDictText = () => ["setup", "help"].map((n) => __readEs(new URL(`../shared/i18n/locales/es/${n}.ts`, import.meta.url), "utf8")).join("\n");
+;
 
 const NOW = Date.UTC(2026, 9, 31, 9);
 const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, documents: 0, webEdited: false, comms: false };
@@ -46,7 +49,8 @@ describe("un único número de pasos (bienvenida, asistente e Inicio)", () => {
     expect(src("pages/admin/home/EssentialHome.tsx")).toContain("steps={configurationSteps(w.plan.steps).length}");
     const wizard = src("pages/admin/setup/PrimerosPasos.tsx");
     expect(wizard).toContain("configurationSteps(steps).length");
-    expect(wizard).toContain("Paso ${stepNumber} de ${configCount}");
+    expect(wizard).toContain('t("setup.stepOf", { n: stepNumber, total: configCount })');
+    expect(esDictText()).toContain("Paso {n} de {total}");
     expect(wizard).not.toContain("d.plan.total} pasos");
     expect(src("components/onboarding/SetupStatusCard.tsx")).toContain("configurationSteps(plan.steps)");
     expect(src("pages/admin/setup/PrimerosPasosSteps.tsx")).toContain("const rest = configurationSteps(steps)");

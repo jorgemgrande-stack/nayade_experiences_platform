@@ -6,6 +6,9 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { singleLineQuoteAmounts } from "../client/src/lib/quoteAmounts";
+import { readFileSync as __readEs } from "node:fs";
+const esDictText = () => ["setup", "help"].map((n) => __readEs(new URL(`../shared/i18n/locales/es/${n}.ts`, import.meta.url), "utf8")).join("\n");
+;
 
 describe("presupuesto de primeros pasos", () => {
   it("PVP con IVA incluido: total = PVP, base = PVP − IVA incluido", () => {
@@ -24,7 +27,8 @@ describe("primeros pasos en móvil", () => {
   it("la rejilla no deja que el índice de pasos ensanche la página (390 px)", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/setup/PrimerosPasos.tsx"), "utf8");
     expect(src).toContain('className="grid grid-cols-1 gap-5 lg:grid-cols-[240px_minmax(0,1fr)]"');
-    expect(src).toContain('<nav aria-label="Pasos de Primeros pasos" className="min-w-0">');
+    expect(src).toContain('<nav aria-label={t("setup.stepsNav")} className="min-w-0">');
+    expect(esDictText()).toContain("Pasos de Primeros pasos");
     expect(src).toContain('<ol className="relative flex gap-2 overflow-x-auto');
   });
 });

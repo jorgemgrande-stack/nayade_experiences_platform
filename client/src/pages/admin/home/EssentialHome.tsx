@@ -21,19 +21,14 @@ import { TrialFirstSteps } from "@/components/onboarding/TrialFirstSteps";
 import { PLANS_HREF, trialConversionHref } from "@shared/subscriptionRecovery";
 import { configurationSteps, shouldOpenSetupWizard } from "@shared/setupWizard";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TONE_BADGE, TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 import { OperationalPanelCard } from "./OperationalPanelCard";
 
-const FEED_LABELS: Record<string, string> = {
-  lead: "Oportunidades sin atender",
-  quote: "Presupuestos enviados sin respuesta",
-  cancellation: "Solicitudes de anulación",
-  pending_payment: "Cobros vencidos",
-  tpv_alert: "Avisos de caja y TPV",
-  upcoming_reservation: "Pedidos para mañana",
-  task: "Tareas para hoy o vencidas",
-  community: "Comunidades por revisar",
-};
+/** Texto con partes en negrita marcadas como <b>…</b> (las traducciones colocan la negrita donde su gramática la pide). */
+function rich(text: string): React.ReactNode {
+  return text.split(/(<b>.*?<\/b>)/g).map((part, i) => (part.startsWith("<b>") ? <strong key={i}>{part.slice(3, -4)}</strong> : part));
+}
 
 const RECENT_ICONS = { client: Users, lead: Target, quote: FileText, order: ShoppingCart, invoice: Receipt, sale: Receipt } as const;
 
@@ -52,8 +47,6 @@ function Section({ id, title, description, children, className, action }: { id: 
   );
 }
 
-const eur = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" });
-
 /**
  * Indicador real. Con valor, enlaza al listado; a cero, explica qué hacer y ofrece la acción (si el plan y el rol la
  * permiten).
@@ -67,6 +60,7 @@ function Indicator({ label, value, detail, href, empty, cta }: {
   empty: string | null;
   cta?: { label: string; href: string } | null;
 }) {
+  const { t } = useI18n();
   return (
     <div className="min-w-0 rounded-xl border border-border p-4 flex flex-col">
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -75,7 +69,7 @@ function Indicator({ label, value, detail, href, empty, cta }: {
         <>
           {detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}
           <Link href={href} className="mt-auto pt-2 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-            Ver detalle <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+            {t("home.indicator.seeDetail")} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
           </Link>
         </>
       ) : (
@@ -92,11 +86,20 @@ function Indicator({ label, value, detail, href, empty, cta }: {
   );
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-const dateFmt = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const ACTIVITY_DATE: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
 
 export default function EssentialHome() {
+  const { t, format: f } = useI18n();
+  const FEED_LABELS: Record<string, string> = {
+    lead: t("home.feed.lead"),
+    quote: t("home.feed.quote"),
+    cancellation: t("home.feed.cancellation"),
+    pending_payment: t("home.feed.pending_payment"),
+    tpv_alert: t("home.feed.tpv_alert"),
+    upcoming_reservation: t("home.feed.upcoming_reservation"),
+    task: t("home.feed.task"),
+    community: t("home.feed.community"),
+  };
   const { user } = useAuth();
   const role = (user as { role?: string } | null)?.role ?? "user";
   const isAdmin = role === "admin";
@@ -134,14 +137,14 @@ export default function EssentialHome() {
 
   // Acción de venta: la caja si se tiene; si no, un pedido
   const saleAction =
-    canCash && sub.canWrite("bill-cash") ? { label: "Nueva venta", href: "/admin/tpv" }
-      : canOrders && sub.canWrite("shop-orders") ? { label: "Nueva venta", href: "/admin/crm?tab=reservations&nuevo=1" }
+    canCash && sub.canWrite("bill-cash") ? { label: t("home.quick.newSale"), href: "/admin/tpv" }
+      : canOrders && sub.canWrite("shop-orders") ? { label: t("home.quick.newSale"), href: "/admin/crm?tab=reservations&nuevo=1" }
         : null;
-  const invoiceAction = canInvoices && sub.canWrite("bill-invoices") ? { label: "Nueva factura", href: "/admin/crm?tab=invoices&nuevo=1" } : null;
-  const quoteAction = canQuotes && sub.canWrite("crm-quotes") ? { label: "Nuevo presupuesto", href: "/admin/crm?tab=quotes&nuevo=1" } : null;
-  const clientAction = canClients && sub.canWrite("crm-contacts") ? { label: "Nuevo cliente", href: "/admin/crm/clientes?nuevo=1" } : null;
-  const productAction = canCatalog && sub.canWrite("shop-catalog") ? { label: "Nuevo producto", href: "/admin/productos/experiencias?nuevo=1" } : null;
-  const webAction = canWeb ? { label: "Editar mi web", href: "/admin/studio" } : null;
+  const invoiceAction = canInvoices && sub.canWrite("bill-invoices") ? { label: t("home.quick.newInvoice"), href: "/admin/crm?tab=invoices&nuevo=1" } : null;
+  const quoteAction = canQuotes && sub.canWrite("crm-quotes") ? { label: t("home.quick.newQuote"), href: "/admin/crm?tab=quotes&nuevo=1" } : null;
+  const clientAction = canClients && sub.canWrite("crm-contacts") ? { label: t("home.quick.newClient"), href: "/admin/crm/clientes?nuevo=1" } : null;
+  const productAction = canCatalog && sub.canWrite("shop-catalog") ? { label: t("home.quick.newProduct"), href: "/admin/productos/experiencias?nuevo=1" } : null;
+  const webAction = canWeb ? { label: t("home.quick.editWeb"), href: "/admin/studio" } : null;
   const quick = [
     saleAction && { ...saleAction, icon: ShoppingCart },
     invoiceAction && { ...invoiceAction, icon: ReceiptText },
@@ -159,14 +162,14 @@ export default function EssentialHome() {
     notices.push({
       key: "trial",
       tone: data.trial.daysLeft <= 3 ? "warn" : "info",
-      text: <>Estás probando <strong>{planName}</strong>: te {data.trial.daysLeft === 1 ? "queda" : "quedan"} <strong>{data.trial.daysLeft} {data.trial.daysLeft === 1 ? "día" : "días"}</strong>. Si contratas, conservas todo lo que hayas creado.</>,
+      text: <>{rich(t("home.notice.trial", { plan: planName, days: data.trial.daysLeft }))}</>,
       href: trialConversionHref(data.plan?.key, conversion.data?.enabled),
       // Sin contratación desde la prueba (o mientras se comprueba) se ofrecen los planes, sin prometer el pago aquí
-      cta: trialConversionHref(data.plan?.key, conversion.data?.enabled) === PLANS_HREF ? "Ver los planes" : `Contratar ${planName}`,
+      cta: trialConversionHref(data.plan?.key, conversion.data?.enabled) === PLANS_HREF ? t("home.notice.seePlans") : t("home.notice.contract", { plan: planName }),
     });
   }
   if (w && !w.facts.fiscal && sub.can("bill-invoices")) {
-    notices.push({ key: "fiscal", tone: "warn", text: "Faltan los datos fiscales de tu empresa: sin ellos no podrás emitir facturas.", href: SETUP_WIZARD_PATH, cta: "Completarlos" });
+    notices.push({ key: "fiscal", tone: "warn", text: t("home.notice.fiscal"), href: SETUP_WIZARD_PATH, cta: t("home.notice.fiscalCta") });
   }
 
   // Indicadores: solo los contratados (el servidor devuelve null en los que no) y visibles para el rol
@@ -175,46 +178,46 @@ export default function EssentialHome() {
   if (ind?.sales && (canOrders || canCash)) {
     const { today, month } = ind.sales;
     cards.push({
-      key: "today", label: "Ventas de hoy", value: eur.format(today.amount), href: "/admin/crm?tab=reservations",
-      detail: plural(today.count, "venta cobrada", "ventas cobradas"),
-      empty: today.count === 0 ? "Aún no has cobrado ninguna venta hoy." : null, cta: saleAction,
+      key: "today", label: t("home.cards.salesToday"), value: f.currency(today.amount), href: "/admin/crm?tab=reservations",
+      detail: t("home.cards.paidSales", { n: today.count }),
+      empty: today.count === 0 ? t("home.cards.emptyToday") : null, cta: saleAction,
     });
     cards.push({
-      key: "month", label: "Ventas del mes", value: eur.format(month.amount), href: sub.can("bill-reports") && isAdmin ? "/admin/contabilidad/dashboard" : "/admin/crm?tab=reservations",
-      detail: plural(month.count, "venta cobrada", "ventas cobradas"),
-      empty: month.count === 0 ? "Este mes aún no hay ventas cobradas. Cada venta en caja o pedido cobrado suma aquí." : null, cta: saleAction,
+      key: "month", label: t("home.cards.salesMonth"), value: f.currency(month.amount), href: sub.can("bill-reports") && isAdmin ? "/admin/contabilidad/dashboard" : "/admin/crm?tab=reservations",
+      detail: t("home.cards.paidSales", { n: month.count }),
+      empty: month.count === 0 ? t("home.cards.emptyMonth") : null, cta: saleAction,
     });
   }
   if (ind?.unpaidInvoices && canInvoices) {
     const x = ind.unpaidInvoices;
     cards.push({
-      key: "invoices", label: "Facturas pendientes de cobro", value: String(x.count), href: "/admin/crm?tab=invoices",
-      detail: `${eur.format(x.amount)} por cobrar`,
-      empty: x.count === 0 ? "No tienes facturas por cobrar. Las facturas emitidas que aún no se han pagado aparecen aquí." : null, cta: invoiceAction,
+      key: "invoices", label: t("home.cards.unpaidInvoices"), value: String(x.count), href: "/admin/crm?tab=invoices",
+      detail: t("home.cards.toCollect", { amount: f.currency(x.amount) }),
+      empty: x.count === 0 ? t("home.cards.emptyInvoices") : null, cta: invoiceAction,
     });
   }
   if (ind?.awaitingQuotes && canQuotes) {
     const x = ind.awaitingQuotes;
     cards.push({
-      key: "quotes", label: "Presupuestos sin respuesta", value: String(x.count), href: "/admin/crm?tab=quotes",
-      detail: `${eur.format(x.amount)} en presupuestos enviados`,
-      empty: x.count === 0 ? "No hay presupuestos enviados esperando respuesta del cliente." : null, cta: quoteAction,
+      key: "quotes", label: t("home.cards.awaitingQuotes"), value: String(x.count), href: "/admin/crm?tab=quotes",
+      detail: t("home.cards.sentQuotes", { amount: f.currency(x.amount) }),
+      empty: x.count === 0 ? t("home.cards.emptyQuotes") : null, cta: quoteAction,
     });
   }
   if (ind?.newClients && canClients) {
     const x = ind.newClients;
     cards.push({
-      key: "clients", label: "Clientes nuevos este mes", value: String(x.count), href: "/admin/crm/clientes",
-      empty: x.count === 0 ? "Este mes aún no has dado de alta clientes." : null, cta: clientAction,
+      key: "clients", label: t("home.cards.newClients"), value: String(x.count), href: "/admin/crm/clientes",
+      empty: x.count === 0 ? t("home.cards.emptyClients") : null, cta: clientAction,
     });
   }
   if (ind?.pendingOnlineOrders && canOrders) {
     const x = ind.pendingOnlineOrders;
     cards.push({
-      key: "online", label: "Pedidos online pendientes", value: String(x.count), href: "/admin/tienda/pedidos",
-      detail: "Cobrados y aún sin finalizar",
-      empty: x.count === 0 ? "No hay pedidos de tu tienda online por completar. Cuando un cliente compre en tu web, lo verás aquí." : null,
-      cta: productAction ? { label: "Revisar mis productos", href: "/admin/productos/experiencias" } : null,
+      key: "online", label: t("home.cards.onlineOrders"), value: String(x.count), href: "/admin/tienda/pedidos",
+      detail: t("home.cards.onlineDetail"),
+      empty: x.count === 0 ? t("home.cards.emptyOnline") : null,
+      cta: productAction ? { label: t("home.cards.reviewProducts"), href: "/admin/productos/experiencias" } : null,
     });
   }
 
@@ -226,13 +229,13 @@ export default function EssentialHome() {
     <AdminLayout>
       <div className="max-w-6xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{firstName ? `Hola, ${firstName}` : "Inicio"}</h1>
-          <p className="text-sm text-muted-foreground">Lo que está pasando en tu negocio y lo que tienes pendiente.</p>
+          <h1 className="text-2xl font-bold text-foreground">{firstName ? t("home.hello", { name: firstName }) : t("home.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("home.subtitle")}</p>
         </div>
 
         {/* Avisos */}
         {notices.length > 0 && (
-          <div className="space-y-2" role="region" aria-label="Avisos">
+          <div className="space-y-2" role="region" aria-label={t("home.notice.aria")}>
             {notices.map((n) => (
               <div
                 key={n.key}
@@ -258,7 +261,7 @@ export default function EssentialHome() {
 
         {/* Accesos rápidos */}
         {quick.length > 0 && (
-          <nav aria-label="Accesos rápidos" className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+          <nav aria-label={t("home.quick.aria")} className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
             {quick.map((q) => (
               <Link
                 key={q.href}
@@ -276,12 +279,12 @@ export default function EssentialHome() {
 
         {/* Indicadores del negocio (solo los contratados; a cero, con la acción que toca) */}
         {isSales && (indicators.isLoading || indicators.isError || cards.length > 0) && (
-          <Section id="home-indicators" title="Tu negocio" description="Cifras reales de tu empresa. Las ventas y los clientes nuevos cuentan desde el día 1 del mes.">
+          <Section id="home-indicators" title={t("home.business.title")} description={t("home.business.description")}>
             {indicators.isError ? (
-              <PanelError error={indicators.error} onRetry={() => indicators.refetch()} title="No se han podido cargar las cifras" />
+              <PanelError error={indicators.error} onRetry={() => indicators.refetch()} title={t("home.business.loadError")} />
             ) : indicators.isLoading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" aria-busy="true">
-                <span className="sr-only">Cargando cifras…</span>
+                <span className="sr-only">{t("home.business.loading")}</span>
                 {[0, 1, 2].map((i) => <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />)}
               </div>
             ) : (
@@ -301,18 +304,18 @@ export default function EssentialHome() {
 
           {/* Pendientes */}
           {isSales && (
-            <Section id="home-pending" title="Tareas y pendientes" description="Avisos que requieren tu atención.">
+            <Section id="home-pending" title={t("home.pending.title")} description={t("home.pending.description")}>
               {feed.isError ? (
-                <PanelError error={feed.error} onRetry={() => feed.refetch()} title="No se han podido cargar los pendientes" />
+                <PanelError error={feed.error} onRetry={() => feed.refetch()} title={t("home.pending.loadError")} />
               ) : feed.isLoading ? (
                 <div className="space-y-2" aria-busy="true">
-                  <span className="sr-only">Cargando pendientes…</span>
+                  <span className="sr-only">{t("home.pending.loading")}</span>
                   {[0, 1, 2].map((i) => <div key={i} className="h-10 rounded-lg bg-muted animate-pulse" />)}
                 </div>
               ) : pending.length === 0 && myTasks === 0 ? (
                 <div className="flex items-start gap-3 text-sm text-muted-foreground">
                   <Inbox className="w-5 h-5 shrink-0" aria-hidden="true" />
-                  <p>No tienes nada pendiente. Cuando entren oportunidades, haya presupuestos sin respuesta, cobros vencidos o tareas asignadas a ti, aparecerán aquí.</p>
+                  <p>{t("home.pending.none")}</p>
                 </div>
               ) : (
                 <ul className="divide-y divide-border">
@@ -326,9 +329,9 @@ export default function EssentialHome() {
                           {myTasks}
                         </span>
                         <span className="flex-1 text-foreground">
-                          Mis tareas pendientes
+                          {t("home.pending.myTasks")}
                           {(taskSummary.data?.mineOverdue ?? 0) > 0 && (
-                            <span className={cn("ml-1 font-medium", TONE_TEXT.danger)}>({taskSummary.data!.mineOverdue} {taskSummary.data!.mineOverdue === 1 ? "vencida" : "vencidas"})</span>
+                            <span className={cn("ml-1 font-medium", TONE_TEXT.danger)}>{t("home.pending.overdue", { n: taskSummary.data!.mineOverdue })}</span>
                           )}
                         </span>
                         <ArrowRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
@@ -361,16 +364,16 @@ export default function EssentialHome() {
 
           {/* Actividad reciente */}
           {isSales && (
-            <Section id="home-recent" title="Actividad reciente">
+            <Section id="home-recent" title={t("home.recent.title")}>
               {recent.isError ? (
-                <PanelError error={recent.error} onRetry={() => recent.refetch()} title="No se ha podido cargar la actividad" />
+                <PanelError error={recent.error} onRetry={() => recent.refetch()} title={t("home.recent.loadError")} />
               ) : recent.isLoading ? (
                 <div className="space-y-2" aria-busy="true">
-                  <span className="sr-only">Cargando actividad…</span>
+                  <span className="sr-only">{t("home.recent.loading")}</span>
                   {[0, 1, 2].map((i) => <div key={i} className="h-9 rounded-lg bg-muted animate-pulse" />)}
                 </div>
               ) : (recent.data?.items.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">Aún no hay movimientos. Aquí verás los últimos clientes, oportunidades, presupuestos, pedidos y facturas.</p>
+                <p className="text-sm text-muted-foreground">{t("home.recent.none")}</p>
               ) : (
                 <ul className="divide-y divide-border">
                   {recent.data!.items.map((it, i) => {
@@ -384,7 +387,7 @@ export default function EssentialHome() {
                             {it.detail && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{it.detail}</span>}
                           </span>
                           <time className="shrink-0 text-xs text-muted-foreground" dateTime={new Date(it.at).toISOString()}>
-                            {dateFmt.format(new Date(it.at))}
+                            {f.dateTime(it.at, ACTIVITY_DATE)}
                           </time>
                         </Link>
                       </li>
@@ -403,7 +406,7 @@ export default function EssentialHome() {
             className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Sparkles className="w-4 h-4 shrink-0 text-primary" aria-hidden="true" />
-            <span className="flex-1">Extensiones recomendadas para tu negocio</span>
+            <span className="flex-1">{t("home.extensions")}</span>
             <ArrowRight className="w-4 h-4 shrink-0" aria-hidden="true" />
           </Link>
         )}
