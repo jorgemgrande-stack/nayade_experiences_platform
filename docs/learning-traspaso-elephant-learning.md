@@ -96,10 +96,18 @@ la decisión del propietario tras confirmar la recuperación. Detalle: `docs/run
 - **Copia externa independiente de Railway**: NO existe; estrategia en el runbook (segundo destino, §16 de BACKUPS_Y_RECUPERACION).
   Hoy la pérdida de la cuenta de Railway no estaría cubierta.
 
-## 10. Simulacro de recuperación de ficheros (pendiente de autorización)
-Ver el runbook. Resumen: acción protegida `verificar-ficheros` (`only=t12-quantum-soulrise`), orden `verify-files` (solo comprueba
-SHA-256 y tamaño de cada objeto de la réplica, en memoria; no escribe disco ni bucket; no toca originales). Requiere que el PR de la
-herramienta esté fusionado y desplegado (`desplegar-restore-drill` al commit) y la aprobación del propietario.
+## 10. Simulacro de recuperación de ficheros (EJECUTADO y verificado el 21/11/2026)
+Ver el runbook (sección «Simulacro de recuperación de ficheros»). Resumen: acción protegida `verificar-ficheros` (`only=t12-quantum-soulrise`),
+orden `verify-files` (solo comprueba SHA-256 y tamaño de cada objeto de la réplica, en memoria; no escribe disco ni bucket; no toca originales).
+Herramienta: #922 (verificador) y #923 (espera al fin real, marca `FIN-ORDEN`, salida en líneas cortas).
+
+**Resultado:** ejecución 44923273875, 41 min 50 s, `FIN-ORDEN codigo=0`, COMPROBADO, **308 objetos / 16.717.089.249 B / 0 fallos**, digest
+`1378f5dc5a8f72a2d5c80ef179939f61c51039ff0098bdd4da5ad38e948a51d5`. De ellos, `learning-content/` = **107 objetos / 16.675.549.787 B** (la cifra
+de referencia); el resto es `media/` (47, 41.447.199 B) y `_meta/` (154). Cruce: 86/86 recursos con objeto, SHA-256 y tamaño idénticos;
+los 21 objetos sin recurso son los 21 huérfanos de `storage.reconcile`, copias exactas de contenido ya referenciado; siguen sin eliminar.
+
+**Cómo se repite:** `desplegar-restore-drill` al commit vigente y después `verificar-ficheros` (ambas protegidas). Un SUCCESS de Railway solo
+significa que el contenedor arrancó: el resultado válido es el registro con `FIN-ORDEN codigo=0` y «verify-files: COMPROBADO».
 
 ## 11. Incidencias pendientes (correcciones técnicas para la primera ventana)
 **A. Falso positivo `truncate` en el clasificador de cambios críticos.** `CRITICAL_CODE` (`scripts/deploy/esRailwayLib.ts`) usa
@@ -115,6 +123,11 @@ lanza la publicación completa: el run sale verde, pero production sigue sirvien
 `2310761b`). *Corrección propuesta*: que `solo` escriba únicamente `crm-live`/`web-live`; o que `disparar` ignore `live=success` si el
 Core del commit no figura publicado. *Mitigación documentada*: `docs/elephant-source/PROTOCOLO_PUBLICACION.md` («Incidencia 21/11/2026»):
 verificar con `estado` el SHA servido y, con CI verde, `gh workflow run publicacion.yml --ref integration/elephant-source`.
+**D. (CORREGIDA, #923) Simulacro sin resultado el 21/11.** La ejecución 44915427713 terminó en SUCCESS sin verificar nada: Railway da el
+despliegue por SUCCESS al arrancar el contenedor (reinicio NEVER) y el flujo devolvía el reposo (`list`) tras 20 s fijos, matando la
+orden a los ~54 s. Corregido: marca `FIN-ORDEN codigo=N`, espera de hasta 45 min, sin redespliegue si se agota, y comprobación del
+resultado (recuento, bytes, fallos, digest). El mismo defecto afectaría a cualquier orden larga del drill: las que no están en
+`DRILL_WAITS_FOR_END` siguen con la espera fija de 20 s.
 **C.** Tests locales en Windows fallan por CRLF (`deployElephantSource`, `publicacionContinua`, 4 casos); en CI (Linux) pasan o son informativos.
 Ojo: `deployElephantSource.test.ts` espera 14 órdenes de drill y la rama base ya tiene 17 (preexistente).
 
