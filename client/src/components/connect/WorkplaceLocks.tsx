@@ -7,8 +7,8 @@
  * Solo capacidades reales del catálogo (server/catalog/capabilities.ts) con su producto de Elephant Connect.
  */
 import { LockedFeature, productForCapability } from "./LockedFeature";
-import { useConnectCatalog, type ConnectCatalogItem } from "./useConnect";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useConnectCatalog, type ConnectCatalogItem } from "./useConnect";
 
 export const WORKPLACE_LOCKS = {
   /** CRM y seguimiento comercial: automatizaciones, bandeja de WhatsApp con IA y asistente de IA. */

@@ -37,8 +37,12 @@ describe("primeros pasos: paso Marca", () => {
   const src = fs.readFileSync(path.resolve(__dirname, "../client/src/components/brand/BrandIdentityEditor.tsx"), "utf8");
   it("sin cambios se puede continuar con la marca (paso hecho, no omitido); con cambios, «Guardar y continuar»", () => {
     expect(src).toContain('variant === "onboarding" && !dirty');
-    expect(src).toContain("Continuar con esta marca");
-    expect(src).toContain('variant === "onboarding" ? "Guardar y continuar" : "Guardar"');
+    // Los textos viven en el diccionario del editor (es/de); aquí se comprueba su uso y su contenido español
+    expect(src).toContain('t("brandEditor.actions.continueBrand")');
+    expect(src).toContain('variant === "onboarding" ? t("brandEditor.actions.saveContinue") : t("brandEditor.actions.save")');
+    const es = fs.readFileSync(path.resolve(__dirname, "../shared/i18n/locales/es/brandEditor.ts"), "utf8");
+    expect(es).toContain('continueBrand: "Continuar con esta marca"');
+    expect(es).toContain('saveContinue: "Guardar y continuar"');
   });
   it("en móvil las rejillas del editor no se ensanchan con su contenido", () => {
     expect(src).toContain('className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"');
