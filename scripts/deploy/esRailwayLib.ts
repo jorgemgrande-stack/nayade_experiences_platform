@@ -45,6 +45,9 @@ export const DRILL_ALLOWED: RegExp[] = [
   new RegExp(`^${BJ} catalog-commercial-(publish|revert)( --apply)?$`),
   // Derecho adquirido del TPV: licencia tpv-acquired-rights a quien tenía la caja del plan y marca de sembrado (simulación o --apply)
   new RegExp(`^${BJ} tpv-acquired-rights( --apply)?$`),
+  // Integridad de facturas y cobros por empresa (solo lectura, sin datos personales): reservas con factura inexistente, presupuestos
+  // con varias facturas, huecos de numeración, facturas huérfanas y cobros sin factura
+  new RegExp(`^${BJ} invoice-integrity${ONLY}$`),
   // Foto de solo lectura de suscripciones, pedidos, pagos y licencias (recuentos y huellas)
   new RegExp(`^${BJ} commercial-integrity$`),
 ];
@@ -631,6 +634,7 @@ export const ORDINARY_PRODUCTION_ACTIONS = [
   "catalogo-fichas-revertir",
   "catalogo-fichas-revertir-aplicar",
   "catalogo-fichas-integridad",
+  "integridad-facturas",
 ] as const;
 
 /** Estado que deja live con el commit del CRM que ha superado live (production solo publica ese). */

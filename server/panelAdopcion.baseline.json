@@ -1,0 +1,736 @@
+{
+  "components/admin/CustomRolesPanel.tsx": {
+    "coloresFijos": 6
+  },
+  "components/admin/MaintenanceModeControl.tsx": {
+    "coloresFijos": 1
+  },
+  "components/admin/SubscriptionRecoveryBanner.tsx": {
+    "geometriaAjena": 1
+  },
+  "components/admin/UsersManager.tsx": {
+    "coloresFijos": 62,
+    "textoMinusculo": 21
+  },
+  "components/admin/crm/CrmParts.tsx": {
+    "coloresFijos": 5
+  },
+  "components/admin/crm/CustomerEmailDelivery.tsx": {
+    "coloresFijos": 3
+  },
+  "components/admin/studio/Guide.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 6,
+    "textoMinusculo": 3
+  },
+  "components/admin/studio/Inspector.tsx": {
+    "hexEnClases": 5,
+    "textoMinusculo": 3
+  },
+  "components/admin/studio/LeftPanel.tsx": {
+    "coloresFijos": 2,
+    "hexEnClases": 19,
+    "textoMinusculo": 10
+  },
+  "components/admin/studio/PageSettings.tsx": {
+    "coloresFijos": 2,
+    "hexEnClases": 1,
+    "textoMinusculo": 1
+  },
+  "components/admin/studio/QuickInsert.tsx": {
+    "hexEnClases": 1,
+    "textoMinusculo": 3
+  },
+  "components/admin/studio/VersionsPanel.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 2,
+    "textoMinusculo": 1
+  },
+  "pages/admin/AdminDashboard.tsx": {
+    "coloresFijos": 214,
+    "hexEnClases": 9,
+    "textoMinusculo": 66
+  },
+  "pages/admin/Automatizaciones.tsx": {
+    "coloresFijos": 2,
+    "dialogosNativos": 1
+  },
+  "pages/admin/Copilot.tsx": {
+    "coloresFijos": 1,
+    "geometriaAjena": 1
+  },
+  "pages/admin/DocumentNumbersAdmin.tsx": {
+    "coloresFijos": 9
+  },
+  "pages/admin/EmailTemplatesManager.tsx": {
+    "coloresFijos": 15,
+    "textoMinusculo": 7
+  },
+  "pages/admin/MiCuenta.tsx": {
+    "coloresFijos": 2
+  },
+  "pages/admin/PdfTemplatesManager.tsx": {
+    "coloresFijos": 8,
+    "textoMinusculo": 4,
+    "geometriaAjena": 2
+  },
+  "pages/admin/ReviewsManager.tsx": {
+    "coloresFijos": 25,
+    "geometriaAjena": 1,
+    "dialogosNativos": 1
+  },
+  "pages/admin/accounting/AccountingDashboard.tsx": {
+    "coloresFijos": 74,
+    "textoMinusculo": 19,
+    "geometriaAjena": 20
+  },
+  "pages/admin/accounting/AccountingReports.tsx": {
+    "coloresFijos": 28
+  },
+  "pages/admin/accounting/BankMovementsManager.tsx": {
+    "coloresFijos": 55,
+    "dialogosNativos": 1
+  },
+  "pages/admin/accounting/CardTerminalBatchesManager.tsx": {
+    "coloresFijos": 52,
+    "dialogosNativos": 1
+  },
+  "pages/admin/accounting/CardTerminalConciliationDashboard.tsx": {
+    "coloresFijos": 22
+  },
+  "pages/admin/accounting/CardTerminalOperationsManager.tsx": {
+    "coloresFijos": 37,
+    "textoMinusculo": 2,
+    "dialogosNativos": 3
+  },
+  "pages/admin/accounting/CashRegisterManager.tsx": {
+    "coloresFijos": 69,
+    "dialogosNativos": 1
+  },
+  "pages/admin/accounting/CostCentersManager.tsx": {
+    "coloresFijos": 5,
+    "dialogosNativos": 1
+  },
+  "pages/admin/accounting/DailyControlCenter.tsx": {
+    "coloresFijos": 71,
+    "textoMinusculo": 16,
+    "geometriaAjena": 15
+  },
+  "pages/admin/accounting/ExpenseCategoriesManager.tsx": {
+    "coloresFijos": 2,
+    "dialogosNativos": 1
+  },
+  "pages/admin/accounting/ExpenseSuppliersManager.tsx": {
+    "coloresFijos": 2,
+    "dialogosNativos": 1
+  },
+  "pages/admin/accounting/ExpensesManager.tsx": {
+    "coloresFijos": 51,
+    "textoMinusculo": 13,
+    "geometriaAjena": 1,
+    "dialogosNativos": 2
+  },
+  "pages/admin/accounting/FinanceSyncSetup.tsx": {
+    "coloresFijos": 8,
+    "geometriaAjena": 5
+  },
+  "pages/admin/accounting/ProfitLossReport.tsx": {
+    "coloresFijos": 57,
+    "textoMinusculo": 8
+  },
+  "pages/admin/accounting/RecurringExpensesManager.tsx": {
+    "coloresFijos": 7,
+    "textoMinusculo": 3,
+    "dialogosNativos": 2
+  },
+  "pages/admin/accounting/TransactionsList.tsx": {
+    "coloresFijos": 21
+  },
+  "pages/admin/careNet/Bonos.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/careNet/Clientes.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/careNet/Reservas.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/cms/BlogManager.tsx": {
+    "coloresFijos": 7
+  },
+  "pages/admin/cms/GalleryManager.tsx": {
+    "coloresFijos": 1,
+    "textoMinusculo": 2
+  },
+  "pages/admin/cms/HomeModulesManager.tsx": {
+    "coloresFijos": 8,
+    "textoMinusculo": 4
+  },
+  "pages/admin/cms/Idiomas.tsx": {
+    "coloresFijos": 1
+  },
+  "pages/admin/cms/MenusManager.tsx": {
+    "coloresFijos": 6,
+    "dialogosNativos": 2
+  },
+  "pages/admin/cms/MultimediaManager.tsx": {
+    "coloresFijos": 2,
+    "textoMinusculo": 1,
+    "dialogosNativos": 1
+  },
+  "pages/admin/cms/PagesManager.tsx": {
+    "textoMinusculo": 4
+  },
+  "pages/admin/cms/Redirecciones.tsx": {
+    "dialogosNativos": 1
+  },
+  "pages/admin/cms/SlideshowManager.tsx": {
+    "coloresFijos": 4,
+    "textoMinusculo": 3,
+    "geometriaAjena": 2
+  },
+  "pages/admin/cms/TraducirPagina.tsx": {
+    "coloresFijos": 1
+  },
+  "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
+    "coloresFijos": 78,
+    "textoMinusculo": 12
+  },
+  "pages/admin/commercial/CommunicationsMap.tsx": {
+    "coloresFijos": 30,
+    "textoMinusculo": 11
+  },
+  "pages/admin/commercial/EmailAuditTab.tsx": {
+    "coloresFijos": 21,
+    "hexEnClases": 11
+  },
+  "pages/admin/commercial/EmailInbox.tsx": {
+    "coloresFijos": 36,
+    "textoMinusculo": 6,
+    "geometriaAjena": 1,
+    "dialogosNativos": 1
+  },
+  "pages/admin/commercial/LegacyAutomationsTab.tsx": {
+    "coloresFijos": 16,
+    "hexEnClases": 12
+  },
+  "pages/admin/commercial/PendingJobsTab.tsx": {
+    "coloresFijos": 28,
+    "hexEnClases": 17,
+    "textoMinusculo": 2
+  },
+  "pages/admin/commercial/ReceptionAi.tsx": {
+    "coloresFijos": 3
+  },
+  "pages/admin/commercial/TemplateRulesTab.tsx": {
+    "coloresFijos": 22,
+    "hexEnClases": 11,
+    "textoMinusculo": 5
+  },
+  "pages/admin/commercial/VapiAgente.tsx": {
+    "coloresFijos": 27
+  },
+  "pages/admin/commercial/VoiceSetup.tsx": {
+    "coloresFijos": 11,
+    "geometriaAjena": 5,
+    "dialogosNativos": 1
+  },
+  "pages/admin/commercial/WhatsAppCloud.tsx": {
+    "coloresFijos": 4,
+    "textoMinusculo": 4
+  },
+  "pages/admin/commercial/WhatsAppGHLInbox.tsx": {
+    "coloresFijos": 68,
+    "textoMinusculo": 39,
+    "geometriaAjena": 1
+  },
+  "pages/admin/communities/CommunitiesManager.tsx": {
+    "coloresFijos": 1
+  },
+  "pages/admin/communities/CommunityDetail.tsx": {
+    "coloresFijos": 2,
+    "textoMinusculo": 1,
+    "dialogosNativos": 2
+  },
+  "pages/admin/communities/CommunityPollsTabs.tsx": {
+    "dialogosNativos": 1
+  },
+  "pages/admin/connect/ConnectDetailPage.tsx": {
+    "geometriaAjena": 5
+  },
+  "pages/admin/connect/ConnectPage.tsx": {
+    "geometriaAjena": 2
+  },
+  "pages/admin/crm/CRMDashboard.tsx": {
+    "coloresFijos": 655,
+    "hexEnClases": 80,
+    "textoMinusculo": 51,
+    "geometriaAjena": 14
+  },
+  "pages/admin/crm/CancellationDetailModal.tsx": {
+    "coloresFijos": 71,
+    "hexEnClases": 32
+  },
+  "pages/admin/crm/CancellationsManager.tsx": {
+    "coloresFijos": 34,
+    "hexEnClases": 17,
+    "geometriaAjena": 2
+  },
+  "pages/admin/crm/ClientDetail.tsx": {
+    "textoMinusculo": 1
+  },
+  "pages/admin/crm/CreditNoteDialog.tsx": {
+    "coloresFijos": 7,
+    "hexEnClases": 1
+  },
+  "pages/admin/crm/CrmFunnel.tsx": {
+    "geometriaAjena": 2
+  },
+  "pages/admin/crm/CrmTags.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/CrmTasks.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/GestoriaExportDialog.tsx": {
+    "coloresFijos": 3
+  },
+  "pages/admin/crm/LeadWebRequestBlock.tsx": {
+    "coloresFijos": 4,
+    "textoMinusculo": 2
+  },
+  "pages/admin/crm/NewInvoiceDialog.tsx": {
+    "coloresFijos": 5,
+    "hexEnClases": 2
+  },
+  "pages/admin/crm/ProposalsManager.tsx": {
+    "coloresFijos": 31,
+    "hexEnClases": 1,
+    "textoMinusculo": 4,
+    "geometriaAjena": 3,
+    "dialogosNativos": 1
+  },
+  "pages/admin/crm/ReservationTicket.tsx": {
+    "coloresFijos": 2
+  },
+  "pages/admin/fiscal/ReavManager.tsx": {
+    "coloresFijos": 55,
+    "geometriaAjena": 1,
+    "dialogosNativos": 1
+  },
+  "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
+    "coloresFijos": 2,
+    "textoMinusculo": 1
+  },
+  "pages/admin/gestoria/GestoriaCalendario.tsx": {
+    "coloresFijos": 2,
+    "textoMinusculo": 1
+  },
+  "pages/admin/gestoria/GestoriaConfiguracion.tsx": {
+    "textoMinusculo": 1
+  },
+  "pages/admin/gestoria/GestoriaDashboard.tsx": {
+    "coloresFijos": 6,
+    "textoMinusculo": 1
+  },
+  "pages/admin/gestoria/GestoriaExpedientes.tsx": {
+    "coloresFijos": 1,
+    "textoMinusculo": 1
+  },
+  "pages/admin/gestoria/GestoriaIVA.tsx": {
+    "coloresFijos": 2
+  },
+  "pages/admin/gestoria/GestoriaLaboral.tsx": {
+    "coloresFijos": 4
+  },
+  "pages/admin/gestoria/GestoriaSociedades.tsx": {
+    "coloresFijos": 3,
+    "textoMinusculo": 1
+  },
+  "pages/admin/help/SupportTicketsPage.tsx": {
+    "coloresFijos": 4,
+    "geometriaAjena": 5
+  },
+  "pages/admin/home/EssentialHome.tsx": {
+    "geometriaAjena": 3
+  },
+  "pages/admin/home/OperationalPanelCard.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/hotel/FolioDialog.tsx": {
+    "coloresFijos": 4
+  },
+  "pages/admin/hotel/GuestsDialog.tsx": {
+    "coloresFijos": 2
+  },
+  "pages/admin/hotel/HotelHousekeeping.tsx": {
+    "coloresFijos": 4,
+    "textoMinusculo": 1
+  },
+  "pages/admin/hotel/HotelIcal.tsx": {
+    "coloresFijos": 5,
+    "dialogosNativos": 3
+  },
+  "pages/admin/hotel/HotelManager.tsx": {
+    "coloresFijos": 19,
+    "dialogosNativos": 1
+  },
+  "pages/admin/hotel/HotelPlanning.tsx": {
+    "coloresFijos": 8,
+    "textoMinusculo": 5
+  },
+  "pages/admin/hotel/HotelReception.tsx": {
+    "coloresFijos": 1
+  },
+  "pages/admin/hotel/HotelReports.tsx": {
+    "textoMinusculo": 1
+  },
+  "pages/admin/hotel/HotelReservations.tsx": {
+    "coloresFijos": 6
+  },
+  "pages/admin/hotel/HotelRooms.tsx": {
+    "coloresFijos": 1
+  },
+  "pages/admin/hotel/OnlineCheckin.tsx": {
+    "coloresFijos": 2
+  },
+  "pages/admin/hotel/pmsShared.tsx": {
+    "coloresFijos": 6
+  },
+  "pages/admin/hr/BatchDetail.tsx": {
+    "coloresFijos": 23,
+    "hexEnClases": 3,
+    "textoMinusculo": 8
+  },
+  "pages/admin/hr/BonusManager.tsx": {
+    "coloresFijos": 19,
+    "hexEnClases": 9,
+    "textoMinusculo": 12,
+    "dialogosNativos": 2
+  },
+  "pages/admin/hr/EmployeeDetail.tsx": {
+    "coloresFijos": 40,
+    "hexEnClases": 9,
+    "textoMinusculo": 13,
+    "dialogosNativos": 1
+  },
+  "pages/admin/hr/EmployeesList.tsx": {
+    "coloresFijos": 11,
+    "hexEnClases": 5,
+    "textoMinusculo": 11
+  },
+  "pages/admin/hr/HRDashboard.tsx": {
+    "coloresFijos": 2,
+    "hexEnClases": 1,
+    "textoMinusculo": 5
+  },
+  "pages/admin/hr/HRFiscalLedger.tsx": {
+    "coloresFijos": 22,
+    "hexEnClases": 3,
+    "textoMinusculo": 7
+  },
+  "pages/admin/hr/HRSettings.tsx": {
+    "coloresFijos": 5,
+    "hexEnClases": 1,
+    "textoMinusculo": 4
+  },
+  "pages/admin/hr/LeaveManager.tsx": {
+    "coloresFijos": 17,
+    "hexEnClases": 6,
+    "textoMinusculo": 9
+  },
+  "pages/admin/hr/PayrollBatchesManager.tsx": {
+    "coloresFijos": 20,
+    "hexEnClases": 3,
+    "textoMinusculo": 4
+  },
+  "pages/admin/hr/PayslipsManager.tsx": {
+    "coloresFijos": 25,
+    "hexEnClases": 5,
+    "textoMinusculo": 16,
+    "dialogosNativos": 1
+  },
+  "pages/admin/hr/TimeClockManager.tsx": {
+    "coloresFijos": 15,
+    "hexEnClases": 7,
+    "textoMinusculo": 12
+  },
+  "pages/admin/learning/Authoring.tsx": {
+    "coloresFijos": 2,
+    "dialogosNativos": 2
+  },
+  "pages/admin/learning/CourseEditor.tsx": {
+    "coloresFijos": 13,
+    "textoMinusculo": 2,
+    "dialogosNativos": 2
+  },
+  "pages/admin/learning/LearningAdmin.tsx": {
+    "dialogosNativos": 1
+  },
+  "pages/admin/learning/Materials.tsx": {
+    "coloresFijos": 3
+  },
+  "pages/admin/learning/Rules.tsx": {
+    "dialogosNativos": 1
+  },
+  "pages/admin/lifeNet/LifeHome.tsx": {
+    "geometriaAjena": 2
+  },
+  "pages/admin/lifeNet/LifeMembers.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/lifeNet/LifeParts.tsx": {
+    "coloresFijos": 6
+  },
+  "pages/admin/lifeNet/LifeTracking.tsx": {
+    "geometriaAjena": 2
+  },
+  "pages/admin/marketing/CuponesManager.tsx": {
+    "coloresFijos": 96,
+    "hexEnClases": 15,
+    "textoMinusculo": 1
+  },
+  "pages/admin/marketing/MarketingSummary.tsx": {
+    "coloresFijos": 6,
+    "geometriaAjena": 2
+  },
+  "pages/admin/marketing/PlatformsManager.tsx": {
+    "coloresFijos": 71,
+    "hexEnClases": 8,
+    "textoMinusculo": 2,
+    "dialogosNativos": 3
+  },
+  "pages/admin/marketing/SeoControl.tsx": {
+    "coloresFijos": 3
+  },
+  "pages/admin/multicanal/Multicanal.tsx": {
+    "dialogosNativos": 3
+  },
+  "pages/admin/net/NetProductHome.tsx": {
+    "geometriaAjena": 2
+  },
+  "pages/admin/netReports/ReportParts.tsx": {
+    "textoMinusculo": 1
+  },
+  "pages/admin/onboarding/OnboardingWizard.tsx": {
+    "coloresFijos": 9,
+    "geometriaAjena": 1
+  },
+  "pages/admin/operations/BookingsList.tsx": {
+    "coloresFijos": 10,
+    "dialogosNativos": 1
+  },
+  "pages/admin/operations/CalendarView.tsx": {
+    "coloresFijos": 48,
+    "hexEnClases": 6,
+    "textoMinusculo": 20
+  },
+  "pages/admin/operations/DailyActivities.tsx": {
+    "coloresFijos": 57,
+    "hexEnClases": 7,
+    "textoMinusculo": 24
+  },
+  "pages/admin/partners/PartnerBillingManager.tsx": {
+    "coloresFijos": 12,
+    "hexEnClases": 1,
+    "geometriaAjena": 1,
+    "dialogosNativos": 1
+  },
+  "pages/admin/partners/PartnersManager.tsx": {
+    "coloresFijos": 70,
+    "hexEnClases": 2,
+    "textoMinusculo": 18,
+    "geometriaAjena": 3,
+    "dialogosNativos": 1
+  },
+  "pages/admin/products/CategoriesManager.tsx": {
+    "dialogosNativos": 1
+  },
+  "pages/admin/products/EditionsPanel.tsx": {
+    "coloresFijos": 1,
+    "dialogosNativos": 1
+  },
+  "pages/admin/products/ExperiencesManager.tsx": {
+    "textoMinusculo": 1,
+    "geometriaAjena": 1
+  },
+  "pages/admin/products/Inventory.tsx": {
+    "geometriaAjena": 2
+  },
+  "pages/admin/products/LegoPacksManager.tsx": {
+    "coloresFijos": 23,
+    "dialogosNativos": 2
+  },
+  "pages/admin/products/LocationsManager.tsx": {
+    "dialogosNativos": 1
+  },
+  "pages/admin/products/PricingRules.tsx": {
+    "geometriaAjena": 2
+  },
+  "pages/admin/products/ProductTranslationsPanel.tsx": {
+    "coloresFijos": 2,
+    "textoMinusculo": 1
+  },
+  "pages/admin/restaurantNet/Carta.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/restaurantNet/Cocina.tsx": {
+    "textoMinusculo": 2,
+    "geometriaAjena": 1
+  },
+  "pages/admin/restaurantNet/CocinaAjustes.tsx": {
+    "geometriaAjena": 4
+  },
+  "pages/admin/restaurantNet/Comanda.tsx": {
+    "textoMinusculo": 5,
+    "geometriaAjena": 2
+  },
+  "pages/admin/restaurantNet/RestaurantNetParts.tsx": {
+    "textoMinusculo": 4
+  },
+  "pages/admin/restaurantNet/Sala.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/restaurantNet/SalasMesas.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/restaurants/GlobalCalendar.tsx": {
+    "coloresFijos": 16,
+    "textoMinusculo": 2,
+    "geometriaAjena": 2
+  },
+  "pages/admin/restaurants/RestaurantsManager.tsx": {
+    "coloresFijos": 45,
+    "geometriaAjena": 14,
+    "dialogosNativos": 2
+  },
+  "pages/admin/settings/AdvancedSettings.tsx": {
+    "coloresFijos": 9,
+    "geometriaAjena": 2
+  },
+  "pages/admin/settings/Cobros.tsx": {
+    "coloresFijos": 7,
+    "geometriaAjena": 1
+  },
+  "pages/admin/settings/CompanyData.tsx": {
+    "geometriaAjena": 3
+  },
+  "pages/admin/settings/ConfigPanel.tsx": {
+    "coloresFijos": 17,
+    "geometriaAjena": 6
+  },
+  "pages/admin/settings/ConfigStatus.tsx": {
+    "coloresFijos": 7,
+    "geometriaAjena": 3
+  },
+  "pages/admin/settings/CustomDomains.tsx": {
+    "coloresFijos": 14,
+    "textoMinusculo": 1
+  },
+  "pages/admin/settings/EmailAccountsSettings.tsx": {
+    "coloresFijos": 12,
+    "textoMinusculo": 4
+  },
+  "pages/admin/settings/Integrations.tsx": {
+    "coloresFijos": 10,
+    "geometriaAjena": 4,
+    "dialogosNativos": 1
+  },
+  "pages/admin/settings/PostmarkSettings.tsx": {
+    "coloresFijos": 4
+  },
+  "pages/admin/settings/Settings.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/setup/PrimerosPasos.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/socialTokenNet/SocialTokenNetHome.tsx": {
+    "coloresFijos": 1,
+    "geometriaAjena": 2
+  },
+  "pages/admin/spa/SpaManager.tsx": {
+    "coloresFijos": 15,
+    "dialogosNativos": 1
+  },
+  "pages/admin/studio/StudioPage.tsx": {
+    "coloresFijos": 8,
+    "hexEnClases": 5,
+    "textoMinusculo": 3,
+    "geometriaAjena": 2
+  },
+  "pages/admin/subscription/ConversionSection.tsx": {
+    "geometriaAjena": 9
+  },
+  "pages/admin/subscription/CustomTermsSection.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/subscription/DataExportPage.tsx": {
+    "coloresFijos": 8,
+    "geometriaAjena": 5
+  },
+  "pages/admin/subscription/GrowSection.tsx": {
+    "geometriaAjena": 3
+  },
+  "pages/admin/subscription/ModulesPage.tsx": {
+    "coloresFijos": 11,
+    "geometriaAjena": 2
+  },
+  "pages/admin/subscription/PlanComparison.tsx": {
+    "textoMinusculo": 1,
+    "geometriaAjena": 6
+  },
+  "pages/admin/subscription/PlanContractSection.tsx": {
+    "coloresFijos": 1,
+    "textoMinusculo": 1,
+    "geometriaAjena": 1
+  },
+  "pages/admin/subscription/PlanRequests.tsx": {
+    "geometriaAjena": 1
+  },
+  "pages/admin/subscription/SelfServiceSection.tsx": {
+    "coloresFijos": 3,
+    "textoMinusculo": 1,
+    "geometriaAjena": 2
+  },
+  "pages/admin/subscription/SubscriptionHero.tsx": {
+    "coloresFijos": 2,
+    "geometriaAjena": 3
+  },
+  "pages/admin/subscription/SubscriptionPage.tsx": {
+    "textoMinusculo": 1,
+    "geometriaAjena": 10
+  },
+  "pages/admin/subscription/UsagePage.tsx": {
+    "coloresFijos": 3,
+    "geometriaAjena": 3
+  },
+  "pages/admin/subscription/WithdrawalSection.tsx": {
+    "coloresFijos": 1,
+    "geometriaAjena": 1
+  },
+  "pages/admin/suppliers/SettlementsManager.tsx": {
+    "coloresFijos": 32,
+    "dialogosNativos": 1
+  },
+  "pages/admin/suppliers/SuppliersManager.tsx": {
+    "coloresFijos": 26,
+    "dialogosNativos": 1
+  },
+  "pages/admin/tpv/TpvCashMovement.tsx": {
+    "textoMinusculo": 3
+  },
+  "pages/admin/tpv/TpvCashMovementAccounting.tsx": {
+    "textoMinusculo": 6
+  },
+  "pages/admin/tpv/TpvCashPayment.tsx": {
+    "dialogosNativos": 1
+  },
+  "pages/admin/tpv/TpvScreen.tsx": {
+    "textoMinusculo": 8,
+    "geometriaAjena": 2
+  },
+  "pages/admin/travel/travelShared.tsx": {
+    "coloresFijos": 5
+  }
+}
