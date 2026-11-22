@@ -3,6 +3,7 @@
  * Comunidades). Crear y convertir encuestas, publicarlas, cerrarlas y ver resultados; moderar propuestas; resolver
  * reportes ocultando el contenido o descartándolos.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../../../../../server/routers";
@@ -192,7 +193,7 @@ export function PollsTab({ communityId, canEdit }: { communityId: number; canEdi
                 <Button size="sm" variant="ghost" onClick={() => setShowing(p)}><BarChart3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Resultados</Button>
                 {canEdit && p.status === "draft" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ pollId: p.id, action: "publish" })}>Publicar</Button>}
                 {canEdit && p.status === "active" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ pollId: p.id, action: "close" })}>Cerrar ahora</Button>}
-                {canEdit && (p.status === "draft" || p.status === "active") && <Button size="sm" variant="ghost" onClick={() => { if (window.confirm("¿Cancelar la encuesta? Las respuestas se conservan.")) setStatus.mutate({ pollId: p.id, action: "cancel" }); }}>Cancelar</Button>}
+                {canEdit && (p.status === "draft" || p.status === "active") && <Button size="sm" variant="ghost" onClick={async () => { if ((await confirmAction({ description: "¿Cancelar la encuesta? Las respuestas se conservan.", destructive: true }))) setStatus.mutate({ pollId: p.id, action: "cancel" }); }}>Cancelar</Button>}
               </div>
             </li>
           ))}

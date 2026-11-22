@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -513,8 +514,8 @@ export default function CashRegisterManager() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-gray-400 hover:text-red-600"
-                            onClick={() => {
-                              if (confirm("¿Eliminar este movimiento? El saldo se ajustará automáticamente.")) {
+                            onClick={async () => {
+                              if ((await confirmAction({ description: "¿Eliminar este movimiento? El saldo se ajustará automáticamente.", destructive: true }))) {
                                 deleteMovMut.mutate({ id: mv.id });
                               }
                             }}

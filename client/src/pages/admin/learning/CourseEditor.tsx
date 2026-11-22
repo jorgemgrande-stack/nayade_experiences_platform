@@ -6,6 +6,7 @@
  * accesos (los elementos mantienen su identidad) y guarda la versión anterior para poder recuperarla. Los ficheros (vídeo, audio, PDF)
  * no se tocan en este lote.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -153,7 +154,7 @@ export default function CourseEditor() {
         <div className="ml-auto flex flex-wrap gap-2">
           <Button size="sm" variant={preview ? "default" : "outline"} onClick={() => setPreview((p) => !p)}><Eye className="mr-1 h-4 w-4" aria-hidden />{preview ? t("learningEditor.backToEdit") : t("learningEditor.previewDraft")}</Button>
           <Button size="sm" variant="outline" onClick={() => setShowVersions(true)}><History className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.versions", { n: s.versions.length })}</Button>
-          <Button size="sm" variant="outline" disabled={!s.draft || discard.isPending} onClick={() => confirm(t("learningEditor.discardConfirm")) && discard.mutate({ courseId: s.course.id })}><Trash2 className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.discard")}</Button>
+          <Button size="sm" variant="outline" disabled={!s.draft || discard.isPending} onClick={async () => (await confirmAction({ description: t("learningEditor.discardConfirm"), destructive: true })) && discard.mutate({ courseId: s.course.id })}><Trash2 className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.discard")}</Button>
           <Button size="sm" variant="secondary" disabled={!unsaved || save.isPending} onClick={() => save.mutate({ courseId: s.course.id, tree, expectedUpdatedAt: s.draftInfo?.updatedAt ?? null })}><Save className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.saveDraft")}</Button>
           <Button size="sm" disabled={!s.draft || unsaved || !s.changes.length || publish.isPending} title={unsaved ? t("learningEditor.saveBeforePublish") : undefined} onClick={() => setPublishing(true)}><Rocket className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.publishChanges")}</Button>
         </div>
@@ -332,9 +333,9 @@ export default function CourseEditor() {
                 {s.versions.map((v) => (
                   <li key={v.id} className="flex items-center justify-between gap-2 py-2">
                     <span><span className="font-medium">{t("learningEditor.versionsDialog.version", { n: v.version })}</span> · {fmt(v.createdAt)}<br /><span className="text-xs text-muted-foreground">{v.summary}{v.note ? ` · ${v.note}` : ""}</span></span>
-                    <Button size="sm" variant="outline" disabled={restore.isPending} onClick={() => {
+                    <Button size="sm" variant="outline" disabled={restore.isPending} onClick={async () => {
                       const replace = !!s.draft && s.changes.length > 0;
-                      if (replace && !confirm(t("learningEditor.versionsDialog.replaceConfirm"))) return;
+                      if (replace && !(await confirmAction({ description: t("learningEditor.versionsDialog.replaceConfirm") }))) return;
                       restore.mutate({ courseId: s.course.id, versionId: v.id, replace });
                     }}><RotateCcw className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.versionsDialog.restore")}</Button>
                   </li>

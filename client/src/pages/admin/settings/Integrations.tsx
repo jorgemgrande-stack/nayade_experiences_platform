@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -179,7 +180,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
               type="button"
               className="h-10 px-4 rounded-lg text-sm text-red-600 dark:text-red-400"
               onClick={async () => {
-                if (!window.confirm(t("settingsPayments.integrations.confirmClear", { title: L(p.title) }))) return;
+                if (!(await confirmAction({ description: t("settingsPayments.integrations.confirmClear", { title: L(p.title) }), destructive: true }))) return;
                 await clear.mutateAsync({ provider: p.id });
                 setResult(null);
                 toast.success(t("settingsPayments.integrations.clearedToast", { title: L(p.title) }));

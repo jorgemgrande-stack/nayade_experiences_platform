@@ -6,6 +6,7 @@
  * Net y SS empresa se calculan automáticamente (SS empresa con porcentaje
  * configurable en hr.settings).
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useMemo, useEffect } from "react";
 import {
   Banknote, Plus, Pencil, Trash2, Loader2, Upload, Search,
@@ -292,7 +293,7 @@ export default function PayslipsManager() {
                           <Button size="sm" variant="ghost" onClick={() => openEdit(r)} className="text-orange-300 hover:bg-orange-500/10 h-7">
                             <Pencil className="w-3 h-3" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => confirm("¿Eliminar esta nómina?") && del.mutate({ id: r.id })} className="text-rose-400 hover:bg-rose-500/10 h-7">
+                          <Button size="sm" variant="ghost" onClick={async () => (await confirmAction({ description: "¿Eliminar esta nómina?", destructive: true })) && del.mutate({ id: r.id })} className="text-rose-400 hover:bg-rose-500/10 h-7">
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>

@@ -6,6 +6,7 @@
  * empleado) se hace aquí — ya no se depende de la versión clásica.
  * Las mutaciones usan hr.employees.* (migradas desde operations.monitors).
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useRef, useEffect } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import {
@@ -635,7 +636,7 @@ export default function EmployeeDetail() {
                                 className="text-xs text-orange-300 hover:text-orange-200 inline-flex items-center gap-1">
                                 Abrir
                               </a>
-                              <button onClick={() => confirm("¿Eliminar este documento?") && deleteDocument.mutate({ id: d.id })}
+                              <button onClick={async () => (await confirmAction({ description: "¿Eliminar este documento?", destructive: true })) && deleteDocument.mutate({ id: d.id })}
                                 className="text-rose-400 hover:text-rose-300">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

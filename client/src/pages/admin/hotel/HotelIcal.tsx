@@ -3,6 +3,7 @@
  * cada canal) de la disponibilidad, con el estado de cada sincronización. El «Channel Manager» mínimo que aceptan
  * Booking, Airbnb, Vrbo y Google. Incluido en Hotel Net, sin extensión de pago.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
@@ -73,8 +74,8 @@ function Destination({ kind, id, name, data }: { kind: Kind; id: number; name: s
             </div>
             {e.url ? <CopyField value={e.url} /> : <p className="text-xs text-amber-700 dark:text-amber-400">La clave del servidor ha cambiado: rota el enlace y vuelve a pegarlo en el canal.</p>}
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" disabled={issue.isPending} onClick={() => { if (confirm("El enlace actual dejará de funcionar y tendrás que pegar el nuevo en el canal. ¿Rotar?")) issue.mutate({ targetKind: kind, targetId: id, channel: e.channel }); }}>Rotar</Button>
-              <Button size="sm" variant="outline" disabled={revoke.isPending} onClick={() => { if (confirm("El canal dejará de recibir la disponibilidad. ¿Revocar el enlace?")) revoke.mutate({ id: e.id }); }}>Revocar</Button>
+              <Button size="sm" variant="outline" disabled={issue.isPending} onClick={async () => { if ((await confirmAction({ description: "El enlace actual dejará de funcionar y tendrás que pegar el nuevo en el canal. ¿Rotar?" }))) issue.mutate({ targetKind: kind, targetId: id, channel: e.channel }); }}>Rotar</Button>
+              <Button size="sm" variant="outline" disabled={revoke.isPending} onClick={async () => { if ((await confirmAction({ description: "El canal dejará de recibir la disponibilidad. ¿Revocar el enlace?", destructive: true }))) revoke.mutate({ id: e.id }); }}>Revocar</Button>
             </div>
           </div>
         ))}
@@ -108,7 +109,7 @@ function Destination({ kind, id, name, data }: { kind: Kind; id: number; name: s
             <div className="flex flex-wrap gap-2 pt-1">
               <Button size="sm" variant="outline" disabled={sync.isPending || f.status !== "active"} onClick={() => sync.mutate({ feedId: f.id })}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Sincronizar ahora</Button>
               <Button size="sm" variant="outline" disabled={status.isPending} onClick={() => status.mutate({ id: f.id, status: f.status === "paused" ? "active" : "paused" })}>{f.status === "paused" ? "Reanudar" : "Pausar"}</Button>
-              <Button size="sm" variant="outline" disabled={status.isPending} onClick={() => { if (confirm("Se quitan sus bloqueos y deja de sincronizarse. ¿Archivar la URL?")) status.mutate({ id: f.id, status: "archived" }); }}>Archivar</Button>
+              <Button size="sm" variant="outline" disabled={status.isPending} onClick={async () => { if ((await confirmAction({ description: "Se quitan sus bloqueos y deja de sincronizarse. ¿Archivar la URL?", destructive: true }))) status.mutate({ id: f.id, status: "archived" }); }}>Archivar</Button>
             </div>
           </div>
         ))}

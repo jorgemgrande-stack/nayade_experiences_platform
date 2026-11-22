@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -989,8 +990,8 @@ function ExpedientDetail({
               variant="outline"
               size="sm"
               className="text-sm border-red-200 text-red-600 hover:bg-red-50"
-              onClick={() => {
-                if (confirm("¿Cerrar expediente? Esta acción marcará el expediente como cerrado fiscal y operativamente.")) {
+              onClick={async () => {
+                if ((await confirmAction({ description: "¿Cerrar expediente? Esta acción marcará el expediente como cerrado fiscal y operativamente." }))) {
                   onUpdate({ operativeStatus: "cerrado", fiscalStatus: "cerrado" });
                 }
               }}

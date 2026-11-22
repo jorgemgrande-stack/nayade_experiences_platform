@@ -1,4 +1,7 @@
 {
+  "components/admin/ConfirmHost.tsx": {
+    "dialogosNativos": 1
+  },
   "components/admin/CustomRolesPanel.tsx": {
     "coloresFijos": 6
   },
@@ -52,8 +55,7 @@
     "textoMinusculo": 66
   },
   "pages/admin/Automatizaciones.tsx": {
-    "coloresFijos": 2,
-    "dialogosNativos": 1
+    "coloresFijos": 2
   },
   "pages/admin/Copilot.tsx": {
     "coloresFijos": 1,
@@ -76,8 +78,7 @@
   },
   "pages/admin/ReviewsManager.tsx": {
     "coloresFijos": 25,
-    "geometriaAjena": 1,
-    "dialogosNativos": 1
+    "geometriaAjena": 1
   },
   "pages/admin/accounting/AccountingDashboard.tsx": {
     "coloresFijos": 74,
@@ -88,12 +89,10 @@
     "coloresFijos": 28
   },
   "pages/admin/accounting/BankMovementsManager.tsx": {
-    "coloresFijos": 55,
-    "dialogosNativos": 1
+    "coloresFijos": 55
   },
   "pages/admin/accounting/CardTerminalBatchesManager.tsx": {
-    "coloresFijos": 52,
-    "dialogosNativos": 1
+    "coloresFijos": 52
   },
   "pages/admin/accounting/CardTerminalConciliationDashboard.tsx": {
     "coloresFijos": 22
@@ -101,15 +100,13 @@
   "pages/admin/accounting/CardTerminalOperationsManager.tsx": {
     "coloresFijos": 37,
     "textoMinusculo": 2,
-    "dialogosNativos": 3
+    "dialogosNativos": 2
   },
   "pages/admin/accounting/CashRegisterManager.tsx": {
-    "coloresFijos": 69,
-    "dialogosNativos": 1
+    "coloresFijos": 69
   },
   "pages/admin/accounting/CostCentersManager.tsx": {
-    "coloresFijos": 5,
-    "dialogosNativos": 1
+    "coloresFijos": 5
   },
   "pages/admin/accounting/DailyControlCenter.tsx": {
     "coloresFijos": 71,
@@ -117,12 +114,10 @@
     "geometriaAjena": 15
   },
   "pages/admin/accounting/ExpenseCategoriesManager.tsx": {
-    "coloresFijos": 2,
-    "dialogosNativos": 1
+    "coloresFijos": 2
   },
   "pages/admin/accounting/ExpenseSuppliersManager.tsx": {
-    "coloresFijos": 2,
-    "dialogosNativos": 1
+    "coloresFijos": 2
   },
   "pages/admin/accounting/ExpensesManager.tsx": {
     "coloresFijos": 51,
@@ -172,14 +167,10 @@
   },
   "pages/admin/cms/MultimediaManager.tsx": {
     "coloresFijos": 2,
-    "textoMinusculo": 1,
-    "dialogosNativos": 1
+    "textoMinusculo": 1
   },
   "pages/admin/cms/PagesManager.tsx": {
     "textoMinusculo": 4
-  },
-  "pages/admin/cms/Redirecciones.tsx": {
-    "dialogosNativos": 1
   },
   "pages/admin/cms/SlideshowManager.tsx": {
     "coloresFijos": 4,
@@ -204,8 +195,7 @@
   "pages/admin/commercial/EmailInbox.tsx": {
     "coloresFijos": 36,
     "textoMinusculo": 6,
-    "geometriaAjena": 1,
-    "dialogosNativos": 1
+    "geometriaAjena": 1
   },
   "pages/admin/commercial/LegacyAutomationsTab.tsx": {
     "coloresFijos": 16,
@@ -229,8 +219,7 @@
   },
   "pages/admin/commercial/VoiceSetup.tsx": {
     "coloresFijos": 11,
-    "geometriaAjena": 5,
-    "dialogosNativos": 1
+    "geometriaAjena": 5
   },
   "pages/admin/commercial/WhatsAppCloud.tsx": {
     "coloresFijos": 4,
@@ -246,11 +235,7 @@
   },
   "pages/admin/communities/CommunityDetail.tsx": {
     "coloresFijos": 2,
-    "textoMinusculo": 1,
-    "dialogosNativos": 2
-  },
-  "pages/admin/communities/CommunityPollsTabs.tsx": {
-    "dialogosNativos": 1
+    "textoMinusculo": 1
   },
   "pages/admin/connect/ConnectDetailPage.tsx": {
     "geometriaAjena": 5
@@ -304,16 +289,14 @@
     "coloresFijos": 31,
     "hexEnClases": 1,
     "textoMinusculo": 4,
-    "geometriaAjena": 3,
-    "dialogosNativos": 1
+    "geometriaAjena": 3
   },
   "pages/admin/crm/ReservationTicket.tsx": {
     "coloresFijos": 2
   },
   "pages/admin/fiscal/ReavManager.tsx": {
     "coloresFijos": 55,
-    "geometriaAjena": 1,
-    "dialogosNativos": 1
+    "geometriaAjena": 1
   },
   "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
     "coloresFijos": 2,
@@ -365,12 +348,10 @@
     "textoMinusculo": 1
   },
   "pages/admin/hotel/HotelIcal.tsx": {
-    "coloresFijos": 5,
-    "dialogosNativos": 3
+    "coloresFijos": 5
   },
   "pages/admin/hotel/HotelManager.tsx": {
-    "coloresFijos": 19,
-    "dialogosNativos": 1
+    "coloresFijos": 19
   },
   "pages/admin/hotel/HotelPlanning.tsx": {
     "coloresFijos": 8,
@@ -407,8 +388,7 @@
   "pages/admin/hr/EmployeeDetail.tsx": {
     "coloresFijos": 40,
     "hexEnClases": 9,
-    "textoMinusculo": 13,
-    "dialogosNativos": 1
+    "textoMinusculo": 13
   },
   "pages/admin/hr/EmployeesList.tsx": {
     "coloresFijos": 11,
@@ -443,8 +423,7 @@
   "pages/admin/hr/PayslipsManager.tsx": {
     "coloresFijos": 25,
     "hexEnClases": 5,
-    "textoMinusculo": 16,
-    "dialogosNativos": 1
+    "textoMinusculo": 16
   },
   "pages/admin/hr/TimeClockManager.tsx": {
     "coloresFijos": 15,
@@ -452,22 +431,14 @@
     "textoMinusculo": 12
   },
   "pages/admin/learning/Authoring.tsx": {
-    "coloresFijos": 2,
-    "dialogosNativos": 2
+    "coloresFijos": 2
   },
   "pages/admin/learning/CourseEditor.tsx": {
     "coloresFijos": 13,
-    "textoMinusculo": 2,
-    "dialogosNativos": 2
-  },
-  "pages/admin/learning/LearningAdmin.tsx": {
-    "dialogosNativos": 1
+    "textoMinusculo": 2
   },
   "pages/admin/learning/Materials.tsx": {
     "coloresFijos": 3
-  },
-  "pages/admin/learning/Rules.tsx": {
-    "dialogosNativos": 1
   },
   "pages/admin/lifeNet/LifeHome.tsx": {
     "geometriaAjena": 2
@@ -493,14 +464,10 @@
   "pages/admin/marketing/PlatformsManager.tsx": {
     "coloresFijos": 71,
     "hexEnClases": 8,
-    "textoMinusculo": 2,
-    "dialogosNativos": 3
+    "textoMinusculo": 2
   },
   "pages/admin/marketing/SeoControl.tsx": {
     "coloresFijos": 3
-  },
-  "pages/admin/multicanal/Multicanal.tsx": {
-    "dialogosNativos": 3
   },
   "pages/admin/net/NetProductHome.tsx": {
     "geometriaAjena": 2
@@ -513,8 +480,7 @@
     "geometriaAjena": 1
   },
   "pages/admin/operations/BookingsList.tsx": {
-    "coloresFijos": 10,
-    "dialogosNativos": 1
+    "coloresFijos": 10
   },
   "pages/admin/operations/CalendarView.tsx": {
     "coloresFijos": 48,
@@ -529,18 +495,13 @@
   "pages/admin/partners/PartnerBillingManager.tsx": {
     "coloresFijos": 12,
     "hexEnClases": 1,
-    "geometriaAjena": 1,
-    "dialogosNativos": 1
+    "geometriaAjena": 1
   },
   "pages/admin/partners/PartnersManager.tsx": {
     "coloresFijos": 70,
     "hexEnClases": 2,
     "textoMinusculo": 18,
-    "geometriaAjena": 3,
-    "dialogosNativos": 1
-  },
-  "pages/admin/products/CategoriesManager.tsx": {
-    "dialogosNativos": 1
+    "geometriaAjena": 3
   },
   "pages/admin/products/EditionsPanel.tsx": {
     "coloresFijos": 1,
@@ -554,11 +515,7 @@
     "geometriaAjena": 2
   },
   "pages/admin/products/LegoPacksManager.tsx": {
-    "coloresFijos": 23,
-    "dialogosNativos": 2
-  },
-  "pages/admin/products/LocationsManager.tsx": {
-    "dialogosNativos": 1
+    "coloresFijos": 23
   },
   "pages/admin/products/PricingRules.tsx": {
     "geometriaAjena": 2
@@ -597,8 +554,7 @@
   },
   "pages/admin/restaurants/RestaurantsManager.tsx": {
     "coloresFijos": 45,
-    "geometriaAjena": 14,
-    "dialogosNativos": 2
+    "geometriaAjena": 14
   },
   "pages/admin/settings/AdvancedSettings.tsx": {
     "coloresFijos": 9,
@@ -629,8 +585,7 @@
   },
   "pages/admin/settings/Integrations.tsx": {
     "coloresFijos": 10,
-    "geometriaAjena": 4,
-    "dialogosNativos": 1
+    "geometriaAjena": 4
   },
   "pages/admin/settings/PostmarkSettings.tsx": {
     "coloresFijos": 4
@@ -646,8 +601,7 @@
     "geometriaAjena": 2
   },
   "pages/admin/spa/SpaManager.tsx": {
-    "coloresFijos": 15,
-    "dialogosNativos": 1
+    "coloresFijos": 15
   },
   "pages/admin/studio/StudioPage.tsx": {
     "coloresFijos": 8,
@@ -706,12 +660,10 @@
     "geometriaAjena": 1
   },
   "pages/admin/suppliers/SettlementsManager.tsx": {
-    "coloresFijos": 32,
-    "dialogosNativos": 1
+    "coloresFijos": 32
   },
   "pages/admin/suppliers/SuppliersManager.tsx": {
-    "coloresFijos": 26,
-    "dialogosNativos": 1
+    "coloresFijos": 26
   },
   "pages/admin/tpv/TpvCashMovement.tsx": {
     "textoMinusculo": 3

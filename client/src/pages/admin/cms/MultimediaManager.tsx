@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
@@ -81,8 +82,8 @@ export default function MultimediaManager() {
 
   const handleDragLeave = () => setDragOver(false);
 
-  const handleDelete = (id: number, filename: string) => {
-    if (!confirm(tx("¿Eliminar \"{filename}\"? Esta acción no se puede deshacer.", { filename: filename }))) return;
+  const handleDelete = async (id: number, filename: string) => {
+    if (!(await confirmAction({ description: tx("¿Eliminar \"{filename}\"? Esta acción no se puede deshacer.", { filename: filename }), destructive: true }))) return;
     deleteMutation.mutate({ id });
   };
 

@@ -3,6 +3,7 @@
  * Modal con 4 pestañas: General | Imágenes | Líneas | Configuración
  * El constructor de líneas está integrado dentro del modal de edición.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Plus, Search, Pencil, Trash2, Eye, EyeOff, Layers,
@@ -449,7 +450,7 @@ export default function LegoPacksManager() {
                   </Button>
                   <Button
                     size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                    onClick={() => { if (confirm(t("productsPacks.confirmDelete"))) deleteMutation.mutate({ id: p.id }); }}
+                    onClick={async () => { if ((await confirmAction({ description: t("productsPacks.confirmDelete"), destructive: true }))) deleteMutation.mutate({ id: p.id }); }}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
@@ -730,7 +731,7 @@ export default function LegoPacksManager() {
                                   </Button>
                                   <Button
                                     size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title={t("productsPacks.lines.delete")}
-                                    onClick={() => { if (confirm(t("productsPacks.lines.confirmDelete"))) deleteLineMutation.mutate({ id: line.id }); }}
+                                    onClick={async () => { if ((await confirmAction({ description: t("productsPacks.lines.confirmDelete"), destructive: true }))) deleteLineMutation.mutate({ id: line.id }); }}
                                   >
                                     <Trash2 className="w-3 h-3" />
                                   </Button>

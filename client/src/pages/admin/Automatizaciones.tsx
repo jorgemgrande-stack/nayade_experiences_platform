@@ -4,6 +4,7 @@
  * al equipo y modo «probar» (simula sin enviar ni crear nada). La autorización real (licencia `automations-advanced`,
  * administración y solo lectura) la aplica el servidor.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { FlaskConical, Pencil, Plus, Trash2, Workflow } from "lucide-react";
 import { toast } from "sonner";
@@ -328,7 +329,7 @@ function Rules({ rules, options }: { rules: RuleRow[]; options: Options }) {
                     <Switch checked={r.enabled} disabled={toggle.isPending} onCheckedChange={(v) => toggle.mutate({ id: r.id, enabled: v })} aria-label={r.enabled ? "Apagar la regla" : "Encender la regla"} />
                   </label>
                   <Button variant="outline" size="sm" onClick={() => setEditing({ id: r.id, rule: { name: r.name, trigger: r.trigger, conditions: r.conditions, steps: r.steps, dailyCap: r.dailyCap } })}><Pencil className="mr-1 h-4 w-4" />Editar</Button>
-                  <Button variant="ghost" size="sm" onClick={() => { if (window.confirm(`¿Archivar «${r.name}»? Se apaga y deja de aparecer; su historial se conserva.`)) archive.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /><span className="sr-only">Archivar</span></Button>
+                  <Button variant="ghost" size="sm" onClick={async () => { if ((await confirmAction({ description: `¿Archivar «${r.name}»? Se apaga y deja de aparecer; su historial se conserva.`, destructive: true }))) archive.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /><span className="sr-only">Archivar</span></Button>
                 </div>
               </div>
             </li>

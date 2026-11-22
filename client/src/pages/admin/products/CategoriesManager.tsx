@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { useImageUploadLimit } from "@/hooks/useImageUploadLimit";
@@ -227,7 +228,7 @@ export default function CategoriesManager() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onClick={() => { if (confirm(t("productsCategories.confirmHardDelete"))) hardDeleteMut.mutate({ id: cat.id }); }}
+                      onClick={async () => { if ((await confirmAction({ description: t("productsCategories.confirmHardDelete"), destructive: true }))) hardDeleteMut.mutate({ id: cat.id }); }}
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsCategories.remove")}
                     </DropdownMenuItem>
