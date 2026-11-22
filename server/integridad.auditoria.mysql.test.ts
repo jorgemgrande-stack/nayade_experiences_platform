@@ -589,6 +589,83 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
   });
 
+  // ───────────────────────── 2f. Límites del reuso de reservas y de la reconciliación (revisión independiente) ─────────────────────────
+  describe("2f. reuso acotado de la reserva y reconciliación prudente", () => {
+    const live = async (q: number) => ess.sql("a", "SELECT id, status, merchant_order AS mo, invoiceId, people FROM reservations WHERE quote_id = ? AND status <> 'cancelled' ORDER BY id", [q]);
+    const insertRes = async (q: number, o: { notes: string; invoiceId?: number; mo: string }) => {
+      const r = await ess.sql("a", "INSERT INTO reservations (product_id, product_name, booking_date, amount_total, customer_name, merchant_order, reservation_number, status, quote_id, quoteSource, notes, invoiceId, people, channel, created_at, updated_at) VALUES (1, 'Servicio sintético', '2027-01-01', 40000, 'Persona Sintética', ?, ?, 'pending_payment', ?, 'presupuesto', ?, ?, 1, 'ONLINE_DIRECTO', 1, 1)", [o.mo, `RES-T-${o.mo}`, q, o.notes, o.invoiceId ?? null]);
+      return r;
+    };
+
+    it("una reserva con pago online en curso (no creada por «convertir») NO se reutiliza ni se oculta: sigue pendiente y el cobro manual crea la suya", async () => {
+      const q = await freshQuote();
+      await insertRes(q, { notes: "Pago con tarjeta iniciado", mo: `ONL${seq++}` });
+      const before = await live(q);
+      expect(before.length).toBe(1);
+      ok(await pay(q), "cobrar");
+      const after = await live(q);
+      const original = after.find((r: any) => r.id === before[0].id);
+      expect(original.status).toBe("pending_payment");
+      expect(original.mo).toBe(before[0].mo);
+      expect(after.length).toBe(2);
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("una reserva de «convertir» que YA tiene factura no se pisa: conserva su factura y el cobro no le cambia el vínculo", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const [orig] = await live(q);
+      await ess.sql("a", "UPDATE reservations SET invoiceId = 987654 WHERE id = ?", [orig.id]);
+      ok(await pay(q), "cobrar");
+      const rows = await live(q);
+      expect(rows.find((r: any) => r.id === orig.id).invoiceId).toBe(987654);
+      const inv = await invoicesOf(q);
+      expect(inv.length).toBe(1);
+      expect(Number(inv[0].reservationId)).not.toBe(Number(orig.id));
+    });
+
+    it("la reserva reutilizada se alinea con lo que se cobra (no guarda datos viejos de cuando se convirtió)", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const [orig] = await live(q);
+      await ess.sql("a", "UPDATE reservations SET people = 9 WHERE id = ?", [orig.id]);
+      ok(await pay(q), "cobrar");
+      const [after] = await live(q);
+      expect(after.id).toBe(orig.id);
+      expect(after.people).not.toBe(9);
+    });
+
+    it("reconciliar un pago sin factura cuyo presupuesto se cobró después por la vía normal no emite una segunda factura (pide revisión)", async () => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const resId = Number((await live(q))[0].id);
+      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: nm, productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pp");
+      const pp = Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      await ess.sql("a", `ALTER TABLE invoices ADD CONSTRAINT audit_fail_inv4 CHECK (clientName <> '${nm}')`);
+      try { await ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm); } finally { await ess.sql("a", "ALTER TABLE invoices DROP CHECK audit_fail_inv4"); }
+      const inc = Number((await ess.sql("a", "SELECT id FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'payment_confirmed_without_invoice'", [q]))[0].id);
+      ok(await pay(q), "cobro normal posterior");
+      // El presupuesto ya tiene factura por otra vía: no se emite una segunda, se pide revisión humana y la incidencia sigue abierta
+      expect(ok(await ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId: inc }, adm), "reconciliar").status).toBe("needs_review");
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("reconciliar un plan cuyas cuotas obligatorias siguen sin pagar NO lo da por resuelto", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.paymentPlans.upsert", { quoteId: q, installments: [
+        { installmentNumber: 1, amountCents: 20000, dueDate: "2027-01-10", isRequiredForConfirmation: true },
+        { installmentNumber: 2, amountCents: 20000, dueDate: "2027-02-10", isRequiredForConfirmation: false },
+      ] }, adm), "plan");
+      await ess.sql("a", "INSERT INTO crm_activity_log (entityType, entityId, action, details) VALUES ('quote', ?, 'installment_plan_failed', JSON_OBJECT('incident', true, 'source', 'prueba'))", [q]);
+      const id = Number((await ess.sql("a", "SELECT id FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'installment_plan_failed'", [q]))[0].id);
+      const r = ok(await ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId: id }, adm), "reconciliar");
+      expect(r.status).toBe("plan_not_ready");
+      expect(((await ess.q("a", "crm.fiscalIncidents.list", undefined, adm)).json as any) ?? true).toBeTruthy();
+      expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE action = 'fiscal_incident_resolved' AND JSON_EXTRACT(details, '$.incidentId') = ?", [id]))[0].n).toBe(0);
+    });
+  });
+
   // ───────────────────────── 3. Presupuestos de 0 € / precio equivocado ─────────────────────────
   describe("3. generateFromLead desde solicitudes de producto", () => {
     it("DEFECTO: producto «bajo petición» → presupuesto de 0 €", async () => {

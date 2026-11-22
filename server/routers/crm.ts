@@ -4,7 +4,7 @@
  */
 
 
-import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, markFiscalIncidentResolved } from "../crm/fiscalIncidents";
+import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, getOpenFiscalIncident, markFiscalIncidentResolved } from "../crm/fiscalIncidents";
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { brandSetting, companyName, formatLegalAddress } from "../tenantBrand";
@@ -970,16 +970,36 @@ async function findReservationForQuote(runner: Pick<typeof db, "select">, quoteI
 }
 
 /**
+ * Solo se reutiliza la reserva creada por «convertir a reserva» y aún sin cobrar ni facturar. Nunca una reserva con pago
+ * online en curso o fallido (Redsys/Stripe), ni una ya facturada: ocultaría un cobro con tarjeta o perdería su factura.
+ */
+const MANUAL_CONVERT_ORIGIN = "crm_convert";
+function isReusableManualConversion(r: { status: string; originSource?: string | null; notes?: string | null; invoiceId?: number | null; redsysResponse?: string | null; redsysDsResponse?: string | null } | null | undefined): boolean {
+  if (!r || r.status !== "pending_payment" || r.invoiceId || r.redsysResponse || r.redsysDsResponse) return false;
+  return r.originSource === MANUAL_CONVERT_ORIGIN || (r.notes ?? "").startsWith("Convertido manualmente desde presupuesto");
+}
+
+/**
  * Una operación comercial = UNA reserva. Con el presupuesto ya bloqueado: si ya hay una reserva viva (p. ej. la de
  * «convertir a reserva», pendiente de pago) se completa como cobrada en lugar de crear otra; si no, se inserta.
  * Devuelve el id de la reserva. `values.reservationNumber` solo es obligatorio cuando hay que insertar.
  */
 async function upsertQuoteReservation(tx: Pick<typeof db, "select" | "insert" | "update">, quoteId: number, values: Record<string, unknown>): Promise<number> {
-  const existing = await findReservationForQuote(tx, quoteId, true);
+  const found = await findReservationForQuote(tx, quoteId, true);
+  const existing = isReusableManualConversion(found) ? found : null;
   if (existing) {
     const note = values.notes as string | undefined;
     await tx.update(reservations).set({
       quoteId,
+      // La reserva se creó al convertir: si el presupuesto cambió desde entonces, se alinea con lo que se factura y cobra
+      productId: values.productId,
+      productName: values.productName,
+      extrasJson: values.extrasJson,
+      bookingDate: values.bookingDate,
+      people: values.people,
+      customerName: values.customerName,
+      customerEmail: values.customerEmail,
+      customerPhone: values.customerPhone,
       status: values.status,
       statusReservation: values.statusReservation,
       statusPayment: values.statusPayment,
@@ -2373,7 +2393,7 @@ export const crmRouter = router({
         const issuerSnap = await issuerSnapshotForNewInvoice();
         await ensureDocumentCounter("factura");
         // Si el presupuesto ya tiene reserva (convertido antes a reserva), se reutiliza: no se gasta número de reserva
-        const reservationNumber = (await findReservationForQuote(db, quote.id)) ? null : await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
+        const reservationNumber = isReusableManualConversion(await findReservationForQuote(db, quote.id)) ? null : await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
         const resProd = reservationProductFromQuoteItems(quote.items, mainProductId);
         const critical = await db.transaction(async (tx) => {
           const [lockedQuote] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
@@ -2823,6 +2843,7 @@ export const crmRouter = router({
           merchantOrder: reservationRef.substring(0, 12),
           reservationNumber: reservationNumberConvert,
           channel: "ONLINE_ASISTIDO",
+          originSource: MANUAL_CONVERT_ORIGIN,
           quoteId: input.quoteId,
           quoteSource: "presupuesto",
           notes: input.notes ?? `Convertido manualmente desde presupuesto ${quote.quoteNumber}`,
@@ -2971,7 +2992,7 @@ export const crmRouter = router({
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const issuerSnapT = await issuerSnapshotForNewInvoice();
         await ensureDocumentCounter("factura");
-        const reservationNumberTransfer = (await findReservationForQuote(db, quote.id)) ? null : await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
+        const reservationNumberTransfer = isReusableManualConversion(await findReservationForQuote(db, quote.id)) ? null : await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
         const resProd = reservationProductFromQuoteItems(quote.items, mainProductIdT);
         const criticalT = await db.transaction(async (tx) => {
           const [lockedQuote] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
@@ -7281,8 +7302,7 @@ export const crmRouter = router({
     reconcile: staff
       .input(z.object({ incidentId: z.number() }))
       .mutation(async ({ input, ctx }) => {
-        const open = await listOpenFiscalIncidents(db, 500);
-        const incident = open.find((i) => i.id === input.incidentId);
+        const incident = await getOpenFiscalIncident(db, input.incidentId);
         if (!incident) return { status: "already_resolved" as const };
         if (!incident.reconcilable) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta incidencia no se reconcilia automáticamente: revisa su ficha." });
         const actor = { id: ctx.user.id, name: ctx.user.name ?? null };
@@ -7290,6 +7310,12 @@ export const crmRouter = router({
           const ppId = Number(incident.details.ppId);
           const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, ppId));
           if (!pp || pp.status !== "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "El pago pendiente no consta como cobrado." });
+          // Si el presupuesto ya tiene otra factura (emitida por otra vía), NO se emite una segunda: revisión humana
+          if (pp.quoteId) {
+            const [other] = await db.select({ id: invoices.id }).from(invoices).where(and(eq(invoices.quoteId, pp.quoteId), ne(invoices.invoiceType, "abono"))).limit(1);
+            const [res] = pp.reservationId ? await db.select({ invoiceId: reservations.invoiceId }).from(reservations).where(eq(reservations.id, pp.reservationId)) : [undefined];
+            if (other && !res?.invoiceId) return { status: "needs_review" as const, message: "El presupuesto ya tiene una factura emitida por otra vía; revísala antes de emitir otra." };
+          }
           const outcome = await issuePendingPaymentInvoice(pp, String(incident.details.paymentMethod ?? "efectivo"), ctx.user, false);
           if (outcome === "failed") throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo emitir la factura; la incidencia sigue abierta." });
           await markFiscalIncidentResolved(db, incident, actor, outcome);
@@ -7299,6 +7325,9 @@ export const crmRouter = router({
         // installment_plan_failed: la comprobación del plan es idempotente (reserva y factura final únicas)
         if (incident.entityType !== "quote") throw new TRPCError({ code: "BAD_REQUEST", message: "Incidencia sin presupuesto asociado." });
         await checkAndConfirmInstallmentPlan(incident.entityId, ctx.user.id, ctx.user.name ?? "Admin");
+        // Solo se cierra si el plan quedó realmente confirmado (cuotas obligatorias pagadas → presupuesto aceptado)
+        const [planQuote] = await db.select({ status: quotes.status }).from(quotes).where(eq(quotes.id, incident.entityId)).limit(1);
+        if (planQuote?.status !== "aceptado") return { status: "plan_not_ready" as const, message: "Las cuotas obligatorias aún no están pagadas: no hay nada que completar." };
         await markFiscalIncidentResolved(db, incident, actor, "plan_reconciled");
         await logActivity("quote", incident.entityId, "fiscal_incident_reconciled", ctx.user.id, ctx.user.name, { incidentId: incident.id, outcome: "plan_reconciled" });
         return { status: "plan_reconciled" as const };
@@ -7483,7 +7512,12 @@ export const crmRouter = router({
               if ((c as unknown as { affectedRows?: number }).affectedRows) { claimedInstallment = cand.id; break; }
             }
             await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod, installmentId: claimedInstallment, viaPlan: true });
-            await checkAndConfirmInstallmentPlan(pp.quoteId, ctx.user.id, ctx.user.name ?? "Admin");
+            try {
+              await checkAndConfirmInstallmentPlan(pp.quoteId, ctx.user.id, ctx.user.name ?? "Admin");
+            } catch (planErr) {
+              await recordFiscalIncident(db, "quote", pp.quoteId, "installment_plan_failed", { id: ctx.user.id, name: ctx.user.name ?? null }, { ppId: pp.id, installmentId: claimedInstallment, source: "pendingPayments.confirm", error: incidentErrorText(planErr) });
+              throw planErr;
+            }
             return { success: true };
           }
         }
@@ -7534,7 +7568,10 @@ export const crmRouter = router({
         // Generar factura si la reserva no tiene una aún (idempotente; si falla queda incidencia persistente)
         if (pp.reservationId) {
           const outcome = await issuePendingPaymentInvoice(pp, input.paymentMethod, ctx.user);
-          if (outcome === "already") return { success: true };
+          if (outcome === "already") {
+            await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod, alreadyInvoiced: true });
+            return { success: true };
+          }
         }
 
         await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod });

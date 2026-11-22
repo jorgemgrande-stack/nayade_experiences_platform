@@ -28,7 +28,11 @@ type Runner = any;
 /** Texto breve y sin datos sensibles del error (nunca la traza completa ni valores de entrada). */
 export function incidentErrorText(e: unknown): string {
   const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-  return msg.replace(/\s+/g, " ").slice(0, 200);
+  return msg
+    .split(/\bparams:/i)[0]          // el mensaje de la capa de BD puede incluir los parámetros de la consulta (datos personales)
+    .replace(/'[^']*'/g, "'?'")       // valores entre comillas (p. ej. «Duplicate entry '…'»)
+    .replace(/\s+/g, " ")
+    .slice(0, 200);
 }
 
 /** Registra la incidencia de forma persistente. Si el propio registro falla, lo deja en consola: nunca rompe el flujo. */
@@ -68,6 +72,33 @@ export interface FiscalIncident {
   reconcilable: boolean;
 }
 
+async function toOpenIncident(runner: Runner, r: any): Promise<FiscalIncident | null> {
+  const details = (r.details ?? {}) as Record<string, unknown>;
+  const action = r.action as FiscalIncidentAction;
+  if (action === "payment_confirmed_without_invoice" && details.reservationId) {
+    const [res] = await runner.select({ invoiceId: reservations.invoiceId }).from(reservations).where(eq(reservations.id, Number(details.reservationId))).limit(1);
+    if (res?.invoiceId) return null; // ya tiene factura: resuelta por los hechos
+  }
+  if (action === "installment_plan_failed" && r.entityType === "quote") {
+    const [q] = await runner.select({ paidAt: quotes.paidAt }).from(quotes).where(and(eq(quotes.id, r.entityId))).limit(1);
+    if (q?.paidAt) return null; // plan completado y facturado: resuelta por los hechos
+  }
+  return {
+    id: r.id, action, entityType: r.entityType as Entity, entityId: r.entityId, at: r.createdAt, details,
+    reconcilable: action === "payment_confirmed_without_invoice" || action === "installment_plan_failed",
+  };
+}
+
+/** Una incidencia concreta si sigue abierta (búsqueda directa por id: no depende de ninguna ventana de la lista). */
+export async function getOpenFiscalIncident(runner: Runner, id: number): Promise<FiscalIncident | null> {
+  const [r] = await runner.select().from(crmActivityLog).where(eq(crmActivityLog.id, id)).limit(1);
+  if (!r || !(FISCAL_INCIDENT_ACTIONS as readonly string[]).includes(r.action)) return null;
+  const resolved = await runner.select({ id: crmActivityLog.id, details: crmActivityLog.details }).from(crmActivityLog)
+    .where(and(eq(crmActivityLog.action, FISCAL_INCIDENT_RESOLVED), eq(crmActivityLog.entityType, r.entityType), eq(crmActivityLog.entityId, r.entityId)));
+  if (resolved.some((x: any) => Number((x.details as Record<string, unknown>)?.incidentId) === id)) return null;
+  return toOpenIncident(runner, r);
+}
+
 /** Incidencias abiertas, de la más reciente a la más antigua. Solo lectura. */
 export async function listOpenFiscalIncidents(runner: Runner, limit = 200): Promise<FiscalIncident[]> {
   const rows = await runner.select().from(crmActivityLog)
@@ -78,20 +109,8 @@ export async function listOpenFiscalIncidents(runner: Runner, limit = 200): Prom
   const open: FiscalIncident[] = [];
   for (const r of rows) {
     if (r.action === FISCAL_INCIDENT_RESOLVED || resolvedIds.has(r.id)) continue;
-    const details = (r.details ?? {}) as Record<string, unknown>;
-    const action = r.action as FiscalIncidentAction;
-    if (action === "payment_confirmed_without_invoice" && details.reservationId) {
-      const [res] = await runner.select({ invoiceId: reservations.invoiceId }).from(reservations).where(eq(reservations.id, Number(details.reservationId))).limit(1);
-      if (res?.invoiceId) continue; // ya tiene factura: resuelta por los hechos
-    }
-    if (action === "installment_plan_failed" && r.entityType === "quote") {
-      const [q] = await runner.select({ paidAt: quotes.paidAt }).from(quotes).where(and(eq(quotes.id, r.entityId))).limit(1);
-      if (q?.paidAt) continue; // plan completado y facturado: resuelta por los hechos
-    }
-    open.push({
-      id: r.id, action, entityType: r.entityType as Entity, entityId: r.entityId, at: r.createdAt, details,
-      reconcilable: action === "payment_confirmed_without_invoice" || action === "installment_plan_failed",
-    });
+    const inc = await toOpenIncident(runner, r);
+    if (inc) open.push(inc);
     if (open.length >= limit) break;
   }
   return open;
