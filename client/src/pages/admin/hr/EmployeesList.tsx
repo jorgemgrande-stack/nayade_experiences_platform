@@ -98,7 +98,7 @@ export default function EmployeesList() {
                 Plantilla de la empresa — datos personales, contrato y documentos
               </p>
             </div>
-            <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+            <Button onClick={() => setCreateOpen(true)}>
               <Plus className="w-4 h-4 mr-1.5" />
               Nuevo empleado
             </Button>
@@ -172,7 +172,7 @@ export default function EmployeesList() {
           {!isLoading && filtered.length === 0 && noEmployeesYet && (
             <div className="text-center py-12 space-y-3">
               <p className="text-sm text-foreground/60">Todavía no hay empleados. Da de alta al primero para empezar a llevar fichajes, vacaciones y nóminas.</p>
-              <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={() => setCreateOpen(true)}>
                 <Plus className="w-4 h-4 mr-1.5" />
                 Dar de alta el primer empleado
               </Button>

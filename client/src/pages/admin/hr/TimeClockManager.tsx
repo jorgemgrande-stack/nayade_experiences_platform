@@ -157,7 +157,7 @@ export default function TimeClockManager() {
                 Registro horario de los empleados. Las correcciones quedan auditadas.
               </p>
             </div>
-            <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+            <Button onClick={() => setCreateOpen(true)}>
               <Plus className="w-4 h-4 mr-1.5" />
               Crear manualmente
             </Button>

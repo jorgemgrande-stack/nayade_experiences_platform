@@ -734,7 +734,7 @@ export default function CommercialFollowupDashboard() {
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setRemindQuote(null)}>{t("crmFollowup.remind.cancel")}</Button>
-            <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white"
+            <Button size="sm" 
               disabled={sendManualReminder.isPending}
               onClick={() => sendManualReminder.mutate({
                 quoteId: remindQuote.id,
@@ -808,7 +808,7 @@ export default function CommercialFollowupDashboard() {
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setLostQuote(null)}>{t("crmFollowup.lost.cancel")}</Button>
-            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white"
+            <Button variant="destructive" size="sm" 
               disabled={updateStatus.isPending}
               onClick={() => updateStatus.mutate({ quoteId: lostQuote.id, status: "lost", lostReason })}>
               {t("crmFollowup.lost.confirm")}

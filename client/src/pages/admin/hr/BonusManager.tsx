@@ -205,7 +205,7 @@ export default function BonusManager() {
                 Pagos adicionales a la nómina. Al marcar como pagado se genera un gasto contable automáticamente.
               </p>
             </div>
-            <Button onClick={openCreate} className="bg-orange-600 hover:bg-orange-700 text-white">
+            <Button onClick={openCreate}>
               <Plus className="w-4 h-4 mr-1.5" /> Nuevo bonus
             </Button>
           </div>
@@ -406,7 +406,7 @@ export default function BonusManager() {
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-              <Button onClick={submitForm} disabled={create.isPending || update.isPending} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={submitForm} disabled={create.isPending || update.isPending}>
                 {(create.isPending || update.isPending) ? "Guardando…" : (editing ? "Actualizar" : "Crear")}
               </Button>
             </DialogFooter>

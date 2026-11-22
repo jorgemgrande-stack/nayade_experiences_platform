@@ -301,7 +301,7 @@ export default function CreditNoteDialog({ invoiceId, onClose, onIssued }: { inv
         ) : null}
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
-          <Button size="sm" onClick={submit} disabled={!canSubmit} className="bg-violet-600 hover:bg-violet-700 text-white">
+          <Button size="sm" onClick={submit} disabled={!canSubmit}>
             {issue.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <RotateCcw className="w-4 h-4 mr-1" />}{t("crmInvoices.emitirAbono")}{preview ? t("crmInvoices.de2", { formatEur: format.currency(abs(preview.total), "EUR", EUR2) }) : ""}
           </Button>
         </DialogFooter>

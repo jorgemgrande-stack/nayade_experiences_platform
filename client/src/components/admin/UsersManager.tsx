@@ -586,7 +586,7 @@ export default function UsersManager() {
               {t("usersAdmin.header.count", { n: users.length })}
             </p>
           </div>
-          <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="bg-blue-700 hover:bg-blue-800 text-white gap-2">
+          <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="gap-2">
             <UserPlus className="w-4 h-4" />
             {t("usersAdmin.header.newUser")}
           </Button>
@@ -599,7 +599,7 @@ export default function UsersManager() {
             title={t("usersAdmin.empty.title")}
             description={t("usersAdmin.empty.description")}
           >
-            <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="bg-blue-700 hover:bg-blue-800 text-white gap-2">
+            <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="gap-2">
               <UserPlus className="w-4 h-4" aria-hidden="true" />
               {t("usersAdmin.empty.invite")}
             </Button>
@@ -1182,7 +1182,7 @@ export default function UsersManager() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCreate(false)}>{t("usersAdmin.create.cancel")}</Button>
-              <Button onClick={handleCreate} disabled={createUser.isPending} className="bg-blue-700 hover:bg-blue-800 text-white">
+              <Button onClick={handleCreate} disabled={createUser.isPending}>
                 {createUser.isPending ? t("usersAdmin.create.creating") : t("usersAdmin.create.submit")}
               </Button>
             </DialogFooter>

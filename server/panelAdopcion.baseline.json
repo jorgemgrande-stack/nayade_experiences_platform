@@ -12,7 +12,7 @@
     "geometriaAjena": 1
   },
   "components/admin/UsersManager.tsx": {
-    "coloresFijos": 62,
+    "coloresFijos": 59,
     "textoMinusculo": 21
   },
   "components/admin/crm/CrmParts.tsx": {
@@ -89,10 +89,10 @@
     "coloresFijos": 28
   },
   "pages/admin/accounting/BankMovementsManager.tsx": {
-    "coloresFijos": 55
+    "coloresFijos": 54
   },
   "pages/admin/accounting/CardTerminalBatchesManager.tsx": {
-    "coloresFijos": 52
+    "coloresFijos": 51
   },
   "pages/admin/accounting/CardTerminalConciliationDashboard.tsx": {
     "coloresFijos": 22
@@ -181,7 +181,7 @@
     "coloresFijos": 1
   },
   "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
-    "coloresFijos": 78,
+    "coloresFijos": 76,
     "textoMinusculo": 12
   },
   "pages/admin/commercial/CommunicationsMap.tsx": {
@@ -210,7 +210,7 @@
     "coloresFijos": 3
   },
   "pages/admin/commercial/TemplateRulesTab.tsx": {
-    "coloresFijos": 22,
+    "coloresFijos": 18,
     "hexEnClases": 11,
     "textoMinusculo": 5
   },
@@ -226,7 +226,7 @@
     "textoMinusculo": 4
   },
   "pages/admin/commercial/WhatsAppGHLInbox.tsx": {
-    "coloresFijos": 68,
+    "coloresFijos": 66,
     "textoMinusculo": 39,
     "geometriaAjena": 1
   },
@@ -259,7 +259,7 @@
     "geometriaAjena": 2
   },
   "pages/admin/crm/CreditNoteDialog.tsx": {
-    "coloresFijos": 7,
+    "coloresFijos": 6,
     "hexEnClases": 1
   },
   "pages/admin/crm/CrmFunnel.tsx": {
@@ -272,14 +272,14 @@
     "geometriaAjena": 1
   },
   "pages/admin/crm/GestoriaExportDialog.tsx": {
-    "coloresFijos": 3
+    "coloresFijos": 2
   },
   "pages/admin/crm/LeadWebRequestBlock.tsx": {
     "coloresFijos": 4,
     "textoMinusculo": 2
   },
   "pages/admin/crm/NewInvoiceDialog.tsx": {
-    "coloresFijos": 5,
+    "coloresFijos": 4,
     "hexEnClases": 2
   },
   "pages/admin/crm/ProposalsManager.tsx": {
@@ -375,17 +375,17 @@
     "textoMinusculo": 8
   },
   "pages/admin/hr/BonusManager.tsx": {
-    "coloresFijos": 19,
+    "coloresFijos": 17,
     "hexEnClases": 9,
     "textoMinusculo": 12
   },
   "pages/admin/hr/EmployeeDetail.tsx": {
-    "coloresFijos": 40,
+    "coloresFijos": 36,
     "hexEnClases": 9,
     "textoMinusculo": 13
   },
   "pages/admin/hr/EmployeesList.tsx": {
-    "coloresFijos": 11,
+    "coloresFijos": 9,
     "hexEnClases": 5,
     "textoMinusculo": 11
   },
@@ -400,7 +400,7 @@
     "textoMinusculo": 7
   },
   "pages/admin/hr/HRSettings.tsx": {
-    "coloresFijos": 5,
+    "coloresFijos": 4,
     "hexEnClases": 1,
     "textoMinusculo": 4
   },
@@ -410,17 +410,17 @@
     "textoMinusculo": 9
   },
   "pages/admin/hr/PayrollBatchesManager.tsx": {
-    "coloresFijos": 20,
+    "coloresFijos": 18,
     "hexEnClases": 3,
     "textoMinusculo": 4
   },
   "pages/admin/hr/PayslipsManager.tsx": {
-    "coloresFijos": 25,
+    "coloresFijos": 23,
     "hexEnClases": 5,
     "textoMinusculo": 16
   },
   "pages/admin/hr/TimeClockManager.tsx": {
-    "coloresFijos": 15,
+    "coloresFijos": 14,
     "hexEnClases": 7,
     "textoMinusculo": 12
   },
@@ -447,7 +447,7 @@
     "geometriaAjena": 2
   },
   "pages/admin/marketing/CuponesManager.tsx": {
-    "coloresFijos": 96,
+    "coloresFijos": 92,
     "hexEnClases": 15,
     "textoMinusculo": 1
   },
@@ -456,7 +456,7 @@
     "geometriaAjena": 2
   },
   "pages/admin/marketing/PlatformsManager.tsx": {
-    "coloresFijos": 71,
+    "coloresFijos": 66,
     "hexEnClases": 8,
     "textoMinusculo": 2
   },
@@ -477,7 +477,7 @@
     "coloresFijos": 10
   },
   "pages/admin/operations/CalendarView.tsx": {
-    "coloresFijos": 48,
+    "coloresFijos": 47,
     "hexEnClases": 6,
     "textoMinusculo": 20
   },
@@ -487,7 +487,7 @@
     "textoMinusculo": 24
   },
   "pages/admin/partners/PartnerBillingManager.tsx": {
-    "coloresFijos": 12,
+    "coloresFijos": 11,
     "hexEnClases": 1,
     "geometriaAjena": 1
   },
@@ -657,7 +657,7 @@
     "coloresFijos": 32
   },
   "pages/admin/suppliers/SuppliersManager.tsx": {
-    "coloresFijos": 26
+    "coloresFijos": 25
   },
   "pages/admin/tpv/TpvCashMovement.tsx": {
     "textoMinusculo": 3

@@ -1001,7 +1001,7 @@ export default function WhatsAppGHLInbox() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setLinkQuoteOpen(false)}>Cancelar</Button>
-            <Button size="sm" className="bg-sky-600 hover:bg-sky-700 text-white"
+            <Button size="sm" 
               disabled={!linkQuoteSelected || linkQuoteMut.isPending}
               onClick={() => selectedConv && linkQuoteSelected && linkQuoteMut.mutate({
                 ghlConversationId: selectedConv.ghlConversationId,
@@ -1055,7 +1055,7 @@ export default function WhatsAppGHLInbox() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setLinkResOpen(false)}>Cancelar</Button>
-            <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white"
+            <Button size="sm" 
               disabled={!linkResSelected || linkResMut.isPending}
               onClick={() => selectedConv && linkResSelected && linkResMut.mutate({
                 ghlConversationId: selectedConv.ghlConversationId,

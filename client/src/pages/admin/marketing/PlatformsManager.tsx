@@ -550,7 +550,7 @@ export default function PlatformsManager() {
                 onClick={() => utils.ticketing.listPlatforms.invalidate()}>
                 <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
               </Button>
-              <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={openCreatePlatform}>
+              <Button size="sm" onClick={openCreatePlatform}>
                 <Plus className="w-4 h-4 mr-1" /> Nueva plataforma
               </Button>
             </div>
@@ -981,7 +981,7 @@ export default function PlatformsManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPlatformFormOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-violet-600 hover:bg-violet-700 text-white"
+            <Button 
               disabled={!platformForm.name || !platformForm.slug || createPlatform.isPending || updatePlatform.isPending}
               onClick={() => {
                 const data = { name: platformForm.name, slug: platformForm.slug, logoUrl: platformForm.logoUrl || undefined, active: platformForm.active, settlementFrequency: platformForm.settlementFrequency, commissionPct: platformForm.commissionPct || undefined, externalUrl: platformForm.externalUrl || undefined, notes: platformForm.notes || undefined };
@@ -1038,7 +1038,7 @@ export default function PlatformsManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProductFormOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-violet-600 hover:bg-violet-700 text-white"
+            <Button 
               disabled={!productForm.externalProductName || createProduct.isPending || updateProduct.isPending}
               onClick={() => {
                 if (!selectedPlatform) return;
@@ -1124,7 +1124,7 @@ export default function PlatformsManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSettlementFormOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-violet-600 hover:bg-violet-700 text-white"
+            <Button 
               disabled={!settlementForm.periodLabel || createSettlement.isPending || updateSettlement.isPending}
               onClick={() => {
                 if (!selectedPlatform) return;
@@ -1174,7 +1174,7 @@ export default function PlatformsManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setGenerateModalOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-violet-600 hover:bg-violet-700 text-white"
+            <Button 
               disabled={!generateForm.periodLabel || !generateForm.periodFrom || !generateForm.periodTo || generateSettlement.isPending}
               onClick={() => {
                 if (!selectedPlatform) return;

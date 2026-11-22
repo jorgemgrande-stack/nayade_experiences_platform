@@ -75,7 +75,7 @@ export default function PayrollBatchesManager() {
                 Una remesa por periodo. Al cerrarla se generan 3 gastos contables (Nóminas, IRPF, SS empresa).
               </p>
             </div>
-            <Button onClick={() => setOpenModal(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+            <Button onClick={() => setOpenModal(true)}>
               <Plus className="w-4 h-4 mr-1.5" /> Abrir remesa
             </Button>
           </div>
@@ -172,7 +172,7 @@ export default function PayrollBatchesManager() {
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setOpenModal(false)}>Cancelar</Button>
-              <Button onClick={() => openMonth.mutate({ period: newPeriod })} disabled={openMonth.isPending} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={() => openMonth.mutate({ period: newPeriod })} disabled={openMonth.isPending}>
                 {openMonth.isPending ? "Abriendo…" : "Abrir"}
               </Button>
             </DialogFooter>

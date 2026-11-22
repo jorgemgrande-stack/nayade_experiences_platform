@@ -335,7 +335,7 @@ export default function PartnerBillingManager() {
               <h1 className="text-xl font-bold text-foreground">Facturación partners</h1>
               <p className="text-xs text-foreground/50 mt-0.5">Liquidaciones agrupadas de reservas por colaborador</p>
             </div>
-            <Button onClick={() => setShowNew(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+            <Button onClick={() => setShowNew(true)}>
               <Plus className="w-4 h-4 mr-1.5" /> Nueva liquidación
             </Button>
           </div>

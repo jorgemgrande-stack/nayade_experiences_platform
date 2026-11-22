@@ -241,7 +241,7 @@ function DetailModal({ coupon, onClose, onConvert, onRedeem, onPostpone, onIncid
             </Button>
           )}
           {coupon.statusFinancial !== "incidencia" && coupon.statusOperational !== "reserva_generada" && (
-            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={() => { onClose(); onIncidence(coupon); }}>
+            <Button variant="destructive" onClick={() => { onClose(); onIncidence(coupon); }}>
               <AlertTriangle className="w-4 h-4 mr-1" /> Incidencia
             </Button>
           )}
@@ -573,7 +573,7 @@ export default function CuponesManager() {
                 onClick={() => { utils.ticketing.listCoupons.invalidate(); utils.ticketing.getDashboardStats.invalidate(); }}>
                 <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
               </Button>
-              <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white"
+              <Button size="sm" 
                 onClick={() => setManualOpen(true)}>
                 <Plus className="w-4 h-4 mr-1" /> Alta manual
               </Button>
@@ -855,7 +855,7 @@ export default function CuponesManager() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIncidenceCoupon(null)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-red-600 hover:bg-red-700 text-white"
+            <Button variant="destructive" 
               disabled={incidenceMutation.isPending}
               onClick={() => {
                 if (!incidenceCoupon) return;
@@ -990,7 +990,7 @@ export default function CuponesManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setManualOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-violet-600 hover:bg-violet-700 text-white"
+            <Button 
               disabled={!manualForm.customerName || !manualForm.email || !manualForm.couponCode || createManualMutation.isPending || manualUploadMutation.isPending}
               onClick={() => createManualMutation.mutate({ ...manualForm, attachmentUrl: manualForm.attachmentUrl || undefined })}>
               {createManualMutation.isPending ? "Registrando..." : "Registrar cupón"}
