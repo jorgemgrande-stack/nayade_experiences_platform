@@ -28,6 +28,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
+import { localizeIntegrationText } from "@shared/i18n/integrationsDe";
 import { type CustomDomainView, type DomainRecordView, type DomainStage } from "@shared/customDomains";
 
 const STEPS = ["domain", "ownership", "dns", "certificate", "active"] as const;
@@ -152,7 +153,7 @@ function Stepper({ current, done }: { current: number; done: boolean }) {
 }
 
 function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: CustomDomainView; busy: boolean; onCheck: () => void; onPrimary: () => void; onDisconnect: () => void }) {
-  const { t, format } = useI18n();
+  const { t, format, locale } = useI18n();
   const step = stepOf(d.stage);
   const traffic = d.records.filter((r) => r.purpose !== "ownership");
   return (
@@ -171,7 +172,7 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
       </CardHeader>
       <CardContent className="space-y-4">
         <p className={cn("text-sm", d.stage === "error" ? "text-red-700 dark:text-red-400" : "text-muted-foreground")} role="status">
-          {d.message}
+          {localizeIntegrationText(d.message, locale)}
         </p>
 
         {d.stage === "pending_verification" && (
@@ -258,7 +259,7 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
 }
 
 export default function CustomDomains() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const utils = trpc.useUtils();
   const status = trpc.domains.status.useQuery(undefined, { refetchOnWindowFocus: true, retry: 1 });
   const [domain, setDomain] = useState("");
@@ -315,7 +316,7 @@ export default function CustomDomains() {
         {status.error && <p className="text-sm text-red-700 dark:text-red-400">{status.error.message}</p>}
         {status.data && !status.data.available && (
           <Card>
-            <CardContent className="py-6 text-sm text-muted-foreground">{status.data.reason}</CardContent>
+            <CardContent className="py-6 text-sm text-muted-foreground">{localizeIntegrationText(status.data.reason, locale)}</CardContent>
           </Card>
         )}
 
@@ -396,7 +397,7 @@ export default function CustomDomains() {
                   </form>
                 ) : (
                   <div className="space-y-2 text-sm">
-                    <p className="text-muted-foreground">{overview.allowance.reason}</p>
+                    <p className="text-muted-foreground">{localizeIntegrationText(overview.allowance.reason, locale)}</p>
                     <Button variant="outline" size="sm" asChild>
                       <Link href="/admin/suscripcion">{t("settingsDomains.viewPlan")}</Link>
                     </Button>

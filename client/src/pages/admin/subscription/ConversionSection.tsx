@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
+import { usePanelText } from "@/i18n/usePanelText";
 import type { Translate } from "@shared/i18n/core";
 import { Price, ProductIcon } from "@/components/connect/ConnectParts";
 import { fichaPath } from "@/components/connect/LockedFeature";
@@ -127,6 +128,7 @@ export function ConversionSection({ requested, currentPlan = null, plans = [] }:
 
 function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequest | null; currentPlan: string | null; plans: PanelPlanInfo[] }) {
   const { t } = useI18n();
+  const px = usePanelText();
   const { user } = useAuth();
   const uid = (user as { id?: number } | null)?.id;
   // Sin la persona identificada no se lee ni se escribe ningún borrador (nunca el de otra persona)
@@ -318,7 +320,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" aria-hidden="true" />
           <div className="space-y-1">
             {notes.map((n) => (
-              <p key={n}>{n}</p>
+              <p key={n}>{px(n)}</p>
             ))}
           </div>
         </div>
@@ -355,10 +357,10 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                             )}
                             {k === currentPlan && <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{t("subscription.checkout.yourTrial")}</span>}
                           </span>
-                          {pr.audience && <span className="block text-sm text-muted-foreground">{pr.audience}</span>}
+                          {pr.audience && <span className="block text-sm text-muted-foreground">{px(pr.audience)}</span>}
                           {price ? (
                             <span className="mt-1 block text-sm text-foreground">
-                              <strong className="text-base font-bold">{formatMoney(price.amountCents, price.currency)}</strong> /{perOf(t, interval)} {taxLabel(price)}
+                              <strong className="text-base font-bold">{formatMoney(price.amountCents, price.currency)}</strong> /{perOf(t, interval)} {px(taxLabel(price))}
                             </span>
                           ) : (
                             <span className="mt-1 block text-sm text-muted-foreground">{t("subscription.checkout.priceInSummary")}</span>
@@ -396,7 +398,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                           <span className="block font-semibold text-foreground">{i === "year" ? t("subscription.plans.yearly") : t("subscription.plans.monthly")}</span>
                           {price && (
                             <span className="block text-xs text-muted-foreground">
-                              {formatMoney(price.amountCents, price.currency)} /{perOf(t, i)} {taxLabel(price)}
+                              {formatMoney(price.amountCents, price.currency)} /{perOf(t, i)} {px(taxLabel(price))}
                             </span>
                           )}
                         </span>
@@ -596,6 +598,7 @@ function Field({
   inputMode?: "numeric" | "text";
 }) {
   const errId = `conv-${id}-error`;
+  const px = usePanelText();
   return (
     <div className="space-y-1.5">
       <Label htmlFor={`conv-${id}`}>
@@ -616,7 +619,7 @@ function Field({
       />
       {error && (
         <p id={errId} className="text-xs text-danger">
-          {error}
+          {px(error)}
         </p>
       )}
     </div>
@@ -730,6 +733,7 @@ function Extensions({
 
 function ExtensionRow({ e, checked, onToggle, onPlan }: { e: CheckoutExtension<ConnectCatalogItem>; checked: boolean; onToggle: (key: string, on: boolean) => void; onPlan: (p: CheckoutPlan) => void }) {
   const { t } = useI18n();
+  const px = usePanelText();
   const id = `conv-mod-${e.item.key}`;
   return (
     <li data-selected={checked} className={cn("flex flex-wrap items-start gap-3 px-4 py-3", checked && "bg-muted/40")}>
@@ -748,7 +752,7 @@ function ExtensionRow({ e, checked, onToggle, onPlan }: { e: CheckoutExtension<C
           <p className="break-words font-semibold leading-snug text-foreground">{e.item.name}</p>
         )}
         {e.item.tagline && <p className="text-xs text-muted-foreground">{e.item.tagline}</p>}
-        {e.note && <p className="mt-1 text-xs text-foreground">{e.note}</p>}
+        {e.note && <p className="mt-1 text-xs text-foreground">{px(e.note)}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <Link href={fichaPath(e.item.key)} className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-4">
             {e.group === "on_request" ? t("subscription.checkout.seeCardRequest") : t("subscription.checkout.seeCard")} <ExternalLink className="h-3 w-3" aria-hidden="true" />

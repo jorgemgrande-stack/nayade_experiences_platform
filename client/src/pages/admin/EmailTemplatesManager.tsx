@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { localizeTemplateText } from "@shared/i18n/emailTemplatesDe";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Mail, Send, Monitor, Smartphone, Plus, Pencil, Trash2,
@@ -47,7 +48,7 @@ interface CreateForm {
 export default function EmailTemplatesManager() {
   // Nombres de categoría y ejemplos según el modo de la empresa (pedidos en una pyme, reservas en la instalación propia)
   const voc = useVocabulary();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const baseCategoryLabels: Record<string, string> = {
     reservas: t("emailTemplates.category.reservas"), presupuestos: t("emailTemplates.category.presupuestos"),
     anulaciones: t("emailTemplates.category.anulaciones"), tpv: t("emailTemplates.category.tpv"),
@@ -197,10 +198,10 @@ export default function EmailTemplatesManager() {
                 <button key={tpl.id} onClick={() => { setSelectedId(tpl.id); setMode("view"); setEditForm(null); }}
                   className={`w-full text-left px-4 py-3 border-b transition-colors hover:bg-accent/50 ${selectedId === tpl.id && mode !== "create" ? "bg-accent" : ""}`}>
                   <div className="flex items-start justify-between gap-1">
-                    <span className="text-sm font-medium leading-tight">{tpl.name}</span>
+                    <span className="text-sm font-medium leading-tight">{localizeTemplateText(tpl.name, locale)}</span>
                     {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("emailTemplates.custom")}</span>}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tpl.description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{localizeTemplateText(tpl.description, locale)}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[tpl.recipient] ?? "bg-gray-100 text-gray-700"}`}>{recipientLabels[tpl.recipient] ?? tpl.recipient}</span>
@@ -351,7 +352,7 @@ export default function EmailTemplatesManager() {
                 <div className="flex items-center gap-2 min-w-0">
                   {selectedTemplate && (
                     <>
-                      <span className="text-sm font-medium truncate">{selectedTemplate.name}</span>
+                      <span className="text-sm font-medium truncate">{localizeTemplateText(selectedTemplate.name, locale)}</span>
                       <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[selectedTemplate.category] ?? ""}`}>{categoryLabels[selectedTemplate.category] ?? selectedTemplate.category}</span>
                       <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[selectedTemplate.recipient] ?? ""}`}>{recipientLabels[selectedTemplate.recipient] ?? selectedTemplate.recipient}</span>
                       {(selectedTemplate as Record<string,unknown>).isCustom && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("emailTemplates.custom")}</span>}

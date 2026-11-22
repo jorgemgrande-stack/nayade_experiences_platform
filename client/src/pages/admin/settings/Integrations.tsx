@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Circle, CircleDashed, Loader2, ShieldCheck } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { localizeIntegrationText } from "@shared/i18n/integrationsDe";
 import { fieldFormatProblem, groupIntegrations, type PanelField, type PanelIntegration } from "@shared/integrationsPanel";
 
 const STATE_STYLE: Record<PanelIntegration["state"], { icon: typeof Circle; className: string }> = {
@@ -15,14 +16,15 @@ const STATE_STYLE: Record<PanelIntegration["state"], { icon: typeof Circle; clas
 };
 
 export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegration; f: PanelField; value: string | undefined; onChange: (v: string) => void; error: string | null }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const L = <T extends string | null | undefined>(x: T) => localizeIntegrationText(x, locale);
   const id = `${p.id}-${f.key}`;
   const describedBy = [f.help ? `${id}-help` : null, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   const current = value ?? (f.secret ? "" : f.display ?? "");
   return (
     <div className="space-y-1">
       <label htmlFor={f.control === "yesno" ? undefined : id} id={`${id}-label`} className="text-sm font-medium flex flex-wrap items-center gap-2">
-        {f.label}
+        {L(f.label)}
         {f.required && <span className="text-xs font-normal text-muted-foreground">{t("settingsPayments.integrations.required")}</span>}
         {f.secret && <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" aria-label={t("settingsPayments.integrations.storedEncrypted")} />}
       </label>
@@ -37,7 +39,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
               onClick={() => onChange(o.value)}
               className={`h-9 min-w-16 rounded-md px-4 text-sm ${current === o.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
-              {o.label}
+              {L(o.label)}
             </button>
           ))}
         </div>
@@ -52,7 +54,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
           <option value="">{t("settingsPayments.integrations.choose")}</option>
           {f.options.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {L(o.label)}
             </option>
           ))}
         </select>
@@ -72,12 +74,12 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
       )}
       {f.help && (
         <p id={`${id}-help`} className="text-xs text-muted-foreground">
-          {f.help}
+          {L(f.help)}
         </p>
       )}
       {error && (
         <p id={`${id}-error`} className="text-xs text-red-600 dark:text-red-400">
-          {error}
+          {L(error)}
         </p>
       )}
     </div>
@@ -85,7 +87,8 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
 }
 
 function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const L = <T extends string | null | undefined>(x: T) => localizeIntegrationText(x, locale);
   const [vals, setVals] = useState<Record<string, string>>({});
   const save = trpc.integrations.save.useMutation();
   const clear = trpc.integrations.clear.useMutation();
@@ -111,13 +114,13 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
       <div className="flex flex-wrap items-start justify-between gap-2 px-5 py-3 bg-muted/30 border-b border-border/50">
         <div className="min-w-0 flex-1">
           <h3 id={`${p.id}-title`} className="text-sm font-semibold">
-            {p.title}
+            {L(p.title)}
           </h3>
-          <p className="text-xs text-muted-foreground">{p.summary}</p>
+          <p className="text-xs text-muted-foreground">{L(p.summary)}</p>
         </div>
         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.className}`}>
           <StateIcon className="w-4 h-4" aria-hidden="true" />
-          {p.stateLabel}
+          {L(p.stateLabel)}
         </span>
       </div>
 
@@ -134,14 +137,14 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
             await save.mutateAsync({ provider: p.id, values: changed });
             setVals({});
             setResult(null);
-            toast.success(t("settingsPayments.integrations.savedToast", { title: p.title }));
+            toast.success(t("settingsPayments.integrations.savedToast", { title: L(p.title) }));
             onChanged();
           } catch (err) {
             toast.error(err instanceof Error ? err.message : t("settingsPayments.integrations.saveFailed"));
           }
         }}
       >
-        {p.stateDetail && <p className={`text-xs ${p.state === "failing" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>{p.stateDetail}</p>}
+        {p.stateDetail && <p className={`text-xs ${p.state === "failing" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>{L(p.stateDetail)}</p>}
         {p.fields.map((f) => (
           <FieldInput key={f.key} p={p} f={f} value={vals[f.key]} error={errors[f.key]} onChange={(v) => setVals({ ...vals, [f.key]: v })} />
         ))}
@@ -176,10 +179,10 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
               type="button"
               className="h-10 px-4 rounded-lg text-sm text-red-600 dark:text-red-400"
               onClick={async () => {
-                if (!window.confirm(t("settingsPayments.integrations.confirmClear", { title: p.title }))) return;
+                if (!window.confirm(t("settingsPayments.integrations.confirmClear", { title: L(p.title) }))) return;
                 await clear.mutateAsync({ provider: p.id });
                 setResult(null);
-                toast.success(t("settingsPayments.integrations.clearedToast", { title: p.title }));
+                toast.success(t("settingsPayments.integrations.clearedToast", { title: L(p.title) }));
                 onChanged();
               }}
             >
@@ -189,7 +192,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
         </div>
         {result && (
           <p role="status" className={`text-sm ${result.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-            {result.message}
+            {L(result.message)}
           </p>
         )}
       </form>
@@ -198,7 +201,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
 }
 
 export default function Integrations() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const avail = trpc.integrations.available.useQuery();
   const list = trpc.integrations.list.useQuery(undefined, { enabled: avail.data?.available === true });
   const groups = groupIntegrations((list.data ?? []) as PanelIntegration[]);
@@ -234,9 +237,9 @@ export default function Integrations() {
             <section key={g.id} aria-labelledby={`grupo-${g.id}`} className="space-y-3">
               <div>
                 <h2 id={`grupo-${g.id}`} className="text-lg font-semibold">
-                  {g.title}
+                  {localizeIntegrationText(g.title, locale)}
                 </h2>
-                <p className="text-sm text-muted-foreground">{g.description}</p>
+                <p className="text-sm text-muted-foreground">{localizeIntegrationText(g.description, locale)}</p>
               </div>
               {g.items.map((p) => (
                 <ProviderCard key={p.id} p={p} onChanged={() => list.refetch()} />

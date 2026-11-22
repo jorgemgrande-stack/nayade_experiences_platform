@@ -12,7 +12,9 @@ import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronRight, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CONNECT_STATE_LABELS } from "@shared/connectMarketplace";
+import type { ConnectState } from "@shared/connectMarketplace";
+import { localizeConnectText } from "@shared/i18n/connectCatalogDe";
+import { useI18n } from "@/i18n/I18nProvider";
 import { useConnectCatalog, type ConnectCatalogItem } from "./useConnect";
 
 export const AMPLIAR_PATH = "/admin/ampliar";
@@ -26,9 +28,22 @@ export function productForCapability<T extends Pick<ConnectCatalogItem, "capabil
 }
 
 export function LockedFeature({ capability, product, children, className, compact = false }: { capability?: string; product?: string; children?: ReactNode; className?: string; compact?: boolean }) {
+  const { t, locale } = useI18n();
   const { items, isLoading } = useConnectCatalog();
   const item = product ? (items.find((i) => i.key === product) ?? null) : capability ? productForCapability(items, capability) : null;
   if (isLoading) return null;
+  const stateLabel = (s: ConnectState) => {
+    switch (s) {
+      case "available": return t("connectStrip.states.available");
+      case "active": return t("connectStrip.states.active");
+      case "pending_setup": return t("connectStrip.states.pending_setup");
+      case "activating": return t("connectStrip.states.activating");
+      case "not_eligible": return t("connectStrip.states.not_eligible");
+      case "on_request": return t("connectStrip.states.on_request");
+      case "coming_soon": return t("connectStrip.states.coming_soon");
+      case "incident": return t("connectStrip.states.incident");
+    }
+  };
   if (item?.state === "active") return <>{children ?? null}</>;
   const href = item ? fichaPath(item.key) : AMPLIAR_PATH;
   return (
@@ -41,15 +56,15 @@ export function LockedFeature({ capability, product, children, className, compac
     >
       <Lock className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <span className="block font-medium text-foreground truncate">{item?.name ?? "No incluido en tu plan"}</span>
+        <span className="block font-medium text-foreground truncate">{item ? localizeConnectText(item.name, locale) : t("connectStrip.notIncluded")}</span>
         {!compact && (
           <span className="block text-xs text-muted-foreground truncate">
-            {item ? `${CONNECT_STATE_LABELS[item.state]}${item.tagline ? ` · ${item.tagline}` : ""}` : "Descubre cómo ampliar tu plataforma"}
+            {item ? `${stateLabel(item.state)}${item.tagline ? ` · ${localizeConnectText(item.tagline, locale)}` : ""}` : t("connectStrip.discover")}
           </span>
         )}
       </span>
       <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
-      <span className="sr-only">Ver la ficha</span>
+      <span className="sr-only">{t("connectStrip.viewSheet")}</span>
     </Link>
   );
 }

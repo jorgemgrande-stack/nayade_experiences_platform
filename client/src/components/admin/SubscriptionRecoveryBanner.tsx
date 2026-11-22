@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
+import { usePanelText } from "@/i18n/usePanelText";
 import { TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 import { setRecoveryView } from "@/lib/readOnlyBlock";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -21,6 +22,7 @@ import { SUBSCRIPTION_PATH, isPanelReadOnlyState, resolveRecovery } from "@share
 
 export function SubscriptionRecoveryBanner({ role }: { role: string }) {
   const { t } = useI18n();
+  const px = usePanelText();
   const sub = usePanelSubscription();
   const [location] = useLocation();
   const data = sub.data;
@@ -63,22 +65,22 @@ export function SubscriptionRecoveryBanner({ role }: { role: string }) {
           <Icon className="h-5 w-5" />
         </span>
         <div className="min-w-0">
-          <h2 id="aviso-suscripcion" className="font-semibold text-foreground">{view.title}</h2>
-          <p className="mt-0.5 text-sm text-foreground/90">{view.text}</p>
-          {view.secondary && <p className="mt-1 text-xs text-muted-foreground">{view.secondary}</p>}
+          <h2 id="aviso-suscripcion" className="font-semibold text-foreground">{px(view.title)}</h2>
+          <p className="mt-0.5 text-sm text-foreground/90">{px(view.text)}</p>
+          {view.secondary && <p className="mt-1 text-xs text-muted-foreground">{px(view.secondary)}</p>}
         </div>
       </div>
       {cta && (
         <div className="shrink-0 sm:pl-2">
           {cta.action.type === "portal" ? (
             <Button type="button" className="w-full sm:w-auto" disabled={openPortal.isPending} onClick={() => openPortal.mutate()}>
-              {openPortal.isPending ? t("subscription.common.opening") : cta.label}
+              {openPortal.isPending ? t("subscription.common.opening") : px(cta.label)}
               <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
             </Button>
           ) : (
             <Button asChild className="w-full sm:w-auto">
               <Link href={cta.action.href}>
-                {cta.label}
+                {px(cta.label)}
                 <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
               </Link>
             </Button>

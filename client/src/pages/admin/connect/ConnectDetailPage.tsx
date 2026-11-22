@@ -30,6 +30,7 @@ import { NetFeatureAreas } from "@/components/connect/NetFeatures";
 import { netProductOfLegacy } from "@shared/netProducts";
 import { toneOf } from "@shared/marketplaceVisual";
 import { useI18n } from "@/i18n/I18nProvider";
+import { panelTextNow as px } from "@/i18n/usePanelText";
 import type { Translate } from "@shared/i18n/core";
 import "@/components/connect/connectStage.css";
 
@@ -52,7 +53,7 @@ export default function ConnectDetailPage() {
   const data = catalog.data;
   const view: ConnectView = { canPurchase: !!data?.canPurchase, interestEnabled: !!data?.interestEnabled, canRetryActivation: !!data?.canRetryActivation };
   const action = item && data ? primaryAction(item, view) : null;
-  const blockText = data?.purchaseBlock ? PURCHASE_BLOCK_TEXT[data.purchaseBlock] : null;
+  const blockText = data?.purchaseBlock ? px(PURCHASE_BLOCK_TEXT[data.purchaseBlock]) : null;
   const showBlock = !!item && item.state === "available" && action?.kind === "request" ? blockText : null;
   const brands = data?.brands ?? brandHeaders(null);
 
@@ -345,7 +346,7 @@ function ContractPanel({
       {item.reasons.length > 0 && (
         <ul className="space-y-1 text-sm text-foreground">
           {item.reasons.map((r) => (
-            <li key={r}>{r}</li>
+            <li key={r}>{px(r)}</li>
           ))}
         </ul>
       )}
@@ -359,15 +360,15 @@ function ContractPanel({
           </Button>
         )}
         {action.kind === "purchase" && <p className="text-xs text-muted-foreground">{t("connect.sheet.purchaseNote")}</p>}
-        {action.kind === "convert" && <p className="text-xs text-muted-foreground">{conversionSupportText(item.name)}</p>}
-        {action.kind === "assisted" && <p className="text-xs text-muted-foreground">{ASSISTED_CONTRACT_COPY.noPayment} {ASSISTED_CONTRACT_COPY.planLine(currentPlanName)}</p>}
+        {action.kind === "convert" && <p className="text-xs text-muted-foreground">{px(conversionSupportText(item.name))}</p>}
+        {action.kind === "assisted" && <p className="text-xs text-muted-foreground">{px(ASSISTED_CONTRACT_COPY.noPayment)} {px(ASSISTED_CONTRACT_COPY.planLine(currentPlanName))}</p>}
         {/* Connect asistido: lo disponible y lo pendiente (en Elephant Net lo dicen sus áreas en la ficha) */}
         {action.kind === "assisted" && item.assisted && !item.net && (
           <div className="space-y-3 border-t border-border pt-3 text-sm lg:max-h-[45vh] lg:overflow-y-auto" data-assisted-features>
             <AssistedFeatures assisted={item.assisted} columns={false} />
           </div>
         )}
-        {action.kind === "convert" && item.conversionPlan && item.conversionPlan !== currentPlan && <p className="text-xs text-muted-foreground">{conversionPlanText(item.name, item.conversionPlan)}</p>}
+        {action.kind === "convert" && item.conversionPlan && item.conversionPlan !== currentPlan && <p className="text-xs text-muted-foreground">{px(conversionPlanText(item.name, item.conversionPlan))}</p>}
         {item.state === "activating" && attemptOrdered && (
           <Button type="button" variant="outline" className="w-full" onClick={onOpenOrder}>
             {t("connect.sheet.viewOrder")}

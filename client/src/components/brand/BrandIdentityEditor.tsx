@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import ImageUploader from "@/components/ImageUploader";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { LoginForm } from "@/pages/Login";
+import { useI18n } from "@/i18n/I18nProvider";
 import { loginLook, contrastRatio, brandTokens, colorFieldState, NEUTRAL_INK, type LoginThemeInput } from "@shared/loginBrand";
 
 type Values = Record<string, string>;
@@ -49,15 +50,17 @@ function previewTheme(v: Values, bg: Background, base: { neutralSite: boolean; p
 
 function ColorField({ id, label, value, fallback, onChange }: { id: string; label: string; value: string; fallback: string; onChange: (v: string) => void }) {
   // La muestra enseña el color que se usa de verdad: el elegido o, sin elegir, el predeterminado
+  const { t } = useI18n();
   const state = colorFieldState(value, fallback);
-  const hint = state.error ?? state.note;
+  // Los avisos de `colorFieldState` son texto español compartido con el servidor: aquí se muestran traducidos
+  const hint = state.error ? t("brandEditor.colorInvalid") : state.note ? t("brandEditor.colorDefaultNote", { color: fallback }) : null;
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <div className="flex gap-2">
         <input
           type="color"
-          aria-label={`${label}: selector`}
+          aria-label={t("brandEditor.colorSelector", { label })}
           value={state.swatch}
           onChange={(e) => onChange(e.target.value)}
           className="h-10 w-12 shrink-0 rounded border border-border bg-transparent"
@@ -65,7 +68,7 @@ function ColorField({ id, label, value, fallback, onChange }: { id: string; labe
         <Input
           id={id}
           value={value}
-          placeholder="Sin elegir"
+          placeholder={t("brandEditor.colorPlaceholder")}
           onChange={(e) => onChange(e.target.value)}
           aria-invalid={state.error ? true : undefined}
           aria-describedby={hint ? `${id}-hint` : undefined}
@@ -78,14 +81,15 @@ function ColorField({ id, label, value, fallback, onChange }: { id: string; labe
 
 /** Vista previa a escala: el contenido se pinta a su tamaño real (escritorio 1280 px, móvil 390 px). */
 function Preview({ theme }: { theme: LoginThemeInput }) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<"desktop" | "mobile">("desktop");
   const look = useMemo(() => loginLook(theme), [theme]);
   const size = mode === "desktop" ? { w: 1280, h: 800, scale: 0.5 } : { w: 390, h: 780, scale: 0.55 };
   return (
     <section className="space-y-3" aria-labelledby="preview-title">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id="preview-title" className="font-semibold">Vista previa de la pantalla de acceso</h3>
-        <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Tamaño de la vista previa">
+        <h3 id="preview-title" className="font-semibold">{t("brandEditor.preview.title")}</h3>
+        <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label={t("brandEditor.preview.sizeLabel")}>
           {(["desktop", "mobile"] as const).map((m) => (
             <button
               key={m}
@@ -95,7 +99,7 @@ function Preview({ theme }: { theme: LoginThemeInput }) {
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               {m === "desktop" ? <Monitor className="w-4 h-4" aria-hidden="true" /> : <Smartphone className="w-4 h-4" aria-hidden="true" />}
-              {m === "desktop" ? "Escritorio" : "Móvil"}
+              {m === "desktop" ? t("brandEditor.preview.desktop") : t("brandEditor.preview.mobile")}
             </button>
           ))}
         </div>
@@ -109,12 +113,13 @@ function Preview({ theme }: { theme: LoginThemeInput }) {
           </div>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Así se verá en la dirección de acceso de tu empresa. Los textos y colores se comprueban para que se lean bien.</p>
+      <p className="text-xs text-muted-foreground">{t("brandEditor.preview.note")}</p>
     </section>
   );
 }
 
 export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "full" | "onboarding"; onSaved?: () => void }) {
+  const { t } = useI18n();
   const q = trpc.integrations.themeGet.useQuery();
   const pub = trpc.public.getTheme.useQuery(undefined, { staleTime: 60_000 });
   const save = trpc.integrations.themeSave.useMutation();
@@ -153,12 +158,12 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
       toast.success(message);
       onSaved?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se ha podido guardar");
+      toast.error(err instanceof Error ? err.message : t("brandEditor.saveError"));
     }
   }
 
-  if (q.isLoading) return <p className="text-sm text-muted-foreground" role="status">Cargando la marca…</p>;
-  if (q.isError) return <p className="text-sm text-destructive" role="alert">No se ha podido cargar la marca: {q.error.message}</p>;
+  if (q.isLoading) return <p className="text-sm text-muted-foreground" role="status">{t("brandEditor.loading")}</p>;
+  if (q.isError) return <p className="text-sm text-destructive" role="alert">{t("brandEditor.loadError", { message: q.error.message })}</p>;
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -166,39 +171,39 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
         {/* Identidad (web y acceso) */}
         <section className="rounded-2xl border border-border bg-card p-5 space-y-4" aria-labelledby="brand-id">
           <div>
-            <h3 id="brand-id" className="font-semibold">Identidad</h3>
-            <p className="text-sm text-muted-foreground">Se usa en tu web y en tu pantalla de acceso.</p>
+            <h3 id="brand-id" className="font-semibold">{t("brandEditor.identity.title")}</h3>
+            <p className="text-sm text-muted-foreground">{t("brandEditor.identity.intro")}</p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="brand_name">Nombre comercial</Label>
+            <Label htmlFor="brand_name">{t("brandEditor.identity.name")}</Label>
             <Input id="brand_name" value={v.brand_name ?? ""} maxLength={120} onChange={(e) => set("brand_name", e.target.value)} />
           </div>
-          <ImageUploader label="Logotipo" value={v.brand_logo_url ?? ""} onChange={(u) => set("brand_logo_url", u)} />
+          <ImageUploader label={t("brandEditor.identity.logo")} value={v.brand_logo_url ?? ""} onChange={(u) => set("brand_logo_url", u)} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <ColorField id="theme_primary_color" label="Color principal" value={v.theme_primary_color ?? ""} fallback={fallbackColors.primary} onChange={(c) => set("theme_primary_color", c)} />
-            <ColorField id="theme_accent_color" label="Color de acento" value={v.theme_accent_color ?? ""} fallback={fallbackColors.accent} onChange={(c) => set("theme_accent_color", c)} />
+            <ColorField id="theme_primary_color" label={t("brandEditor.identity.primary")} value={v.theme_primary_color ?? ""} fallback={fallbackColors.primary} onChange={(c) => set("theme_primary_color", c)} />
+            <ColorField id="theme_accent_color" label={t("brandEditor.identity.accent")} value={v.theme_accent_color ?? ""} fallback={fallbackColors.accent} onChange={(c) => set("theme_accent_color", c)} />
           </div>
           {lowContrast && (
             <p className="text-sm text-amber-800 dark:text-amber-300" role="status">
-              El color principal es muy claro para usarlo en botones sobre blanco: en el acceso los botones y enlaces se mostrarán en grafito para que se lean bien.
+              {t("brandEditor.identity.lowContrast")}
             </p>
           )}
-          {variant === "full" && <ImageUploader label="Favicon (icono de la pestaña)" value={v.brand_favicon_url ?? ""} onChange={(u) => set("brand_favicon_url", u)} />}
+          {variant === "full" && <ImageUploader label={t("brandEditor.identity.favicon")} value={v.brand_favicon_url ?? ""} onChange={(u) => set("brand_favicon_url", u)} />}
         </section>
 
         {/* Pantalla de acceso */}
         <section className="rounded-2xl border border-border bg-card p-5 space-y-4" aria-labelledby="brand-login">
           <div>
-            <h3 id="brand-login" className="font-semibold">Pantalla de acceso</h3>
-            <p className="text-sm text-muted-foreground">Lo que ve tu equipo al entrar en el panel.</p>
+            <h3 id="brand-login" className="font-semibold">{t("brandEditor.login.title")}</h3>
+            <p className="text-sm text-muted-foreground">{t("brandEditor.login.intro")}</p>
           </div>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium mb-1">Imagen de fondo</legend>
+            <legend className="text-sm font-medium mb-1">{t("brandEditor.login.background")}</legend>
             {(
               [
-                ["web", "La imagen principal de mi web"],
-                ["custom", "Otra imagen solo para el acceso"],
-                ["none", "Sin imagen (solo el color principal)"],
+                ["web", t("brandEditor.login.bgWeb")],
+                ["custom", t("brandEditor.login.bgCustom")],
+                ["none", t("brandEditor.login.bgNone")],
               ] as const
             ).map(([val, label]) => (
               <label key={val} className="flex items-center gap-2 text-sm">
@@ -216,31 +221,31 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
               </label>
             ))}
           </fieldset>
-          {bg === "web" && <ImageUploader label="Imagen principal de la web" value={v.brand_hero_image_url ?? ""} onChange={(u) => set("brand_hero_image_url", u)} />}
-          {bg === "custom" && <ImageUploader label="Imagen de fondo del acceso" value={v.login_background_url ?? ""} onChange={(u) => set("login_background_url", u)} />}
+          {bg === "web" && <ImageUploader label={t("brandEditor.login.heroImage")} value={v.brand_hero_image_url ?? ""} onChange={(u) => set("brand_hero_image_url", u)} />}
+          {bg === "custom" && <ImageUploader label={t("brandEditor.login.customImage")} value={v.login_background_url ?? ""} onChange={(u) => set("login_background_url", u)} />}
           <div className="space-y-1.5">
-            <Label htmlFor="login_welcome_title">Titular (opcional)</Label>
-            <Input id="login_welcome_title" value={v.login_welcome_title ?? ""} maxLength={TITLE_MAX} placeholder={`Te damos la bienvenida a ${v.brand_name || "tu empresa"}`} onChange={(e) => set("login_welcome_title", e.target.value)} aria-describedby="login_welcome_title-n" />
+            <Label htmlFor="login_welcome_title">{t("brandEditor.login.headline")}</Label>
+            <Input id="login_welcome_title" value={v.login_welcome_title ?? ""} maxLength={TITLE_MAX} placeholder={t("brandEditor.login.headlinePlaceholder", { name: v.brand_name || t("brandEditor.login.headlineFallbackName") })} onChange={(e) => set("login_welcome_title", e.target.value)} aria-describedby="login_welcome_title-n" />
             <p id="login_welcome_title-n" className="text-xs text-muted-foreground">{(v.login_welcome_title ?? "").length}/{TITLE_MAX}</p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="login_welcome_message">Mensaje de bienvenida (opcional)</Label>
-            <Textarea id="login_welcome_message" rows={3} value={v.login_welcome_message ?? ""} maxLength={MESSAGE_MAX} placeholder="Accede a tu panel para gestionar tu negocio." onChange={(e) => set("login_welcome_message", e.target.value)} aria-describedby="login_welcome_message-n" />
+            <Label htmlFor="login_welcome_message">{t("brandEditor.login.message")}</Label>
+            <Textarea id="login_welcome_message" rows={3} value={v.login_welcome_message ?? ""} maxLength={MESSAGE_MAX} placeholder={t("brandEditor.login.messagePlaceholder")} onChange={(e) => set("login_welcome_message", e.target.value)} aria-describedby="login_welcome_message-n" />
             <p id="login_welcome_message-n" className="text-xs text-muted-foreground">{(v.login_welcome_message ?? "").length}/{MESSAGE_MAX}</p>
           </div>
         </section>
 
         {variant === "full" && (
           <section className="rounded-2xl border border-border bg-card p-5 space-y-4" aria-labelledby="brand-more">
-            <h3 id="brand-more" className="font-semibold">Web y contacto</h3>
+            <h3 id="brand-more" className="font-semibold">{t("brandEditor.more.title")}</h3>
             {(
               [
-                ["theme_font_family", "Tipografía", "Inter, system-ui, sans-serif"],
-                ["theme_radius", "Radio de bordes", "10px"],
-                ["seo_description", "Descripción para buscadores", ""],
-                ["brand_phone", "Teléfono", ""],
-                ["email_reservations", "Correo de contacto", ""],
-                ["brand_location", "Dirección", ""],
+                ["theme_font_family", t("brandEditor.more.font"), "Inter, system-ui, sans-serif"],
+                ["theme_radius", t("brandEditor.more.radius"), "10px"],
+                ["seo_description", t("brandEditor.more.seo"), ""],
+                ["brand_phone", t("brandEditor.more.phone"), ""],
+                ["email_reservations", t("brandEditor.more.email"), ""],
+                ["brand_location", t("brandEditor.more.address"), ""],
               ] as const
             ).map(([k, label, ph]) => (
               <div key={k} className="space-y-1.5">
@@ -253,14 +258,14 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
 
         {variant === "full" && pub.data?.neutralSite && (
           <section className="rounded-2xl border border-border bg-card p-5 space-y-4" aria-labelledby="brand-analytics">
-            <h3 id="brand-analytics" className="font-semibold">Analítica de tu web</h3>
+            <h3 id="brand-analytics" className="font-semibold">{t("brandEditor.analytics.title")}</h3>
             <p className="text-xs text-muted-foreground">
-              Opcional. Con tus propios identificadores, tu web envía las visitas a tus cuentas de Google Analytics y Meta, solo si el visitante acepta las cookies de marketing. Sin ellos, no se carga ninguna analítica.
+              {t("brandEditor.analytics.intro")}
             </p>
             {(
               [
-                ["analytics_ga4_id", "Google Analytics 4 (ID de medición)", "G-XXXXXXXXXX"],
-                ["analytics_meta_pixel_id", "Pixel de Meta (ID)", "123456789012345"],
+                ["analytics_ga4_id", t("brandEditor.analytics.ga4"), "G-XXXXXXXXXX"],
+                ["analytics_meta_pixel_id", t("brandEditor.analytics.pixel"), "123456789012345"],
               ] as const
             ).map(([k, label, ph]) => (
               <div key={k} className="space-y-1.5">
@@ -275,21 +280,21 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
           {variant === "onboarding" && !dirty ? (
             // En Primeros pasos, quedarse con la marca tal cual también completa el paso (no es «omitirlo»)
             <Button type="button" onClick={() => onSaved?.()}>
-              Continuar con esta marca
+              {t("brandEditor.actions.continueBrand")}
             </Button>
           ) : (
             <Button
               type="button"
               onClick={() => {
                 if (bg === "custom" && !(v.login_background_url ?? "").trim()) {
-                  toast.error("Sube la imagen de fondo del acceso o elige otra opción.");
+                  toast.error(t("brandEditor.actions.needBackground"));
                   return;
                 }
-                void persist(v, "Marca guardada: ya se ve en tu web y en tu acceso");
+                void persist(v, t("brandEditor.actions.savedMessage"));
               }}
               disabled={save.isPending || !dirty}
             >
-              {save.isPending ? "Guardando…" : variant === "onboarding" ? "Guardar y continuar" : "Guardar"}
+              {save.isPending ? t("brandEditor.actions.saving") : variant === "onboarding" ? t("brandEditor.actions.saveContinue") : t("brandEditor.actions.save")}
             </Button>
           )}
           <Button
@@ -297,17 +302,17 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
             variant="outline"
             disabled={save.isPending}
             onClick={() => {
-              if (!window.confirm("¿Restaurar la pantalla de acceso a sus valores predeterminados? Se quitan el fondo propio, el titular y el mensaje; la marca y los colores se mantienen.")) return;
+              if (!window.confirm(t("brandEditor.actions.confirmReset"))) return;
               const reset = Object.fromEntries(LOGIN_KEYS.map((k) => [k, ""]));
               setV((x) => ({ ...x, ...reset }));
               setBgMode("web");
-              void persist(reset, "Pantalla de acceso restaurada");
+              void persist(reset, t("brandEditor.actions.resetDone"));
             }}
           >
             <RotateCcw className="w-4 h-4 mr-1.5" aria-hidden="true" />
-            Restaurar valores predeterminados del acceso
+            {t("brandEditor.actions.reset")}
           </Button>
-          {dirty && <span className="text-sm text-muted-foreground">Hay cambios sin guardar.</span>}
+          {dirty && <span className="text-sm text-muted-foreground">{t("brandEditor.actions.unsaved")}</span>}
         </div>
       </div>
 

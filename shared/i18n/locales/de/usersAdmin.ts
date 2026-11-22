@@ -3,6 +3,8 @@ import type es from "../es/usersAdmin";
 
 export default {
   fallbackUser: "Benutzer",
+  pageTitle: "Benutzer",
+  expandCompany: "Erweitere dein Unternehmen",
   thisUser: "diesen Benutzer",
   roleDesc: {
     admin: "Voller Zugriff auf das System",

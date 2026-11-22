@@ -1,6 +1,8 @@
 /** Gestión de usuarios y permisos (Usuarios). */
 export default {
   fallbackUser: "Usuario",
+  pageTitle: "Usuarios",
+  expandCompany: "Amplía tu empresa",
   thisUser: "este usuario",
   roleDesc: {
     admin: "Acceso total al sistema",
