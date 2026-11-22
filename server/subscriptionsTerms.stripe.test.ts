@@ -623,6 +623,27 @@ describe("estado de pago por los webhooks: mismas reglas que el cobro ordinario"
     expect((await statusOf("t-acme"))["plan.essential"]).toBe("suspended");
   });
 
+  it("Stripe pausa la suscripción (paused): suspensión inmediata como unpaid; evento repetido sin efecto; al reanudar vuelven las licencias", async () => {
+    // Caracterización: en este camino paused == unpaid (mapStripeStatus), sin gracia. Coincide con el webhook de pedidos
+    // (stripe/events.ts) y DIFIERE del barrido de gracia de pedidos (resolutor del orquestador: paused → null).
+    const w = world();
+    const a = await licensed(w);
+    gw.updateSubscription(a.stripeId, { status: "paused" });
+    gw.emit("customer.subscription.paused", "subscription", a.stripeId);
+    await deliver(w);
+    expect((await row(a.subId)).status).toBe("suspended");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("suspended");
+    const n = (await termsStore.events({ subscriptionId: a.subId })).filter((e) => e.kind === "billing_state").length;
+    gw.emit("customer.subscription.updated", "subscription", a.stripeId);
+    await deliver(w);
+    expect((await termsStore.events({ subscriptionId: a.subId })).filter((e) => e.kind === "billing_state")).toHaveLength(n);
+    gw.updateSubscription(a.stripeId, { status: "active" });
+    gw.emit("customer.subscription.resumed", "subscription", a.stripeId);
+    await deliver(w);
+    expect((await row(a.subId)).status).toBe("active");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("active");
+  });
+
   it("fin en Stripe: licencias propias en solo lectura 30 días, la suscripción interna termina y deja de haber enlace", async () => {
     const w = world();
     const a = await licensed(w);
