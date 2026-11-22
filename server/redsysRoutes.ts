@@ -31,6 +31,7 @@ class QuoteAlreadyInvoiced extends Error {}
 import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
+import { recordFiscalIncident, incidentErrorText } from "./crm/fiscalIncidents";
 import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
@@ -425,6 +426,8 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
           console.log(`[Redsys IPN] checkAndConfirmInstallmentPlan ejecutado para quoteId=${linkedInstallmentQuoteId}`);
         } catch (e) {
           console.error("[Redsys IPN] Error en checkAndConfirmInstallmentPlan:", e);
+          // Incidencia persistente (visible en la ficha del presupuesto y reconciliable): el cobro de la cuota ya es firme
+          await recordFiscalIncident(_db, "quote", linkedInstallmentQuoteId!, "installment_plan_failed", { id: null, name: "Sistema (Redsys)" }, { installmentId: linkedInstallmentId, source: "redsys_ipn", error: incidentErrorText(e) });
         }
       } else {
         // Pago único (sin plan fraccionado): flujo clásico — generar factura completa ahora

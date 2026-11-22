@@ -4,6 +4,7 @@
  */
 
 
+import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, markFiscalIncidentResolved } from "../crm/fiscalIncidents";
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { brandSetting, companyName, formatLegalAddress } from "../tenantBrand";
@@ -538,6 +539,131 @@ async function quoteItemsTaxIncluded<
   const mismatch = quoteTotalMismatch(normalized, discount, total);
   if (mismatch) throw new TRPCError({ code: "BAD_REQUEST", message: mismatch });
   return normalized;
+}
+
+/**
+ * Emite la factura de un pago pendiente cobrado (idempotente: con la reserva bloqueada, si ya tiene factura no emite otra).
+ * Devuelve «issued», «already» (ya facturada por otra vía) o «failed» (queda incidencia persistente para reconciliar).
+ */
+export async function issuePendingPaymentInvoice(
+  pp: typeof pendingPayments.$inferSelect,
+  paymentMethod: string,
+  user: { id: number; name?: string | null; email?: string | null },
+  recordIncident = true,
+): Promise<"issued" | "already" | "failed"> {
+  if (!pp.reservationId) return "already";
+  let issuedHere = false;
+  try {
+        const [resForInv] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));
+        if (resForInv && !resForInv.invoiceId) {
+          const now = new Date();
+          const amountEur = pp.amountCents / 100;
+          const items = [{ description: pp.productName ?? resForInv.productName, quantity: resForInv.people, unitPrice: amountEur / resForInv.people, total: amountEur }];
+          // Lo facturado es lo cobrado (IVA incluido): la base se extrae, no se suma el IVA encima.
+          const amountsPp = chargedInvoiceAmounts(items, amountEur);
+          const { subtotal, taxAmount, total } = amountsPp;
+          const bdPp = amountsPp.taxBreakdown;
+          const taxRatePp = amountsPp.taxRate;
+          const issuerSnapPp = await issuerSnapshotForNewInvoice();
+          await ensureDocumentCounter("factura");
+          // Número, factura y vínculo con la reserva en una transacción (con la reserva bloqueada): sin hueco en la
+          // numeración si falla y sin segunda factura si dos llamadas coinciden.
+          const issuedPp = await db.transaction(async (tx) => {
+            if (pp.quoteId) await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, pp.quoteId)).for("update");
+            const [lockedRes] = await tx.select({ invoiceId: reservations.invoiceId }).from(reservations).where(eq(reservations.id, pp.reservationId!)).for("update");
+            if (lockedRes?.invoiceId) return null;
+            const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:pendingPayment", String(user.id), async (candidate) => {
+              const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+              return !!hit;
+            });
+            const [invRes] = await tx.insert(invoices).values({ issuerSnapshot: issuerSnapPp, invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp.length > 0 ? bdPp : undefined, total: String(total.toFixed(2)), pdfUrl: null, pdfKey: null, isAutomatic: true, status: "cobrada", paymentMethod: paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
+            const invoiceId = (invRes as { insertId: number }).insertId;
+            await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId!));
+            return { invoiceNumber, invoiceId };
+          });
+          if (!issuedPp) throw new Error("ALREADY_INVOICED");
+          const { invoiceNumber, invoiceId } = issuedPp;
+          issuedHere = true;
+          let pdfUrl: string | null = null;
+          let pdfKey: string | null = null;
+          try {
+            const pdf = await generateInvoicePdf({ invoiceNumber, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp, total: String(total.toFixed(2)), issuedAt: now });
+            pdfUrl = pdf.url;
+            pdfKey = pdf.key;
+            await db.update(invoices).set({ pdfUrl, pdfKey, updatedAt: now }).where(eq(invoices.id, invoiceId));
+          } catch (pdfErr) {
+            console.error("[pendingPayments.confirm] PDF generation failed:", pdfErr);
+          }
+          console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);
+
+          // Crear expediente REAV si el producto tiene régimen REAV
+          try {
+            const productId = resForInv.productId;
+            if (productId && productId > 0) {
+              const [prod] = await db.select({
+                fiscalRegime: experiences.fiscalRegime,
+                providerPercent: experiences.providerPercent,
+                agencyMarginPercent: experiences.agencyMarginPercent,
+              }).from(experiences).where(eq(experiences.id, productId)).limit(1);
+
+              if (prod?.fiscalRegime === "reav") {
+                const reavErrors = validarConfiguracionREAV(prod);
+                const costePct = reavErrors.length === 0 ? parseFloat(String(prod.providerPercent)) : 0;
+                const margenPct = reavErrors.length === 0 ? parseFloat(String(prod.agencyMarginPercent)) : 0;
+                const calc = calcularREAVSimple(amountEur, costePct, margenPct);
+                const reavResult = await createReavExpedient({
+                  invoiceId,
+                  reservationId: pp.reservationId!,
+                  quoteId: pp.quoteId ?? undefined,
+                  serviceDescription: resForInv.productName,
+                  serviceDate: resForInv.bookingDate,
+                  numberOfPax: resForInv.people,
+                  saleAmountTotal: String(amountEur.toFixed(2)),
+                  providerCostEstimated: String(calc.costeProveedor.toFixed(2)),
+                  agencyMarginEstimated: String(calc.margenAgencia.toFixed(2)),
+                  clientName: pp.clientName,
+                  clientEmail: pp.clientEmail ?? undefined,
+                  clientPhone: pp.clientPhone ?? undefined,
+                  channel: "crm",
+                  sourceRef: invoiceNumber,
+                  internalNotes: [
+                    `Expediente creado automáticamente al confirmar pago pendiente.`,
+                    `Cliente: ${pp.clientName}`,
+                    pp.clientEmail ? `Email: ${pp.clientEmail}` : null,
+                    `Factura: ${invoiceNumber}`,
+                    `Agente: ${user.name ?? user.email}`,
+                    reavErrors.length > 0 ? `? Config REAV incompleta — revisar producto ${productId}` : null,
+                  ].filter(Boolean).join(" — "),
+                });
+                if (pdfUrl && reavResult?.id) {
+                  await attachReavDocument({
+                    expedientId: reavResult.id,
+                    side: "client",
+                    docType: "factura_emitida",
+                    title: `Factura ${invoiceNumber}`,
+                    fileUrl: pdfUrl,
+                    mimeType: "application/pdf",
+                    notes: `Generada al confirmar pago pendiente.`,
+                    uploadedBy: user.id,
+                  });
+                }
+                console.log(`[pendingPayments.confirm] Expediente REAV ${reavResult?.expedientNumber} creado para reserva ${pp.reservationId}`);
+              }
+            }
+          } catch (reavErr) {
+            console.error("[pendingPayments.confirm] Error creando expediente REAV:", reavErr);
+          }
+        }
+
+    return issuedHere ? "issued" : "already";
+  } catch (invErr) {
+    if (invErr instanceof Error && invErr.message === "ALREADY_INVOICED") return "already";
+    console.error("[pendingPayments.confirm] Error generando factura:", invErr);
+    // Incidencia persistente: el pago queda cobrado pero SIN factura. Se reconcilia con crm.fiscalIncidents.reconcile.
+    if (recordIncident) await recordFiscalIncident(db, pp.quoteId ? "quote" : "reservation", pp.quoteId ?? pp.reservationId, "payment_confirmed_without_invoice", { id: user.id, name: user.name ?? null },
+      { ppId: pp.id, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, amountCents: pp.amountCents, paymentMethod, error: incidentErrorText(invErr) });
+    return "failed";
+  }
 }
 
 export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: number, userName: string) {
@@ -4113,7 +4239,7 @@ export const crmRouter = router({
         if (inst.status === "paid") {
           // Reintento posterior: si un fallo anterior dejó la reserva o la factura del plan a medias, esta llamada (idempotente y
           // atómica) lo completa antes de avisar.
-          await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin").catch((e) => console.error("[confirmInstallment] Reconciliación del plan:", e));
+          await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin").catch((e) => recordFiscalIncident(db, "quote", inst.quoteId, "installment_plan_failed", { id: ctx.user.id, name: ctx.user.name ?? null }, { installmentId: inst.id, source: "reconciliacion", error: incidentErrorText(e) }));
           throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya está pagada" });
         }
         if (inst.status === "cancelled") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota está cancelada" });
@@ -4135,7 +4261,7 @@ export const crmRouter = router({
         if (!((claimInst as unknown as { affectedRows?: number }).affectedRows)) {
           // Reintento posterior: si la cuota ya estaba pagada pero un fallo anterior dejó la reserva o la factura del plan
           // a medias, esta llamada (idempotente y atómica) lo completa antes de avisar.
-          await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin").catch((e) => console.error("[confirmInstallment] Reconciliación del plan:", e));
+          await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin").catch((e) => recordFiscalIncident(db, "quote", inst.quoteId, "installment_plan_failed", { id: ctx.user.id, name: ctx.user.name ?? null }, { installmentId: inst.id, source: "reconciliacion", error: incidentErrorText(e) }));
           throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya está pagada" });
         }
 
@@ -4205,7 +4331,13 @@ export const crmRouter = router({
           console.error("[confirmInstallment] Error enviando email al cliente:", emailErr);
         }
 
-        await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin");
+        try {
+          await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin");
+        } catch (planErr) {
+          // La cuota ya está cobrada: el fallo al completar el plan (reserva/factura final) queda como incidencia persistente
+          await recordFiscalIncident(db, "quote", inst.quoteId, "installment_plan_failed", { id: ctx.user.id, name: ctx.user.name ?? null }, { installmentId: inst.id, source: "confirmInstallment", error: incidentErrorText(planErr) });
+          throw planErr;
+        }
 
         return { success: true };
       }),
@@ -7139,6 +7271,40 @@ export const crmRouter = router({
   }),
 
   // --- PAGOS PENDIENTES ------------------------------------------------------
+  // Incidencias fiscales y de cobro abiertas (pago cobrado sin factura, plan de cuotas sin completar). Solo la
+  // reconciliación emite, y lo hace con las mismas garantías atómicas e idempotentes que el cobro.
+  fiscalIncidents: router({
+    list: staff.query(async () => {
+      const open = await listOpenFiscalIncidents(db);
+      return open.map((i) => ({ ...i, at: i.at.toISOString() }));
+    }),
+    reconcile: staff
+      .input(z.object({ incidentId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const open = await listOpenFiscalIncidents(db, 500);
+        const incident = open.find((i) => i.id === input.incidentId);
+        if (!incident) return { status: "already_resolved" as const };
+        if (!incident.reconcilable) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta incidencia no se reconcilia automáticamente: revisa su ficha." });
+        const actor = { id: ctx.user.id, name: ctx.user.name ?? null };
+        if (incident.action === "payment_confirmed_without_invoice") {
+          const ppId = Number(incident.details.ppId);
+          const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, ppId));
+          if (!pp || pp.status !== "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "El pago pendiente no consta como cobrado." });
+          const outcome = await issuePendingPaymentInvoice(pp, String(incident.details.paymentMethod ?? "efectivo"), ctx.user, false);
+          if (outcome === "failed") throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo emitir la factura; la incidencia sigue abierta." });
+          await markFiscalIncidentResolved(db, incident, actor, outcome);
+          await logActivity(incident.entityType, incident.entityId, "fiscal_incident_reconciled", ctx.user.id, ctx.user.name, { incidentId: incident.id, outcome });
+          return { status: outcome };
+        }
+        // installment_plan_failed: la comprobación del plan es idempotente (reserva y factura final únicas)
+        if (incident.entityType !== "quote") throw new TRPCError({ code: "BAD_REQUEST", message: "Incidencia sin presupuesto asociado." });
+        await checkAndConfirmInstallmentPlan(incident.entityId, ctx.user.id, ctx.user.name ?? "Admin");
+        await markFiscalIncidentResolved(db, incident, actor, "plan_reconciled");
+        await logActivity("quote", incident.entityId, "fiscal_incident_reconciled", ctx.user.id, ctx.user.name, { incidentId: incident.id, outcome: "plan_reconciled" });
+        return { status: "plan_reconciled" as const };
+      }),
+  }),
+
   pendingPayments: router({
     create: staff
       .input(z.object({
@@ -7365,115 +7531,10 @@ export const crmRouter = router({
             console.error("[pendingPayments.confirm] Error en postConfirmOperation:", e);
           }
         }
-        // Generar factura si la reserva no tiene una aún
+        // Generar factura si la reserva no tiene una aún (idempotente; si falla queda incidencia persistente)
         if (pp.reservationId) {
-          try {
-            const [resForInv] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));
-            if (resForInv && !resForInv.invoiceId) {
-              const now = new Date();
-              const amountEur = pp.amountCents / 100;
-              const items = [{ description: pp.productName ?? resForInv.productName, quantity: resForInv.people, unitPrice: amountEur / resForInv.people, total: amountEur }];
-              // Lo facturado es lo cobrado (IVA incluido): la base se extrae, no se suma el IVA encima.
-              const amountsPp = chargedInvoiceAmounts(items, amountEur);
-              const { subtotal, taxAmount, total } = amountsPp;
-              const bdPp = amountsPp.taxBreakdown;
-              const taxRatePp = amountsPp.taxRate;
-              const issuerSnapPp = await issuerSnapshotForNewInvoice();
-              await ensureDocumentCounter("factura");
-              // Número, factura y vínculo con la reserva en una transacción (con la reserva bloqueada): sin hueco en la
-              // numeración si falla y sin segunda factura si dos llamadas coinciden.
-              const issuedPp = await db.transaction(async (tx) => {
-                if (pp.quoteId) await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, pp.quoteId)).for("update");
-                const [lockedRes] = await tx.select({ invoiceId: reservations.invoiceId }).from(reservations).where(eq(reservations.id, pp.reservationId!)).for("update");
-                if (lockedRes?.invoiceId) return null;
-                const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:pendingPayment", String(ctx.user.id), async (candidate) => {
-                  const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
-                  return !!hit;
-                });
-                const [invRes] = await tx.insert(invoices).values({ issuerSnapshot: issuerSnapPp, invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp.length > 0 ? bdPp : undefined, total: String(total.toFixed(2)), pdfUrl: null, pdfKey: null, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
-                const invoiceId = (invRes as { insertId: number }).insertId;
-                await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId!));
-                return { invoiceNumber, invoiceId };
-              });
-              if (!issuedPp) throw new Error("ALREADY_INVOICED");
-              const { invoiceNumber, invoiceId } = issuedPp;
-              let pdfUrl: string | null = null;
-              let pdfKey: string | null = null;
-              try {
-                const pdf = await generateInvoicePdf({ invoiceNumber, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp, total: String(total.toFixed(2)), issuedAt: now });
-                pdfUrl = pdf.url;
-                pdfKey = pdf.key;
-                await db.update(invoices).set({ pdfUrl, pdfKey, updatedAt: now }).where(eq(invoices.id, invoiceId));
-              } catch (pdfErr) {
-                console.error("[pendingPayments.confirm] PDF generation failed:", pdfErr);
-              }
-              console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);
-
-              // Crear expediente REAV si el producto tiene régimen REAV
-              try {
-                const productId = resForInv.productId;
-                if (productId && productId > 0) {
-                  const [prod] = await db.select({
-                    fiscalRegime: experiences.fiscalRegime,
-                    providerPercent: experiences.providerPercent,
-                    agencyMarginPercent: experiences.agencyMarginPercent,
-                  }).from(experiences).where(eq(experiences.id, productId)).limit(1);
-
-                  if (prod?.fiscalRegime === "reav") {
-                    const reavErrors = validarConfiguracionREAV(prod);
-                    const costePct = reavErrors.length === 0 ? parseFloat(String(prod.providerPercent)) : 0;
-                    const margenPct = reavErrors.length === 0 ? parseFloat(String(prod.agencyMarginPercent)) : 0;
-                    const calc = calcularREAVSimple(amountEur, costePct, margenPct);
-                    const reavResult = await createReavExpedient({
-                      invoiceId,
-                      reservationId: pp.reservationId!,
-                      quoteId: pp.quoteId ?? undefined,
-                      serviceDescription: resForInv.productName,
-                      serviceDate: resForInv.bookingDate,
-                      numberOfPax: resForInv.people,
-                      saleAmountTotal: String(amountEur.toFixed(2)),
-                      providerCostEstimated: String(calc.costeProveedor.toFixed(2)),
-                      agencyMarginEstimated: String(calc.margenAgencia.toFixed(2)),
-                      clientName: pp.clientName,
-                      clientEmail: pp.clientEmail ?? undefined,
-                      clientPhone: pp.clientPhone ?? undefined,
-                      channel: "crm",
-                      sourceRef: invoiceNumber,
-                      internalNotes: [
-                        `Expediente creado automáticamente al confirmar pago pendiente.`,
-                        `Cliente: ${pp.clientName}`,
-                        pp.clientEmail ? `Email: ${pp.clientEmail}` : null,
-                        `Factura: ${invoiceNumber}`,
-                        `Agente: ${ctx.user.name ?? ctx.user.email}`,
-                        reavErrors.length > 0 ? `? Config REAV incompleta — revisar producto ${productId}` : null,
-                      ].filter(Boolean).join(" — "),
-                    });
-                    if (pdfUrl && reavResult?.id) {
-                      await attachReavDocument({
-                        expedientId: reavResult.id,
-                        side: "client",
-                        docType: "factura_emitida",
-                        title: `Factura ${invoiceNumber}`,
-                        fileUrl: pdfUrl,
-                        mimeType: "application/pdf",
-                        notes: `Generada al confirmar pago pendiente.`,
-                        uploadedBy: ctx.user.id,
-                      });
-                    }
-                    console.log(`[pendingPayments.confirm] Expediente REAV ${reavResult?.expedientNumber} creado para reserva ${pp.reservationId}`);
-                  }
-                }
-              } catch (reavErr) {
-                console.error("[pendingPayments.confirm] Error creando expediente REAV:", reavErr);
-              }
-            }
-          } catch (invErr) {
-            if (invErr instanceof Error && invErr.message === "ALREADY_INVOICED") return { success: true };
-            console.error("[pendingPayments.confirm] Error generando factura:", invErr);
-            // Reconciliación trazable: el pago queda cobrado pero SIN factura; se deja constancia en la ficha del presupuesto
-            // (acción «payment_confirmed_without_invoice») para que se emita la factura a mano o se revise. Nunca silencioso.
-            await logActivity("quote", pp.quoteId, "payment_confirmed_without_invoice", ctx.user.id, ctx.user.name, { ppId: input.id, reservationId: pp.reservationId, amountCents: pp.amountCents, error: invErr instanceof Error ? invErr.message.slice(0, 200) : String(invErr).slice(0, 200) }).catch(() => undefined);
-          }
+          const outcome = await issuePendingPaymentInvoice(pp, input.paymentMethod, ctx.user);
+          if (outcome === "already") return { success: true };
         }
 
         await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod });

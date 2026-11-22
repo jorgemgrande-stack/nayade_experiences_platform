@@ -499,6 +499,96 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
   });
 
+  // ───────────────────────── 2e. Incidencias fiscales persistentes y reconciliación ─────────────────────────
+  describe("2e. incidencias persistentes: pago sin factura y plan de cuotas sin completar", () => {
+    const counter = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
+    const failing = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      await ess.sql("a", `ALTER TABLE invoices ADD CONSTRAINT audit_fail_inv3 CHECK (clientName <> '${name}')`);
+      try { return await fn(); } finally { await ess.sql("a", "ALTER TABLE invoices DROP CHECK audit_fail_inv3"); }
+    };
+    const incidentsOf = async (q: number, action: string) => ess.sql("a", "SELECT id, details FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = ? ORDER BY id", [q, action]);
+    const listOpen = async () => (ok(await ess.q("a", "crm.fiscalIncidents.list", undefined, adm), "lista") as any[]);
+    const reconcile = (incidentId: number) => ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId }, adm);
+    const invoicesOfRes = async (resId: number) => Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE reservationId = ?", [resId]))[0].n);
+
+    /** Pago pendiente de 400 € sobre una reserva ya convertida, confirmado con la factura rota. */
+    const setupPaidWithoutInvoice = async (breakAtConfirm: boolean) => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const resId = Number((await ess.sql("a", "SELECT id FROM reservations WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: nm, productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pago pendiente");
+      const pp = Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      const confirm = () => ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm);
+      if (breakAtConfirm) await failing(nm, confirm); else ok(await confirm(), "confirmar");
+      return { q, resId, pp, nm };
+    };
+
+    it("pago cobrado sin factura: queda incidencia PERSISTENTE y visible en la lista; reconciliar emite UNA factura y la cierra", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = await incidentsOf(q, "payment_confirmed_without_invoice");
+      expect(inc.length).toBe(1);
+      expect((await listOpen()).some((i) => i.id === Number(inc[0].id))).toBe(true);
+      const c0 = await counter();
+      expect(ok(await reconcile(Number(inc[0].id)), "reconciliar").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect(await counter()).toBe(c0 + 1);
+      expect((await listOpen()).some((i) => i.id === Number(inc[0].id))).toBe(false);
+      // Idempotente: repetir no emite otra
+      expect(ok(await reconcile(Number(inc[0].id)), "repetir").status).toBe("already_resolved");
+      expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("reconciliar ×4 a la vez la misma incidencia → exactamente UNA factura, sin número perdido", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = await incidentsOf(q, "payment_confirmed_without_invoice");
+      const c0 = await counter();
+      const rs = await Promise.all(Array.from({ length: 4 }, () => reconcile(Number(inc[0].id))));
+      log("reconciliar x4", rs.map((r) => r.status));
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect(await counter()).toBe(c0 + 1);
+    });
+
+    it("si la reconciliación vuelve a fallar: sigue abierta, sin factura ni número consumido ni ruido duplicado; un reintento posterior la resuelve", async () => {
+      const { q, resId, nm } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const failed = await failing(nm, () => reconcile(inc));
+      expect(failed.status).not.toBe(200);
+      expect(await counter()).toBe(c0);
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect((await incidentsOf(q, "payment_confirmed_without_invoice")).length).toBe(1);
+      expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+      expect(ok(await reconcile(inc), "reintento").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("cuotas: si falla la factura final al cobrar la última cuota, queda incidencia persistente; reconciliar completa el plan con UNA factura", async () => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await ess.m("a", "crm.paymentPlans.upsert", { quoteId: q, installments: [
+        { installmentNumber: 1, amountCents: 20000, dueDate: "2027-01-10", isRequiredForConfirmation: true },
+        { installmentNumber: 2, amountCents: 20000, dueDate: "2027-02-10", isRequiredForConfirmation: false },
+      ] }, adm), "plan");
+      const ids = (await ess.sql("a", "SELECT id FROM payment_installments WHERE quote_id = ? ORDER BY installment_number", [q])).map((r: any) => Number(r.id));
+      const payInst = (id: number) => ess.m("a", "crm.paymentPlans.confirmInstallment", { installmentId: id, paymentMethod: "efectivo" }, adm);
+      ok(await payInst(ids[0]), "cuota 1");
+      const c0 = await counter();
+      const bad = await failing(nm, () => payInst(ids[1]));
+      expect(bad.status).not.toBe(200);
+      expect(await counter()).toBe(c0);
+      const inc = await incidentsOf(q, "installment_plan_failed");
+      expect(inc.length).toBeGreaterThanOrEqual(1);
+      const id = Number(inc[0].id);
+      expect((await listOpen()).some((i) => i.id === id)).toBe(true);
+      expect(ok(await reconcile(id), "reconciliar plan").status).toBe("plan_reconciled");
+      expect((await invoicesOf(q)).length).toBe(1);
+      expect((await ess.sql("a", "SELECT paidAt FROM quotes WHERE id = ?", [q]))[0].paidAt).not.toBeNull();
+      expect((await listOpen()).some((i) => i.id === id)).toBe(false);
+      expect(await counter()).toBe(c0 + 1);
+    });
+  });
+
   // ───────────────────────── 3. Presupuestos de 0 € / precio equivocado ─────────────────────────
   describe("3. generateFromLead desde solicitudes de producto", () => {
     it("DEFECTO: producto «bajo petición» → presupuesto de 0 €", async () => {
