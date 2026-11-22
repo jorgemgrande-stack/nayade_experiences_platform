@@ -35,6 +35,18 @@ import {
 } from "../emailTemplates";
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
+
+/**
+ * Número de una transacción de devolución (DEV-AAAA-NNNN) de su serie PROPIA. Salta los que ya existan como transacción:
+ * hasta ahora los DEV- salían del contador de facturas, así que una empresa con devoluciones antiguas conserva números DEV-
+ * que la serie nueva no debe repetir.
+ */
+async function nextRefundTransactionNumber(context: string, adminUserId: number): Promise<string> {
+  return generateDocumentNumber("devolucion", context, String(adminUserId), async (candidate) => {
+    const [hit] = await legacyDb().select({ id: transactions.id }).from(transactions).where(eq(transactions.transactionNumber, candidate)).limit(1);
+    return !!hit;
+  });
+}
 import { logActivity, getGHLCredentials, voidConfirmedOperation } from "../db";
 import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
@@ -226,12 +238,7 @@ async function propagateCancellation(params: {
 
     // -- Transacción contable de devolución (solo si hay importe a devolver) -
     if (compensationType === "devolucion" && refundAmount != null && refundAmount > 0) {
-      const txNumber = await generateDocumentNumber(
-        "factura",
-        `cancellations:refundTransaction:${requestId}`,
-        String(adminUserId)
-      );
-      const refundTxNumber = txNumber.replace("FAC-", "DEV-");
+      const refundTxNumber = await nextRefundTransactionNumber(`cancellations:refundTransaction:${requestId}`, adminUserId);
       await tx.insert(transactions).values({
         transactionNumber: refundTxNumber,
         type: "reembolso",
@@ -338,13 +345,9 @@ async function partialLineCancellation(params: {
           .where(eq(cancellationRequests.id, requestId));
 
         if (compensationType === "devolucion" && refundAmount != null && refundAmount > 0) {
-          const txNum = await generateDocumentNumber(
-            "factura",
-            `cancellations:partialLineRefund:${requestId}`,
-            String(adminUserId)
-          );
+          const txNum = await nextRefundTransactionNumber(`cancellations:partialLineRefund:${requestId}`, adminUserId);
           await tx.insert(transactions).values({
-            transactionNumber: txNum.replace("FAC-", "DEV-"),
+            transactionNumber: txNum,
             type: "reembolso",
             amount: String(-Math.abs(refundAmount)),
             currency: "EUR",

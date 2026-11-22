@@ -75,7 +75,8 @@ export type DocumentType =
   | "liquidacion"
   | "anulacion"
   | "abono"
-  | "propuesta";
+  | "propuesta"
+  | "devolucion";
 
 const DEFAULT_PREFIXES: Record<DocumentType, string> = {
   presupuesto: "PRES",
@@ -87,6 +88,9 @@ const DEFAULT_PREFIXES: Record<DocumentType, string> = {
   anulacion: "ANU",
   abono: "ABN",
   propuesta: "PROP",
+  // Transacciones de devolución: serie PROPIA. Antes consumían un número de la serie fiscal de facturas (y se renombraba «FAC-»
+  // por «DEV-»), dejando un hueco en la numeración de facturas por cada devolución.
+  devolucion: "DEV",
 };
 
 // Padding de 4 dígitos para mantener compatibilidad con el formato actual

@@ -93,6 +93,18 @@ describe.skipIf(!URL_)("numeración de documentos (MySQL real, concurrencia)", (
     expect(Object.fromEntries(rows.map((r) => [r.document_type, r.current_number]))).toEqual({ factura: 8, presupuesto: 1, reserva: 42 + N, tpv: N });
   });
 
+  it("las devoluciones tienen serie propia DEV: no consumen la de facturas y saltan números DEV- ya usados", async () => {
+    await db.query("DELETE FROM document_counters WHERE document_type IN ('factura','devolucion') AND `year` = ?", [YEAR]);
+    await db.query("INSERT INTO document_counters (document_type, `year`, current_number, prefix) VALUES ('factura', ?, 100, 'FAC')", [YEAR]);
+    const taken = new Set([`DEV-${YEAR}-0001`, `DEV-${YEAR}-0002`]); // devoluciones antiguas que ya ocupan esos números
+    const exists = async (n: string) => taken.has(n);
+    const refunds = await Promise.all(Array.from({ length: 5 }, () => generate("devolucion", "prueba", "1", exists)));
+    expect([...refunds].sort()).toEqual([3, 4, 5, 6, 7].map((n) => `DEV-${YEAR}-${pad(n)}`));
+    const [rows] = await db.query<mysql.RowDataPacket[]>("SELECT current_number FROM document_counters WHERE document_type = 'factura' AND `year` = ?", [YEAR]);
+    expect(rows[0].current_number).toBe(100); // la serie fiscal de facturas no se ha movido
+    expect(await generate("factura")).toBe(`FAC-${YEAR}-0101`);
+  });
+
   it("la migración 0005 impide una segunda serie del mismo tipo y año", async () => {
     await expect(
       db.query("INSERT INTO document_counters (document_type, `year`, current_number, prefix) VALUES ('reserva', ?, 0, 'RES')", [YEAR]),
