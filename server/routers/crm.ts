@@ -826,6 +826,52 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
 }
 
 /** Lo cobrado y facturado es lo que se leyó: si el presupuesto cambió (líneas, importe) entre la lectura y el bloqueo, no se factura con datos viejos. */
+/** Reserva viva (no cancelada) de un presupuesto: la enlazada por quoteId o, si no la hay, la de su factura. */
+async function findReservationForQuote(runner: Pick<typeof db, "select">, quoteId: number, lock = false) {
+  const byQuote = runner.select().from(reservations)
+    .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
+    .orderBy(reservations.id).limit(1);
+  const [direct] = await (lock ? byQuote.for("update") : byQuote);
+  if (direct) return direct;
+  const [viaInvoice] = await runner.select({ id: reservations.id }).from(invoices)
+    .innerJoin(reservations, eq(invoices.reservationId, reservations.id))
+    .where(and(eq(invoices.quoteId, quoteId), ne(reservations.status, "cancelled")))
+    .orderBy(reservations.id).limit(1);
+  if (!viaInvoice) return null;
+  const byId = runner.select().from(reservations).where(eq(reservations.id, viaInvoice.id)).limit(1);
+  const [found] = await (lock ? byId.for("update") : byId);
+  return found ?? null;
+}
+
+/**
+ * Una operación comercial = UNA reserva. Con el presupuesto ya bloqueado: si ya hay una reserva viva (p. ej. la de
+ * «convertir a reserva», pendiente de pago) se completa como cobrada en lugar de crear otra; si no, se inserta.
+ * Devuelve el id de la reserva. `values.reservationNumber` solo es obligatorio cuando hay que insertar.
+ */
+async function upsertQuoteReservation(tx: Pick<typeof db, "select" | "insert" | "update">, quoteId: number, values: Record<string, unknown>): Promise<number> {
+  const existing = await findReservationForQuote(tx, quoteId, true);
+  if (existing) {
+    const note = values.notes as string | undefined;
+    await tx.update(reservations).set({
+      quoteId,
+      status: values.status,
+      statusReservation: values.statusReservation,
+      statusPayment: values.statusPayment,
+      amountTotal: values.amountTotal,
+      amountPaid: values.amountPaid,
+      ...(values.paymentMethod !== undefined ? { paymentMethod: values.paymentMethod } : {}),
+      ...(values.transferProofUrl ? { transferProofUrl: values.transferProofUrl } : {}),
+      notes: [existing.notes, note].filter(Boolean).join(" — ") || null,
+      paidAt: values.paidAt,
+      updatedAt: values.updatedAt,
+    } as any).where(eq(reservations.id, existing.id));
+    return existing.id;
+  }
+  if (!values.reservationNumber) throw new TRPCError({ code: "CONFLICT", message: "La reserva del presupuesto cambió mientras se cobraba. Vuelve a intentarlo." });
+  const [res] = await tx.insert(reservations).values({ ...values, quoteId } as any);
+  return (res as { insertId: number }).insertId;
+}
+
 function assertQuoteUnchanged(read: { items: unknown; total: unknown }, locked: { items: unknown; total: unknown }): void {
   if (JSON.stringify(read.items) !== JSON.stringify(locked.items) || String(read.total) !== String(locked.total)) {
     throw new TRPCError({ code: "CONFLICT", message: "El presupuesto ha cambiado mientras se registraba el cobro: revísalo y vuelve a intentarlo." });
@@ -2200,7 +2246,8 @@ export const crmRouter = router({
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const issuerSnap = await issuerSnapshotForNewInvoice();
         await ensureDocumentCounter("factura");
-        const reservationNumber = await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
+        // Si el presupuesto ya tiene reserva (convertido antes a reserva), se reutiliza: no se gasta número de reserva
+        const reservationNumber = (await findReservationForQuote(db, quote.id)) ? null : await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
         const resProd = reservationProductFromQuoteItems(quote.items, mainProductId);
         const critical = await db.transaction(async (tx) => {
           const [lockedQuote] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
@@ -2236,7 +2283,7 @@ export const crmRouter = router({
             updatedAt: now,
           });
           const invoiceId = (invResult as { insertId: number }).insertId;
-          const [resResult] = await tx.insert(reservations).values({
+          const reservationId = await upsertQuoteReservation(tx, quote.id, {
             productId: resProd.productId,
             productName: quote.title,
             extrasJson: resProd.extrasJson,
@@ -2266,7 +2313,6 @@ export const crmRouter = router({
             updatedAt: Date.now(),
             paidAt: Date.now(),
           });
-          const reservationId = (resResult as { insertId: number }).insertId;
           await tx.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
           await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
           await tx.update(quotes).set({
@@ -2612,11 +2658,7 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead asociado no encontrado" });
         // Idempotente: un presupuesto ya convertido (doble clic, reintento) no genera otro pedido
-        const [existing] = await db
-          .select({ id: reservations.id, merchantOrder: reservations.merchantOrder, status: reservations.status })
-          .from(reservations)
-          .where(and(eq(reservations.quoteId, input.quoteId), ne(reservations.status, "cancelled")))
-          .limit(1);
+        const existing = await findReservationForQuote(db, input.quoteId);
         if (existing) return { success: true, reservationId: existing.id, reservationRef: existing.merchantOrder, status: existing.status };
 
         const now = new Date();
@@ -2636,11 +2678,7 @@ export const crmRouter = router({
         // no crean dos pedidos, y un fallo no deja la reserva sin marcar el presupuesto.
         const converted = await db.transaction(async (tx) => {
         await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, input.quoteId)).for("update");
-        const [raced] = await tx
-          .select({ id: reservations.id, merchantOrder: reservations.merchantOrder, status: reservations.status })
-          .from(reservations)
-          .where(and(eq(reservations.quoteId, input.quoteId), ne(reservations.status, "cancelled")))
-          .limit(1);
+        const raced = await findReservationForQuote(tx, input.quoteId, true);
         if (raced) return { already: true as const, raced };
         const [resResult] = await tx.insert(reservations).values({
           productId: resProd.productId,
@@ -2807,7 +2845,7 @@ export const crmRouter = router({
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const issuerSnapT = await issuerSnapshotForNewInvoice();
         await ensureDocumentCounter("factura");
-        const reservationNumberTransfer = await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
+        const reservationNumberTransfer = (await findReservationForQuote(db, quote.id)) ? null : await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
         const resProd = reservationProductFromQuoteItems(quote.items, mainProductIdT);
         const criticalT = await db.transaction(async (tx) => {
           const [lockedQuote] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
@@ -2845,7 +2883,7 @@ export const crmRouter = router({
             updatedAt: now,
           });
           const invoiceId = (invResult as { insertId: number }).insertId;
-          const [resResult] = await tx.insert(reservations).values({
+          const reservationId = await upsertQuoteReservation(tx, quote.id, {
             productId: resProd.productId,
             productName: quote.title,
             extrasJson: resProd.extrasJson,
@@ -2868,7 +2906,6 @@ export const crmRouter = router({
             updatedAt: Date.now(),
             paidAt: Date.now(),
           });
-          const reservationId = (resResult as { insertId: number }).insertId;
           await tx.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
           await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
           await tx.update(quotes).set({

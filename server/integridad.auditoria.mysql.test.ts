@@ -401,6 +401,104 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
   });
 
+  // ───────────────────────── 2d. Una sola reserva por operación comercial ─────────────────────────
+  describe("2d. convertToReservation y cobro: UNA reserva por presupuesto", () => {
+    const live = async (q: number) => ess.sql("a", "SELECT id, status, quote_id AS quoteId, invoiceId, amount_paid AS amountPaid FROM reservations WHERE quote_id = ? AND status <> 'cancelled' ORDER BY id", [q]);
+    const convert = (q: number) => ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm);
+    const counterOfRes = async () => Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n);
+
+    it("REGRESIÓN: convertir a reserva y luego cobrar (efectivo) → la MISMA reserva pasa a pagada, enlazada a la factura; no hay segunda", async () => {
+      const q = await freshQuote();
+      ok(await convert(q), "convertir");
+      const before = await live(q);
+      expect(before.length).toBe(1);
+      expect(before[0].status).toBe("pending_payment");
+      ok(await pay(q), "cobrar");
+      const after = await live(q);
+      expect(after.length).toBe(1);
+      expect(after[0].id).toBe(before[0].id);
+      expect(after[0].status).toBe("paid");
+      const inv = await invoicesOf(q);
+      expect(inv.length).toBe(1);
+      expect(Number(inv[0].reservationId)).toBe(Number(before[0].id));
+      expect(Number(after[0].invoiceId)).toBe(Number(inv[0].id));
+    });
+
+    it("REGRESIÓN: convertir y luego confirmar transferencia → una sola reserva, pagada", async () => {
+      const q = await freshQuote();
+      ok(await convert(q), "convertir");
+      await ess.sql("a", "UPDATE quotes SET transfer_proof_url = ? WHERE id = ?", ["https://ejemplo.invalid/justificante.pdf", q]);
+      ok(await ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm), "transferencia");
+      const after = await live(q);
+      expect(after.length).toBe(1);
+      expect(after[0].status).toBe("paid");
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("REGRESIÓN (orden inverso): cobrar y luego convertir → no crea otra reserva y devuelve la existente", async () => {
+      const q = await freshQuote();
+      ok(await pay(q), "cobrar");
+      const before = await live(q);
+      expect(before.length).toBe(1);
+      const r = ok(await convert(q), "convertir tras cobrar");
+      expect(Number(r.reservationId)).toBe(Number(before[0].id));
+      expect((await live(q)).length).toBe(1);
+    });
+
+    it("simultáneo: 3 conversiones + 3 cobros a la vez (3 rondas) → UNA reserva viva y UNA factura", async () => {
+      for (let round = 0; round < 3; round++) {
+        const q = await freshQuote();
+        await Promise.all([convert(q), convert(q), convert(q), pay(q), pay(q), pay(q)]);
+        const rs = await live(q);
+        log("convertir+cobrar simultáneo", { reservas: rs.length, estado: rs.map((r: any) => r.status) });
+        expect(rs.length).toBe(1);
+        expect((await invoicesOf(q)).length).toBe(1);
+      }
+    });
+
+    it("CASO LEGÍTIMO: cobrar sin convertir antes sigue creando exactamente una reserva, ya enlazada al presupuesto", async () => {
+      const q = await freshQuote();
+      ok(await pay(q), "cobrar");
+      const rs = await live(q);
+      expect(rs.length).toBe(1);
+      expect(rs[0].status).toBe("paid");
+      expect(Number(rs[0].quoteId)).toBe(q);
+    });
+
+    it("fallo al facturar tras convertir: la reserva pendiente queda intacta, sin número de factura consumido, y el reintento completa con la misma reserva", async () => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await convert(q), "convertir");
+      const before = await live(q);
+      const counter = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
+      const c0 = await counter();
+      await ess.sql("a", `ALTER TABLE invoices ADD CONSTRAINT audit_fail_inv2 CHECK (clientName <> '${nm}')`);
+      let failed: Res;
+      try { failed = await pay(q); } finally { await ess.sql("a", "ALTER TABLE invoices DROP CHECK audit_fail_inv2"); }
+      expect(failed.status).not.toBe(200);
+      const mid = await live(q);
+      expect(mid.length).toBe(1);
+      expect(mid[0].status).toBe("pending_payment");
+      expect(await counter()).toBe(c0);
+      ok(await pay(q), "reintento");
+      const after = await live(q);
+      expect(after.length).toBe(1);
+      expect(after[0].id).toBe(before[0].id);
+      expect(after[0].status).toBe("paid");
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("idempotencia: cobrar dos veces tras convertir no crea reservas ni facturas nuevas", async () => {
+      const q = await freshQuote();
+      ok(await convert(q), "convertir");
+      ok(await pay(q), "cobrar 1");
+      const n = await counterOfRes();
+      ok(await pay(q), "cobrar 2");
+      expect(await counterOfRes()).toBe(n);
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+  });
+
   // ───────────────────────── 3. Presupuestos de 0 € / precio equivocado ─────────────────────────
   describe("3. generateFromLead desde solicitudes de producto", () => {
     it("DEFECTO: producto «bajo petición» → presupuesto de 0 €", async () => {
