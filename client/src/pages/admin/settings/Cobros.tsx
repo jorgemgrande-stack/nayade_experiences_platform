@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, CircleDashed, Loader2, Lock, ShieldCheck, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n/I18nProvider";
+import { localizeIntegrationText } from "@shared/i18n/integrationsDe";
 
 interface Mode {
   mode: "test" | "live";
@@ -32,7 +33,8 @@ const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: strin
 };
 
 function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boolean; onChanged: () => void }) {
-  const { t, format } = useI18n();
+  const { t, format, locale } = useI18n();
+  const modeLabel = localizeIntegrationText(m.label, locale);
   const fmt = (ms: number | null) => (ms ? format.dateTime(ms, { dateStyle: "medium", timeStyle: "short" }) : "—");
   const isLive = m.mode === "live";
   const connect = trpc.cobros.connect.useMutation({
@@ -67,14 +69,14 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id={`cobros-${m.mode}`} className="text-lg font-semibold">
-            {m.label}
+            {modeLabel}
           </h2>
           <p className="text-xs text-muted-foreground">
             {isLive ? t("settingsPayments.liveHint") : t("settingsPayments.testHint")}
           </p>
         </div>
         <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${s.className}`}>
-          <Icon className="w-4 h-4" aria-hidden /> {m.statusLabel}
+          <Icon className="w-4 h-4" aria-hidden /> {localizeIntegrationText(m.statusLabel, locale)}
         </span>
       </div>
 
@@ -146,7 +148,7 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
                 onChange={(e) => setOnline.mutate({ mode: m.mode, enabled: e.target.checked })}
               />
               <span>
-                <strong>{t("settingsPayments.chargeOnline", { label: m.label })}</strong>
+                <strong>{t("settingsPayments.chargeOnline", { label: modeLabel })}</strong>
                 <br />
                 <span className="text-muted-foreground">
                   {m.status === "verificada"

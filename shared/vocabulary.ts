@@ -11,7 +11,7 @@
  */
 
 import type { Locale } from "./i18n/core";
-import { localizeVocabularyText } from "./i18n/vocabularyDe";
+import { localizeAgreement, localizeVocabularyText } from "./i18n/vocabularyDe";
 
 export interface VocabularyInput {
   /** Idioma de la interfaz; sin él (o en español) se devuelve el texto de siempre. */
@@ -160,6 +160,9 @@ function localizeVocabulary(v: Vocabulary, locale: Locale): Vocabulary {
   const catalog: Record<string, unknown> = { ...v.catalog };
   for (const [k, val] of Object.entries(v.catalog)) if (typeof val === "string" && !CATALOG_VALUE_FIELDS.has(k)) catalog[k] = localizeVocabularyText(val, locale);
   out.catalog = catalog;
+  // La concordancia es en español; en otro idioma se devuelve la palabra equivalente (sin género)
+  out.agree = (m: string, f: string) => localizeAgreement(v.agree(m, f), locale);
+  out.agreeLead = (m: string, f: string) => localizeAgreement(v.agreeLead(m, f), locale);
   // Solo la etiqueta: el valor se envía al servidor
   out.productTypes = v.productTypes.map((p) => ({ value: p.value, label: localizeVocabularyText(p.label, locale) }));
   return out as unknown as Vocabulary;

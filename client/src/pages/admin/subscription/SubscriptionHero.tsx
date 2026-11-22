@@ -8,6 +8,7 @@ import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, Cred
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
+import { usePanelText } from "@/i18n/usePanelText";
 import { planPresentation, type PlanIconKey } from "@shared/planPresentation";
 import type { HeaderAction, HeaderFact, SubscriptionHeaderModel } from "@shared/subscriptionHeader";
 
@@ -27,6 +28,7 @@ export function SubscriptionHero({
   busy?: HeaderAction["kind"] | null;
 }) {
   const { t } = useI18n();
+  const px = usePanelText();
   const pr = planPresentation({ key: planKey ?? "", tagline: null });
   const Icon = PLAN_ICONS[pr.icon];
   return (
@@ -46,9 +48,9 @@ export function SubscriptionHero({
                   <Icon className="h-6 w-6 sm:h-7 sm:w-7" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wider text-white/75">{model.eyebrow}</p>
+                  <p className="text-xs font-medium uppercase tracking-wider text-white/75">{px(model.eyebrow)}</p>
                   <h2 id="sub-plan" className="break-words text-2xl font-extrabold leading-tight text-white sm:text-3xl">
-                    {model.planName}
+                    {model.planName === "Sin plan asignado" ? px(model.planName) : model.planName}
                   </h2>
                 </div>
               </div>
@@ -58,7 +60,7 @@ export function SubscriptionHero({
               <div className="min-w-0 flex-1 space-y-2">
                 <p className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold", `sx-status-${model.status.tone}`)}>
                   <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                  {model.status.label}
+                  {px(model.status.label)}
                 </p>
                 {model.facts.length > 0 && (
                   <dl className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
@@ -67,8 +69,8 @@ export function SubscriptionHero({
                       return (
                         <div key={f.id} className="flex min-w-0 flex-wrap items-center gap-x-1.5">
                           <FIcon className={cn("h-4 w-4 shrink-0", f.tone === "warning" ? "text-amber-300" : f.tone === "success" ? "text-emerald-300" : "text-white/70")} aria-hidden="true" />
-                          <dt className="text-white/75">{f.label}</dt>
-                          <dd className="font-semibold text-white">{f.value}</dd>
+                          <dt className="text-white/75">{px(f.label)}</dt>
+                          <dd className="font-semibold text-white">{px(f.value)}</dd>
                         </div>
                       );
                     })}
@@ -86,11 +88,11 @@ export function SubscriptionHero({
 
             {(model.dataNote || model.restriction) && (
               <div className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-sm">
-                {model.dataNote && <p className="text-white/90">{model.dataNote}</p>}
+                {model.dataNote && <p className="text-white/90">{px(model.dataNote)}</p>}
                 {model.restriction && (
                   <p className="flex items-start gap-1.5 text-amber-200">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0">{model.restriction}</span>
+                    <span className="min-w-0">{px(model.restriction)}</span>
                   </p>
                 )}
               </div>
@@ -104,6 +106,7 @@ export function SubscriptionHero({
 
 function HeroButton({ action, onAction, busy, variant }: { action: HeaderAction; onAction: (a: HeaderAction) => void; busy: boolean; variant: "primary" | "outline" }) {
   const { t } = useI18n();
+  const px = usePanelText();
   const cls =
     variant === "primary"
       ? "cx-cta h-11 rounded-xl px-5 font-semibold shadow-lg shadow-black/30 hover:bg-transparent"
@@ -112,7 +115,7 @@ function HeroButton({ action, onAction, busy, variant }: { action: HeaderAction;
     return (
       <Button asChild variant={variant === "primary" ? "default" : "outline"} className={cls}>
         <Link href={action.href}>
-          {action.label}
+          {px(action.label)}
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       </Button>
@@ -120,7 +123,7 @@ function HeroButton({ action, onAction, busy, variant }: { action: HeaderAction;
   }
   return (
     <Button type="button" variant={variant === "primary" ? "default" : "outline"} className={cls} disabled={busy} onClick={() => onAction(action)}>
-      {busy ? t("subscription.common.opening") : action.label}
+      {busy ? t("subscription.common.opening") : px(action.label)}
       {action.kind === "portal" ? <ArrowUpRight className="h-4 w-4" aria-hidden="true" /> : <ArrowRight className="h-4 w-4" aria-hidden="true" />}
     </Button>
   );

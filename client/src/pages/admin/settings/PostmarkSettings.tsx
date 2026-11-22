@@ -16,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
+import { localizeIntegrationText } from "@shared/i18n/integrationsDe";
 import type { Translate } from "@shared/i18n/core";
 
 const STAT_KEYS = ["accepted", "delivered", "soft_bounced", "bounced", "blocked", "complained", "failed", "pending"];
@@ -42,7 +43,7 @@ function Step({ n, title, done, children }: { n: number; title: string; done?: b
 }
 
 export default function PostmarkSettings() {
-  const { t, format } = useI18n();
+  const { t, format, locale } = useI18n();
   const utils = trpc.useUtils();
   const status = trpc.postmarkTenant.status.useQuery(undefined, { retry: false });
   const [token, setToken] = useState("");
@@ -167,7 +168,7 @@ export default function PostmarkSettings() {
               </Button>
               {verify.data && (
                 <div className="space-y-1 rounded-lg border border-border p-3 text-sm">
-                  <p className={verify.data.ok ? "text-foreground" : "text-destructive"}>{verify.data.message}</p>
+                  <p className={verify.data.ok ? "text-foreground" : "text-destructive"}>{localizeIntegrationText(verify.data.message, locale)}</p>
                   {verify.data.serverName && <p className="text-muted-foreground">{t("settingsPostmark.step2.server", { name: verify.data.serverName, type: verify.data.deliveryType ?? "—" })}</p>}
                   {verify.data.stream.found && <p className="text-muted-foreground">{t("settingsPostmark.step2.stream", { id: verify.data.stream.id, type: verify.data.stream.type })}</p>}
                   {verify.data.sender.problemText && <p className="text-amber-700 dark:text-amber-300">{verify.data.sender.problemText}</p>}

@@ -126,7 +126,7 @@ export default {
   ejSolicitudDelCliente: "z. B. Kundenwunsch wegen Wetterbedingungen...",
   confirmarCambioDeFecha: "Datumsänderung bestätigen",
   guardarCambios: "Änderungen speichern",
-  estaAccionEsIrreversible: "Diese Aktion kann nicht rückgängig gemacht werden. {theOrder} und die zugehörigen Daten werden gelöscht. Bereits erstellte Rechnungen bleiben erhalten.",
+  estaAccionEsIrreversible: "Diese Aktion kann nicht rückgängig gemacht werden. Gelöscht werden {theOrder} und die zugehörigen Daten. Bereits erstellte Rechnungen bleiben erhalten.",
   seEmitiraUnaFactura: "Es wird eine vollständige Rechnung auf Basis der Daten",
   indicaANombreDe: ". Gib an, auf wen sie ausgestellt wird: Die Rechnung muss Name bzw. Firma, Steuernummer und Anschrift des Empfängers enthalten.",
   datosPropuestosDelCliente: "Vorgeschlagene Daten des mit dem Verkauf verknüpften Kunden. Prüfe sie vor der Ausstellung.",

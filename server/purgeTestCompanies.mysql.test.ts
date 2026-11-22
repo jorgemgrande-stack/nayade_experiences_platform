@@ -87,6 +87,13 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
       const order = await seed(crm, "commercial_orders", { company_id: id });
       const payment = await seed(crm, "commercial_payments", { order_id: order });
       await seed(crm, "commercial_payment_events", { provider_event_id: `evt_${id}`, payment_id: payment });
+      // Implantación asistida de las empresas técnicas: sus hitos y eventos tienen `order_id`, pero apunta a implementation_orders (no a
+      // commercial_orders). Sus ids (1000+) no coinciden con los de los pedidos comerciales, como en production (error 21/11/2026)
+      if (c.test) {
+        const impl = await seed(crm, "implementation_orders", { id: 1000 + id, company_id: id, tenant_id: c.tenantId });
+        await seed(crm, "implementation_milestones", { order_id: impl });
+        await seed(crm, "implementation_events", { order_id: impl });
+      }
       if (c.tenantId) {
         await seed(reg, "tenants", { id: c.tenantId });
         await seed(reg, "tenant_domains", { tenant_id: c.tenantId, domain: `${c.tenantId}.example.test` });
@@ -95,6 +102,11 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
         await seed(reg, "backup_inventory", { target_kind: "tenant", target_id: c.tenantId });
       }
     }
+    // Implantación de una empresa REAL cuyo id (1) coincide con el de un pedido comercial de una empresa técnica: un filtro por el nombre de
+    // columna `order_id` (ids de pedidos comerciales) borraría su evento y su hito, y dejaría los de las técnicas (fallo de clave ajena)
+    await seed(crm, "implementation_orders", { id: 1, company_id: 30, tenant_id: "t9-empresa-real" });
+    await seed(crm, "implementation_milestones", { order_id: 1 });
+    await seed(crm, "implementation_events", { order_id: 1 });
     // Leads: los técnicos de la lista cerrada (solo enlazados por converted_company_id o sin empresa), uno de una empresa técnica por
     // company_id, y los reales (uno convertido en una empresa real). Cada lead, con su solicitud web; algunos, con oportunidad e historial.
     const lead = (id: number, name: string, email: string | null, extra: Record<string, unknown> = {}) => seed(crm, "crm_leads", { id, name, email, status: "converted", created_at: T, ...extra });
@@ -273,6 +285,34 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     await crm.query("DELETE FROM crm_activities WHERE entity_id = 9999");
   });
 
+  it("implantación asistida: hitos y eventos entran por su clave ajena a implementation_orders y se borran antes que ellos", async () => {
+    const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+    expect(plan.problems).toEqual([]);
+    const rowsOf = (t: string) => plan.steps.find((s) => s.table === t)?.rows;
+    // Solo las 4 empresas técnicas: la implantación de la empresa real (id 1, igual que un pedido comercial técnico) no entra
+    expect(rowsOf("implementation_orders")).toBe(4);
+    expect(rowsOf("implementation_milestones")).toBe(4);
+    expect(rowsOf("implementation_events")).toBe(4);
+    const tables = tablesOf(plan);
+    expect(tables.indexOf("crm.implementation_events")).toBeLessThan(tables.indexOf("crm.implementation_orders"));
+    expect(tables.indexOf("crm.implementation_milestones")).toBeLessThan(tables.indexOf("crm.implementation_orders"));
+  });
+
+  it("una tabla hija con filas que apuntan a lo que se borra y que el plan no alcanza aborta el plan, no el borrado a medias", async () => {
+    // Una fila propia de la empresa técnica 12 y otra de una empresa REAL que referencia un contrato de la técnica
+    await crm.query("CREATE TABLE zz_cruce (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, ref_contract INT NOT NULL, CONSTRAINT fk_zz_cruce FOREIGN KEY (ref_contract) REFERENCES crm_contracts (id))");
+    try {
+      await crm.query("INSERT INTO zz_cruce (company_id, ref_contract) VALUES (12, ?), (30, ?)", [contractOf[12], contractOf[12]]);
+      const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
+      expect(plan.problems.join("\n")).toMatch(/zz_cruce\.ref_contract: 1 fila\(s\) apuntan a crm_contracts/);
+      await expect(applyPurge({ crm, registry: reg }, plan, plan.planHash)).rejects.toThrow(/No se purga nada/);
+      const [[left]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_companies WHERE id IN (8, 11, 12, 13)");
+      expect(Number(left.n)).toBe(4);
+    } finally {
+      await crm.query("DROP TABLE IF EXISTS zz_cruce");
+    }
+  });
+
   it("purga solo la lista cerrada, de hijos a padres, conserva las copias y deja la empresa real y Nextair intactas", async () => {
     const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
     expect(plan.problems).toEqual([]);
@@ -295,12 +335,31 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(plan.databases.filter((x) => x.restored).map((x) => x.database)).toEqual(["es_prueba_condiciones_129_r20261016221031"]);
     const dropped: string[] = [];
     const restored: string[] = [];
-    const done = await applyPurge(
-      { crm, registry: reg, dropDatabase: async (t) => void dropped.push(t), dropRestoredDatabase: async (_t, db) => void restored.push(db), servers: resources().servers, deleteMedia: async (k) => void bucket.delete(k) },
-      plan,
-      plan.planHash,
-      "44830001:jorgemgrande-stack",
-    );
+    let bucketFails = true;
+    const run = (p: typeof plan, hash: string) =>
+      applyPurge(
+        { crm, registry: reg, dropDatabase: async (t) => void dropped.push(t), dropRestoredDatabase: async (_t, db) => void restored.push(db), servers: resources().servers, deleteMedia: async (k) => (bucketFails ? Promise.reject(new Error("fallo simulado del bucket")) : void bucket.delete(k)) },
+        p,
+        hash,
+        "44830001:jorgemgrande-stack",
+      );
+    // REANUDACIÓN: la purga falla en su última fase (los ficheros). El CRM y el registro ya están borrados (cada base en su transacción)
+    await expect(run(plan, plan.planHash)).rejects.toThrow(/fallo simulado del bucket/);
+    const [[mid]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_companies WHERE id IN (8, 11, 12, 13)");
+    expect(Number(mid.n)).toBe(0);
+    const [[midImpl]] = await crm.query<mysql.RowDataPacket[]>("SELECT (SELECT COUNT(*) FROM implementation_events WHERE order_id <> 1) + (SELECT COUNT(*) FROM implementation_milestones WHERE order_id <> 1) + (SELECT COUNT(*) FROM implementation_orders WHERE id <> 1) n");
+    expect(Number(midImpl.n)).toBe(0);
+    // Se recalcula el plan: ya no hay filas ni tenants por retirar; solo quedan los ficheros, con otra huella (la anterior ya no vale)
+    const resume = await planPurge({ crm, registry: reg, tenantDbName: async () => null, resources: resources() });
+    expect(resume.problems).toEqual([]);
+    expect(resume.steps).toEqual([]);
+    expect(resume.retire).toEqual([]);
+    expect(resume.files.byTenant.map((f) => f.objects)).toEqual([2]);
+    expect(resume.planHash).not.toBe(plan.planHash);
+    await expect(run(resume, plan.planHash)).rejects.toThrow(/no coincide con el autorizado/);
+    expect(bucket.size).toBe(3);
+    bucketFails = false;
+    const done = await run(resume, resume.planHash);
     expect(done.deletedFiles).toBe(2);
     expect(Array.from(bucket)).toEqual(["t/t9-empresa-real/logo.png"]);
     const [schemas] = await admin.query<mysql.RowDataPacket[]>("SELECT SCHEMA_NAME n FROM information_schema.SCHEMATA WHERE SCHEMA_NAME IN (?)", [LEFTOVERS]);
@@ -309,11 +368,14 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(usage.map((r) => r.tenant_id)).toEqual(["t9-empresa-real"]);
     expect(dropped.sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
     expect(restored).toEqual(["es_prueba_condiciones_129_r20261016221031"]);
-    expect(done.deleted.find((d) => d.table === "commercial_payment_events")?.rows).toBe(4);
+    expect(plan.steps.find((d) => d.table === "commercial_payment_events")?.rows).toBe(4);
     const [[events]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM commercial_payment_events");
     expect(Number(events.n)).toBe(3);
-    expect(done.deleted.find((d) => d.table === "crm_companies")?.rows).toBe(4);
-    expect(done.deleted.find((d) => d.table === "crm_contract_acceptances")?.rows).toBe(1);
+    expect(plan.steps.find((d) => d.table === "crm_companies")?.rows).toBe(4);
+    expect(plan.steps.find((d) => d.table === "crm_contract_acceptances")?.rows).toBe(1);
+    // Implantación asistida: solo la de las técnicas; la de la empresa real (id 1) conserva su hito y su evento
+    const [[implLeft]] = await crm.query<mysql.RowDataPacket[]>("SELECT (SELECT COUNT(*) FROM implementation_events WHERE order_id = 1) e, (SELECT COUNT(*) FROM implementation_milestones WHERE order_id = 1) m, (SELECT COUNT(*) FROM implementation_orders WHERE id = 1 AND company_id = 30) o");
+    expect([Number(implLeft.e), Number(implLeft.m), Number(implLeft.o)]).toEqual([1, 1, 1]);
     expect(await verifyPurge({ crm, registry: reg, resources: resources() })).toEqual({ ok: true, remaining: [] });
     // Leads: solo quedan los reales (3 y 13), con sus solicitudes, su historial y sus oportunidades; ninguna referencia colgante
     const [leadsLeft] = await crm.query<mysql.RowDataPacket[]>("SELECT id FROM crm_leads ORDER BY id");
@@ -324,8 +386,8 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(actLeft.map((r) => `${r.entity_type}:${r.entity_id}`)).toEqual(["lead:3", "opportunity:102"]);
     const [oppLeft] = await crm.query<mysql.RowDataPacket[]>("SELECT id FROM crm_opportunities ORDER BY id");
     expect(oppLeft.map((r) => r.id)).toEqual([102]);
-    expect(done.deleted.find((x) => x.table === "crm_leads")?.rows).toBe(6);
-    expect(done.deleted.find((x) => x.table === "crm_lead_requests")?.rows).toBe(6);
+    expect(plan.steps.find((x) => x.table === "crm_leads")?.rows).toBe(6);
+    expect(plan.steps.find((x) => x.table === "crm_lead_requests")?.rows).toBe(6);
     const [left] = await crm.query<mysql.RowDataPacket[]>("SELECT name FROM crm_companies ORDER BY name");
     expect(left.map((r) => r.name)).toEqual(["Empresa Real", "Nextair", "PRUEBA TÉCNICA Otra"]);
     const [[accLeft]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_contract_acceptances");
