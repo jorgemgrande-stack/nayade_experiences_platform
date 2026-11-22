@@ -9,6 +9,7 @@
  * Anti-duplicidad por diseño: la fuente de verdad es el expense, el helper
  * createCashMovementIfNotExists impide duplicar movimientos de caja.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useMemo } from "react";
 import {
   TrendingUp, Plus, Pencil, Trash2, CheckCircle2, XCircle,
@@ -319,7 +320,7 @@ export default function BonusManager() {
                                   className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs">
                                   <CheckCircle2 className="w-3 h-3 mr-1" /> Pagar
                                 </Button>
-                                <Button size="sm" variant="ghost" onClick={() => confirm("¿Eliminar este bonus?") && del.mutate({ id: r.id })} className="text-rose-400 hover:bg-rose-500/10 h-7 px-2">
+                                <Button size="sm" variant="ghost" onClick={async () => { if (await confirmAction({ description: "¿Eliminar este bonus?", destructive: true })) del.mutate({ id: r.id }); }} className="text-rose-400 hover:bg-rose-500/10 h-7 px-2">
                                   <Trash2 className="w-3 h-3" />
                                 </Button>
                               </>
@@ -331,7 +332,7 @@ export default function BonusManager() {
                                     Gasto #{r.expenseId} <ExternalLink className="w-3 h-3" />
                                   </Link>
                                 )}
-                                <Button size="sm" variant="ghost" onClick={() => confirm("¿Anular este bonus pagado? El gasto y movimiento de caja se mantienen por auditoría.") && cancel.mutate({ id: r.id })} className="text-rose-400 hover:bg-rose-500/10 h-7 px-2">
+                                <Button size="sm" variant="ghost" onClick={async () => { if (await confirmAction({ description: "¿Anular este bonus pagado? El gasto y movimiento de caja se mantienen por auditoría.", destructive: true, confirmLabel: "Anular" })) cancel.mutate({ id: r.id }); }} className="text-rose-400 hover:bg-rose-500/10 h-7 px-2">
                                   <XCircle className="w-3 h-3" />
                                 </Button>
                               </>

@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -358,8 +359,8 @@ export default function MenusManager() {
                     size="sm"
                     variant="ghost"
                     className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      if (confirm(tx("¿Eliminar \"{label}\" y sus {childrenN} submenús?", { label: root.label, childrenN: children.length })))
+                    onClick={async () => {
+                      if (await confirmAction({ destructive: true, description: tx("¿Eliminar \"{label}\" y sus {childrenN} submenús?", { label: root.label, childrenN: children.length }) }))
                         deleteMut.mutate({ id: root.id });
                     }}
                     disabled={deleteMut.isPending}
@@ -418,8 +419,8 @@ export default function MenusManager() {
                             className="scale-[0.6]"
                           />
                           <button
-                            onClick={() => {
-                              if (confirm(tx("¿Eliminar \"{label}\"?", { label: child.label })))
+                            onClick={async () => {
+                              if (await confirmAction({ destructive: true, description: tx("¿Eliminar \"{label}\"?", { label: child.label }) }))
                                 deleteMut.mutate({ id: child.id });
                             }}
                             className="text-destructive/60 hover:text-destructive transition-colors"
