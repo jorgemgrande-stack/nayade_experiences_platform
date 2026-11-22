@@ -25,6 +25,7 @@ import { useConnectTrackingSender } from "@/components/connect/useConnectTrackin
 import { Rail } from "@/components/connect/Rail";
 import type { MarketTone } from "@shared/marketplaceVisual";
 import { useI18n } from "@/i18n/I18nProvider";
+import { panelTextNow as px } from "@/i18n/usePanelText";
 import "@/components/connect/connectStage.css";
 
 const STATE_FILTERS: Array<{ id: ConnectStateFilter; label: string }> = [
@@ -223,7 +224,7 @@ export default function ConnectPage() {
                       <option value="all">{t("connect.page.allCategories")}</option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.label}
+                          {px(c.label)}
                         </option>
                       ))}
                     </select>
@@ -234,7 +235,7 @@ export default function ConnectPage() {
                 </p>
               </section>
 
-              {data.purchaseBlock && data.purchaseBlock !== "unavailable" && <p className="text-sm text-muted-foreground">{data.purchaseBlock === "trial" && data.conversion?.enabled ? TRIAL_CONVERSION_TEXT : PURCHASE_BLOCK_TEXT[data.purchaseBlock]}</p>}
+              {data.purchaseBlock && data.purchaseBlock !== "unavailable" && <p className="text-sm text-muted-foreground">{px(data.purchaseBlock === "trial" && data.conversion?.enabled ? TRIAL_CONVERSION_TEXT : PURCHASE_BLOCK_TEXT[data.purchaseBlock])}</p>}
 
               <div id="cx-results" className="scroll-mt-4 space-y-10">
                 {items.length === 0 ? (
@@ -274,8 +275,8 @@ export default function ConnectPage() {
                         id={`cx-brand-${b.id}-t`}
                         tone={b.id === "net" ? "turquoise" : "electric"}
                         icon={<Icon className="h-6 w-6" />}
-                        title={h.title}
-                        intro={h.intro}
+                        title={px(h.title)}
+                        intro={px(h.intro)}
                         action={
                           !filtering && group.length > 4 ? (
                             <Button type="button" variant="ghost" size="sm" className="shrink-0 rounded-full" onClick={() => toggleExpanded(b.id)}>
@@ -332,7 +333,7 @@ function netSegments(items: ConnectCatalogItem[], t: (k: string) => string): Arr
 
 /** Elephant Connect en carriles por categoría (herramientas, paquetes, extras, ampliaciones), en el orden del catálogo. */
 function connectSegments(items: ConnectCatalogItem[], t: (k: string) => string): Array<{ id: string; title: string | null; items: ConnectCatalogItem[] }> {
-  const known = CONNECT_CATEGORIES.map((c) => ({ id: c.id as string, title: c.label as string, items: items.filter((i) => categoryOf(i) === c.id) }));
+  const known = CONNECT_CATEGORIES.map((c) => ({ id: c.id as string, title: px(c.label as string), items: items.filter((i) => categoryOf(i) === c.id) }));
   const other = { id: "other", title: t("connect.page.other"), items: items.filter((i) => categoryOf(i) === "other") };
   const segs = [...known, other].filter((s) => s.items.length > 0);
   // Con un solo segmento sobra el subtítulo

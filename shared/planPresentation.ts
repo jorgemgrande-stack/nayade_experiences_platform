@@ -42,9 +42,9 @@ export const cardLimits = (plan: PanelPlanInfo) => plan.limits.slice(0, CARD_LIM
 export const cardBenefits = (plan: PanelPlanInfo) => plan.benefits.slice(0, CARD_BENEFITS);
 
 /** Importe para mostrar: sin decimales si son cero («29 €»), con ellos si no («29,50 €»). Mismo importe, solo formato. */
-export function displayMoney(cents: number, currency: string): string {
+export function displayMoney(cents: number, currency: string, tag = "es-ES"): string {
   const whole = cents % 100 === 0;
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }).format(cents / 100);
+  return new Intl.NumberFormat(tag, { style: "currency", currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }).format(cents / 100);
 }
 
 export const taxLabel = (p: PlanPrice) => (p.taxIncluded ? "IVA incluido" : "+ IVA");

@@ -5,6 +5,7 @@
  */
 import { toast } from "sonner";
 import { navigate } from "wouter/use-browser-location";
+import { panelTextNow as px } from "@/i18n/usePanelText";
 import { READ_ONLY_DUPLICATE_RE, blockedNotice, readOnlyBlockStatus, type RecoveryView } from "@shared/subscriptionRecovery";
 
 const TOAST_ID = "panel-solo-lectura";
@@ -28,11 +29,11 @@ export function notifyIfReadOnlyBlocked(error: unknown): boolean {
   const status = readOnlyBlockStatus(error);
   if (!status || typeof window === "undefined" || !window.location.pathname.startsWith("/admin")) return false;
   const n = blockedNotice(current, status);
-  toast.warning(n.title, {
+  toast.warning(px(n.title), {
     id: TOAST_ID,
-    description: n.description,
+    description: px(n.description),
     duration: 8000,
-    ...(n.action ? { action: { label: n.action.label, onClick: () => navigate(n.action!.href) } } : {}),
+    ...(n.action ? { action: { label: px(n.action.label), onClick: () => navigate(n.action!.href) } } : {}),
   });
   // Las pantallas avisan en su onError (después de este evento): se retiran sus avisos del mismo rechazo
   setTimeout(dismissDuplicates, 0);
