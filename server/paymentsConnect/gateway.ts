@@ -39,6 +39,12 @@ export interface ConnectGateway {
   /** OAuth (modo Real): cambia el código de autorización de un solo uso por la cuenta que la empresa ha autorizado. */
   exchangeOAuthCode(code: string): Promise<{ accountId: string; livemode: boolean }>;
   createCheckoutSession(p: CheckoutParams): Promise<{ id: string; url: string }>;
+  /**
+   * Cierra una sesión de pago abierta para que nadie pueda pagarla (un presupuesto no puede tener dos sesiones abiertas:
+   * dos pagos con tarjeta serían dos cargos). «expired» = la cerró esta llamada; «closed» = ya estaba cerrada o caducada;
+   * «completed» = YA se pagó (o se está pagando): no se puede cerrar y quien llama no debe abrir otra.
+   */
+  expireCheckoutSession(p: { accountId: string; sessionId: string }): Promise<"expired" | "closed" | "completed">;
 }
 
 export function factsFromStripeAccount(a: Pick<Stripe.Account, "charges_enabled" | "payouts_enabled" | "details_submitted" | "requirements">): StripeAccountFacts {
@@ -129,6 +135,22 @@ export function stripeConnectGateway(config: ConnectConfig, sdkOptions: Partial<
         if (!s.url) throw new ConnectGatewayError("Stripe no devolvió la dirección de pago", "no_url");
         return { id: s.id, url: s.url };
       } catch (e) {
+        return wrap(e);
+      }
+    },
+    async expireCheckoutSession(p) {
+      try {
+        await stripe.checkout.sessions.expire(p.sessionId, {}, { stripeAccount: p.accountId });
+        return "expired";
+      } catch (e) {
+        // Stripe solo cierra sesiones «open»: se consulta el estado real para distinguir «ya pagada» de «ya cerrada»
+        try {
+          const s = await stripe.checkout.sessions.retrieve(p.sessionId, {}, { stripeAccount: p.accountId });
+          if (s.status === "complete") return "completed";
+          if (s.status === "expired") return "closed";
+        } catch {
+          /* sin lectura: se trata como error de la pasarela */
+        }
         return wrap(e);
       }
     },

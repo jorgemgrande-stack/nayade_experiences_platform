@@ -74,6 +74,8 @@ export interface PaymentStore {
   reclaimFailedEvent(eventId: string): Promise<boolean>;
   insertCheckout(c: Omit<CheckoutRow, "status" | "paidAt" | "paymentIntentId">): Promise<void>;
   getCheckout(sessionId: string): Promise<CheckoutRow | null>;
+  /** Todas las sesiones de pago creadas para un presupuesto (cualquier estado), de la más antigua a la más reciente. */
+  listQuoteCheckouts(quoteId: number): Promise<CheckoutRow[]>;
   /** pending → paid de forma atómica. `true` solo para la llamada que hace el cambio. */
   markCheckoutPaid(sessionId: string, paymentIntentId: string | null, now: number): Promise<boolean>;
   /** Vuelve a «pending» una sesión marcada «paid» cuyo efecto no llegó a aplicarse (para que el reintento de Stripe actúe). */
@@ -224,7 +226,7 @@ export function mysqlPaymentStore(): PaymentStore {
       return (await run(sql`UPDATE payment_events SET outcome='processing' WHERE event_id=${eventId} AND outcome='failed'`)) > 0;
     },
     async insertCheckout(c) {
-      await run(sql`INSERT INTO payment_checkouts (session_id, provider, mode, account_id, kind, quote_id, merchant_order, amount_cents, currency, status, created_at)
+      await run(sql`INSERT IGNORE INTO payment_checkouts (session_id, provider, mode, account_id, kind, quote_id, merchant_order, amount_cents, currency, status, created_at)
                     VALUES (${c.sessionId}, 'stripe', ${c.mode}, ${c.accountId}, ${c.kind}, ${c.quoteId}, ${c.merchantOrder}, ${c.amountCents}, ${c.currency}, 'pending', ${c.createdAt})`);
     },
     async getCheckout(sessionId) {
@@ -236,9 +238,18 @@ export function mysqlPaymentStore(): PaymentStore {
         throw e;
       }
     },
+    async listQuoteCheckouts(quoteId) {
+      try {
+        const r = await rows(sql`SELECT * FROM payment_checkouts WHERE quote_id=${quoteId} AND kind='quote' ORDER BY created_at, session_id`);
+        return r.map(toCheckout);
+      } catch (e) {
+        if (e instanceof PaymentsSchemaMissing) return [];
+        throw e;
+      }
+    },
     async markCheckoutPaid(sessionId, paymentIntentId, now) {
       const n = await run(sql`UPDATE payment_checkouts SET status='paid', payment_intent_id=${paymentIntentId}, paid_at=${now}
-                              WHERE session_id=${sessionId} AND status='pending'`);
+                              WHERE session_id=${sessionId} AND status IN ('pending','expired','failed')`);
       return n > 0;
     },
     async revertCheckoutPaid(sessionId) {

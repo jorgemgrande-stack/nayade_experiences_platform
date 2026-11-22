@@ -371,3 +371,98 @@ describe("pedido de la tienda con Stripe", () => {
     expect(s2.shop.paid).toHaveLength(0);
   });
 });
+
+describe("un presupuesto, una sola sesión de pago abierta (sin doble cargo)", () => {
+  const go = (s: ReturnType<typeof setup>) => startQuoteCheckout(s.d, { token: TOKEN, successUrl: "https://x/ok", cancelUrl: "https://x/ko" });
+
+  it("abrir una segunda sesión cierra la primera y usa otra clave de idempotencia", async () => {
+    const s = setup();
+    await verified(s);
+    const a = await go(s);
+    const b = await go(s);
+    expect(b.sessionId).not.toBe(a.sessionId);
+    expect(s.gateway.expired).toEqual([a.sessionId]);
+    expect((await s.store.getCheckout(a.sessionId))?.status).toBe("expired");
+    expect((await s.store.getCheckout(b.sessionId))?.status).toBe("pending");
+    expect(s.gateway.sessions[0].idempotencyKey).not.toBe(s.gateway.sessions[1].idempotencyKey);
+  });
+
+  it("dos clics a la vez comparten la clave (Stripe devuelve la misma sesión)", async () => {
+    const s = setup();
+    await verified(s);
+    await Promise.all([go(s), go(s)]);
+    expect(s.gateway.sessions[0].idempotencyKey).toBe(s.gateway.sessions[1].idempotencyKey);
+  });
+
+  it("si la sesión anterior ya está pagada (o pagándose) no se abre otra", async () => {
+    const s = setup();
+    await verified(s);
+    const a = await go(s);
+    s.gateway.completedSessions.add(a.sessionId);
+    await expect(go(s)).rejects.toMatchObject({ code: "quote_unavailable" });
+    expect(s.gateway.sessions).toHaveLength(1);
+  });
+
+  it("al pagarse una sesión se cierran las demás abiertas del presupuesto", async () => {
+    const s = setup();
+    await verified(s);
+    const a = await go(s);
+    // sesión B abierta por otro medio (otra instancia): consta como pendiente
+    await s.store.insertCheckout({ sessionId: "cs_test_otra", mode: "test", accountId: ACCT, kind: "quote", quoteId: 77, merchantOrder: null, amountCents: 25000, currency: "eur", createdAt: 1_700_000_000_001 });
+    expect(await handleConnectEvent(s.d, completed("evt_p1", a.sessionId))).toBe("applied");
+    expect(s.gateway.expired).toContain("cs_test_otra");
+    expect((await s.store.getCheckout("cs_test_otra"))?.status).toBe("expired");
+  });
+
+  it("cobro de una segunda sesión sobre un presupuesto ya pagado: sin nueva factura y con rastro «duplicate_payment»", async () => {
+    const s = setup();
+    await verified(s);
+    const a = await go(s);
+    await s.store.insertCheckout({ sessionId: "cs_test_b", mode: "test", accountId: ACCT, kind: "quote", quoteId: 77, merchantOrder: null, amountCents: 25000, currency: "eur", createdAt: 1_700_000_000_001 });
+    s.gateway.completedSessions.add("cs_test_b"); // la sesión B se estaba pagando: no se puede cerrar
+    expect(await handleConnectEvent(s.d, completed("evt_a", a.sessionId))).toBe("applied");
+    expect((await s.store.getCheckout("cs_test_b"))?.status).toBe("pending"); // no se marcó cerrada: se está pagando
+    expect(await handleConnectEvent(s.d, completed("evt_b", "cs_test_b"))).toBe("duplicate_payment");
+    expect(s.quotes.paid).toHaveLength(1); // una sola factura/aplicación
+    expect(s.quotes.duplicates).toHaveLength(1);
+    expect(s.store.events.get("evt_b")?.outcome).toBe("duplicate_payment"); // rastro persistente para el reembolso
+    expect((await s.store.getCheckout("cs_test_b"))?.status).toBe("paid"); // el cobro consta
+  });
+
+  it("presupuesto pagado por otro medio (efectivo, transferencia, Redsys) y después cobrado en Stripe: duplicado trazado", async () => {
+    const s = setup();
+    await verified(s);
+    const a = await go(s);
+    s.quotes.quote.paidAt = new Date(); // pagado fuera de Stripe antes del evento
+    expect(await handleConnectEvent(s.d, completed("evt_c", a.sessionId))).toBe("duplicate_payment");
+    expect(s.quotes.paid).toHaveLength(0);
+  });
+});
+
+describe("revisión independiente de #947: cuenta/modo, cobro sobre sesión cerrada", () => {
+  const go = (s: ReturnType<typeof setup>) => startQuoteCheckout(s.d, { token: TOKEN, successUrl: "https://x/ok", cancelUrl: "https://x/ko" });
+
+  it("F2: una sesión de otra cuenta o de otro modo no bloquea ni se intenta cerrar", async () => {
+    const s = setup();
+    await verified(s);
+    await s.store.insertCheckout({ sessionId: "cs_test_vieja", mode: "live", accountId: "acct_anterior", kind: "quote", quoteId: 77, merchantOrder: null, amountCents: 25000, currency: "eur", createdAt: 1 });
+    await s.store.insertCheckout({ sessionId: "cs_test_pagada_otra_cuenta", mode: "test", accountId: "acct_otra", kind: "quote", quoteId: 77, merchantOrder: null, amountCents: 25000, currency: "eur", createdAt: 2 });
+    await s.store.markCheckoutPaid("cs_test_pagada_otra_cuenta", "pi_x", 3);
+    const r = await go(s);
+    expect(r.sessionId).toBeTruthy();
+    expect(s.gateway.expired).toEqual([]); // no se intentó cerrar ninguna de las ajenas
+  });
+
+  it("F3: un cobro real sobre una sesión que localmente figuraba cerrada se aplica (o queda trazado), no se pierde", async () => {
+    const s = setup();
+    await verified(s);
+    const a = await go(s);
+    const b = await go(s); // cierra a localmente
+    expect((await s.store.getCheckout(a.sessionId))?.status).toBe("expired");
+    expect(b.sessionId).not.toBe(a.sessionId);
+    // el cliente terminó de pagar justo la sesión a: llega su evento
+    expect(await handleConnectEvent(s.d, completed("evt_tarde", a.sessionId))).toBe("applied");
+    expect(s.quotes.paid).toHaveLength(1);
+    expect((await s.store.getCheckout(a.sessionId))?.status).toBe("paid");
+  });
+});
