@@ -7,9 +7,10 @@
  */
 import { Link } from "wouter";
 import {
-  AlertTriangle, ArrowRight, FilePlus2, FileText, Globe, Inbox, PackagePlus, Receipt, ReceiptText, Rocket, ShoppingCart, Sparkles, Target, UserPlus, Users,
+  AlertTriangle, ArrowRight, Banknote, CalendarDays, ChevronRight, FilePlus2, FileText, Globe, Inbox, PackagePlus, Receipt, ReceiptText, Rocket, ShoppingCart, Sparkles, Target, UserPlus, Users, Wallet,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { HeroCard, MetricCard } from "@/components/admin/PanelVisual";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -32,9 +33,9 @@ function rich(text: string): React.ReactNode {
 
 const RECENT_ICONS = { client: Users, lead: Target, quote: FileText, order: ShoppingCart, invoice: Receipt, sale: Receipt } as const;
 
-function Section({ id, title, description, children, className, action }: { id: string; title: string; description?: string; children: React.ReactNode; className?: string; action?: React.ReactNode }) {
+function Section({ id, title, description, children, className, action, bare }: { bare?: boolean; id: string; title: string; description?: string; children: React.ReactNode; className?: string; action?: React.ReactNode }) {
   return (
-    <section aria-labelledby={id} className={cn("min-w-0 rounded-2xl border border-border bg-card p-5", className)}>
+    <section aria-labelledby={id} className={cn("min-w-0", bare ? "" : "rounded-xl border border-border bg-card p-5 shadow-sm", className)}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 id={id} className="font-semibold text-foreground">{title}</h2>
@@ -47,11 +48,21 @@ function Section({ id, title, description, children, className, action }: { id: 
   );
 }
 
+const INDICATOR_LOOK: Record<string, { icon: React.ReactNode; tone: "brand" | "info" | "success" | "warning" | "danger" }> = {
+  today: { icon: <Banknote />, tone: "success" },
+  month: { icon: <CalendarDays />, tone: "brand" },
+  invoices: { icon: <Wallet />, tone: "warning" },
+  quotes: { icon: <FileText />, tone: "info" },
+  clients: { icon: <UserPlus />, tone: "brand" },
+  online: { icon: <ShoppingCart />, tone: "info" },
+};
+
 /**
  * Indicador real. Con valor, enlaza al listado; a cero, explica qué hacer y ofrece la acción (si el plan y el rol la
  * permiten).
  */
-function Indicator({ label, value, detail, href, empty, cta }: {
+function Indicator({ id, label, value, detail, href, empty, cta }: {
+  id: string;
   label: string;
   value: string | null;
   detail?: string | null;
@@ -61,28 +72,23 @@ function Indicator({ label, value, detail, href, empty, cta }: {
   cta?: { label: string; href: string } | null;
 }) {
   const { t } = useI18n();
+  const look = INDICATOR_LOOK[id] ?? { icon: <Sparkles />, tone: "brand" as const };
+  if (empty === null) {
+    return <MetricCard icon={look.icon} tone={look.tone} label={label} value={value} detail={detail} href={href} action={<span className="inline-flex items-center gap-1 text-xs font-medium text-primary">{t("home.indicator.seeDetail")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></span>} />;
+  }
   return (
-    <div className="min-w-0 rounded-xl border border-border p-4 flex flex-col">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums break-words">{value}</p>
-      {empty === null ? (
-        <>
-          {detail && <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>}
-          <Link href={href} className="mt-auto pt-2 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-            {t("home.indicator.seeDetail")} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-          </Link>
-        </>
-      ) : (
-        <>
-          <p className="text-xs text-muted-foreground mt-1">{empty}</p>
-          {cta && (
-            <Link href={cta.href} className="mt-auto pt-2 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-              {cta.label} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-            </Link>
-          )}
-        </>
-      )}
-    </div>
+    <MetricCard
+      icon={look.icon}
+      tone="neutral"
+      label={label}
+      value={value}
+      hint={empty}
+      action={cta ? (
+        <Link href={cta.href} className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {cta.label} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
+    />
   );
 }
 
@@ -174,7 +180,7 @@ export default function EssentialHome() {
 
   // Indicadores: solo los contratados (el servidor devuelve null en los que no) y visibles para el rol
   const ind = indicators.data;
-  const cards: Array<React.ComponentProps<typeof Indicator> & { key: string }> = [];
+  const cards: Array<Omit<React.ComponentProps<typeof Indicator>, "id"> & { key: string }> = [];
   if (ind?.sales && (canOrders || canCash)) {
     const { today, month } = ind.sales;
     cards.push({
@@ -228,10 +234,29 @@ export default function EssentialHome() {
   return (
     <AdminLayout>
       <div className="max-w-6xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{firstName ? t("home.hello", { name: firstName }) : t("home.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("home.subtitle")}</p>
-        </div>
+        <HeroCard>
+          <div className="p-5 sm:p-6">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{firstName ? t("home.hello", { name: firstName }) : t("home.title")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{t("home.subtitle")}</p>
+            {quick.length > 0 && (
+              <nav aria-label={t("home.quick.aria")} className="-mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+                {quick.map((q, i) => (
+                  <Link
+                    key={q.href}
+                    href={q.href}
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      i === 0 ? "border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" : "border-border bg-card/80 text-foreground hover:border-primary/50 hover:bg-card",
+                    )}
+                  >
+                    <q.icon className="h-4 w-4" aria-hidden="true" />
+                    <span>{q.label}</span>
+                  </Link>
+                ))}
+              </nav>
+            )}
+          </div>
+        </HeroCard>
 
         {/* Avisos */}
         {notices.length > 0 && (
@@ -240,7 +265,7 @@ export default function EssentialHome() {
               <div
                 key={n.key}
                 className={cn(
-                  "rounded-2xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3",
+                  "rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3",
                   TONE_SURFACE[n.tone === "warn" ? "warning" : "neutral"],
                 )}
               >
@@ -259,27 +284,9 @@ export default function EssentialHome() {
           <TrialFirstSteps facts={w.facts} can={{ clients: canClients && sub.canWrite("crm-contacts"), quotes: canQuotes && sub.canWrite("crm-quotes") }} />
         )}
 
-        {/* Accesos rápidos */}
-        {quick.length > 0 && (
-          <nav aria-label={t("home.quick.aria")} className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-            {quick.map((q) => (
-              <Link
-                key={q.href}
-                href={q.href}
-                className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0" aria-hidden="true">
-                  <q.icon className="w-4 h-4" />
-                </span>
-                <span className="min-w-0">{q.label}</span>
-              </Link>
-            ))}
-          </nav>
-        )}
-
         {/* Indicadores del negocio (solo los contratados; a cero, con la acción que toca) */}
         {isSales && (indicators.isLoading || indicators.isError || cards.length > 0) && (
-          <Section id="home-indicators" title={t("home.business.title")} description={t("home.business.description")}>
+          <Section bare id="home-indicators" title={t("home.business.title")} description={t("home.business.description")}>
             {indicators.isError ? (
               <PanelError error={indicators.error} onRetry={() => indicators.refetch()} title={t("home.business.loadError")} />
             ) : indicators.isLoading ? (
@@ -288,8 +295,8 @@ export default function EssentialHome() {
                 {[0, 1, 2].map((i) => <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />)}
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {cards.map(({ key, ...c }) => <Indicator key={key} {...c} />)}
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                {cards.map(({ key, ...c }) => <Indicator key={key} id={key} {...c} />)}
               </div>
             )}
           </Section>
@@ -323,7 +330,7 @@ export default function EssentialHome() {
                     <li>
                       <Link
                         href="/admin/crm/tareas"
-                        className="flex items-center gap-3 py-2.5 text-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                        className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <span className={cn("min-w-[28px] h-7 px-2 rounded-full border text-xs font-semibold flex items-center justify-center", TONE_BADGE.info)}>
                           {myTasks}
@@ -334,7 +341,7 @@ export default function EssentialHome() {
                             <span className={cn("ml-1 font-medium", TONE_TEXT.danger)}>{t("home.pending.overdue", { n: taskSummary.data!.mineOverdue })}</span>
                           )}
                         </span>
-                        <ArrowRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                       </Link>
                     </li>
                   )}
@@ -342,7 +349,7 @@ export default function EssentialHome() {
                     <li key={s.kind}>
                       <Link
                         href={s.ctaAllPath}
-                        className="flex items-center gap-3 py-2.5 text-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                        className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <span
                           className={cn(
@@ -353,7 +360,7 @@ export default function EssentialHome() {
                           {s.total}
                         </span>
                         <span className="flex-1 text-foreground">{FEED_LABELS[s.kind] ?? s.label}</span>
-                        <ArrowRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                       </Link>
                     </li>
                   ))}
@@ -380,8 +387,8 @@ export default function EssentialHome() {
                     const Icon = RECENT_ICONS[it.kind];
                     return (
                       <li key={`${it.kind}-${it.at}-${i}`}>
-                        <Link href={it.href} className="flex items-center gap-3 py-2.5 text-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-                          <Icon className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <Link href={it.href} className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground" aria-hidden="true"><Icon className="h-4 w-4" /></span>
                           <span className="min-w-0 flex-1">
                             <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-foreground">{it.title}</span>
                             {it.detail && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{it.detail}</span>}
@@ -403,7 +410,7 @@ export default function EssentialHome() {
         {isAdmin && (
           <Link
             href="/admin/ampliar"
-            className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Sparkles className="w-4 h-4 shrink-0 text-primary" aria-hidden="true" />
             <span className="flex-1">{t("home.extensions")}</span>

@@ -7,8 +7,12 @@ import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   AlertCircle, ArrowLeft, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, Loader2, Mail, MapPin,
-  MessageSquare, Pencil, Phone, Plus, Receipt, ShoppingBag, StickyNote, Tag, Trash2, User, Wallet,
+  MessageSquare, MoreHorizontal, Pencil, Phone, Plus, Receipt, ShoppingBag, StickyNote, Tag, Trash2, User, Wallet,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { HeroCard, MetricCard, PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { StatusBadge } from "@/components/admin/PanelUi";
+import { TONE_BADGE, type Tone } from "@/lib/panelTones";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -37,10 +41,11 @@ const KIND_ICON: Record<ActivityKind, typeof FileText> = {
 
 function Card({ title, icon: Icon, action, children, className = "" }: { title: string; icon: typeof FileText; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-xl border border-border bg-card p-4 text-card-foreground ${className}`} aria-label={title}>
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {title}
+    <section className={`rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm ${className}`} aria-label={title}>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true"><Icon className="h-4 w-4" /></span>
+          {title}
         </h2>
         {action}
       </div>
@@ -53,14 +58,18 @@ function Row({ label, value, href }: { label: string; value?: string | null; hre
   const { t } = useI18n();
   const v = (value ?? "").trim();
   return (
-    <div className="grid grid-cols-[7.5rem_1fr] gap-2 py-1 text-sm">
+    <div className="grid grid-cols-[6.5rem_1fr] gap-3 py-2 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words text-foreground">
-        {!v ? <span className="text-muted-foreground">{t("crmClientDetail.unspecified")}</span> : href ? <a href={href} className="text-primary underline-offset-4 hover:underline">{v}</a> : v}
+      <dd className="min-w-0 break-words font-medium text-foreground">
+        {!v ? <span className="font-normal text-muted-foreground">{t("crmClientDetail.unspecified")}</span> : href ? <a href={href} className="text-primary underline-offset-4 hover:underline">{v}</a> : v}
       </dd>
     </div>
   );
 }
+
+const KIND_TONE: Record<ActivityKind, Tone> = {
+  quote: "info", order: "brand", invoice: "warning", payment: "success", email: "neutral", note: "neutral",
+};
 
 export default function ClientDetail({ id }: { id: number }) {
   const { t, format } = useI18n();
@@ -92,6 +101,7 @@ export default function ClientDetail({ id }: { id: number }) {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDue, setTaskDue] = useState("");
   const [filter, setFilter] = useState<ActivityKind | "all">("all");
+  const [view, setView] = useState<"activity" | "notes">("activity");
 
   const addNote = trpc.crm.clients.addNote.useMutation({
     onSuccess: () => { setNoteText(""); toast.success(t("crmClientDetail.noteSaved")); utils.crm.clients.notes.invalidate({ clientId: id }); },
@@ -183,63 +193,89 @@ export default function ClientDetail({ id }: { id: number }) {
           </Link>
         </nav>
 
-        {/* Cabecera */}
-        <header className="mb-6 flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/15 text-lg font-bold text-primary" aria-hidden="true">
-              {kind === "empresa" ? <Building2 className="h-6 w-6" /> : display.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <h1 className="break-words text-xl font-bold text-foreground">{display}</h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">
-                  {kind === "empresa" ? <Building2 className="h-3 w-3" aria-hidden="true" /> : <User className="h-3 w-3" aria-hidden="true" />}
-                  {t(`crmForm.kind.${kind}`)}
-                </span>
-                {kind === "empresa" && client.name && client.name !== client.company && <span>{t("crmClientDetail.contactPrefix", { name: client.name })}</span>}
-                <span>{t("crmClientDetail.since", { date: fmtDate(client.createdAt as unknown as string) })}</span>
-              </div>
-              {canTags && clientTags.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {clientTags.map((tg) => <TagChip key={tg.id} name={tg.name} color={tg.color} />)}
+        {/* Cabecera con presencia: quién es, cómo contactarle y qué puedo hacer */}
+        <HeroCard className="mb-6">
+          <header className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+            <div className="flex min-w-0 items-start gap-4">
+              <PersonAvatar name={display} id={client.id} company={kind === "empresa"} size="xl" className="hidden sm:inline-flex" />
+              <PersonAvatar name={display} id={client.id} company={kind === "empresa"} size="lg" className="sm:hidden" />
+              <div className="min-w-0">
+                <h1 className="break-words text-2xl font-bold leading-tight text-foreground">{display}</h1>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  <StatusBadge tone={kind === "empresa" ? "info" : "neutral"} icon={kind === "empresa" ? <Building2 aria-hidden="true" /> : <User aria-hidden="true" />}>
+                    {t(`crmForm.kind.${kind}`)}
+                  </StatusBadge>
+                  {kind === "empresa" && client.name && client.name !== client.company && <span>{t("crmClientDetail.contactPrefix", { name: client.name })}</span>}
+                  <span>{t("crmClientDetail.since", { date: fmtDate(client.createdAt as unknown as string) })}</span>
                 </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {client.email && (
+                    <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 rounded-full bg-card/70 px-3">
+                      <a href={`mailto:${client.email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" /> <span className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap">{client.email}</span></a>
+                    </Button>
+                  )}
+                  {client.phone && (
+                    <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 rounded-full bg-card/70 px-3">
+                      <a href={`tel:${client.phone.replace(/\s/g, "")}`}><Phone className="h-3.5 w-3.5" aria-hidden="true" /> {client.phone}</a>
+                    </Button>
+                  )}
+                  {address && (
+                    <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-card/70 px-3 text-sm text-muted-foreground"><MapPin className="h-3.5 w-3.5" aria-hidden="true" /> <span className="max-w-[18rem] overflow-hidden text-ellipsis whitespace-nowrap">{address}</span></span>
+                  )}
+                </div>
+                {canTags && clientTags.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {clientTags.map((tg) => <TagChip key={tg.id} name={tg.name} color={tg.color} />)}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {canEdit && (
+                <Button size="sm" onClick={() => setEditing(true)}>
+                  <Pencil className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.editData")}
+                </Button>
+              )}
+              {(canTags || canEdit) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 bg-card/70" aria-label={t("crmClients.colActions")}>
+                      <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {canTags && (
+                      <DropdownMenuItem onSelect={() => setTagsOpen(true)}>
+                        <Tag className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.tags")}
+                      </DropdownMenuItem>
+                    )}
+                    {canEdit && (
+                      <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
+                        <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.delete")}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {canEdit && (
-              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                <Pencil className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.editData")}
-              </Button>
-            )}
-            {canTags && (
-              <Button variant="outline" size="sm" onClick={() => setTagsOpen(true)}>
-                <Tag className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.tags")}
-              </Button>
-            )}
-            {canEdit && (
-              <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)} className="text-destructive hover:text-destructive">
-                <Trash2 className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.delete")}
-              </Button>
-            )}
-          </div>
-        </header>
+          </header>
+        </HeroCard>
 
         <CustomerEmailDeliveryWarning clientId={id} email={client.email} />
 
         {/* Resumen */}
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {canQuotes && <Stat label={t("crmClientDetail.stat.quotes")} value={String(data.quotes.length)} />}
-          {canOrders && <Stat label={voc.orders} value={String(data.reservations.length)} />}
-          {canInvoices && <Stat label={t("crmClientDetail.stat.invoices")} value={String(data.invoices.length)} />}
-          {canInvoices && <Stat label={t("crmClientDetail.stat.invoiced")} value={fmtEuros(total)} />}
+          {canQuotes && <MetricCard icon={<FileText />} tone="info" label={t("crmClientDetail.stat.quotes")} value={String(data.quotes.length)} />}
+          {canOrders && <MetricCard icon={<ShoppingBag />} tone="brand" label={voc.orders} value={String(data.reservations.length)} />}
+          {canInvoices && <MetricCard icon={<Receipt />} tone="warning" label={t("crmClientDetail.stat.invoices")} value={String(data.invoices.length)} />}
+          {canInvoices && <MetricCard icon={<Wallet />} tone="success" label={t("crmClientDetail.stat.invoiced")} value={fmtEuros(total)} />}
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Datos */}
+          {/* Perfil y trabajo pendiente */}
           <div className="min-w-0 space-y-6">
             <Card title={t("crmClientDetail.contact")} icon={Phone}>
-              <dl>
+              <dl className="divide-y divide-border/60">
                 {kind === "empresa" && <Row label={t("crmClientDetail.companyName")} value={client.company} />}
                 <Row label={kind === "empresa" ? t("crmClientDetail.contact") : t("crmClientDetail.name")} value={client.name} />
                 <Row label={t("crmClientDetail.email")} value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
@@ -247,29 +283,13 @@ export default function ClientDetail({ id }: { id: number }) {
               </dl>
             </Card>
             <Card title={t("crmClientDetail.taxAddress")} icon={MapPin}>
-              <dl>
+              <dl className="divide-y divide-border/60">
                 <Row label={kind === "empresa" ? t("crmClientDetail.nifCompany") : t("crmClientDetail.nifPerson")} value={client.nif} />
                 <Row label={t("crmClientDetail.address")} value={address} />
                 <Row label={t("crmClientDetail.country")} value={client.country === "ES" ? t("crmClientDetail.countryES") : client.country} />
               </dl>
-              {!client.nif && canInvoices && <p className="mt-2 text-xs text-muted-foreground">{t("crmClientDetail.addNif")}</p>}
+              {!client.nif && canInvoices && <p className="mt-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-foreground">{t("crmClientDetail.addNif")}</p>}
             </Card>
-            <Card title={t("crmClientDetail.mailDelivery")} icon={Mail}>
-              <CustomerEmailDeliveryList clientId={id} email={client.email} />
-            </Card>
-            {data.lead && client.leadId && canLeads && (
-              <Card title={voc.leadOrigin} icon={User}>
-                <p className="text-sm text-foreground">{data.lead.name} ·{fmtDate(data.lead.createdAt as unknown as string)}</p>
-                <Link href={`/admin/crm?tab=leads&search=${encodeURIComponent(data.lead.email ?? data.lead.name)}`} className="mt-1 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline">
-                  {t("crmClientDetail.viewIn", { what: voc.leads })}
-                </Link>
-              </Card>
-            )}
-            {(client.notes ?? "").trim() && (
-              <Card title={t("crmClientDetail.notes")} icon={MessageSquare}>
-                <p className="whitespace-pre-wrap break-words text-sm text-foreground">{client.notes}</p>
-              </Card>
-            )}
             {canTasks && (
               <Card
                 title={t("crmClientDetail.tasks")}
@@ -303,7 +323,7 @@ export default function ClientDetail({ id }: { id: number }) {
                 ) : (
                   <ul className="space-y-1">
                     {[...openTasks, ...doneTasks].map((tk) => (
-                      <li key={tk.id} className="flex items-start gap-2 text-sm">
+                      <li key={tk.id} className="flex items-start gap-2 rounded-lg px-1 py-1 text-sm hover:bg-muted/40">
                         <button
                           type="button"
                           disabled={!canWriteTasks || setTaskStatus.isPending}
@@ -323,10 +343,37 @@ export default function ClientDetail({ id }: { id: number }) {
                 )}
               </Card>
             )}
+            {data.lead && client.leadId && canLeads && (
+              <Card title={voc.leadOrigin} icon={User}>
+                <p className="text-sm text-foreground">{data.lead.name} · {fmtDate(data.lead.createdAt as unknown as string)}</p>
+                <Link href={`/admin/crm?tab=leads&search=${encodeURIComponent(data.lead.email ?? data.lead.name)}`} className="mt-1 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline">
+                  {t("crmClientDetail.viewIn", { what: voc.leads })}
+                </Link>
+              </Card>
+            )}
+            {(client.notes ?? "").trim() && (
+              <Card title={t("crmClientDetail.notes")} icon={MessageSquare}>
+                <p className="whitespace-pre-wrap break-words text-sm text-foreground">{client.notes}</p>
+              </Card>
+            )}
+            <Card title={t("crmClientDetail.mailDelivery")} icon={Mail}>
+              <CustomerEmailDeliveryList clientId={id} email={client.email} />
+            </Card>
           </div>
 
-          {/* Notas e historial */}
-          <div className="min-w-0 space-y-6 lg:col-span-2">
+          {/* Actividad y notas, en dos vistas */}
+          <div className="min-w-0 space-y-4 lg:col-span-2">
+            <SegmentedTabs
+              label={t("crmClientDetail.history")}
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "activity", label: t("crmClientDetail.history"), count: activity.length },
+                { value: "notes", label: t("crmClientDetail.notesTitle"), count: notes.data?.items.length ?? null },
+              ]}
+            />
+
+            {view === "notes" && (
             <Card title={t("crmClientDetail.notesTitle")} icon={StickyNote}>
               {notes.data && !notes.data.available ? (
                 <p className="text-sm text-muted-foreground">{t("crmClientDetail.notesUnavailable")}</p>
@@ -334,7 +381,7 @@ export default function ClientDetail({ id }: { id: number }) {
                 <>
                   {canEdit && (
                     <form
-                      className="mb-3 space-y-2"
+                      className="mb-4 space-y-2"
                       onSubmit={(e) => {
                         e.preventDefault();
                         if (!noteText.trim()) { toast.error(t("crmClientDetail.noteTypeSomething")); return; }
@@ -342,7 +389,7 @@ export default function ClientDetail({ id }: { id: number }) {
                       }}
                     >
                       <label htmlFor="client-note" className="sr-only">{t("crmClientDetail.newNote")}</label>
-                      <Textarea id="client-note" rows={2} maxLength={NOTE_MAX} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder={t("crmClientDetail.notePlaceholder")} />
+                      <Textarea id="client-note" rows={3} maxLength={NOTE_MAX} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder={t("crmClientDetail.notePlaceholder")} />
                       <div className="flex justify-end">
                         <Button type="submit" size="sm" disabled={addNote.isPending}>
                           {addNote.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} {t("crmClientDetail.saveNote")}
@@ -357,7 +404,7 @@ export default function ClientDetail({ id }: { id: number }) {
                   ) : (
                     <ul className="space-y-2">
                       {notes.data.items.map((n) => (
-                        <li key={n.id} className="rounded-lg border border-border bg-muted/30 p-3">
+                        <li key={n.id} className="rounded-xl border border-border bg-muted/30 p-3">
                           <p className="whitespace-pre-wrap break-words text-sm text-foreground">{n.body}</p>
                           <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                             <span>{n.authorName ?? t("crmClientDetail.team")} · {fmtDate(n.createdAt as unknown as string)}</span>
@@ -374,9 +421,11 @@ export default function ClientDetail({ id }: { id: number }) {
                 </>
               )}
             </Card>
+            )}
 
+            {view === "activity" && (
             <Card title={t("crmClientDetail.history")} icon={FileText}>
-              <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label={t("crmClientDetail.filterHistory")}>
+              <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label={t("crmClientDetail.filterHistory")}>
                 {visibleFilters.map((f) => (
                   <button
                     key={f.id}
@@ -394,20 +443,22 @@ export default function ClientDetail({ id }: { id: number }) {
                   {activity.length === 0 ? t("crmClientDetail.historyEmpty") : t("crmClientDetail.historyNothing")}
                 </p>
               ) : (
-                <ol className="divide-y divide-border">
+                <ol className="relative space-y-1 before:absolute before:bottom-2 before:left-[1.05rem] before:top-2 before:w-px before:bg-border">
                   {filtered.map((a) => {
                     const Icon = KIND_ICON[a.kind];
                     return (
-                      <li key={a.id} className="flex items-start gap-3 py-2.5">
-                        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <li key={a.id} className="relative flex items-start gap-3 rounded-lg py-2 pr-2 hover:bg-muted/30">
+                        <span className={`relative z-10 mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-card ${TONE_BADGE[KIND_TONE[a.kind]]}`}>
+                          <Icon className="h-4 w-4" aria-hidden="true" />
+                        </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-baseline gap-x-2">
                             <span className="break-words text-sm font-medium text-foreground">{a.title}</span>
-                            {a.status && <span className="rounded-full border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">{a.status}</span>}
+                            {a.status && <StatusBadge tone="neutral">{a.status}</StatusBadge>}
                           </div>
                           {a.detail && <p className={`break-words text-xs text-muted-foreground ${a.kind === "note" ? "whitespace-pre-wrap" : "line-clamp-2"}`}>{a.detail}</p>}
                           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
-                            <span className="text-muted-foreground">{fmtDate(a.date)}</span>
+                            <span className="text-muted-foreground" title={fmtDate(a.date)}>{format.relative(a.date)}</span>
                             {a.href && <Link href={a.href} className="font-medium text-primary underline-offset-4 hover:underline">{t("crmClientDetail.view")}</Link>}
                             {a.externalHref && (
                               <a href={a.externalHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-medium text-primary underline-offset-4 hover:underline">
@@ -416,13 +467,14 @@ export default function ClientDetail({ id }: { id: number }) {
                             )}
                           </div>
                         </div>
-                        {a.amount != null && <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">{fmtEuros(a.amount)}</span>}
+                        {a.amount != null && <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{fmtEuros(a.amount)}</span>}
                       </li>
                     );
                   })}
                 </ol>
               )}
             </Card>
+            )}
           </div>
         </div>
       </div>
@@ -461,11 +513,3 @@ export default function ClientDetail({ id }: { id: number }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <div className="text-lg font-bold tabular-nums text-foreground">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-    </div>
-  );
-}
