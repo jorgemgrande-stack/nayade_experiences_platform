@@ -2,9 +2,12 @@ import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
-import { PanelError, errorMessage } from "@/components/admin/PanelStates";
+import { PanelError, PanelEmpty, errorMessage } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { MetricCard, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { ProductThumb } from "./ProductThumb";
 import { validateProductForm } from "@shared/formValidation";
-import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown, CalendarDays, Languages } from "lucide-react";
+import { Package, Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown, CalendarDays, Languages } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,6 +168,15 @@ export default function ExperiencesManager() {
   const [cloneName, setCloneName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "unpublished" | "inactive">("all");
+  // Vista tabla/tarjetas: se recuerda durante la sesión del navegador (sin tocar el servidor)
+  const [layout, setLayout] = useState<"table" | "grid">(() => {
+    try { return window.sessionStorage.getItem("catalog.layout") === "grid" ? "grid" : "table"; } catch { return "table"; }
+  });
+  const changeLayout = (v: "table" | "grid") => {
+    setLayout(v);
+    try { window.sessionStorage.setItem("catalog.layout", v); } catch { /* sin almacenamiento: solo no se recuerda */ }
+  };
   // E-4: convocatorias de un producto y vista de las próximas de toda la tienda
   const [editionsFor, setEditionsFor] = useState<{ id: number; title: string } | null>(null);
   const [view, setView] = useState<"productos" | "convocatorias">("productos");
@@ -394,9 +406,18 @@ export default function ExperiencesManager() {
     return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   })();
 
+  const isPublishedOf = (e: (typeof sortedExperiences)[number]) => (e as Record<string, unknown>).isPublished !== false;
+  const counts = {
+    all: sortedExperiences.length,
+    published: sortedExperiences.filter(isPublishedOf).length,
+    unpublished: sortedExperiences.filter((e) => !isPublishedOf(e)).length,
+    inactive: sortedExperiences.filter((e) => !e.isActive).length,
+  };
   const filtered = sortedExperiences.filter((e) =>
-    !search || e.title.toLowerCase().includes(search.toLowerCase())
+    (!search || e.title.toLowerCase().includes(search.toLowerCase())) &&
+    (statusFilter === "all" || (statusFilter === "published" ? isPublishedOf(e) : statusFilter === "unpublished" ? !isPublishedOf(e) : !e.isActive))
   );
+  const filtersActive = !!search.trim() || statusFilter !== "all";
 
   const moveItem = (index: number, direction: "up" | "down") => {
     const current = localOrder.length > 0 ? localOrder : sortedExperiences.map(e => e.id);
@@ -409,198 +430,267 @@ export default function ExperiencesManager() {
     reorderMutation.mutate({ items });
   };
 
+  // Presentación del listado (solo lectura de datos que ya llegan del servidor)
+  const thumbOf = (exp: (typeof sortedExperiences)[number]) => {
+    const r = exp as Record<string, unknown>;
+    const src = r.image1 || exp.coverImageUrl;
+    return src ? String(src) : null;
+  };
+  const categoryNameOf = (exp: (typeof sortedExperiences)[number]) =>
+    (categories ?? []).find((c) => c.id === exp.categoryId)?.name ?? t("productsCatalog.list.noCategory");
+  const priceOf = (exp: (typeof sortedExperiences)[number]) =>
+    offerModeOf(exp) === "fixed"
+      ? <span className="font-semibold text-foreground">{f.currency(parseFloat(exp.basePrice), "EUR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+      : <StatusBadge tone="info">{t(`productsCatalog.offerMode.${offerModeOf(exp)}.label`)}</StatusBadge>;
+  const statusBadges = (exp: (typeof sortedExperiences)[number]) => (
+    <>
+      <StatusBadge tone={exp.isActive ? "success" : "neutral"}>
+        {voc.licensed ? (exp.isActive ? t("productsCatalog.list.onSale") : t("productsCatalog.list.soldOut")) : exp.isActive ? t("productsCatalog.list.active") : t("productsCatalog.list.inactive")}
+      </StatusBadge>
+      <StatusBadge tone={isPublishedOf(exp) ? "info" : "warning"} icon={isPublishedOf(exp) ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}>
+        {isPublishedOf(exp) ? t("productsCatalog.list.published") : t("productsCatalog.list.notPublished")}
+      </StatusBadge>
+    </>
+  );
+  const rowMenu = (exp: (typeof sortedExperiences)[number]) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t("productsCatalog.list.rowActions", { title: exp.title })}>
+          <MoreVertical className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={() => openEdit(exp)}>
+          <Pencil className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {t("productsCatalog.list.edit")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => toggleActiveMutation.mutate({ id: exp.id, isActive: !exp.isActive })}>
+          {exp.isActive
+            ? <><PowerOff className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {voc.licensed ? t("productsCatalog.list.markSoldOut") : t("productsCatalog.list.deactivate")}</>
+            : <><Power className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {voc.licensed ? t("productsCatalog.list.putOnSale") : t("productsCatalog.list.activate")}</>}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => { setCloneModal({ id: exp.id, originalName: exp.title }); setCloneName(""); }}>
+          <Copy className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {t("productsCatalog.list.clone")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setEditionsFor({ id: exp.id, title: exp.title })}>
+          <CalendarDays className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {t("productsCatalog.list.editions")}
+        </DropdownMenuItem>
+        {multilingual && (
+          <DropdownMenuItem onClick={() => setTranslationsFor({ id: exp.id, title: exp.title })}>
+            <Languages className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {t("productsCatalog.list.languages")}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-danger focus:text-danger" onClick={() => setDeleteTarget({ id: exp.id, title: exp.title })}>
+          <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {t("productsCatalog.list.delete")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
-    <AdminLayout title={isNewCompany ? t("productsCatalog.title.licensed") : t("productsCatalog.title.original")}>
-      <div role="tablist" aria-label={t("productsCatalog.view.label")} className="mb-4 inline-flex rounded-lg bg-muted p-1 text-sm">
-        {([["productos", isNewCompany ? t("productsCatalog.view.products") : t("productsCatalog.view.experiences")], ["convocatorias", t("productsCatalog.view.editions")]] as const).map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cn("rounded-md px-3 py-1.5 font-medium transition-colors", view === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-            {label}
-          </button>
-        ))}
-      </div>
+    <AdminLayout>
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <PanelPageHeader
+        icon={<Package />}
+        title={isNewCompany ? t("productsCatalog.title.licensed") : t("productsCatalog.title.original")}
+        description={isNewCompany ? t("productsCatalog.list.pageDescP") : t("productsCatalog.list.pageDescE")}
+        actions={view === "productos" ? (
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {isNewCompany ? t("productsCatalog.list.newP") : t("productsCatalog.list.newE")}
+          </Button>
+        ) : undefined}
+      />
+      <SegmentedTabs
+        className="mb-4"
+        label={t("productsCatalog.view.label")}
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "productos", label: isNewCompany ? t("productsCatalog.view.products") : t("productsCatalog.view.experiences") },
+          { value: "convocatorias", label: t("productsCatalog.view.editions") },
+        ]}
+      />
       {view === "convocatorias" && <UpcomingEditionsView onManage={(id, title) => setEditionsFor({ id, title })} />}
-      <div className={cn("flex flex-wrap items-center justify-between gap-3 mb-6", view === "convocatorias" && "hidden")}>
-        <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-none">
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              placeholder={isNewCompany ? t("productsCatalog.list.searchPlaceholderP") : t("productsCatalog.list.searchPlaceholderE")}
-              aria-label={isNewCompany ? t("productsCatalog.list.searchLabelP") : t("productsCatalog.list.searchLabelE")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 w-full"
+
+      {view === "productos" && (
+        <>
+          {/* Resumen: cada tarjeta es también un filtro */}
+          {!listLoading && !listIsError && (experiences?.length ?? 0) > 0 && (
+            <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <MetricCard icon={<Package />} tone="brand" label={t("productsCatalog.list.metricTotal")} value={counts.all} onClick={() => setStatusFilter("all")} active={statusFilter === "all"} />
+              <MetricCard icon={<Eye />} tone="info" label={t("productsCatalog.list.published")} value={counts.published} onClick={() => setStatusFilter("published")} active={statusFilter === "published"} />
+              <MetricCard icon={<EyeOff />} tone="warning" label={t("productsCatalog.list.notPublished")} value={counts.unpublished} onClick={() => setStatusFilter("unpublished")} active={statusFilter === "unpublished"} />
+              <MetricCard icon={<PowerOff />} tone="neutral" label={voc.licensed ? t("productsCatalog.list.soldOut") : t("productsCatalog.list.inactive")} value={counts.inactive} onClick={() => setStatusFilter("inactive")} active={statusFilter === "inactive"} />
+            </div>
+          )}
+
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                type="search"
+                placeholder={isNewCompany ? t("productsCatalog.list.searchPlaceholderP") : t("productsCatalog.list.searchPlaceholderE")}
+                aria-label={isNewCompany ? t("productsCatalog.list.searchLabelP") : t("productsCatalog.list.searchLabelE")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9"
+              />
+            </div>
+            <SegmentedTabs
+              label={t("productsCatalog.list.filterLabel")}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "all", label: t("productsCatalog.list.filterAll"), count: counts.all },
+                { value: "published", label: t("productsCatalog.list.published"), count: counts.published },
+                { value: "unpublished", label: t("productsCatalog.list.notPublished"), count: counts.unpublished },
+                { value: "inactive", label: voc.licensed ? t("productsCatalog.list.soldOut") : t("productsCatalog.list.inactive"), count: counts.inactive },
+              ]}
+            />
+            <SegmentedTabs
+              className="sm:ml-auto"
+              label={t("productsCatalog.list.viewLabel")}
+              value={layout}
+              onChange={changeLayout}
+              options={[
+                { value: "table", label: t("productsCatalog.list.viewTable") },
+                { value: "grid", label: t("productsCatalog.list.viewGrid") },
+              ]}
             />
           </div>
-        </div>
-        <Button onClick={openCreate} className="font-semibold rounded-[10px]">
-          <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
-          {isNewCompany ? t("productsCatalog.list.newP") : t("productsCatalog.list.newE")}
-        </Button>
-      </div>
 
-      {/* Table */}
-      <div className={cn("bg-card rounded-2xl border border-border/50 overflow-hidden", view === "convocatorias" && "hidden")}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <caption className="sr-only">{isNewCompany ? t("productsCatalog.list.captionP") : t("productsCatalog.list.captionE")}</caption>
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th scope="col" className="text-center px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-16">{t("productsCatalog.list.colOrder")}</th>
-                <th scope="col" className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{tn("noun")}</th>
-                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colPrice")}</th>
-                {showDifficulty && <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colDifficulty")}</th>}
-                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colStatus")}</th>
-                <th scope="col" className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("productsCatalog.list.colActions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listLoading ? (
-                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground text-sm" role="status">{t("productsCatalog.list.loading")}</td></tr>
-              ) : listIsError ? (
-                <tr>
-                  <td colSpan={6} className="p-6">
-                    <PanelError error={listError} onRetry={() => refetch()} title={isNewCompany ? t("productsCatalog.list.loadErrorP") : t("productsCatalog.list.loadErrorE")} />
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-12 px-4">
-                    <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
-                    {search.trim() ? (
-                      <>
-                        <p className="text-foreground">{t("productsCatalog.list.noMatch", { q: search.trim() })}</p>
-                        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setSearch("")}>{t("productsCatalog.list.clearSearch")}</Button>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-foreground font-medium">{isNewCompany ? t("productsCatalog.list.emptyP") : t("productsCatalog.list.emptyE")}</p>
-                        {isNewCompany && (
-                          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-                            {t("productsCatalog.list.emptyHelpPre")}
-                            {(categories?.length ?? 0) === 0 && <>{t("productsCatalog.list.emptyNeedCategoryPre")}<Link href="/admin/productos/categorias" className="underline underline-offset-4">{t("productsCatalog.list.emptyNeedCategoryLink")}</Link>{t("productsCatalog.list.emptyNeedCategoryPost")}</>}
-                          </p>
-                        )}
-                        <Button type="button" size="sm" className="mt-4" onClick={openCreate}>
-                          <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                          {isNewCompany ? t("productsCatalog.list.createFirstP") : t("productsCatalog.list.createFirstE")}
-                        </Button>
-                      </>
-                    )}
-                  </td>
-                </tr>
+          {listLoading ? (
+            <div role="status" className="rounded-xl border border-border bg-card py-12 text-center text-sm text-muted-foreground">{t("productsCatalog.list.loading")}</div>
+          ) : listIsError ? (
+            <PanelError error={listError} onRetry={() => refetch()} title={isNewCompany ? t("productsCatalog.list.loadErrorP") : t("productsCatalog.list.loadErrorE")} />
+          ) : filtered.length === 0 ? (
+            <PanelEmpty
+              icon={<ImageIcon />}
+              title={filtersActive ? t("productsCatalog.list.noMatch", { q: search.trim() || "…" }) : isNewCompany ? t("productsCatalog.list.emptyP") : t("productsCatalog.list.emptyE")}
+              description={!filtersActive && isNewCompany ? (
+                <>
+                  {t("productsCatalog.list.emptyHelpPre")}
+                  {(categories?.length ?? 0) === 0 && <>{t("productsCatalog.list.emptyNeedCategoryPre")}<Link href="/admin/productos/categorias" className="underline underline-offset-4">{t("productsCatalog.list.emptyNeedCategoryLink")}</Link>{t("productsCatalog.list.emptyNeedCategoryPost")}</>}
+                </>
+              ) : undefined}
+            >
+              {filtersActive ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => { setSearch(""); setStatusFilter("all"); }}>{t("productsCatalog.list.clearSearch")}</Button>
               ) : (
-                filtered.map((exp, idx) => (
-                  <tr key={exp.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                    <td className="px-3 py-4">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <button
-                          onClick={() => moveItem(idx, "up")}
-                          disabled={idx === 0 || reorderMutation.isPending}
-                          className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title={t("productsCatalog.list.moveUp")}
-                        >
-                          <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                        <span className="text-xs font-mono text-muted-foreground w-5 text-center">{idx + 1}</span>
-                        <button
-                          onClick={() => moveItem(idx, "down")}
-                          disabled={idx === filtered.length - 1 || reorderMutation.isPending}
-                          className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title={t("productsCatalog.list.moveDown")}
-                        >
-                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-9 rounded-lg overflow-hidden bg-muted shrink-0">
-                          {((exp as Record<string,unknown>).image1 || exp.coverImageUrl) ? (
-                            <img src={String((exp as Record<string,unknown>).image1 ?? exp.coverImageUrl)} alt={exp.title} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <ImageIcon className="w-4 h-4 text-muted-foreground" />
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm text-foreground">{exp.title}</p>
-                          <p className="text-xs text-muted-foreground">{exp.slug}</p>
-                        </div>
-                        {exp.isFeatured && (
-                          <Star className="w-3.5 h-3.5 fill-current text-warning shrink-0" aria-label={voc.catalog.featured} />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      {offerModeOf(exp) === "fixed"
-                        ? <span className="font-semibold text-foreground">{f.currency(parseFloat(exp.basePrice), "EUR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                        : <Badge variant="outline" className={TONE_BADGE.info}>{t(`productsCatalog.offerMode.${offerModeOf(exp)}.label`)}</Badge>}
-                    </td>
-                    {showDifficulty && (
-                      <td className="px-4 py-4">
-                        {exp.difficulty && (
-                          <Badge className={cn("text-xs", difficultyColors[exp.difficulty] ?? "")}>
-                            {["facil", "moderado", "dificil", "experto"].includes(exp.difficulty) ? t(`productsCatalog.difficulty.${exp.difficulty}`) : exp.difficulty}
-                          </Badge>
-                        )}
-                      </td>
-                    )}
-                    <td className="px-4 py-4">
-                      <div className="flex flex-col gap-1">
-                        <Badge variant="outline" className={exp.isActive ? TONE_BADGE.success : TONE_BADGE.neutral}>
-                          {voc.licensed ? (exp.isActive ? t("productsCatalog.list.onSale") : t("productsCatalog.list.soldOut")) : exp.isActive ? t("productsCatalog.list.active") : t("productsCatalog.list.inactive")}
-                        </Badge>
-                        <Badge variant="outline" className={(exp as Record<string,unknown>).isPublished !== false ? TONE_BADGE.info : TONE_BADGE.warning}>
-                          {(exp as Record<string,unknown>).isPublished !== false ? t("productsCatalog.list.published") : t("productsCatalog.list.notPublished")}
-                        </Badge>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1 justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="w-8 h-8" aria-label={t("productsCatalog.list.rowActions", { title: exp.title })}>
-                              <MoreVertical className="w-3.5 h-3.5" aria-hidden="true" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem onClick={() => openEdit(exp)}>
-                              <Pencil className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.edit")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => toggleActiveMutation.mutate({ id: exp.id, isActive: !exp.isActive })}>
-                              {exp.isActive
-                                ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? t("productsCatalog.list.markSoldOut") : t("productsCatalog.list.deactivate")}</>
-                                : <><Power className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? t("productsCatalog.list.putOnSale") : t("productsCatalog.list.activate")}</>}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => { setCloneModal({ id: exp.id, originalName: exp.title }); setCloneName(""); }}>
-                              <Copy className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.clone")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setEditionsFor({ id: exp.id, title: exp.title })}>
-                              <CalendarDays className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.editions")}
-                            </DropdownMenuItem>
-                            {multilingual && (
-                              <DropdownMenuItem onClick={() => setTranslationsFor({ id: exp.id, title: exp.title })}>
-                                <Languages className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.languages")}
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-danger focus:text-danger"
-                              onClick={() => setDeleteTarget({ id: exp.id, title: exp.title })}
-                            >
-                              <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsCatalog.list.delete")}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                <Button type="button" size="sm" onClick={openCreate}>
+                  <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                  {isNewCompany ? t("productsCatalog.list.createFirstP") : t("productsCatalog.list.createFirstE")}
+                </Button>
               )}
-            </tbody>
-          </table>
-        </div>
+            </PanelEmpty>
+          ) : layout === "grid" ? (
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label={isNewCompany ? t("productsCatalog.list.captionP") : t("productsCatalog.list.captionE")}>
+              {filtered.map((exp) => (
+                <li key={exp.id} className="group flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
+                  <button type="button" onClick={() => openEdit(exp)} className="relative block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`${t("productsCatalog.list.edit")}: ${exp.title}`}>
+                    <ProductThumb src={thumbOf(exp)} alt={exp.title} noImageLabel={t("productsCatalog.list.noImage")} className="w-full rounded-none" />
+                    {exp.isFeatured && (
+                      <span className="absolute left-2 top-2 inline-flex items-center rounded-full bg-card/90 p-1 text-warning shadow-sm">
+                        <Star className="h-3.5 w-3.5 fill-current" aria-label={voc.catalog.featured} />
+                      </span>
+                    )}
+                  </button>
+                  <div className="flex flex-1 flex-col gap-2 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold leading-snug text-foreground">{exp.title}</p>
+                        <p className="truncate text-xs text-muted-foreground">{categoryNameOf(exp)}</p>
+                      </div>
+                      {rowMenu(exp)}
+                    </div>
+                    <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <div className="text-base">{priceOf(exp)}</div>
+                      <div className="flex flex-wrap items-center gap-1.5">{statusBadges(exp)}</div>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px]">
+                  <caption className="sr-only">{isNewCompany ? t("productsCatalog.list.captionP") : t("productsCatalog.list.captionE")}</caption>
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th scope="col" className="w-16 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colOrder")}</th>
+                      <th scope="col" className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{tn("noun")}</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colPrice")}</th>
+                      {showDifficulty && <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colDifficulty")}</th>}
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colStatus")}</th>
+                      <th scope="col" className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colActions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((exp) => {
+                      const full = sortedExperiences.findIndex((e) => e.id === exp.id);
+                      return (
+                        <tr key={exp.id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
+                          <td className="px-3 py-4">
+                            <div className="flex flex-col items-center gap-0.5" title={filtersActive ? t("productsCatalog.list.reorderBlocked") : undefined}>
+                              <button
+                                type="button"
+                                onClick={() => moveItem(full, "up")}
+                                disabled={filtersActive || full === 0 || reorderMutation.isPending}
+                                className="rounded p-0.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-30"
+                                aria-label={`${t("productsCatalog.list.moveUp")}: ${exp.title}`}
+                                title={t("productsCatalog.list.moveUp")}
+                              >
+                                <ChevronUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              </button>
+                              <span className="w-5 text-center font-mono text-xs text-muted-foreground">{full + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => moveItem(full, "down")}
+                                disabled={filtersActive || full === sortedExperiences.length - 1 || reorderMutation.isPending}
+                                className="rounded p-0.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-30"
+                                aria-label={`${t("productsCatalog.list.moveDown")}: ${exp.title}`}
+                                title={t("productsCatalog.list.moveDown")}
+                              >
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-3">
+                              <ProductThumb src={thumbOf(exp)} alt={exp.title} noImageLabel={t("productsCatalog.list.noImage")} className="w-16" />
+                              <div className="min-w-0">
+                                <p className="break-words text-sm font-semibold text-foreground">{exp.title}</p>
+                                <p className="truncate text-xs text-muted-foreground">{categoryNameOf(exp)}</p>
+                              </div>
+                              {exp.isFeatured && (
+                                <Star className="h-3.5 w-3.5 shrink-0 fill-current text-warning" aria-label={voc.catalog.featured} />
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">{priceOf(exp)}</td>
+                          {showDifficulty && (
+                            <td className="px-4 py-4">
+                              {exp.difficulty && (
+                                <Badge className={cn("text-xs", difficultyColors[exp.difficulty] ?? "")}>
+                                  {["facil", "moderado", "dificil", "experto"].includes(exp.difficulty) ? t(`productsCatalog.difficulty.${exp.difficulty}`) : exp.difficulty}
+                                </Badge>
+                              )}
+                            </td>
+                          )}
+                          <td className="px-4 py-4"><div className="flex flex-col items-start gap-1">{statusBadges(exp)}</div></td>
+                          <td className="px-5 py-4"><div className="flex items-center justify-end gap-1">{rowMenu(exp)}</div></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
       </div>
 
       <EditionsPanel experienceId={editionsFor?.id ?? null} title={editionsFor?.title ?? ""} open={!!editionsFor} onOpenChange={(o) => !o && setEditionsFor(null)} />
@@ -901,7 +991,7 @@ export default function ExperiencesManager() {
                       <option value="iva0">{t("productsCatalog.modal.vat0")}</option>
                       {showReav && <option value="reav">{t("productsCatalog.modal.reav")}</option>}
                     </select>
-                    <p className="text-[10px] text-muted-foreground mt-1">{t("productsCatalog.modal.pvpNote")}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t("productsCatalog.modal.pvpNote")}</p>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.productType")}</Label>
