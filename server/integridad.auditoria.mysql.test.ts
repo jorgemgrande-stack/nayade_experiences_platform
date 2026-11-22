@@ -31,16 +31,19 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     return data(r);
   };
   /** Solicitud de producto en modo de pruebas (misma ruta que la ficha pública, sin avisos). */
-  const request = async (experienceId: number, variantId?: number) => {
+  const request = async (experienceId: number, variantId?: number, name = "Persona Sintética") => {
     resetProductRequestLimits();
-    const r = ok(await ess.m("a", "crm.leads.submitTestRequest", { experienceId, ...(variantId ? { variantId } : {}), name: "Persona Sintética", email: mail() }, adm), "solicitud");
+    const r = ok(await ess.m("a", "crm.leads.submitTestRequest", { experienceId, ...(variantId ? { variantId } : {}), name, email: mail() }, adm), "solicitud");
     return Number(r.leadId);
   };
   const quoteFrom = async (leadId: number) => Number(ok(await ess.m("a", "crm.leads.generateFromLead", { leadId }, adm), "generateFromLead").quoteId);
   const pay = (quoteId: number, cookie = adm) => ess.m("a", "crm.quotes.confirmPayment", { quoteId, paymentMethod: "efectivo", paymentNote: "Pago sintético" }, cookie);
   const invoicesOf = (quoteId: number) => ess.sql("a", "SELECT id, invoiceNumber, status, reservationId, total FROM invoices WHERE quoteId = ? ORDER BY id", [quoteId]);
   /** Presupuesto con producto de precio fijo, listo para cobrar. */
-  const freshQuote = async () => quoteFrom(await request(prod.fixed));
+  const freshQuote = async (name?: string) => quoteFrom(await request(prod.fixed, undefined, name));
+  // Nombre que hace fallar el alta (restricción CHECK temporal): inyección de fallos SIN triggers ni privilegios especiales (el MySQL de CI los prohíbe)
+  // Un nombre distinto por prueba: la restricción se valida contra las filas ya existentes
+  const failName = () => `Fallo Inyectado ${++seq}`;
 
   beforeAll(async () => {
     ess = await startEssentialApp(URL_!, "integr");
@@ -147,15 +150,16 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
 
     const counterOf = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
-    const withFailingReservation = async <T>(fn: () => Promise<T>): Promise<T> => {
-      await ess.sql("a", "CREATE TRIGGER audit_fail_res BEFORE INSERT ON reservations FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fallo inyectado'");
-      try { return await fn(); } finally { await ess.sql("a", "DROP TRIGGER IF EXISTS audit_fail_res"); }
+    const withFailingReservation = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      await ess.sql("a", `ALTER TABLE reservations ADD CONSTRAINT audit_fail_res CHECK (customer_name <> '${name}')`);
+      try { return await fn(); } finally { await ess.sql("a", "ALTER TABLE reservations DROP CHECK audit_fail_res"); }
     };
 
     it("CORREGIDO (F2b): un fallo a medias NO deja factura huérfana ni consume número, y el reintento emite UNA factura", async () => {
-      const q = await freshQuote();
+      const nm = failName();
+      const q = await freshQuote(nm);
       const before = await counterOf();
-      const first = await withFailingReservation(() => pay(q));
+      const first = await withFailingReservation(nm, () => pay(q));
       const afterFail = await invoicesOf(q);
       const quoteRow = (await ess.sql("a", "SELECT status, paidAt FROM quotes WHERE id = ?", [q]))[0];
       const counterAfterFail = await counterOf();
@@ -210,10 +214,11 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
 
     it("OTRAS RUTAS: fallo a medias en confirmTransfer tampoco deja factura ni consume número", async () => {
-      const q = await freshQuote();
+      const nm = failName();
+      const q = await freshQuote(nm);
       await ess.sql("a", "UPDATE quotes SET transfer_proof_url = 'https://ejemplo.invalid/justificante.pdf' WHERE id = ?", [q]);
       const before = await counterOf();
-      const first = await withFailingReservation(() => ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm));
+      const first = await withFailingReservation(nm, () => ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm));
       expect(first.status).not.toBe(200);
       expect((await invoicesOf(q)).length).toBe(0);
       expect(await counterOf()).toBe(before);
@@ -256,13 +261,13 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
   // ───────────────────────── 2b. Cuotas (confirmInstallment) y pagos pendientes ─────────────────────────
   describe("2b. confirmInstallment y pendingPayments.confirm: atomicidad y reconciliación", () => {
     const counterOf = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
-    const withFailingInvoice = async <T>(fn: () => Promise<T>): Promise<T> => {
-      await ess.sql("a", "CREATE TRIGGER audit_fail_inv BEFORE INSERT ON invoices FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fallo inyectado'");
-      try { return await fn(); } finally { await ess.sql("a", "DROP TRIGGER IF EXISTS audit_fail_inv"); }
+    const withFailingInvoice = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      await ess.sql("a", `ALTER TABLE invoices ADD CONSTRAINT audit_fail_inv CHECK (clientName <> '${name}')`);
+      try { return await fn(); } finally { await ess.sql("a", "ALTER TABLE invoices DROP CHECK audit_fail_inv"); }
     };
     /** Presupuesto de 400 € con plan de 2 cuotas (la primera obligatoria). */
-    const planned = async () => {
-      const q = await freshQuote();
+    const planned = async (name?: string) => {
+      const q = await freshQuote(name);
       ok(await ess.m("a", "crm.paymentPlans.upsert", { quoteId: q, installments: [
         { installmentNumber: 1, amountCents: 20000, dueDate: "2027-01-10", isRequiredForConfirmation: true },
         { installmentNumber: 2, amountCents: 20000, dueDate: "2027-02-10", isRequiredForConfirmation: false },
@@ -291,10 +296,11 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
 
     it("fallo al emitir la factura final: sin factura huérfana ni número consumido, y el reintento completa el plan", async () => {
-      const { q, ids } = await planned();
+      const nm = failName();
+      const { q, ids } = await planned(nm);
       ok(await payInst(ids[0]), "cuota 1");
       const before = await counterOf();
-      const failed = await withFailingInvoice(() => payInst(ids[1]));
+      const failed = await withFailingInvoice(nm, () => payInst(ids[1]));
       expect(failed.status).not.toBe(200);
       expect((await invoicesOf(q)).length).toBe(0);
       expect(await counterOf()).toBe(before);
@@ -308,13 +314,14 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
 
     it("pendingPayments.confirm: si la factura falla, el cobro queda con rastro (payment_confirmed_without_invoice) y sin número consumido", async () => {
+      const nm = failName();
       const q = await freshQuote();
       ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
       const resId = Number((await ess.sql("a", "SELECT id FROM reservations WHERE quote_id = ? LIMIT 1", [q]))[0].id);
-      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: "Persona Sintética", productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pago pendiente");
+      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: nm, productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pago pendiente");
       const pp = Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? LIMIT 1", [q]))[0].id);
       const before = await counterOf();
-      const r = await withFailingInvoice(() => ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm));
+      const r = await withFailingInvoice(nm, () => ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm));
       log("pendingPayments.confirm con fallo de factura", r.status);
       expect((await ess.sql("a", "SELECT pp_status AS status FROM pending_payments WHERE id = ?", [pp]))[0].status).toBe("paid");
       expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE reservationId = ?", [resId]))[0].n)).toBe(0);
