@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { FormField, TAG_COLOR_CLASSES, describedBy, selectClass } from "@/components/admin/crm/CrmParts";
 import { toastError } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
@@ -204,12 +205,12 @@ export default function CrmFunnel() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("crmFunnel.board.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("crmFunnel.board.description")}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        <PanelPageHeader
+          className="mb-0"
+          icon={<Target />}
+          title={t("crmFunnel.board.title")}
+          description={t("crmFunnel.board.description")}
+          actions={<>
             <form
               role="search"
               onSubmit={(e) => {
@@ -226,8 +227,8 @@ export default function CrmFunnel() {
                 <Settings2 className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmFunnel.board.configure")}
               </Button>
             )}
-          </div>
-        </div>
+          </>}
+        />
 
         {forecast && (
           <dl className="grid gap-3 sm:grid-cols-3">
@@ -236,7 +237,7 @@ export default function CrmFunnel() {
               { label: t("crmFunnel.board.weighted"), value: forecast.weightedTotal },
               { label: t("crmFunnel.board.won"), value: forecast.wonAmount },
             ].map((k) => (
-              <div key={k.label} className="rounded-2xl border border-border bg-card px-4 py-3">
+              <div key={k.label} className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
                 <dt className="text-xs text-muted-foreground">{k.label}</dt>
                 <dd className="text-xl font-semibold tabular-nums text-foreground">{money(k.value)}</dd>
               </div>
@@ -261,7 +262,7 @@ export default function CrmFunnel() {
                   <section
                     key={s.id}
                     aria-label={t("crmFunnel.board.stageAria", { name: s.name, n: list.length })}
-                    className={cn("flex w-72 shrink-0 flex-col rounded-2xl border border-border bg-muted/30", over === s.id && "ring-2 ring-primary")}
+                    className={cn("flex w-72 shrink-0 flex-col rounded-xl border border-border bg-muted/30", over === s.id && "ring-2 ring-primary")}
                     onDragOver={(e) => {
                       if (!canMove || dragging === null) return;
                       e.preventDefault();

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { FormField, TagChip, describedBy, selectClass, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { TAG_COLORS, TAG_NAME_MAX, validateTagForm } from "@shared/crmTagsTasks";
 import { toastError } from "@/lib/errorMessage";
@@ -88,17 +89,17 @@ export default function CrmTags() {
   return (
     <AdminLayout>
       <div className="max-w-4xl space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("crmTags.page.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("crmTags.page.description")}</p>
-          </div>
-          {canWrite && (
+        <PanelPageHeader
+          className="mb-0"
+          icon={<Tag />}
+          title={t("crmTags.page.title")}
+          description={t("crmTags.page.description")}
+          actions={canWrite ? (
             <Button onClick={() => setEditing(null)}>
               <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmTags.page.newTag")}
             </Button>
-          )}
-        </div>
+          ) : undefined}
+        />
 
         {tags.isLoading ? (
           <PanelLoading label={t("crmTags.page.loading")} />
@@ -109,7 +110,7 @@ export default function CrmTags() {
             {canWrite && <Button onClick={() => setEditing(null)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmTags.page.createFirst")}</Button>}
           </PanelEmpty>
         ) : (
-          <ul className="divide-y divide-border rounded-2xl border border-border bg-card" aria-label={t("crmTags.page.listAria")}>
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card shadow-sm" aria-label={t("crmTags.page.listAria")}>
             {list.map((tg) => (
               <li key={tg.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <TagChip name={tg.name} color={tg.color} />
