@@ -53,7 +53,7 @@ import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import type { MailCategory } from "../mail/types";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
-import { generateDocumentNumber } from "../documentNumbers";
+import { generateDocumentNumber, ensureDocumentCounter, generateDocumentNumberInTx } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { QUOTE_DISCOUNT_DESCRIPTION, QUOTE_LINE_TOTAL_DESCRIPTION, QUOTE_TOTAL_DESCRIPTION, QUOTE_UNIT_PRICE_DESCRIPTION, linesToTaxIncluded, pricesIncludeTaxSchema, quoteTotalMismatch } from "../quoteTaxConvention";
 import { invoiceClientForQuote } from "../invoiceClient";
@@ -569,7 +569,17 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   // -- FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ------
   // Idempotente: sólo si el quote aún no está aceptado
   if (quote.status !== "aceptado") {
-    let [reservation] = await db.select().from(reservations)
+    // Reserva, estado del presupuesto y del lead, cuotas pendientes y registro: UNA transacción con el presupuesto bloqueado.
+    // Dos confirmaciones simultáneas (también de instancias distintas) no crean dos reservas ni duplican las cuotas pendientes.
+    // El número de reserva se pide ANTES de abrir la transacción (pedirlo dentro necesitaría una segunda conexión mientras
+    // se retiene la primera: con varias confirmaciones a la vez agotaría el pool)
+    const [preReservation] = await db.select({ id: reservations.id }).from(reservations)
+      .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled"))).limit(1);
+    const preReservationNumber = preReservation ? null : await generateReservationNum("crm:installments:manual", String(userId));
+    const confirmedNow = await db.transaction(async (tx) => {
+      const [lockedQ] = await tx.select({ status: quotes.status }).from(quotes).where(eq(quotes.id, quoteId)).for("update");
+      if (!lockedQ || lockedQ.status === "aceptado") return false;
+    let [reservation] = await tx.select().from(reservations)
       .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
       .orderBy(desc(reservations.createdAt))
       .limit(1);
@@ -585,10 +595,10 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         : lead?.preferredDate
           ? new Date(lead.preferredDate).toISOString().split("T")[0]
           : now.toISOString().split("T")[0];
-      const reservationNumber = await generateReservationNum("crm:installments:manual", String(userId));
+      const reservationNumber = preReservationNumber ?? await generateReservationNum("crm:installments:manual", String(userId));
       const merchantOrder = reservationNumber.replace(/[^A-Z0-9]/gi, "").substring(0, 12);
       const resProd = reservationProductFromQuoteItems(quote.items, mainProductId);
-      const [resResult] = await db.insert(reservations).values({
+      const [resResult] = await tx.insert(reservations).values({
         productId: resProd.productId,
         productName: quote.title ?? "Presupuesto",
         extrasJson: resProd.extrasJson,
@@ -614,11 +624,11 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         paidAt: Date.now(),
       } as any);
       const newReservationId = (resResult as { insertId: number }).insertId;
-      const [newRes] = await db.select().from(reservations).where(eq(reservations.id, newReservationId)).limit(1);
+      const [newRes] = await tx.select().from(reservations).where(eq(reservations.id, newReservationId)).limit(1);
       reservation = newRes;
       console.log(`[checkAndConfirmInstallmentPlan] Reserva ${reservationNumber} creada para plan fraccionado manual — quoteId=${quoteId}`);
     } else if (reservation.status !== "paid") {
-      await db.update(reservations)
+      await tx.update(reservations)
         .set({ status: "paid", amountPaid: paidAmountCents, updatedAt: Date.now() } as any)
         .where(eq(reservations.id, reservation.id));
     }
@@ -626,13 +636,13 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
     // El enlace del presupuesto se conserva: con él el cliente paga las cuotas siguientes y vuelve a ver
     // el presupuesto. Nunca cobra dos veces: solo inicia el pago de cuotas pendientes y, con el plan
     // cobrado (paidAt), deja de iniciar pagos.
-    await db.update(quotes).set({
+    await tx.update(quotes).set({
       status: "aceptado",
       updatedAt: now,
     }).where(eq(quotes.id, quoteId));
 
     if (lead) {
-      await db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
+      await tx.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
     }
 
     // Crear pendingPayments para cuotas aún sin pagar
@@ -640,7 +650,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
     if (stillPending.length > 0) {
       const nowMs = Date.now();
       for (const inst of stillPending) {
-        await db.insert(pendingPayments).values({
+        await tx.insert(pendingPayments).values({
           quoteId: quote.id,
           reservationId: reservation?.id ?? null,
           clientName: lead?.name ?? quote.title ?? "",
@@ -658,7 +668,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       }
     }
 
-    await db.insert(crmActivityLog).values({
+    await tx.insert(crmActivityLog).values({
       entityType: "quote",
       entityId: quoteId,
       action: "confirmed_by_installments",
@@ -668,8 +678,11 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       createdAt: now,
     });
 
+      return true;
+    });
+
     // Email de confirmación solo si quedan cuotas pendientes (si todas pagadas, Fase 2 envía el email con factura)
-    if (!allInstallmentsPaid && lead?.email) {
+    if (confirmedNow && !allInstallmentsPaid && lead?.email) {
       try {
         await sendConfirmationEmail({
           clientName: lead.name,
@@ -697,23 +710,62 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
 
   // -- FASE 2: Generar factura sólo cuando TODAS las cuotas están pagadas -----
   if (allInstallmentsPaid) {
-    // Re-leer el quote para verificar idempotencia (evitar doble factura en llamadas concurrentes)
-    const [freshQuote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
-    if (freshQuote?.paidAt) return;
-
-    // Usar la reserva MÁS ANTIGUA (la original del primer pago), no la más reciente.
-    // En planes multi-cuota, payWithToken crea una nueva reserva por cada pago, pero la
-    // factura debe vincularse a la reserva original (la que el cliente ve como "su reserva").
-    const [reservation] = await db.select().from(reservations)
-      .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
-      .orderBy(reservations.createdAt)
-      .limit(1);
-
-    const invoiceNumber = await generateInvoiceNumber("crm:installments", String(userId));
+    // Factura final: número (en la misma transacción), factura, reserva y presupuesto en UNA transacción con el presupuesto
+    // bloqueado. Dos confirmaciones simultáneas emiten una sola factura; un fallo no consume número ni deja factura huérfana.
     // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
     const billTo = await invoiceClientForQuote(db, quote, { name: lead?.name ?? quote.title, email: lead?.email ?? "", phone: lead?.phone ?? null });
+    const issuerSnapInst = await issuerSnapshotForNewInvoice();
+    await ensureDocumentCounter("factura");
+    const issuedInst = await db.transaction(async (tx) => {
+      const [freshQuote] = await tx.select().from(quotes).where(eq(quotes.id, quoteId)).for("update");
+      if (!freshQuote || freshQuote.paidAt) return null;
+      // Usar la reserva MÁS ANTIGUA (la original del primer pago), no la más reciente.
+      // En planes multi-cuota, payWithToken crea una nueva reserva por cada pago, pero la
+      // factura debe vincularse a la reserva original (la que el cliente ve como "su reserva").
+      const [reservation] = await tx.select().from(reservations)
+        .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
+        .orderBy(reservations.createdAt)
+        .limit(1);
+      const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:installments", String(userId), async (candidate) => {
+        const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+        return !!hit;
+      });
+      const [invResult] = await tx.insert(invoices).values({
+        issuerSnapshot: issuerSnapInst,
+        invoiceNumber,
+        quoteId: quote.id,
+        reservationId: reservation?.id ?? null,
+        ...billTo,
+        itemsJson: items as any,
+        subtotal: String(subtotal),
+        discount: String(amountsInst.discount),
+        discountReason: amountsInst.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
+        taxRate: String(taxRateInst),
+        taxAmount: String(taxAmount),
+        taxBreakdown: breakdown.length > 0 ? breakdown : undefined,
+        total: String(total),
+        status: "cobrada",
+        paymentMethod: "otro",
+        isAutomatic: false,
+        issuedAt: now,
+        pdfUrl: null,
+        pdfKey: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const invoiceId = (invResult as { insertId: number }).insertId;
+      if (reservation) {
+        await tx.update(reservations)
+          .set({ amountPaid: Math.round(total * 100), invoiceId, invoiceNumber, paidAt: Date.now(), updatedAt: Date.now() } as any)
+          .where(eq(reservations.id, reservation.id));
+      }
+      await tx.update(quotes).set({ paidAt: now, invoiceNumber, updatedAt: now }).where(eq(quotes.id, quoteId));
+      return { invoiceNumber, invoiceId };
+    });
+    if (!issuedInst) return;
+    const { invoiceNumber, invoiceId } = issuedInst;
+    // PDF DESPUÉS de confirmar: un fallo del almacenamiento no deshace una factura ya emitida
     let pdfUrl: string | null = null;
-    let pdfKey: string | null = null;
     try {
       const pdf = await generateInvoicePdf({
         invoiceNumber,
@@ -729,48 +781,11 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         issuedAt: now,
       });
       pdfUrl = pdf.url;
-      pdfKey = pdf.key;
+      await db.update(invoices).set({ pdfUrl: pdf.url, pdfKey: pdf.key, updatedAt: now }).where(eq(invoices.id, invoiceId));
+      await db.update(quotes).set({ invoicePdfUrl: pdf.url }).where(eq(quotes.id, quoteId));
     } catch (e) {
       console.error("[checkAndConfirmInstallmentPlan] Error generando PDF:", e);
     }
-
-    const [invResult] = await db.insert(invoices).values({
-      issuerSnapshot: await issuerSnapshotForNewInvoice(),
-      invoiceNumber,
-      quoteId: quote.id,
-      reservationId: reservation?.id ?? null,
-      ...billTo,
-      itemsJson: items as any,
-      subtotal: String(subtotal),
-      discount: String(amountsInst.discount),
-      discountReason: amountsInst.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
-      taxRate: String(taxRateInst),
-      taxAmount: String(taxAmount),
-      taxBreakdown: breakdown.length > 0 ? breakdown : undefined,
-      total: String(total),
-      status: "cobrada",
-      paymentMethod: "otro",
-      isAutomatic: false,
-      issuedAt: now,
-      pdfUrl,
-      pdfKey,
-      createdAt: now,
-      updatedAt: now,
-    });
-    const invoiceId = (invResult as { insertId: number }).insertId;
-
-    if (reservation) {
-      await db.update(reservations)
-        .set({ amountPaid: Math.round(total * 100), invoiceId, invoiceNumber, paidAt: Date.now(), updatedAt: Date.now() } as any)
-        .where(eq(reservations.id, reservation.id));
-    }
-
-    await db.update(quotes).set({
-      paidAt: now,
-      invoiceNumber,
-      invoicePdfUrl: pdfUrl,
-      updatedAt: now,
-    }).where(eq(quotes.id, quoteId));
 
     await db.insert(crmActivityLog).values({
       entityType: "quote",
@@ -808,6 +823,38 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       }
     }
   }
+}
+
+/** Lo cobrado y facturado es lo que se leyó: si el presupuesto cambió (líneas, importe) entre la lectura y el bloqueo, no se factura con datos viejos. */
+function assertQuoteUnchanged(read: { items: unknown; total: unknown }, locked: { items: unknown; total: unknown }): void {
+  if (JSON.stringify(read.items) !== JSON.stringify(locked.items) || String(read.total) !== String(locked.total)) {
+    throw new TRPCError({ code: "CONFLICT", message: "El presupuesto ha cambiado mientras se registraba el cobro: revísalo y vuelve a intentarlo." });
+  }
+}
+
+/** Paso POSTERIOR al commit de un cobro (cliente, correos…): nunca debe tumbar un cobro ya registrado; si falla, deja rastro en la ficha del presupuesto para reconciliarlo. */
+async function postCommitStep(step: string, quoteId: number, ctx: { user: { id: number; name?: string | null } }, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    console.error("[cobro] Paso posterior al cobro fallido (" + step + "):", e);
+    await logActivity("quote", quoteId, "post_commit_step_failed", ctx.user.id, ctx.user.name ?? null, { step, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) }).catch(() => undefined);
+  }
+}
+
+/**
+ * Integridad fiscal: un presupuesto con factura emitida no se puede borrar (las facturas no se borran: se anulan o se
+ * rectifican con un abono, y su número queda consumido). Misma regla que `invoices.delete`. Se rechaza ANTES de tocar nada.
+ */
+async function assertQuoteHasNoInvoices(quoteIds: number[], runner: Pick<typeof db, "select"> = db): Promise<void> {
+  if (quoteIds.length === 0) return;
+  const withInvoice = await runner.select({ quoteId: invoices.quoteId, invoiceNumber: invoices.invoiceNumber }).from(invoices).where(inArray(invoices.quoteId, quoteIds));
+  if (withInvoice.length === 0) return;
+  const nums = Array.from(new Set(withInvoice.map((i) => i.invoiceNumber))).slice(0, 5).join(", ");
+  throw new TRPCError({
+    code: "CONFLICT",
+    message: `No se puede borrar: ${withInvoice.length === 1 ? "el presupuesto tiene" : "hay presupuestos con"} factura emitida (${nums}). Las facturas no se borran: anúlala o emite un abono (factura rectificativa).`,
+  });
 }
 
 export const crmRouter = router({
@@ -1207,7 +1254,29 @@ export const crmRouter = router({
         const catalogLineIds = new Set<number>();
 
         // -- Fallback: si no hay activitiesJson, buscar por selectedProduct en packs/experiences/legoPacks --
-        if (activities.length === 0) {
+        // -- Solicitud de producto (web): el producto y la modalidad que vio la persona (por id, no por título) --
+        if (activities.length === 0 && lead.experienceId) {
+          const [reqExp] = await db.select().from(experiences).where(eq(experiences.id, lead.experienceId));
+          if (reqExp) {
+            const reqQty = lead.numberOfPersons ?? 1;
+            const reqVariant = lead.variantId ? (await db.select().from(experienceVariants).where(and(eq(experienceVariants.id, lead.variantId), eq(experienceVariants.experienceId, reqExp.id))))[0] : undefined;
+            const reqBase = parseFloat(String(reqExp.basePrice ?? 0));
+            const reqMod = reqVariant ? parseFloat(String(reqVariant.priceModifier ?? "0")) : 0;
+            const reqUnit = !reqVariant ? reqBase : reqVariant.priceType === "percentage" ? reqBase * (1 + reqMod / 100) : reqMod;
+            catalogLineIds.add(reqExp.id);
+            quoteItems.push({
+              description: reqVariant ? `${reqExp.title} — ${reqVariant.name}` : reqExp.title,
+              quantity: reqQty,
+              unitPrice: parseFloat(reqUnit.toFixed(2)),
+              total: parseFloat((reqUnit * reqQty).toFixed(2)),
+              fiscalRegime: reqExp.fiscalRegime === "reav" ? "reav" : "general",
+              taxRate: reqExp.taxRate != null ? parseFloat(String(reqExp.taxRate)) : 21,
+              productId: reqExp.id,
+            });
+          }
+        }
+
+        if (activities.length === 0 && quoteItems.length === 0) {
           const productName = lead.selectedProduct;
           const qty = lead.numberOfPersons ?? 1;
 
@@ -2108,8 +2177,6 @@ export const crmRouter = router({
         assertPaidAmountMatchesQuote(input.paidAmount, quote.total);
         const now = new Date();
 
-        // Generate invoice
-        const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
         const billTo = await invoiceClientForQuote(db, quote, { name: lead.name, email: lead.email, phone: lead.phone });
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
@@ -2118,7 +2185,115 @@ export const crmRouter = router({
         const { subtotal, taxAmount, total } = amountsInv;
         const bdInv = amountsInv.taxBreakdown;
         const taxRate = amountsInv.taxRate;
-        // Generate PDF
+        // Todo lo que no puede quedar a medias va en UNA transacción con el presupuesto bloqueado (FOR UPDATE):
+        // número de factura (del mismo contador, que vuelve atrás si algo falla), factura, reserva, vínculos y
+        // estado del presupuesto y del lead. Dos cobros simultáneos (también de instancias distintas) se
+        // serializan en el bloqueo y el segundo ve el presupuesto ya cobrado; un fallo deja el presupuesto
+        // intacto, sin factura ni reserva huérfanas ni número consumido, y el reintento parte de cero.
+        const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
+        // Fecha operativa: prioridad quote.activityDate (editable desde admin) -> lead.preferredDate -> hoy
+        const serviceDate = quote.activityDate
+          ? String(quote.activityDate).slice(0, 10)
+          : lead.preferredDate
+            ? new Date(lead.preferredDate).toISOString().split("T")[0]
+            : now.toISOString().split("T")[0];
+        const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
+        const issuerSnap = await issuerSnapshotForNewInvoice();
+        await ensureDocumentCounter("factura");
+        const reservationNumber = await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
+        const resProd = reservationProductFromQuoteItems(quote.items, mainProductId);
+        const critical = await db.transaction(async (tx) => {
+          const [lockedQuote] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
+          if (!lockedQuote) throw new TRPCError({ code: "NOT_FOUND" });
+          if (lockedQuote.paidAt || lockedQuote.status === "aceptado") {
+            const [existing] = await tx.select().from(invoices).where(eq(invoices.quoteId, quote.id)).orderBy(invoices.id).limit(1);
+            if (existing) return { already: true as const, existing };
+          }
+          assertQuoteUnchanged(quote, lockedQuote);
+          const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:invoice", String(ctx.user.id), async (candidate) => {
+            const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+            return !!hit;
+          });
+          const [invResult] = await tx.insert(invoices).values({
+            issuerSnapshot: issuerSnap,
+            invoiceNumber,
+            quoteId: quote.id,
+            ...billTo,
+            itemsJson: items,
+            subtotal: String(subtotal),
+            discount: String(amountsInv.discount),
+            discountReason: amountsInv.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
+            taxRate: String(taxRate),
+            taxAmount: String(taxAmount),
+            taxBreakdown: bdInv.length > 0 ? bdInv : undefined,
+            total: String(total),
+            pdfUrl: null,
+            pdfKey: null,
+            isAutomatic: false,
+            status: "generada",
+            issuedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const invoiceId = (invResult as { insertId: number }).insertId;
+          const [resResult] = await tx.insert(reservations).values({
+            productId: resProd.productId,
+            productName: quote.title,
+            extrasJson: resProd.extrasJson,
+            bookingDate: resProd.mainServiceDate ?? serviceDate,
+            people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+            amountTotal: Math.round(total * 100),
+            amountPaid: Math.round((input.paidAmount ?? total) * 100),
+            status: "paid",
+            statusReservation: "CONFIRMADA",
+            statusPayment: "PAGADO",
+            // Canal: presupuesto cobrado manualmente por el equipo -> siempre ONLINE_ASISTIDO
+            channel: "ONLINE_ASISTIDO",
+            customerName: lead.name,
+            customerEmail: lead.email,
+            customerPhone: lead.phone ?? "",
+            merchantOrder: reservationRef.substring(0, 12),
+            reservationNumber,
+            paymentMethod: input.paymentMethod ?? "efectivo",
+            transferProofUrl: input.transferProofUrl ?? null,
+            notes: [
+              `Generado desde presupuesto ${quote.quoteNumber}`,
+              input.tpvOperationNumber ? `Nº operación TPV: ${input.tpvOperationNumber}` : null,
+              input.paymentNote ? `Nota: ${input.paymentNote}` : null,
+              input.transferProofUrl ? `Justificante transferencia adjunto` : null,
+            ].filter(Boolean).join(" — "),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            paidAt: Date.now(),
+          });
+          const reservationId = (resResult as { insertId: number }).insertId;
+          await tx.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
+          await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
+          await tx.update(quotes).set({
+            status: "aceptado",
+            paidAt: now,
+            redsysOrderId: input.redsysOrderId,
+            invoiceNumber,
+            invoiceGeneratedAt: now,
+            updatedAt: now,
+          }).where(eq(quotes.id, input.quoteId));
+          await tx.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, quote.leadId));
+          return { already: false as const, invoiceNumber, invoiceId, reservationId };
+        });
+        if (critical.already) {
+          return {
+            success: true,
+            invoiceId: critical.existing.id,
+            invoiceNumber: critical.existing.invoiceNumber,
+            reservationId: null,
+            pdfUrl: critical.existing.pdfUrl ?? null,
+            reavExpedientId: null,
+            reavExpedientNumber: null,
+          };
+        }
+        const { invoiceNumber, invoiceId, reservationId } = critical;
+        // PDF DESPUÉS de confirmar: un fallo del almacenamiento no deshace un cobro ya registrado (la factura queda
+        // sin PDF, como antes, y se regenera desde la ficha).
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
         try {
@@ -2137,109 +2312,15 @@ export const crmRouter = router({
           });
           pdfUrl = pdf.url;
           pdfKey = pdf.key;
+          await db.update(invoices).set({ pdfUrl, pdfKey, updatedAt: now }).where(eq(invoices.id, invoiceId));
+          await db.update(quotes).set({ invoicePdfUrl: pdfUrl }).where(eq(quotes.id, input.quoteId));
         } catch (e) {
           console.error("PDF generation failed:", e);
         }
-        // Insert invoice record
-        // Determinar productId principal desde las líneas del presupuesto
-        const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
-
-        const [invResult] = await db.insert(invoices).values({
-          issuerSnapshot: await issuerSnapshotForNewInvoice(),
-          invoiceNumber,
-          quoteId: quote.id,
-          ...billTo,
-          itemsJson: items,
-          subtotal: String(subtotal),
-          discount: String(amountsInv.discount),
-          discountReason: amountsInv.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
-          taxRate: String(taxRate),
-          taxAmount: String(taxAmount),
-          taxBreakdown: bdInv.length > 0 ? bdInv : undefined,
-          total: String(total),
-          pdfUrl,
-          pdfKey,
-          isAutomatic: false,
-          status: "generada",
-          issuedAt: now,
-          createdAt: now,
-          updatedAt: now,
-        });
-        const invoiceId = (invResult as { insertId: number }).insertId;
-
-        // Create reservation
-        // Fecha operativa: prioridad quote.activityDate (editable desde admin) ? lead.preferredDate ? hoy
-        const serviceDate = quote.activityDate
-          ? String(quote.activityDate).slice(0, 10)
-          : lead.preferredDate
-            ? new Date(lead.preferredDate).toISOString().split("T")[0]
-            : now.toISOString().split("T")[0];
-        const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
-        const reservationNumber = await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
-        const resProd = reservationProductFromQuoteItems(quote.items, mainProductId);
-        const [resResult] = await db.insert(reservations).values({
-          productId: resProd.productId,
-          productName: quote.title,
-          extrasJson: resProd.extrasJson,
-          bookingDate: resProd.mainServiceDate ?? serviceDate,
-          people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
-          amountTotal: Math.round(total * 100),
-          amountPaid: Math.round((input.paidAmount ?? total) * 100),
-          status: "paid",
-          statusReservation: "CONFIRMADA",
-          statusPayment: "PAGADO",
-          // Canal: presupuesto cobrado manualmente por el equipo ? siempre ONLINE_ASISTIDO
-          channel: "ONLINE_ASISTIDO",
-          customerName: lead.name,
-          customerEmail: lead.email,
-          customerPhone: lead.phone ?? "",
-          merchantOrder: reservationRef.substring(0, 12),
-          reservationNumber,
-          paymentMethod: input.paymentMethod ?? "efectivo",
-          transferProofUrl: input.transferProofUrl ?? null,
-          notes: [
-            `Generado desde presupuesto ${quote.quoteNumber}`,
-            input.tpvOperationNumber ? `Nº operación TPV: ${input.tpvOperationNumber}` : null,
-            input.paymentNote ? `Nota: ${input.paymentNote}` : null,
-            input.transferProofUrl ? `Justificante transferencia adjunto` : null,
-          ].filter(Boolean).join(" — "),
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          paidAt: Date.now(),
-        });
-        const reservationId = (resResult as { insertId: number }).insertId;
-        // FIX: Vincular factura ? reserva recién creadass
-        await db.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
-        await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
 
         // Crear/actualizar cliente en el CRM
-        await upsertClientFromReservation({
-          name: lead.name,
-          email: lead.email ?? null,
-          phone: lead.phone ?? null,
-          source: "presupuesto",
-          leadId: lead.id,
-        });
+        await postCommitStep("client_upsert", quote.id, ctx, () => upsertClientFromReservation({ name: lead.name, email: lead.email ?? null, phone: lead.phone ?? null, source: "presupuesto", leadId: lead.id }));
 
-        // Update quote
-        await db
-          .update(quotes)
-          .set({
-            status: "aceptado",
-            paidAt: now,
-            redsysOrderId: input.redsysOrderId,
-            invoiceNumber,
-            invoicePdfUrl: pdfUrl,
-            invoiceGeneratedAt: now,
-            updatedAt: now,
-          })
-          .where(eq(quotes.id, input.quoteId));
-
-        // Update lead
-        await db
-          .update(leads)
-          .set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now })
-          .where(eq(leads.id, quote.leadId));
 
         // Log activity
         await logActivity("quote", quote.id, "payment_confirmed", ctx.user.id, ctx.user.name, { invoiceId, reservationId });
@@ -2551,7 +2632,17 @@ export const crmRouter = router({
             ? new Date(lead.preferredDate).toISOString().split("T")[0]
             : now.toISOString().split("T")[0];
         const resProd = reservationProductFromQuoteItems(quote.items);
-        const [resResult] = await db.insert(reservations).values({
+        // Una sola transacción con el presupuesto bloqueado: dos conversiones simultáneas (también entre instancias)
+        // no crean dos pedidos, y un fallo no deja la reserva sin marcar el presupuesto.
+        const converted = await db.transaction(async (tx) => {
+        await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, input.quoteId)).for("update");
+        const [raced] = await tx
+          .select({ id: reservations.id, merchantOrder: reservations.merchantOrder, status: reservations.status })
+          .from(reservations)
+          .where(and(eq(reservations.quoteId, input.quoteId), ne(reservations.status, "cancelled")))
+          .limit(1);
+        if (raced) return { already: true as const, raced };
+        const [resResult] = await tx.insert(reservations).values({
           productId: resProd.productId,
           productName: quote.title,
           extrasJson: resProd.extrasJson,
@@ -2575,28 +2666,22 @@ export const crmRouter = router({
           updatedAt: Date.now(),
         });
         const reservationId = (resResult as { insertId: number }).insertId;
-
-        // Crear/actualizar cliente en el CRM
-        await upsertClientFromReservation({
-          name: lead.name,
-          email: lead.email ?? null,
-          phone: lead.phone ?? null,
-          source: "presupuesto",
-          leadId: lead.id,
-        });
-
-        // Actualizar presupuesto: estado aceptado (ganado comercialmente) pero sin factura
-        await db.update(quotes).set({
+        await tx.update(quotes).set({
           status: "aceptado",
           updatedAt: now,
         }).where(eq(quotes.id, input.quoteId));
-
-        // Actualizar lead: oportunidad ganada comercialmente
-        await db.update(leads).set({
+        await tx.update(leads).set({
           opportunityStatus: "ganada",
           status: "convertido",
           updatedAt: now,
         }).where(eq(leads.id, quote.leadId));
+        return { already: false as const, reservationId };
+        });
+        if (converted.already) return { success: true, reservationId: converted.raced.id, reservationRef: converted.raced.merchantOrder, status: converted.raced.status };
+        const reservationId = converted.reservationId;
+
+        // Crear/actualizar cliente en el CRM
+        await postCommitStep("client_upsert", quote.id, ctx, () => upsertClientFromReservation({ name: lead.name, email: lead.email ?? null, phone: lead.phone ?? null, source: "presupuesto", leadId: lead.id }));
 
         await logActivity("quote", quote.id, "converted_to_reservation_manual", ctx.user.id, ctx.user.name, { reservationId, status: "pending_payment" });
         await logActivity("lead", quote.leadId, "opportunity_won_manual", ctx.user.id, ctx.user.name, { quoteId: quote.id });
@@ -2702,7 +2787,6 @@ export const crmRouter = router({
         // La factura es por lo cobrado: un importe distinto del total del presupuesto no se factura aquí
         assertPaidAmountMatchesQuote(input.paidAmount, quote.total);
         const now = new Date();
-        const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
         const billTo = await invoiceClientForQuote(db, quote, { name: lead.name, email: lead.email, phone: lead.phone });
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
@@ -2711,6 +2795,99 @@ export const crmRouter = router({
         const { subtotal, taxAmount, total } = amountsT;
         const bdT = amountsT.taxBreakdown;
         const taxRate = amountsT.taxRate;
+        // Misma garantía que confirmPayment: número, factura, reserva, vínculos y presupuesto en UNA transacción con el
+        // presupuesto bloqueado; el PDF y los envíos van después de confirmar.
+        const mainProductIdT = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
+        // Fecha operativa: quote.activityDate (editable desde admin) -> lead.preferredDate -> hoy
+        const serviceDateTransfer = quote.activityDate
+          ? String(quote.activityDate).slice(0, 10)
+          : lead.preferredDate
+            ? new Date(lead.preferredDate).toISOString().split("T")[0]
+            : now.toISOString().split("T")[0];
+        const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
+        const issuerSnapT = await issuerSnapshotForNewInvoice();
+        await ensureDocumentCounter("factura");
+        const reservationNumberTransfer = await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
+        const resProd = reservationProductFromQuoteItems(quote.items, mainProductIdT);
+        const criticalT = await db.transaction(async (tx) => {
+          const [lockedQuote] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
+          if (!lockedQuote) throw new TRPCError({ code: "NOT_FOUND" });
+          if (lockedQuote.paidAt || lockedQuote.status === "aceptado") {
+            const [existingInvT] = await tx.select().from(invoices).where(eq(invoices.quoteId, quote.id)).orderBy(invoices.id).limit(1);
+            if (existingInvT) return { already: true as const, existingInvT };
+          }
+          assertQuoteUnchanged(quote, lockedQuote);
+          const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:invoice", String(ctx.user.id), async (candidate) => {
+            const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+            return !!hit;
+          });
+          const [invResult] = await tx.insert(invoices).values({
+            issuerSnapshot: issuerSnapT,
+            invoiceNumber,
+            quoteId: quote.id,
+            ...billTo,
+            itemsJson: items,
+            subtotal: String(subtotal),
+            discount: String(amountsT.discount),
+            discountReason: amountsT.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
+            taxRate: String(taxRate),
+            taxAmount: String(taxAmount),
+            taxBreakdown: bdT.length > 0 ? bdT : undefined,
+            total: String(total),
+            pdfUrl: null,
+            pdfKey: null,
+            status: "cobrada",
+            paymentMethod: "transferencia",
+            transferProofUrl: proofUrl,
+            isAutomatic: false,
+            issuedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const invoiceId = (invResult as { insertId: number }).insertId;
+          const [resResult] = await tx.insert(reservations).values({
+            productId: resProd.productId,
+            productName: quote.title,
+            extrasJson: resProd.extrasJson,
+            bookingDate: resProd.mainServiceDate ?? serviceDateTransfer,
+            people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+            amountTotal: Math.round(total * 100),
+            amountPaid: Math.round((input.paidAmount ?? total) * 100),
+            status: "paid",
+            statusReservation: "CONFIRMADA",
+            statusPayment: "PAGADO",
+            // Canal: transferencia confirmada manualmente por el equipo -> ONLINE_ASISTIDO
+            channel: "ONLINE_ASISTIDO",
+            customerName: lead.name,
+            customerEmail: lead.email,
+            customerPhone: lead.phone ?? "",
+            merchantOrder: reservationRef.substring(0, 12),
+            reservationNumber: reservationNumberTransfer,
+            notes: `Pago por transferencia bancaria confirmado manualmente. Presupuesto ${quote.quoteNumber}`,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            paidAt: Date.now(),
+          });
+          const reservationId = (resResult as { insertId: number }).insertId;
+          await tx.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
+          await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
+          await tx.update(quotes).set({
+            status: "aceptado",
+            paidAt: now,
+            invoiceNumber,
+            invoiceGeneratedAt: now,
+            transferConfirmedAt: now,
+            transferConfirmedBy: ctx.user.name,
+            paymentMethod: "transferencia",
+            updatedAt: now,
+          } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
+          await tx.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, quote.leadId));
+          return { already: false as const, invoiceNumber, invoiceId, reservationId };
+        });
+        if (criticalT.already) {
+          return { success: true, invoiceId: criticalT.existingInvT.id, invoiceNumber: criticalT.existingInvT.invoiceNumber };
+        }
+        const { invoiceNumber, invoiceId, reservationId } = criticalT;
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
         try {
@@ -2729,95 +2906,15 @@ export const crmRouter = router({
           });
           pdfUrl = pdf.url;
           pdfKey = pdf.key;
+          await db.update(invoices).set({ pdfUrl, pdfKey, updatedAt: now }).where(eq(invoices.id, invoiceId));
+          await db.update(quotes).set({ invoicePdfUrl: pdfUrl } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
         } catch (e) {
           console.error("PDF generation failed:", e);
         }
-        // Determinar productId principal desde las líneas del presupuesto
-        const mainProductIdT = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
-
-        const [invResult] = await db.insert(invoices).values({
-          issuerSnapshot: await issuerSnapshotForNewInvoice(),
-          invoiceNumber,
-          quoteId: quote.id,
-          ...billTo,
-          itemsJson: items,
-          subtotal: String(subtotal),
-          discount: String(amountsT.discount),
-          discountReason: amountsT.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
-          taxRate: String(taxRate),
-          taxAmount: String(taxAmount),
-          taxBreakdown: bdT.length > 0 ? bdT : undefined,
-          total: String(total),
-          pdfUrl,
-          pdfKey,
-          status: "cobrada",
-          paymentMethod: "transferencia",
-          transferProofUrl: proofUrl,
-          isAutomatic: false,
-          issuedAt: now,
-          createdAt: now,
-          updatedAt: now,
-        });
-        const invoiceId = (invResult as { insertId: number }).insertId;
-        // Fecha operativa: quote.activityDate (editable desde admin) ? lead.preferredDate ? hoy
-        const serviceDateTransfer = quote.activityDate
-          ? String(quote.activityDate).slice(0, 10)
-          : lead.preferredDate
-            ? new Date(lead.preferredDate).toISOString().split("T")[0]
-            : now.toISOString().split("T")[0];
-        const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
-        const reservationNumberTransfer = await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
-        const resProd = reservationProductFromQuoteItems(quote.items, mainProductIdT);
-        const [resResult] = await db.insert(reservations).values({
-          productId: resProd.productId,
-          productName: quote.title,
-          extrasJson: resProd.extrasJson,
-          bookingDate: resProd.mainServiceDate ?? serviceDateTransfer,
-          people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
-          amountTotal: Math.round(total * 100),
-          amountPaid: Math.round((input.paidAmount ?? total) * 100),
-          status: "paid",
-          statusReservation: "CONFIRMADA",
-          statusPayment: "PAGADO",
-          // Canal: transferencia confirmada manualmente por el equipo ? ONLINE_ASISTIDO
-          channel: "ONLINE_ASISTIDO",
-          customerName: lead.name,
-          customerEmail: lead.email,
-          customerPhone: lead.phone ?? "",
-          merchantOrder: reservationRef.substring(0, 12),
-          reservationNumber: reservationNumberTransfer,
-          notes: `Pago por transferencia bancaria confirmado manualmente. Presupuesto ${quote.quoteNumber}`,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          paidAt: Date.now(),
-        });
-        const reservationId = (resResult as { insertId: number }).insertId;
-
-        // FIX: Vincular factura ? reserva recién creadas
-        await db.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
-        await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
 
         // Crear/actualizar cliente en el CRM
-        await upsertClientFromReservation({
-          name: lead.name,
-          email: lead.email ?? null,
-          phone: lead.phone ?? null,
-          source: "transferencia",
-          leadId: lead.id,
-        });
+        await postCommitStep("client_upsert", quote.id, ctx, () => upsertClientFromReservation({ name: lead.name, email: lead.email ?? null, phone: lead.phone ?? null, source: "transferencia", leadId: lead.id }));
 
-        await db.update(quotes).set({
-          status: "aceptado",
-          paidAt: now,
-          invoiceNumber,
-          invoicePdfUrl: pdfUrl,
-          invoiceGeneratedAt: now,
-          transferConfirmedAt: now,
-          transferConfirmedBy: ctx.user.name,
-          paymentMethod: "transferencia",
-          updatedAt: now,
-        } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
-        await db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, quote.leadId));
         await logActivity("quote", quote.id, "transfer_payment_confirmed", ctx.user.id, ctx.user.name, {
           invoiceId, reservationId, proofUrl, confirmedBy: ctx.user.name,
         });
@@ -3017,10 +3114,15 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.id));
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
-        // Borrar actividad e invoices relacionadas
-        await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.id)));
-        await db.delete(invoices).where(eq(invoices.quoteId, input.id));
-        await db.delete(quotes).where(eq(quotes.id, input.id));
+        // Un presupuesto con factura emitida no se borra (integridad fiscal): primero se anula o se abona la factura
+        // La comprobación y el borrado van bajo el bloqueo del presupuesto: un cobro simultáneo (que también lo bloquea) no puede
+        // emitir su factura entre medias
+        await db.transaction(async (tx) => {
+          await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, input.id)).for("update");
+          await assertQuoteHasNoInvoices([input.id], tx);
+          await tx.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.id)));
+          await tx.delete(quotes).where(eq(quotes.id, input.id));
+        });
         // Si el lead asociado no tiene más presupuestos, volver a estado "nueva"
         if (quote.leadId) {
           const remaining = await db.select({ cnt: count() }).from(quotes).where(eq(quotes.leadId, quote.leadId));
@@ -3034,11 +3136,15 @@ export const crmRouter = router({
     bulkDelete: staff
       .input(z.object({ ids: z.array(z.number()).min(1) }))
       .mutation(async ({ input }) => {
-        for (const id of input.ids) {
-          await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, id)));
-          await db.delete(invoices).where(eq(invoices.quoteId, id));
-        }
-        await db.delete(quotes).where(inArray(quotes.id, input.ids));
+        // Comprobación y borrado en UNA transacción con los presupuestos bloqueados (todo o nada)
+        await db.transaction(async (tx) => {
+          await tx.select({ id: quotes.id }).from(quotes).where(inArray(quotes.id, input.ids)).for("update");
+          await assertQuoteHasNoInvoices(input.ids, tx);
+          for (const id of input.ids) {
+            await tx.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, id)));
+          }
+          await tx.delete(quotes).where(inArray(quotes.id, input.ids));
+        });
         return { deleted: input.ids.length };
       }),
 
@@ -3967,11 +4073,17 @@ export const crmRouter = router({
         const [inst] = await db.select().from(paymentInstallments)
           .where(eq(paymentInstallments.id, input.installmentId)).limit(1);
         if (!inst) throw new TRPCError({ code: "NOT_FOUND", message: "Cuota no encontrada" });
-        if (inst.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya está pagada" });
+        if (inst.status === "paid") {
+          // Reintento posterior: si un fallo anterior dejó la reserva o la factura del plan a medias, esta llamada (idempotente y
+          // atómica) lo completa antes de avisar.
+          await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin").catch((e) => console.error("[confirmInstallment] Reconciliación del plan:", e));
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya está pagada" });
+        }
         if (inst.status === "cancelled") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota está cancelada" });
 
         const now = new Date();
-        await db.update(paymentInstallments).set({
+        // Reclamación atómica: solo UNA llamada pasa la cuota a «pagada» (doble clic / dos instancias)
+        const [claimInst] = await db.update(paymentInstallments).set({
           status: "paid",
           paymentMethod: input.paymentMethod,
           paidAt: now,
@@ -3982,7 +4094,13 @@ export const crmRouter = router({
             input.transferProofUrl ? `Justificante: ${input.transferProofUrl}` : null,
           ].filter(Boolean).join(" — ") || inst.notes,
           updatedAt: now,
-        }).where(eq(paymentInstallments.id, input.installmentId));
+        }).where(and(eq(paymentInstallments.id, input.installmentId), ne(paymentInstallments.status, "paid"), ne(paymentInstallments.status, "cancelled")));
+        if (!((claimInst as unknown as { affectedRows?: number }).affectedRows)) {
+          // Reintento posterior: si la cuota ya estaba pagada pero un fallo anterior dejó la reserva o la factura del plan
+          // a medias, esta llamada (idempotente y atómica) lo completa antes de avisar.
+          await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin").catch((e) => console.error("[confirmInstallment] Reconciliación del plan:", e));
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya está pagada" });
+        }
 
         await logActivity("quote", inst.quoteId, "installment_paid_manual", ctx.user.id, ctx.user.name, {
           installmentId: inst.id,
@@ -5883,6 +6001,9 @@ export const crmRouter = router({
         await db.update(invoices)
           .set({ pdfUrl: pdf.url, pdfKey: pdf.key, updatedAt: new Date() })
           .where(eq(invoices.id, input.invoiceId));
+        // El presupuesto de origen también muestra el PDF: se mantiene en sincronía (una factura sin PDF tras un fallo del
+        // almacenamiento se recupera desde aquí)
+        if (invoice.quoteId) await db.update(quotes).set({ invoicePdfUrl: pdf.url }).where(eq(quotes.id, invoice.quoteId));
 
         return { pdfUrl: pdf.url };
       }),
@@ -6020,37 +6141,42 @@ export const crmRouter = router({
         if (invoice.status === "cobrada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está marcada como cobrada" });
 
         const now = new Date();
-        await db.update(invoices).set({
-          status: "cobrada",
-          paymentMethod: input.paymentMethod,
-          paymentValidatedBy: ctx.user.id,
-          paymentValidatedAt: now,
-          transferProofUrl: input.transferProofUrl ?? null,
-          transferProofKey: input.transferProofKey ?? null,
-          isAutomatic: false,
-          updatedAt: now,
-        }).where(eq(invoices.id, input.invoiceId));
-
-        // Update linked reservation if exists
-        if (invoice.reservationId) {
-          await db.update(reservations).set({
-            status: "paid",
+        // Reclamación atómica: solo UNA llamada pasa la factura a «cobrada» (la comprobación de arriba es solo un
+        // aviso rápido; con dos clics a la vez o dos instancias, la condición del UPDATE decide). Factura,
+        // reserva y presupuesto cambian juntos o no cambia nada.
+        const claimedManual = await db.transaction(async (tx) => {
+          const [claimRes] = await tx.update(invoices).set({
+            status: "cobrada",
             paymentMethod: input.paymentMethod,
             paymentValidatedBy: ctx.user.id,
-            paymentValidatedAt: Date.now(),
+            paymentValidatedAt: now,
             transferProofUrl: input.transferProofUrl ?? null,
-            paidAt: Date.now(),
-            updatedAt: Date.now(),
-          }).where(eq(reservations.id, invoice.reservationId));
-        }
-        // Update linked quote if exists
-        if (invoice.quoteId) {
-          await db.update(quotes).set({
-            status: "aceptado",
-            paidAt: now,
+            transferProofKey: input.transferProofKey ?? null,
+            isAutomatic: false,
             updatedAt: now,
-          }).where(eq(quotes.id, invoice.quoteId));
-        }
+          }).where(and(eq(invoices.id, input.invoiceId), ne(invoices.status, "cobrada")));
+          if (!((claimRes as unknown as { affectedRows?: number }).affectedRows)) return false;
+          if (invoice.reservationId) {
+            await tx.update(reservations).set({
+              status: "paid",
+              paymentMethod: input.paymentMethod,
+              paymentValidatedBy: ctx.user.id,
+              paymentValidatedAt: Date.now(),
+              transferProofUrl: input.transferProofUrl ?? null,
+              paidAt: Date.now(),
+              updatedAt: Date.now(),
+            }).where(eq(reservations.id, invoice.reservationId));
+          }
+          if (invoice.quoteId) {
+            await tx.update(quotes).set({
+              status: "aceptado",
+              paidAt: now,
+              updatedAt: now,
+            }).where(eq(quotes.id, invoice.quoteId));
+          }
+          return true;
+        });
+        if (!claimedManual) throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está marcada como cobrada" });
 
         // Send confirmation email to client
         try {
@@ -7117,14 +7243,47 @@ export const crmRouter = router({
         const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, input.id));
         if (!pp) throw new TRPCError({ code: "NOT_FOUND" });
         if (pp.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Este pago ya no está pendiente" });
-        await db.update(pendingPayments).set({
+        // Reclamación atómica: solo una llamada pasa el pago de «pendiente» a «cobrado» (doble clic / dos instancias)
+        const [claimPp] = await db.update(pendingPayments).set({
           status: "paid",
           paymentMethod: input.paymentMethod,
           paymentNote: input.paymentNote,
           transferProofUrl: input.transferProofUrl,
           paidAt: Date.now(),
           updatedAt: Date.now(),
-        }).where(eq(pendingPayments.id, input.id));
+        }).where(and(eq(pendingPayments.id, input.id), eq(pendingPayments.status, "pending")));
+        if (!((claimPp as unknown as { affectedRows?: number }).affectedRows)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Este pago ya no está pendiente" });
+        }
+        // Pago pendiente nacido de un PLAN DE CUOTAS: es el cobro de una cuota. Se delega en el flujo del plan (cuota reclamada de
+        // forma atómica y factura FINAL única del plan). Este flujo NO emite factura propia ni pisa el importe cobrado de la
+        // reserva: con la última cuota, dos facturas (la parcial de aquí y la final del plan) y la cuota cobrable otra vez.
+        if (pp.quoteId) {
+          const [planQuote] = await db.select({ paymentPlanId: quotes.paymentPlanId }).from(quotes).where(eq(quotes.id, pp.quoteId)).limit(1);
+          if (planQuote?.paymentPlanId) {
+            const candidates = await db.select().from(paymentInstallments).where(and(
+              eq(paymentInstallments.quoteId, pp.quoteId),
+              eq(paymentInstallments.amountCents, pp.amountCents),
+              eq(paymentInstallments.status, "pending"),
+            )).orderBy(paymentInstallments.installmentNumber);
+            let claimedInstallment: number | null = null;
+            for (const cand of candidates) {
+              const nowInst = new Date();
+              const [c] = await db.update(paymentInstallments).set({
+                status: "paid",
+                paymentMethod: input.paymentMethod,
+                paidAt: nowInst,
+                paidBy: `admin:${ctx.user.id}`,
+                notes: [input.paymentNote, input.transferProofUrl ? `Justificante: ${input.transferProofUrl}` : null].filter(Boolean).join(" — ") || cand.notes,
+                updatedAt: nowInst,
+              }).where(and(eq(paymentInstallments.id, cand.id), eq(paymentInstallments.status, "pending")));
+              if ((c as unknown as { affectedRows?: number }).affectedRows) { claimedInstallment = cand.id; break; }
+            }
+            await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod, installmentId: claimedInstallment, viaPlan: true });
+            await checkAndConfirmInstallmentPlan(pp.quoteId, ctx.user.id, ctx.user.name ?? "Admin");
+            return { success: true };
+          }
+        }
         if (pp.reservationId) {
           // Obtener datos completos de la reserva para postConfirmOperation
           const [existingRes] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));
@@ -7175,7 +7334,6 @@ export const crmRouter = router({
             const [resForInv] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));
             if (resForInv && !resForInv.invoiceId) {
               const now = new Date();
-              const invoiceNumber = await generateInvoiceNumber("crm:pendingPayment", String(ctx.user.id));
               const amountEur = pp.amountCents / 100;
               const items = [{ description: pp.productName ?? resForInv.productName, quantity: resForInv.people, unitPrice: amountEur / resForInv.people, total: amountEur }];
               // Lo facturado es lo cobrado (IVA incluido): la base se extrae, no se suma el IVA encima.
@@ -7183,18 +7341,35 @@ export const crmRouter = router({
               const { subtotal, taxAmount, total } = amountsPp;
               const bdPp = amountsPp.taxBreakdown;
               const taxRatePp = amountsPp.taxRate;
+              const issuerSnapPp = await issuerSnapshotForNewInvoice();
+              await ensureDocumentCounter("factura");
+              // Número, factura y vínculo con la reserva en una transacción (con la reserva bloqueada): sin hueco en la
+              // numeración si falla y sin segunda factura si dos llamadas coinciden.
+              const issuedPp = await db.transaction(async (tx) => {
+                if (pp.quoteId) await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, pp.quoteId)).for("update");
+                const [lockedRes] = await tx.select({ invoiceId: reservations.invoiceId }).from(reservations).where(eq(reservations.id, pp.reservationId!)).for("update");
+                if (lockedRes?.invoiceId) return null;
+                const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:pendingPayment", String(ctx.user.id), async (candidate) => {
+                  const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+                  return !!hit;
+                });
+                const [invRes] = await tx.insert(invoices).values({ issuerSnapshot: issuerSnapPp, invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp.length > 0 ? bdPp : undefined, total: String(total.toFixed(2)), pdfUrl: null, pdfKey: null, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
+                const invoiceId = (invRes as { insertId: number }).insertId;
+                await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId!));
+                return { invoiceNumber, invoiceId };
+              });
+              if (!issuedPp) throw new Error("ALREADY_INVOICED");
+              const { invoiceNumber, invoiceId } = issuedPp;
               let pdfUrl: string | null = null;
               let pdfKey: string | null = null;
               try {
                 const pdf = await generateInvoicePdf({ invoiceNumber, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp, total: String(total.toFixed(2)), issuedAt: now });
                 pdfUrl = pdf.url;
                 pdfKey = pdf.key;
+                await db.update(invoices).set({ pdfUrl, pdfKey, updatedAt: now }).where(eq(invoices.id, invoiceId));
               } catch (pdfErr) {
                 console.error("[pendingPayments.confirm] PDF generation failed:", pdfErr);
               }
-              const [invRes] = await db.insert(invoices).values({ issuerSnapshot: await issuerSnapshotForNewInvoice(), invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp.length > 0 ? bdPp : undefined, total: String(total.toFixed(2)), pdfUrl, pdfKey, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
-              const invoiceId = (invRes as { insertId: number }).insertId;
-              await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId));
               console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);
 
               // Crear expediente REAV si el producto tiene régimen REAV
@@ -7256,7 +7431,11 @@ export const crmRouter = router({
               }
             }
           } catch (invErr) {
+            if (invErr instanceof Error && invErr.message === "ALREADY_INVOICED") return { success: true };
             console.error("[pendingPayments.confirm] Error generando factura:", invErr);
+            // Reconciliación trazable: el pago queda cobrado pero SIN factura; se deja constancia en la ficha del presupuesto
+            // (acción «payment_confirmed_without_invoice») para que se emita la factura a mano o se revise. Nunca silencioso.
+            await logActivity("quote", pp.quoteId, "payment_confirmed_without_invoice", ctx.user.id, ctx.user.name, { ppId: input.id, reservationId: pp.reservationId, amountCents: pp.amountCents, error: invErr instanceof Error ? invErr.message.slice(0, 200) : String(invErr).slice(0, 200) }).catch(() => undefined);
           }
         }
 

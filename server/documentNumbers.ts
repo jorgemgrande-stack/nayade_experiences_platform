@@ -235,6 +235,62 @@ export async function generateDocumentNumber(
   return documentNumber;
 }
 
+// --- Emisión DENTRO de la transacción del documento --------------------------
+//
+// El número y el documento que lo usa se confirman o se deshacen juntos: si la transacción falla, el contador
+// vuelve atrás y no queda un hueco en la serie fiscal. La fila del contador se bloquea (FOR UPDATE) hasta el
+// final de la transacción, de modo que la emisión de facturas de una empresa se serializa durante unos
+// milisegundos (el PDF y los envíos se hacen DESPUÉS de confirmar).
+
+type Tx = Parameters<Parameters<ReturnType<typeof legacyDb>["transaction"]>[0]>[0];
+
+/** Garantiza que la serie del año existe. Va FUERA de la transacción de emisión (usa su propia conexión). */
+export async function ensureDocumentCounter(documentType: DocumentType): Promise<void> {
+  const year = madridYear();
+  const conn = await legacyPool().getConnection();
+  try {
+    const [found] = await conn.query<mysql.RowDataPacket[]>(
+      "SELECT id FROM document_counters WHERE document_type = ? AND `year` = ? LIMIT 1",
+      [documentType, year]
+    );
+    if (!found.length) await createCounterIfMissing(conn, documentType, year);
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Como `generateDocumentNumber`, pero con la conexión de la transacción `tx`. Requiere haber llamado antes
+ * (fuera de la transacción) a `ensureDocumentCounter`.
+ */
+export async function generateDocumentNumberInTx(
+  tx: Tx,
+  documentType: DocumentType,
+  context: string,
+  generatedBy: string,
+  existsCheck?: (candidateNumber: string) => Promise<boolean>
+): Promise<string> {
+  const year = madridYear();
+  const [counter] = await tx
+    .select({ id: documentCounters.id, prefix: documentCounters.prefix })
+    .from(documentCounters)
+    .where(and(eq(documentCounters.documentType, documentType), eq(documentCounters.year, year)))
+    .orderBy(documentCounters.id)
+    .limit(1)
+    .for("update");
+  if (!counter) throw new Error(`[documentNumbers] La serie ${documentType}/${year} no existe (falta ensureDocumentCounter)`);
+  for (let guard = 0; guard < 50; guard++) {
+    await tx.update(documentCounters).set({ currentNumber: sql`${documentCounters.currentNumber} + 1` }).where(eq(documentCounters.id, counter.id));
+    const [row] = await tx.select({ n: documentCounters.currentNumber }).from(documentCounters).where(eq(documentCounters.id, counter.id));
+    const sequence = Number(row?.n);
+    const documentNumber = `${counter.prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
+    if (existsCheck && (await existsCheck(documentNumber))) continue;
+    await tx.insert(documentNumberLogs).values({ documentType, documentNumber, year, sequence, generatedBy, context });
+    return documentNumber;
+  }
+  throw new Error(`[documentNumbers] No se encontró un número libre para ${documentType}/${year} tras 50 intentos`);
+}
+
 // --- Función de consulta (sin efecto secundario) ------------------------------
 
 /**
