@@ -17,3 +17,19 @@ describe("pantallas del menú con el marco del panel", () => {
     });
   }
 });
+
+describe("enlaces internos del CRM con contrato de URL (UX-05)", () => {
+  const crm = read("pages/admin/crm/CRMDashboard.tsx");
+  it("CRMDashboard acepta los alias de pestaña que emiten otras pantallas", () => {
+    expect(crm).toMatch(/raw === "reservas" \? "reservations"/);
+    expect(crm).toMatch(/raw === "presupuestos" \? "quotes"/);
+  });
+  it("CRMDashboard abre la reserva con ?tab=reservas&id= además de ?resId=", () => {
+    expect(crm).toMatch(/p\.get\("resId"\) \?\? \(tabParam === "reservas"/);
+  });
+  it("ningún enlace interno apunta a una pestaña inexistente (?tab=clients)", () => {
+    const emailInbox = read("pages/admin/commercial/EmailInbox.tsx");
+    expect(emailInbox).not.toMatch(/\/admin\/crm\?tab=clients/);
+    expect(emailInbox).toMatch(/\/admin\/crm\/clientes\/\$\{email\.crmClient\.id\}/);
+  });
+});

@@ -415,7 +415,7 @@ function EmailDetail({
               <div className="flex items-center gap-2">
                 <User className="w-3.5 h-3.5 text-green-400 shrink-0" />
                 <span className="text-foreground/70">Cliente:</span>
-                <a href={`/admin/crm?tab=clients&id=${email.crmClient.id}`}
+                <a href={`/admin/crm/clientes/${email.crmClient.id}`}
                   className="text-green-400 hover:underline flex items-center gap-0.5">
                   {email.crmClient.name}
                   <ExternalLink className="w-2.5 h-2.5" />
