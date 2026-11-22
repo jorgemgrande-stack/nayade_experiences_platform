@@ -142,9 +142,12 @@ export async function startQuoteCheckout(
   // nueva se cierran las anteriores; si alguna ya está pagada (o pagándose), no se abre otra.
   const previous = await d.store.listQuoteCheckouts(quote.id);
   for (const c of previous) {
+    // Solo cuentan las sesiones de ESTA cuenta y ESTE modo: una sesión de pruebas o de una cuenta anterior ni se puede cerrar
+    // desde aquí ni debe bloquear el cobro actual
+    if (c.mode !== d.config.mode || c.accountId !== account.accountId) continue;
     if (c.status === "paid") throw new PaymentsError("quote_unavailable", "Este presupuesto ya tiene un pago registrado");
     if (c.status !== "pending") continue;
-    const r = await d.gateway.expireCheckoutSession({ accountId: account.accountId, sessionId: c.sessionId });
+    const r = await d.gateway.expireCheckoutSession({ accountId: c.accountId, sessionId: c.sessionId });
     if (r === "completed") throw new PaymentsError("quote_unavailable", "Este presupuesto ya tiene un pago en curso: espera a que se confirme");
     await d.store.setCheckoutStatus(c.sessionId, "expired");
   }

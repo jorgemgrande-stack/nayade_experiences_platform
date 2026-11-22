@@ -218,6 +218,17 @@ describe.skipIf(!URL_)("Cobros por empresa con Stripe Connect (aplicación real,
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'duplicate_payment_detected'", [q.id]))[0].n).toBe(1);
   });
 
+  it("B3. reintento de Stripe tras un fallo posterior a confirmPayment: la MISMA referencia no es un duplicado", async () => {
+    // Se simula el fallo: el presupuesto ya estaba cobrado por esta referencia, pero la sesión volvió a «pending» (revertCheckoutPaid)
+    await ess.sql("a", "UPDATE payment_checkouts SET status='pending', paid_at=NULL WHERE session_id = ?", [q.session]);
+    const dupBefore = (await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'duplicate_payment_detected'", [q.id]))[0].n;
+    expect((await post("a", event("evt_retry_same_ref"))).json).toMatchObject({ outcome: "applied" });
+    expect(await invoices()).toHaveLength(1);
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'duplicate_payment_detected'", [q.id]))[0].n).toBe(dupBefore);
+    expect((await ess.sql("a", "SELECT paymentMethod FROM invoices WHERE quoteId = ?", [q.id]))[0].paymentMethod).toBe("otro");
+    expect((await ess.sql("a", "SELECT status FROM payment_checkouts WHERE session_id = ?", [q.session]))[0].status).toBe("paid");
+  });
+
   it("E2. account.updated restringe la cuenta y apaga el interruptor; solo cambia la empresa dueña", async () => {
     const upd = (id: string, account: string, tenant: string) => ({
       id, type: "account.updated", livemode: false, account,

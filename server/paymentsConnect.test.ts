@@ -438,3 +438,31 @@ describe("un presupuesto, una sola sesión de pago abierta (sin doble cargo)", (
     expect(s.quotes.paid).toHaveLength(0);
   });
 });
+
+describe("revisión independiente de #947: cuenta/modo, cobro sobre sesión cerrada", () => {
+  const go = (s: ReturnType<typeof setup>) => startQuoteCheckout(s.d, { token: TOKEN, successUrl: "https://x/ok", cancelUrl: "https://x/ko" });
+
+  it("F2: una sesión de otra cuenta o de otro modo no bloquea ni se intenta cerrar", async () => {
+    const s = setup();
+    await verified(s);
+    await s.store.insertCheckout({ sessionId: "cs_test_vieja", mode: "live", accountId: "acct_anterior", kind: "quote", quoteId: 77, merchantOrder: null, amountCents: 25000, currency: "eur", createdAt: 1 });
+    await s.store.insertCheckout({ sessionId: "cs_test_pagada_otra_cuenta", mode: "test", accountId: "acct_otra", kind: "quote", quoteId: 77, merchantOrder: null, amountCents: 25000, currency: "eur", createdAt: 2 });
+    await s.store.markCheckoutPaid("cs_test_pagada_otra_cuenta", "pi_x", 3);
+    const r = await go(s);
+    expect(r.sessionId).toBeTruthy();
+    expect(s.gateway.expired).toEqual([]); // no se intentó cerrar ninguna de las ajenas
+  });
+
+  it("F3: un cobro real sobre una sesión que localmente figuraba cerrada se aplica (o queda trazado), no se pierde", async () => {
+    const s = setup();
+    await verified(s);
+    const a = await go(s);
+    const b = await go(s); // cierra a localmente
+    expect((await s.store.getCheckout(a.sessionId))?.status).toBe("expired");
+    expect(b.sessionId).not.toBe(a.sessionId);
+    // el cliente terminó de pagar justo la sesión a: llega su evento
+    expect(await handleConnectEvent(s.d, completed("evt_tarde", a.sessionId))).toBe("applied");
+    expect(s.quotes.paid).toHaveLength(1);
+    expect((await s.store.getCheckout(a.sessionId))?.status).toBe("paid");
+  });
+});

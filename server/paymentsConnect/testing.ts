@@ -70,7 +70,8 @@ export class MemoryPaymentStore implements PaymentStore {
   }
   async markCheckoutPaid(id: string, pi: string | null, now: number) {
     const c = this.checkouts.get(id);
-    if (!c || c.status !== "pending") return false;
+    // Como el SQL: un cobro real también se aplica sobre una sesión que localmente figuraba cerrada o fallida
+    if (!c || c.status === "paid") return false;
     Object.assign(c, { status: "paid", paymentIntentId: pi, paidAt: now });
     return true;
   }

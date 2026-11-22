@@ -226,7 +226,7 @@ export function mysqlPaymentStore(): PaymentStore {
       return (await run(sql`UPDATE payment_events SET outcome='processing' WHERE event_id=${eventId} AND outcome='failed'`)) > 0;
     },
     async insertCheckout(c) {
-      await run(sql`INSERT INTO payment_checkouts (session_id, provider, mode, account_id, kind, quote_id, merchant_order, amount_cents, currency, status, created_at)
+      await run(sql`INSERT IGNORE INTO payment_checkouts (session_id, provider, mode, account_id, kind, quote_id, merchant_order, amount_cents, currency, status, created_at)
                     VALUES (${c.sessionId}, 'stripe', ${c.mode}, ${c.accountId}, ${c.kind}, ${c.quoteId}, ${c.merchantOrder}, ${c.amountCents}, ${c.currency}, 'pending', ${c.createdAt})`);
     },
     async getCheckout(sessionId) {
@@ -249,7 +249,7 @@ export function mysqlPaymentStore(): PaymentStore {
     },
     async markCheckoutPaid(sessionId, paymentIntentId, now) {
       const n = await run(sql`UPDATE payment_checkouts SET status='paid', payment_intent_id=${paymentIntentId}, paid_at=${now}
-                              WHERE session_id=${sessionId} AND status='pending'`);
+                              WHERE session_id=${sessionId} AND status IN ('pending','expired','failed')`);
       return n > 0;
     },
     async revertCheckoutPaid(sessionId) {
