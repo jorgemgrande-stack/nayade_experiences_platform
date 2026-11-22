@@ -449,7 +449,7 @@ function EnrollmentsDialog({ edition, onClose, onChanged }: { edition: EditionIt
   const [confirmUnpaid, setConfirmUnpaid] = useState<{ id: number; name: string; payment: QuotePaymentView } | null>(null);
   const act = (id: number, status: EnrollmentStatus, ok: string, reason?: string) => setStatus.mutate({ enrollmentId: id, status, reason }, { onSuccess: () => { toast.success(ok); setConfirmUnpaid(null); } });
   // Confirmar es siempre un paso explícito; con un presupuesto sin pagar, además, con motivo
-  const confirm = (r: EnrollmentItem) => (confirmNeedsReason(r.quote?.status) ? setConfirmUnpaid({ id: r.id, name: r.name, payment: r.payment ?? NO_PAYMENT }) : act(r.id, "confirmada", t("productsEditions.toast.seatConfirmed")));
+  const confirmSeat = (r: EnrollmentItem) => (confirmNeedsReason(r.quote?.status) ? setConfirmUnpaid({ id: r.id, name: r.name, payment: r.payment ?? NO_PAYMENT }) : act(r.id, "confirmada", t("productsEditions.toast.seatConfirmed")));
   const refreshEnrollments = () => { utils.products.editions.enrollments.invalidate(); onChanged(); };
 
   return (
@@ -490,7 +490,7 @@ function EnrollmentsDialog({ edition, onClose, onChanged }: { edition: EditionIt
                   </p>
                 )}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {r.status !== "confirmada" && <Button size="sm" disabled={setStatus.isPending} onClick={() => confirm(r)}>{t("productsEditions.enrollments.confirm")}</Button>}
+                  {r.status !== "confirmada" && <Button size="sm" disabled={setStatus.isPending} onClick={() => confirmSeat(r)}>{t("productsEditions.enrollments.confirm")}</Button>}
                   {r.status !== "lista_espera" && r.status !== "cancelada" && <Button size="sm" variant="outline" disabled={setStatus.isPending} onClick={() => act(r.id, "lista_espera", t("productsEditions.toast.toWaitlist"))}>{t("productsEditions.enrollments.waitlist")}</Button>}
                   {r.status !== "cancelada" && <Button size="sm" variant="outline" disabled={setStatus.isPending} onClick={() => act(r.id, "cancelada", t("productsEditions.toast.enrollmentCancelled"))}>{t("productsEditions.cancel")}</Button>}
                   {r.leadId && <Button size="sm" variant="ghost" asChild><Link href="/admin/crm/leads">{t("productsEditions.enrollments.lead", { id: r.leadId })}</Link></Button>}
@@ -817,7 +817,7 @@ function SessionFormInline({ editionId, state, onDone, onCancel }: { editionId: 
       <div>
         <Label htmlFor={`${pid}-note`}>{t("productsEditions.sessions.privateNote")}</Label>
         <Textarea id={`${pid}-note`} value={v.privateNote} maxLength={SESSION_LIMITS.privateNote} rows={2} onChange={(e) => set("privateNote", e.target.value)} className="mt-1" placeholder={t("productsEditions.sessions.privateNotePlaceholder")} aria-describedby={`${pid}-note-hint`} />
-        <p id={`${pid}-note-hint`} className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><Lock className="h-3 w-3" aria-hidden="true" /> {t("productsEditions.sessions.privateNoteHint")}</p>
+        <p id={`${pid}-note-hint`} className="mt-1 flex items-center gap-1 text-xs font-medium text-warning"><Lock className="h-3 w-3" aria-hidden="true" /> {t("productsEditions.sessions.privateNoteHint")}</p>
       </div>
       {state.id && (
         <div>

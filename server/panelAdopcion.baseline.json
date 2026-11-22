@@ -497,27 +497,6 @@
     "textoMinusculo": 18,
     "geometriaAjena": 3
   },
-  "pages/admin/products/EditionsPanel.tsx": {
-    "coloresFijos": 1,
-    "dialogosNativos": 1
-  },
-  "pages/admin/products/ExperiencesManager.tsx": {
-    "textoMinusculo": 1,
-    "geometriaAjena": 1
-  },
-  "pages/admin/products/Inventory.tsx": {
-    "geometriaAjena": 2
-  },
-  "pages/admin/products/LegoPacksManager.tsx": {
-    "coloresFijos": 23
-  },
-  "pages/admin/products/PricingRules.tsx": {
-    "geometriaAjena": 2
-  },
-  "pages/admin/products/ProductTranslationsPanel.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
   "pages/admin/restaurantNet/Carta.tsx": {
     "geometriaAjena": 1
   },

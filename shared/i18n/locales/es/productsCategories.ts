@@ -2,6 +2,7 @@
 export default {
   title: "Categorías",
   heading: "Categorías de productos y servicios",
+  loadError: "No se han podido cargar las categorías",
   count: "{n} categorías registradas",
   languages: "Idiomas",
   newCategory: "Nueva categoría",

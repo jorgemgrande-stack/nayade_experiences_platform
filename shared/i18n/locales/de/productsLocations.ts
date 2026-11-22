@@ -3,6 +3,7 @@ import type es from "../es/productsLocations";
 
 export default {
   title: "Leistungsorte",
+  loadError: "Die Leistungsorte konnten nicht geladen werden",
   count: "{n, plural, one {# Ort erfasst} other {# Orte erfasst}}",
   newLocation: "Neuer Leistungsort",
   empty: {

@@ -4,6 +4,7 @@ import type es from "../es/productsCategories";
 export default {
   title: "Kategorien",
   heading: "Kategorien für Produkte und Leistungen",
+  loadError: "Die Kategorien konnten nicht geladen werden",
   count: "{n} Kategorien angelegt",
   languages: "Sprachen",
   newCategory: "Neue Kategorie",

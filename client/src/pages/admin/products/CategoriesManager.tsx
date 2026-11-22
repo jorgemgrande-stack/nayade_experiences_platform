@@ -7,16 +7,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Tag, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
 import { useVocabulary } from "@/lib/vocabulary";
 import { CategoryTranslationsPanel } from "./CategoryTranslationsPanel";
 import { useI18n } from "@/i18n/I18nProvider";
+
+/** Imagen de la categoría; sin imagen, icono de marca (nunca se inventa una fotografía). */
+function CategoryThumb({ src, name }: { src: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  if (src && !failed) {
+    return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} className="h-12 w-12 shrink-0 rounded-lg object-cover" />;
+  }
+  return (
+    <div role="img" aria-label={name} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+      <Tag className="h-5 w-5 text-primary" aria-hidden="true" />
+    </div>
+  );
+}
 
 interface CategoryForm {
   name: string;
@@ -85,7 +98,7 @@ export default function CategoriesManager() {
   const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const utils = trpc.useUtils();
-  const { data: categories, isLoading } = trpc.products.getCategories.useQuery();
+  const { data: categories, isLoading, isError, error, refetch } = trpc.products.getCategories.useQuery();
 
   const createMut = trpc.products.createCategory.useMutation({
     onSuccess: () => { utils.products.getCategories.invalidate(); toast.success(t("productsCategories.toast.created")); setOpen(false); setForm(emptyForm); },
@@ -151,24 +164,26 @@ export default function CategoriesManager() {
   };
 
   return (
-    <AdminLayout title={t("productsCategories.title")}>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">{t("productsCategories.heading")}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t("productsCategories.count", { n: categories?.length ?? 0 })}</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <AdminLayout>
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <PanelPageHeader
+        icon={<Tag />}
+        title={t("productsCategories.heading")}
+        description={isError ? undefined : t("productsCategories.count", { n: categories?.length ?? 0 })}
+        actions={<>
           <Button variant="outline" onClick={() => setTranslationsOpen(true)}>{t("productsCategories.languages")}</Button>
-          <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-2" /> {t("productsCategories.newCategory")}
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsCategories.newCategory")}
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div role="status" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => <div key={i} className="h-32 bg-muted animate-pulse rounded-xl" />)}
         </div>
+      ) : isError ? (
+        <PanelError error={error} onRetry={() => refetch()} title={t("productsCategories.loadError")} />
       ) : sortedCategories.length === 0 ? (
         <PanelEmpty
           icon={<Tag className="w-6 h-6" />}
@@ -185,9 +200,8 @@ export default function CategoriesManager() {
             <div key={cat.id} className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-primary/10">
-                    <Tag className="w-5 h-5 text-primary" />
-                  </div>
+                  <CategoryThumb src={((cat as Record<string, unknown>).image1 as string | undefined) || cat.imageUrl || null} name={cat.name} />
+
                   <div>
                     <p className="font-semibold text-foreground">{cat.name}</p>
                     <p className="text-xs text-muted-foreground">/{cat.slug}</p>
@@ -202,7 +216,7 @@ export default function CategoriesManager() {
                       <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
                   </div>
-                  <Badge variant="outline" className="text-xs">{cat.isActive ? t("productsCategories.active") : t("productsCategories.inactive")}</Badge>
+                  <StatusBadge tone={cat.isActive ? "success" : "neutral"}>{cat.isActive ? t("productsCategories.active") : t("productsCategories.inactive")}</StatusBadge>
                 </div>
               </div>
               {cat.description && <p className="text-sm text-muted-foreground line-clamp-2">{cat.description}</p>}
@@ -239,6 +253,8 @@ export default function CategoriesManager() {
           ))}
         </div>
       )}
+
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
