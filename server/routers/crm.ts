@@ -7255,6 +7255,35 @@ export const crmRouter = router({
         if (!((claimPp as unknown as { affectedRows?: number }).affectedRows)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Este pago ya no está pendiente" });
         }
+        // Pago pendiente nacido de un PLAN DE CUOTAS: es el cobro de una cuota. Se delega en el flujo del plan (cuota reclamada de
+        // forma atómica y factura FINAL única del plan). Este flujo NO emite factura propia ni pisa el importe cobrado de la
+        // reserva: con la última cuota, dos facturas (la parcial de aquí y la final del plan) y la cuota cobrable otra vez.
+        if (pp.quoteId) {
+          const [planQuote] = await db.select({ paymentPlanId: quotes.paymentPlanId }).from(quotes).where(eq(quotes.id, pp.quoteId)).limit(1);
+          if (planQuote?.paymentPlanId) {
+            const candidates = await db.select().from(paymentInstallments).where(and(
+              eq(paymentInstallments.quoteId, pp.quoteId),
+              eq(paymentInstallments.amountCents, pp.amountCents),
+              eq(paymentInstallments.status, "pending"),
+            )).orderBy(paymentInstallments.installmentNumber);
+            let claimedInstallment: number | null = null;
+            for (const cand of candidates) {
+              const nowInst = new Date();
+              const [c] = await db.update(paymentInstallments).set({
+                status: "paid",
+                paymentMethod: input.paymentMethod,
+                paidAt: nowInst,
+                paidBy: `admin:${ctx.user.id}`,
+                notes: [input.paymentNote, input.transferProofUrl ? `Justificante: ${input.transferProofUrl}` : null].filter(Boolean).join(" — ") || cand.notes,
+                updatedAt: nowInst,
+              }).where(and(eq(paymentInstallments.id, cand.id), eq(paymentInstallments.status, "pending")));
+              if ((c as unknown as { affectedRows?: number }).affectedRows) { claimedInstallment = cand.id; break; }
+            }
+            await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod, installmentId: claimedInstallment, viaPlan: true });
+            await checkAndConfirmInstallmentPlan(pp.quoteId, ctx.user.id, ctx.user.name ?? "Admin");
+            return { success: true };
+          }
+        }
         if (pp.reservationId) {
           // Obtener datos completos de la reserva para postConfirmOperation
           const [existingRes] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));

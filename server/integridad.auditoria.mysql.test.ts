@@ -345,6 +345,44 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
       expect(await counterOf()).toBe(before + 1);
     });
 
+    /** Pago pendiente (generado por la fase 1 del plan) de la última cuota. */
+    const lastPendingPayment = async (q: number) => Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? AND amount_cents = 20000 ORDER BY id DESC LIMIT 1", [q]))[0].id);
+    const confirmPp = (id: number) => ess.m("a", "crm.pendingPayments.confirm", { id, paymentMethod: "efectivo" }, adm);
+
+    it("REGRESIÓN cuotas: pago pendiente de la última cuota + confirmInstallment de esa cuota, SIMULTÁNEOS (3 rondas) → UNA factura por el total del plan, cuota pagada una vez", async () => {
+      for (let round = 0; round < 3; round++) {
+        const { q, ids } = await planned();
+        ok(await payInst(ids[0]), "cuota 1");
+        const pp = await lastPendingPayment(q);
+        const before = await counterOf();
+        const rs = await Promise.all([confirmPp(pp), confirmPp(pp), payInst(ids[1]), payInst(ids[1])]);
+        log("pp + cuota 2 simultáneos", rs.map((r) => r.status));
+        const inv = await invoicesOf(q);
+        expect(inv.length).toBe(1);
+        expect(Number(inv[0].total)).toBeCloseTo(400, 2);
+        expect(await counterOf()).toBe(before + 1);
+        expect((await ess.sql("a", "SELECT status FROM payment_installments WHERE id = ?", [ids[1]]))[0].status).toBe("paid");
+        expect((await ess.sql("a", "SELECT paidAt FROM quotes WHERE id = ?", [q]))[0].paidAt).not.toBeNull();
+        expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations WHERE quote_id = ? AND status <> 'cancelled'", [q]))[0].n)).toBe(1);
+      }
+    });
+
+    it("REGRESIÓN cuotas: confirmar el pago pendiente de la última cuota la marca pagada y emite UNA factura final (no una parcial); repetirlo no duplica", async () => {
+      const { q, ids } = await planned();
+      ok(await payInst(ids[0]), "cuota 1");
+      const pp = await lastPendingPayment(q);
+      ok(await confirmPp(pp), "pago pendiente de la cuota 2");
+      const inv = await invoicesOf(q);
+      expect(inv.length).toBe(1);
+      expect(Number(inv[0].total)).toBeCloseTo(400, 2);
+      expect((await ess.sql("a", "SELECT status FROM payment_installments WHERE id = ?", [ids[1]]))[0].status).toBe("paid");
+      const again = await confirmPp(pp);
+      const again2 = await payInst(ids[1]);
+      expect(again.status).not.toBe(200);
+      expect(again2.status).not.toBe(200);
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
     it("pendingPayments.confirm: si la factura falla, el cobro queda con rastro (payment_confirmed_without_invoice) y sin número consumido", async () => {
       const nm = failName();
       const q = await freshQuote();
