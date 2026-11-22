@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { PanelError } from "@/components/admin/PanelStates";
 import { AlertTriangle, RefreshCw, Edit2, History, Hash } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import AdminLayout from "@/components/AdminLayout";
 
 const DOC_TYPES = ["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"];
 
@@ -86,6 +87,7 @@ export default function DocumentNumbersAdmin() {
     `${counter.prefix}-${counter.year}-${String(counter.currentNumber + 1).padStart(4, "0")}`;
 
   return (
+    <AdminLayout>
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Hash className="h-7 w-7 text-primary" />
@@ -360,5 +362,6 @@ export default function DocumentNumbersAdmin() {
         </DialogContent>
       </Dialog>
     </div>
+    </AdminLayout>
   );
 }
