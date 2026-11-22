@@ -3,7 +3,7 @@
  * (paused, unpaid, active, past_due) por el WEBHOOK y por el BARRIDO DE GRACIA del orquestador, con la aplicación REAL del
  * plano de control (en memoria) y solo Stripe como doble (`FakeStripeGateway`; firma del webhook con el SDK real).
  *
- * Fija el comportamiento ACTUAL, también cuando es dudoso: las divergencias llevan `// DIVERGENCIA:` y se
+ * Fija el comportamiento; en la rama de corrección, el barrido de gracia con paused pasa de «actual» a «deseado». Las divergencias llevan `// DIVERGENCIA:` y se
  * documentan en vez de arreglarse (la propuesta de corrección va en otro PR, aparte).
  *
  * Caminos y fichero:línea (lo que se ejercita):
@@ -390,20 +390,19 @@ describe("barrido de gracia (POST /orders/review): el estado se relee en la API 
     expect(await licenceStatuses(a.tenantId)).toEqual(["active"]);
   });
 
-  it("paused al vencer la gracia: el resolutor devuelve null y NO suspende; el webhook de paused sí suspende", async () => {
-    // DIVERGENCIA: controlPlane/api.ts (resolutor `stripeStatus`) solo reconoce past_due/unpaid/active/trialing/canceled/
-    // incomplete_expired; «paused» devuelve null («no se puede saber») y el orquestador no suspende por fin de gracia
-    // (service.ts ~1018-1021). En cambio el webhook (stripe/events.ts:549) trata paused como unpaid y suspende al instante.
+  it("paused al vencer la gracia: se trata como unpaid y suspende (origen stripe_grace), igual que el webhook de paused", async () => {
+    // CORREGIDO (antes DIVERGENCIA): el resolutor `stripeStatus` usa ahora la misma correspondencia que el webhook
+    // (mapStripeStatus: paused → unpaid); un webhook perdido de paused ya no deja el pedido en gracia indefinida.
     const a = await expired("Gracia paused SL", "paused");
-    expect(await orderState(a.orderId)).toBe("past_due");
-    expect(await licenceStatuses(a.tenantId)).toEqual(["active"]);
-    expect((await orders.events(a.orderId)).filter((e) => e.kind === "suspend")).toHaveLength(0);
-    // Se mantiene así por muchos barridos: solo un evento posterior de Stripe lo repara
-    clock += 30 * DAY;
-    await review();
-    expect(await orderState(a.orderId)).toBe("past_due");
-    await deliver(gw.emit("customer.subscription.paused", "subscription", a.subId));
     expect(await orderState(a.orderId)).toBe("suspended");
+    expect(await licenceStatuses(a.tenantId)).toEqual(["suspended"]);
+    const ev = (await orders.events(a.orderId)).filter((e) => e.kind === "suspend");
+    expect(ev).toHaveLength(1);
+    expect(ev[0].detail).toMatchObject({ source: "stripe_grace", stripeStatus: "unpaid" });
+    // Un evento posterior de paused (o repetido el barrido) no duplica la suspensión
+    await deliver(gw.emit("customer.subscription.paused", "subscription", a.subId));
+    await review();
+    expect((await orders.events(a.orderId)).filter((e) => e.kind === "suspend")).toHaveLength(1);
   });
 
   it("el barrido no actúa ANTES de vencer la gracia, con ningún estado", async () => {
