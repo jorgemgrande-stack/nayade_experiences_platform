@@ -129,6 +129,69 @@ export const VOCABULARY_DE: Record<string, string> = {
   "Destacado en la portada": "Auf der Titelseite hervorgehoben",
 };
 
+/**
+ * Concordancia (participios y adjetivos que `voc.agree` / `voc.agreeLead` devuelven en español, masculino y femenino) -> alemán.
+ * En alemán no hay concordancia de género con el sustantivo: las dos formas españolas dan la misma palabra.
+ */
+export const AGREEMENT_DE: Record<string, string> = {
+  "marcado como perdido": "als verloren markiert",
+  "marcada como perdida": "als verloren markiert",
+  actualizado: "aktualisiert",
+  actualizada: "aktualisiert",
+  creado: "angelegt",
+  creada: "angelegt",
+  eliminado: "gelöscht",
+  eliminada: "gelöscht",
+  pagado: "bezahlt",
+  pagada: "bezahlt",
+  pagados: "bezahlt",
+  pagadas: "bezahlt",
+  cobrado: "bezahlt",
+  cobrada: "bezahlt",
+  cobrados: "bezahlt",
+  cobradas: "bezahlt",
+  cancelado: "storniert",
+  cancelada: "storniert",
+  Cancelado: "Storniert",
+  Cancelada: "Storniert",
+  Cancelados: "Storniert",
+  Canceladas: "Storniert",
+  anulados: "storniert",
+  anuladas: "storniert",
+  Anulado: "Storniert",
+  Anulada: "Storniert",
+  Confirmado: "Bestätigt",
+  Confirmada: "Bestätigt",
+  Confirmados: "Bestätigt",
+  Confirmadas: "Bestätigt",
+  confirmado: "bestätigt",
+  confirmada: "bestätigt",
+  confirmados: "bestätigt",
+  confirmadas: "bestätigt",
+  "Confirmados hoy": "Heute bestätigt",
+  "Confirmadas hoy": "Heute bestätigt",
+  "Confirmados este mes": "Diesen Monat bestätigt",
+  "Confirmadas este mes": "Diesen Monat bestätigt",
+  Fallido: "Fehlgeschlagen",
+  Fallida: "Fehlgeschlagen",
+  Completado: "Abgeschlossen",
+  Completada: "Abgeschlossen",
+  Finalizado: "Abgeschlossen",
+  Finalizada: "Abgeschlossen",
+  ganado: "gewonnen",
+  ganada: "gewonnen",
+  ganados: "gewonnen",
+  ganadas: "gewonnen",
+  asociado: "zugehörig",
+  asociada: "zugehörig",
+};
+
+/** Resultado de `agree` / `agreeLead` en el idioma pedido (sin traducción: el propio texto en español). */
+export function localizeAgreement(text: string, locale: Locale): string {
+  if (locale === "de") return AGREEMENT_DE[text] ?? text;
+  return text;
+}
+
 /** Texto del vocabulario en el idioma pedido (español, o sin traducción: el propio texto). */
 export function localizeVocabularyText(text: string, locale: Locale): string {
   if (locale === "de") return VOCABULARY_DE[text] ?? text;

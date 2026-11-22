@@ -8,6 +8,7 @@
  */
 import { LockedFeature, productForCapability } from "./LockedFeature";
 import { useConnectCatalog, type ConnectCatalogItem } from "./useConnect";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export const WORKPLACE_LOCKS = {
   /** CRM y seguimiento comercial: automatizaciones, bandeja de WhatsApp con IA y asistente de IA. */
@@ -32,13 +33,14 @@ export function workplaceLockItems<T extends Pick<ConnectCatalogItem, "key" | "c
 }
 
 export function WorkplaceLocks({ place, className }: { place: WorkplaceLockPlace; className?: string }) {
+  const { t } = useI18n();
   const { items, isLoading } = useConnectCatalog();
   if (isLoading) return null;
   const locked = workplaceLockItems(items, WORKPLACE_LOCKS[place]);
   if (locked.length === 0) return null;
   return (
-    <section aria-label="Amplía tu empresa" className={className}>
-      <p className="mb-1.5 text-xs font-medium text-muted-foreground">Amplía tu empresa</p>
+    <section aria-label={t("connectStrip.title")} className={className}>
+      <p className="mb-1.5 text-xs font-medium text-muted-foreground">{t("connectStrip.title")}</p>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {locked.map((i) => (
           <LockedFeature key={i.key} product={i.key} />

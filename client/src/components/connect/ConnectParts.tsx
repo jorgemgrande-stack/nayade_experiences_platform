@@ -79,7 +79,7 @@ import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { CONNECT_STATE_LABELS, CONNECT_STATE_SHORT, type ConnectState } from "@shared/connectMarketplace";
+import { CONNECT_STATE_SHORT, type ConnectState } from "@shared/connectMarketplace";
 import { formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel, type ConnectImage, type ConnectPrice } from "@shared/connectCard";
 import { ACTIVATION_LABELS, activationActions, activationLabel, activationOf, primaryAction, type ConnectActivation } from "@shared/connectShowcase";
 import { ASSISTED_CONTRACT_COPY } from "@shared/netOffer";
@@ -87,6 +87,7 @@ import { STATE_TONE, toneOf } from "@shared/marketplaceVisual";
 import { trackConnect, useViewTracking } from "./useConnectTracking";
 import type { PurchaseStatus } from "@shared/connectPurchase";
 import { fichaPath } from "./LockedFeature";
+import { useI18n } from "@/i18n/I18nProvider";
 import { isSupportUser } from "@/components/SupportModeBar";
 import { useConnectAttempt, useOrderTracking, useRefreshLicences, type ConnectCatalogItem } from "./useConnect";
 
@@ -235,13 +236,41 @@ const STATE_META: Record<ConnectState, { icon: LucideIcon; tone: Tone }> = {
   incident: { icon: AlertTriangle, tone: "danger" },
 };
 
+/** Texto del estado en el idioma de la interfaz (largo: ficha; corto: tarjetas). */
+function useStateTexts(): { long: Record<ConnectState, string>; short: Record<ConnectState, string> } {
+  const { t } = useI18n();
+  return {
+    long: {
+      available: t("connectStrip.states.available"),
+      active: t("connectStrip.states.active"),
+      pending_setup: t("connectStrip.states.pending_setup"),
+      activating: t("connectStrip.states.activating"),
+      not_eligible: t("connectStrip.states.not_eligible"),
+      on_request: t("connectStrip.states.on_request"),
+      coming_soon: t("connectStrip.states.coming_soon"),
+      incident: t("connectStrip.states.incident"),
+    },
+    short: {
+      available: t("connectStrip.statesShort.available"),
+      active: t("connectStrip.statesShort.active"),
+      pending_setup: t("connectStrip.statesShort.pending_setup"),
+      activating: t("connectStrip.statesShort.activating"),
+      not_eligible: t("connectStrip.statesShort.not_eligible"),
+      on_request: t("connectStrip.statesShort.on_request"),
+      coming_soon: t("connectStrip.statesShort.coming_soon"),
+      incident: t("connectStrip.statesShort.incident"),
+    },
+  };
+}
+
 /** Insignia de estado: breve en tarjetas; con `long`, el texto completo (ficha). */
 export function StateBadge({ state, long = false }: { state: ConnectState; long?: boolean }) {
   const meta = STATE_META[state];
+  const texts = useStateTexts();
   const Icon = meta.icon;
   return (
     <StatusBadge tone={meta.tone} icon={<Icon className={cn("shrink-0", state === "activating" && "animate-spin")} aria-hidden="true" />} className="whitespace-normal text-left">
-      {long ? CONNECT_STATE_LABELS[state] : CONNECT_STATE_SHORT[state]}
+      {long ? texts.long[state] : texts.short[state]}
     </StatusBadge>
   );
 }
@@ -249,11 +278,12 @@ export function StateBadge({ state, long = false }: { state: ConnectState; long?
 /** Estado sobre la imagen de la tarjeta: cristal oscuro y punto del color del estado (texto real del catálogo). */
 export function StatePill({ state, className }: { state: ConnectState; className?: string }) {
   const Icon = STATE_META[state].icon;
+  const texts = useStateTexts();
   return (
     <span className={cn("cx-pill inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", className)}>
       <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", `cx-dot-${STATE_TONE[state]}`)} />
       <Icon className={cn("h-3.5 w-3.5 shrink-0 opacity-90", state === "activating" && "motion-safe:animate-spin")} aria-hidden="true" />
-      <span className="min-w-0 break-words">{CONNECT_STATE_SHORT[state]}</span>
+      <span className="min-w-0 break-words">{texts.short[state]}</span>
     </span>
   );
 }

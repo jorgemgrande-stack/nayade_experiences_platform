@@ -1,0 +1,102 @@
+import type { Locale } from "./core";
+
+/**
+ * Textos del catálogo de Elephant Connect que muestran las tarjetas «Amplía tu empresa» (nombre genérico y lema de cada
+ * extensión), por idioma. Llegan del servidor en español (`server/catalog/`): aquí, texto español -> traducción, con el
+ * mismo patrón que `navLabels.ts`. Sin entrada (p. ej. un lema nuevo o editado por el equipo), se muestra el español.
+ * Los nombres de producto (Elephant WhatsApp AI, Copilot, People, TPV Advanced…) no se traducen y no están aquí.
+ */
+export const CONNECT_CATALOG_DE: Record<string, string> = {
+  // Nombres genéricos (los de marca no se traducen)
+  "Automatizaciones avanzadas": "Erweiterte Automatisierungen",
+  "Paquete Communications": "Communications-Paket",
+  "Paquete Marketing": "Marketing-Paket",
+  "Paquete Finance": "Finance-Paket",
+  "Paquete AI Suite": "AI-Suite-Paket",
+  "Contratos y firma electrónica": "Verträge und elektronische Signatur",
+  "Venta multicanal": "Multichannel-Verkauf",
+  "Contabilidad general": "Allgemeine Buchhaltung",
+  "Alojamiento web básico": "Basis-Webhosting",
+  "Alojamiento web avanzado": "Erweitertes Webhosting",
+  Dominios: "Domains",
+  "Hotel Net · Motor de reservas": "Hotel Net · Buchungsmaschine",
+  "Ski Net · Escuela": "Ski Net · Schule",
+  "Ski Net · Alquiler": "Ski Net · Verleih",
+  "Ski Net · Cursillos y grupos": "Ski Net · Kurse und Gruppen",
+  "Ski Net · Profesores y liquidaciones": "Ski Net · Lehrer und Abrechnungen",
+  "Travel Net · Agencias": "Travel Net · Agenturen",
+  "Travel Net · Paquetes y circuitos": "Travel Net · Pakete und Rundreisen",
+  "Travel Net · Conectores de proveedores": "Travel Net · Anbieter-Konnektoren",
+  "Restaurant Net · Sala y comandas": "Restaurant Net · Gastraum und Bestellungen",
+  "Restaurant Net · Reservas y mesas": "Restaurant Net · Reservierungen und Tische",
+  "Restaurant Net · Cocina/KDS": "Restaurant Net · Küche/KDS",
+  "Care Net · Agenda": "Care Net · Terminplan",
+  "Care Net · Gestión clínica especializada": "Care Net · Spezialisierte klinische Verwaltung",
+  "Care Net · Tratamientos y bonos": "Care Net · Behandlungen und Gutscheine",
+  "Social Token Net · Comunidades": "Social Token Net · Communities",
+  "Social Token Net · Tokens internos": "Social Token Net · Interne Tokens",
+
+  // Lemas
+  "Ads Manager, Campaigns, SEO Control y GEO Control.": "Ads Manager, Campaigns, SEO Control und GEO Control.",
+  "Agenda y citas, hasta 3 profesionales.": "Terminplan und Termine, bis zu 3 Fachkräfte.",
+  "Alojamiento con más recursos y prestaciones.": "Hosting mit mehr Ressourcen und Leistungen.",
+  "Alojamiento de tu web gestionada con el CMS.": "Hosting deiner mit dem CMS verwalteten Website.",
+  "Alquiler de material, hasta 300 equipos. Se contrata sin la escuela.": "Materialverleih, bis zu 300 Geräte. Ohne die Schule buchbar.",
+  "Alquiler de material, hasta 300 equipos. Funciona sin la escuela.": "Materialverleih, bis zu 300 Geräte. Funktioniert ohne die Schule.",
+  "Arqueos, turnos y auditoría sobre la caja de tu plan.": "Kassenabschlüsse, Schichten und Prüfung für die Kasse deines Tarifs.",
+  "Asistente de IA avanzado en todo el producto.": "Erweiterter KI-Assistent im gesamten Produkt.",
+  "Campañas de publicidad en un solo panel.": "Werbekampagnen in einem einzigen Panel.",
+  "Centralita y llamadas con IA.": "Telefonzentrale und Anrufe mit KI.",
+  "Clases y reservas de tu escuela, hasta 10 profesores.": "Unterricht und Buchungen deiner Schule, bis zu 10 Lehrer.",
+  "Comunidades de clientes y socios.": "Communities für Kunden und Mitglieder.",
+  "Contabilidad de doble partida.": "Doppelte Buchführung.",
+  "Contratos con firma electrónica.": "Verträge mit elektronischer Signatur.",
+  "Control y seguimiento SEO.": "SEO-Kontrolle und -Verfolgung.",
+  "Copilot avanzado y Automatizaciones avanzadas.": "Erweiterter Copilot und erweiterte Automatisierungen.",
+  "Cursillos, grupos y niveles.": "Kurse, Gruppen und Niveaus.",
+  "Declaraciones y modelos fiscales con tu gestoría.": "Steuererklärungen und Steuerformulare mit deiner Steuerberatung.",
+  "Diseña y vende paquetes y circuitos.": "Entwirf und verkaufe Pakete und Rundreisen.",
+  "Email marketing y campañas.": "E-Mail-Marketing und Kampagnen.",
+  "Gestión de agencia, hasta 5 agentes.": "Agenturverwaltung, bis zu 5 Mitarbeitende.",
+  "Gestión de alojamiento hasta 20 habitaciones.": "Unterkunftsverwaltung bis zu 20 Zimmer.",
+  "Gestión de empleados y control horario, integrada en tu empresa.": "Mitarbeiterverwaltung und Zeiterfassung, in dein Unternehmen integriert.",
+  "Groupon y cuponeras: canje y conciliación.": "Groupon und Gutscheinhefte: Einlösung und Abgleich.",
+  "Historia y seguimiento especializados.": "Spezialisierte Patientenakte und Nachverfolgung.",
+  "Horas, disponibilidad y liquidaciones de profesores.": "Stunden, Verfügbarkeit und Abrechnungen der Lehrer.",
+  "Importación bancaria, conciliación y operaciones de TPV.": "Bankimport, Abgleich und Kassenvorgänge (TPV).",
+  "Integración con proveedores, por integración.": "Anbieteranbindung, pro Anbindung.",
+  "Limpieza y estado de habitaciones.": "Reinigung und Zimmerstatus.",
+  "Liquidaciones de proveedores y colaboradores.": "Abrechnungen von Lieferanten und Partnern.",
+  "Mesas, comandas y cobro en sala.": "Tische, Bestellungen und Kassieren im Gastraum.",
+  "Organización personal y familiar para tu hogar.": "Persönliche und familiäre Organisation für dein Zuhause.",
+  "Organización personal y familiar.": "Persönliche und familiäre Organisation.",
+  "Pantalla de cocina para las comandas.": "Küchenbildschirm für die Bestellungen.",
+  "Para empresas en crecimiento: varias sedes, roles propios y procesos avanzados.": "Für wachsende Unternehmen: mehrere Standorte, eigene Rollen und erweiterte Abläufe.",
+  "Puntos y tokens internos de fidelización.": "Punkte und interne Treue-Tokens.",
+  "Recepcionista virtual con IA.": "Virtuelle Rezeption mit KI.",
+  "Registro y renovación de dominios.": "Registrierung und Verlängerung von Domains.",
+  "Reglas, flujos y automatizaciones avanzadas.": "Regeln, Abläufe und erweiterte Automatisierungen.",
+  "Reservas directas en tu web, con pago online.": "Direktbuchungen auf deiner Website, mit Online-Zahlung.",
+  "Reservas online con turnos, cierres y depósito.": "Online-Reservierungen mit Schichten, Ruhetagen und Anzahlung.",
+  "Sincroniza disponibilidad y tarifas con los canales de venta.": "Synchronisiert Verfügbarkeit und Preise mit den Vertriebskanälen.",
+  "Solución integral de comunidades y fidelización.": "Komplettlösung für Communities und Kundenbindung.",
+  "Solución integral para agencias de viajes y operadores turísticos.": "Komplettlösung für Reisebüros und Reiseveranstalter.",
+  "Solución integral para centros de bienestar, masajes, terapias y clínicas.": "Komplettlösung für Wellnesszentren, Massagen, Therapien und Kliniken.",
+  "Solución integral para escuelas de esquí, snowboard y alquiler de material.": "Komplettlösung für Ski- und Snowboardschulen und Materialverleih.",
+  "Solución integral para hoteles y alojamientos: PMS, motor de reservas, check-in y check-out y housekeeping.": "Komplettlösung für Hotels und Unterkünfte: PMS, Buchungsmaschine, Check-in und Check-out sowie Housekeeping.",
+  "Solución integral para restaurantes: reservas, sala, comandas y cocina.": "Komplettlösung für Restaurants: Reservierungen, Gastraum, Bestellungen und Küche.",
+  "Tax, Finance Sync y Partners.": "Tax, Finance Sync und Partners.",
+  "Todo lo necesario para vender, cobrar y facturar desde el primer día.": "Alles, was du brauchst, um vom ersten Tag an zu verkaufen, zu kassieren und Rechnungen zu stellen.",
+  "Tratamientos, bonos y sesiones.": "Behandlungen, Gutscheine und Sitzungen.",
+  "Varias entidades fiscales, API e integraciones a medida y trazabilidad avanzada.": "Mehrere Steuereinheiten, API und individuelle Integrationen sowie erweiterte Nachverfolgbarkeit.",
+  "Vende en marketplaces y otros canales.": "Verkaufe auf Marktplätzen und anderen Kanälen.",
+  "Visibilidad en motores de IA generativa (GEO).": "Sichtbarkeit in generativen KI-Suchmaschinen (GEO).",
+  "WhatsApp AI, Voice y Reception AI.": "WhatsApp AI, Voice und Reception AI.",
+  "WhatsApp Business automatizado con IA.": "WhatsApp Business, automatisiert mit KI.",
+};
+
+/** Nombre o lema del catálogo en el idioma pedido (español, o sin traducción: el propio texto). */
+export function localizeConnectText(text: string, locale: Locale): string {
+  if (locale === "de") return CONNECT_CATALOG_DE[text] ?? text;
+  return text;
+}
