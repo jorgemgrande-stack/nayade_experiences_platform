@@ -253,6 +253,77 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
   });
 
+  // ───────────────────────── 2b. Cuotas (confirmInstallment) y pagos pendientes ─────────────────────────
+  describe("2b. confirmInstallment y pendingPayments.confirm: atomicidad y reconciliación", () => {
+    const counterOf = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
+    const withFailingInvoice = async <T>(fn: () => Promise<T>): Promise<T> => {
+      await ess.sql("a", "CREATE TRIGGER audit_fail_inv BEFORE INSERT ON invoices FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fallo inyectado'");
+      try { return await fn(); } finally { await ess.sql("a", "DROP TRIGGER IF EXISTS audit_fail_inv"); }
+    };
+    /** Presupuesto de 400 € con plan de 2 cuotas (la primera obligatoria). */
+    const planned = async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.paymentPlans.upsert", { quoteId: q, installments: [
+        { installmentNumber: 1, amountCents: 20000, dueDate: "2027-01-10", isRequiredForConfirmation: true },
+        { installmentNumber: 2, amountCents: 20000, dueDate: "2027-02-10", isRequiredForConfirmation: false },
+      ] }, adm), "plan");
+      const ids = (await ess.sql("a", "SELECT id FROM payment_installments WHERE quote_id = ? ORDER BY installment_number", [q])).map((r: any) => Number(r.id));
+      return { q, ids };
+    };
+    const payInst = (id: number) => ess.m("a", "crm.paymentPlans.confirmInstallment", { installmentId: id, paymentMethod: "efectivo" }, adm);
+
+    it("confirmInstallment ×6 sobre la misma cuota → UNA sola pasa; una reserva y una cuota pendiente generada", async () => {
+      const { q, ids } = await planned();
+      const rs = await Promise.all(Array.from({ length: 6 }, () => payInst(ids[0])));
+      const codes = rs.map((r) => r.status).sort();
+      log("cuota 1 ×6", codes);
+      expect(codes.filter((c) => c === 200).length).toBe(1);
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations WHERE quote_id = ? AND status <> 'cancelled'", [q]))[0].n)).toBe(1);
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM pending_payments WHERE quote_id = ?", [q]))[0].n)).toBe(1);
+    });
+
+    it("las dos cuotas confirmadas a la vez (3+3 llamadas) → UNA factura, UNA reserva y el presupuesto cobrado", async () => {
+      const { q, ids } = await planned();
+      await Promise.all([...Array.from({ length: 3 }, () => payInst(ids[0])), ...Array.from({ length: 3 }, () => payInst(ids[1]))]);
+      expect((await invoicesOf(q)).length).toBe(1);
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations WHERE quote_id = ? AND status <> 'cancelled'", [q]))[0].n)).toBe(1);
+      expect((await ess.sql("a", "SELECT paidAt FROM quotes WHERE id = ?", [q]))[0].paidAt).not.toBeNull();
+    });
+
+    it("fallo al emitir la factura final: sin factura huérfana ni número consumido, y el reintento completa el plan", async () => {
+      const { q, ids } = await planned();
+      ok(await payInst(ids[0]), "cuota 1");
+      const before = await counterOf();
+      const failed = await withFailingInvoice(() => payInst(ids[1]));
+      expect(failed.status).not.toBe(200);
+      expect((await invoicesOf(q)).length).toBe(0);
+      expect(await counterOf()).toBe(before);
+      expect((await ess.sql("a", "SELECT paidAt FROM quotes WHERE id = ?", [q]))[0].paidAt).toBeNull();
+      // Reintento: la cuota ya figura pagada (se rechaza), pero la reconciliación completa el plan
+      const retry = await payInst(ids[1]);
+      log("reintento tras fallo", retry.status);
+      expect((await invoicesOf(q)).length).toBe(1);
+      expect((await ess.sql("a", "SELECT paidAt FROM quotes WHERE id = ?", [q]))[0].paidAt).not.toBeNull();
+      expect(await counterOf()).toBe(before + 1);
+    });
+
+    it("pendingPayments.confirm: si la factura falla, el cobro queda con rastro (payment_confirmed_without_invoice) y sin número consumido", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const resId = Number((await ess.sql("a", "SELECT id FROM reservations WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: "Persona Sintética", productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pago pendiente");
+      const pp = Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      const before = await counterOf();
+      const r = await withFailingInvoice(() => ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm));
+      log("pendingPayments.confirm con fallo de factura", r.status);
+      expect((await ess.sql("a", "SELECT pp_status AS status FROM pending_payments WHERE id = ?", [pp]))[0].status).toBe("paid");
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE reservationId = ?", [resId]))[0].n)).toBe(0);
+      expect(await counterOf()).toBe(before);
+      const trace = await ess.sql("a", "SELECT action FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'payment_confirmed_without_invoice'", [q]);
+      expect(trace.length).toBe(1);
+    });
+  });
+
   // ───────────────────────── 3. Presupuestos de 0 € / precio equivocado ─────────────────────────
   describe("3. generateFromLead desde solicitudes de producto", () => {
     it("DEFECTO: producto «bajo petición» → presupuesto de 0 €", async () => {
