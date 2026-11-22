@@ -3,6 +3,8 @@ import type es from "../es/productsPacks";
 
 export default {
   pageTitle: "Lego Packs",
+  loadError: "Die Lego Packs konnten nicht geladen werden",
+  noImage: "Kein Bild",
   searchPlaceholder: "Lego Pack suchen...",
   new: "Neues Lego Pack",
   edit: "Bearbeiten",

@@ -46,7 +46,7 @@ const STATE_TONE: Record<TranslationState, string> = {
 
 export function TranslationStateBadge({ state }: { state: TranslationState }) {
   const { t } = useI18n();
-  return <Badge variant="outline" className={cn("text-[11px]", STATE_TONE[state])}>{t(`productsTranslations.state.${state}`)}</Badge>;
+  return <Badge variant="outline" className={cn("text-xs", STATE_TONE[state])}>{t(`productsTranslations.state.${state}`)}</Badge>;
 }
 
 /** Formulario de la traducción de un contenido en un idioma, con el original al lado. */
@@ -111,7 +111,7 @@ export function ContentTranslationForm({
         <div>
           <p className="text-xs font-medium text-muted-foreground">
             {t("productsTranslations.form.original", { label: labelOf(d) })}
-            {pending.has(d.key) && <span className="ml-2 text-amber-700 dark:text-amber-400">{t("productsTranslations.form.untranslatedField")}</span>}
+            {pending.has(d.key) && <span className="ml-2 text-warning">{t("productsTranslations.form.untranslatedField")}</span>}
           </p>
           <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-sm" lang={defaultLocale}>{orig || <span className="italic text-muted-foreground">{t("productsTranslations.form.empty")}</span>}</p>
         </div>
@@ -133,7 +133,7 @@ export function ContentTranslationForm({
         <span className="text-muted-foreground">{t("productsTranslations.form.status")}</span>
         <TranslationStateBadge state={state} />
         {state === "validated" && row?.validatedBy && <span className="text-xs text-muted-foreground">{t("productsTranslations.form.validatedBy", { name: row.validatedBy })}</span>}
-        {dirty && <span className="text-xs text-amber-700 dark:text-amber-400">{t("productsTranslations.form.unsaved")}</span>}
+        {dirty && <span className="text-xs text-warning">{t("productsTranslations.form.unsaved")}</span>}
         {pending.size > 0 && <span className="text-xs text-muted-foreground">{pending.size === 1 ? t("productsTranslations.form.pendingOne") : t("productsTranslations.form.pendingMany", { n: pending.size })}</span>}
       </div>
       {defs.filter((d) => !d.seo).map(field)}

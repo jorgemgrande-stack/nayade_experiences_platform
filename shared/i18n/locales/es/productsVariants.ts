@@ -1,6 +1,8 @@
 /** Variantes y precios (Productos y servicios). */
 export default {
   title: "Variantes y precios",
+  loadError: "No se han podido cargar las variantes",
+  noImage: "Sin imagen",
   itemLower: { licensed: "producto o servicio", own: "experiencia" },
   itemUpper: { licensed: "Producto o servicio", own: "Experiencia" },
   priceType: {
