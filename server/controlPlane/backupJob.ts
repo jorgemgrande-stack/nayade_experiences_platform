@@ -19,6 +19,7 @@
  *        [--crm-db es_crm] [--to-media] [--only a,b] [--apply]                     reconstrucción total (RECUPERACION_TOTAL.md)
  *   node dist-cp/backup-job.js migrate-tenants [--only a,b] [--apply]   carril de la app en cada empresa (red privada)
  *   node dist-cp/backup-job.js check-data-exports [--only a,b]          verificación (solo lectura) de 0011/0012/0013
+ *   node dist-cp/backup-job.js invoice-integrity [--only a,b]           integridad de facturas y cobros por empresa (SOLO LECTURA, sin datos personales)
  *   node dist-cp/backup-job.js erm-setup [--apply]                       base de medición es_erm (idempotente; ES_ERM_PASSWORD)
  *   node dist-cp/backup-job.js purge-test-companies [--apply]             purga DEFINITIVA de las empresas de prueba (lista
  *                                                                        cerrada; simulación salvo --apply; ver purgeTestCompanies.ts)
@@ -67,6 +68,7 @@ import { MysqlSchemaApplier, databaseNameFor } from "../_core/provisioning/mysql
 import { applyPurge, planPurge, purgeDatabaseDroppers, purgeMediaDeleter, verifyPurge } from "../_core/ops/purgeTestCompanies";
 import { migrateAllTenants } from "../_core/ops/tenantMigrations";
 import { dataExportSchemaStatus } from "../_core/ops/dataExportCheck";
+import { invoiceIntegrity } from "./invoiceIntegrity";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
 import { MysqlWebStore } from "../web/store";
 import { WebAdminService } from "../web/service";
@@ -354,6 +356,42 @@ async function main() {
         }
         print(out);
         if (out.some((r) => !r.ok)) process.exitCode = 1;
+        break;
+      }
+      case "invoice-integrity": {
+        // SOLO LECTURA: por empresa, abre una sesión MySQL de solo lectura y ejecuta únicamente SELECT (cualquier otra
+        // sentencia se rechaza antes de enviarse). Sin datos personales: ids, números de documento, estados e importes.
+        const only = opt("--only")?.split(",").filter(Boolean);
+        const errors: Array<Record<string, unknown>> = [];
+        for (const t of await store.listTenants()) {
+          if (only && !only.includes(t.id)) continue;
+          if (["provisioning", "archived", "deleting", "deleted"].includes(t.status)) continue;
+          const dsn = await registry.getActiveDsn(t.id).catch(() => null);
+          if (!dsn) {
+            errors.push({ tenant: t.id, error: "sin base de datos activa" });
+            continue;
+          }
+          const conn = await mysql.createConnection({ uri: dsn });
+          try {
+            await conn.query("SET SESSION TRANSACTION READ ONLY");
+            await conn.query("START TRANSACTION READ ONLY");
+            const rep = await invoiceIntegrity(async (sql, params) => {
+              if (!/^\s*SELECT\b/i.test(sql)) throw new Error("invoice-integrity solo admite SELECT");
+              return (await conn.query(sql, params))[0] as Array<Record<string, unknown>>;
+            });
+            await conn.query("ROLLBACK");
+            // Una línea JSON por empresa (el registro de Railway la guarda en los atributos)
+            console.log(JSON.stringify({ orden: cmd, tenant: t.id, estado: t.status, ...rep }));
+          } catch (e) {
+            errors.push({ tenant: t.id, error: e instanceof Error ? e.name : "error" });
+          } finally {
+            await conn.end().catch(() => undefined);
+          }
+        }
+        if (errors.length) {
+          console.log(JSON.stringify({ orden: cmd, errores: errors }));
+          process.exitCode = 1;
+        }
         break;
       }
       case "restores": {
