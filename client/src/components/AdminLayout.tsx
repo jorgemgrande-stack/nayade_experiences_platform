@@ -34,6 +34,7 @@ import { useDiscoveredExtensions } from "@/hooks/useDiscoveredExtensions";
 import { ROLE_LABELS } from "@shared/roleLabels";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
 import { useI18n } from "@/i18n/I18nProvider";
+import { ConfirmHost } from "@/components/admin/ConfirmHost";
 import LanguageSelect from "@/i18n/LanguageSelect";
 import { localizeNav } from "@shared/i18n/navLabels";
 
@@ -864,6 +865,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {isTaskNav && <SubscriptionRecoveryBanner role={userRole} />}
           {children}
         </main>
+        <ConfirmHost />
         {/* Modo soporte de Big Elephant: banda permanente con operador, modo, caducidad y salida */}
         {isSupportUser(user) && <SupportModeBar user={user} />}
       </div>

@@ -127,8 +127,7 @@
   "pages/admin/accounting/ExpensesManager.tsx": {
     "coloresFijos": 51,
     "textoMinusculo": 13,
-    "geometriaAjena": 1,
-    "dialogosNativos": 2
+    "geometriaAjena": 1
   },
   "pages/admin/accounting/FinanceSyncSetup.tsx": {
     "coloresFijos": 8,
@@ -140,8 +139,7 @@
   },
   "pages/admin/accounting/RecurringExpensesManager.tsx": {
     "coloresFijos": 7,
-    "textoMinusculo": 3,
-    "dialogosNativos": 2
+    "textoMinusculo": 3
   },
   "pages/admin/accounting/TransactionsList.tsx": {
     "coloresFijos": 21
@@ -170,8 +168,7 @@
     "coloresFijos": 1
   },
   "pages/admin/cms/MenusManager.tsx": {
-    "coloresFijos": 6,
-    "dialogosNativos": 2
+    "coloresFijos": 6
   },
   "pages/admin/cms/MultimediaManager.tsx": {
     "coloresFijos": 2,
@@ -405,8 +402,7 @@
   "pages/admin/hr/BonusManager.tsx": {
     "coloresFijos": 19,
     "hexEnClases": 9,
-    "textoMinusculo": 12,
-    "dialogosNativos": 2
+    "textoMinusculo": 12
   },
   "pages/admin/hr/EmployeeDetail.tsx": {
     "coloresFijos": 40,

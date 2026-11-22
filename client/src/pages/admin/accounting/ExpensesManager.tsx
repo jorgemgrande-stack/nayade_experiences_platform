@@ -3,6 +3,7 @@ import { toast } from "sonner";
  * ExpensesManager — Gestión de Gastos
  * v21.0 — Módulo Financiero Nayade Experiences
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -398,7 +399,7 @@ export default function ExpensesManager() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("¿Eliminar este gasto y sus adjuntos?")) return;
+    if (!(await confirmAction({ description: "¿Eliminar este gasto y sus adjuntos?", destructive: true }))) return;
     await deleteMut.mutateAsync({ id });
     toast.success("Gasto eliminado");
   }
@@ -588,8 +589,8 @@ export default function ExpensesManager() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                if (window.confirm("¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar.")) {
+              onClick={async () => {
+                if (await confirmAction({ description: "¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar." })) {
                   backfillMut.mutate();
                 }
               }}
