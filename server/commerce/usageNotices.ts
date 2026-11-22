@@ -11,6 +11,15 @@ import { windowStart, type DefaultQuota } from "../_core/erm/quota";
 import type { Quota, UsageStore } from "../_core/erm/types";
 import { panelUsage, type PanelUsageRow } from "./panelUsage";
 
+/**
+ * Interruptor propio de los avisos de consumo a CLIENTES (correo real a su contacto principal). Apagado por defecto:
+ * activar `CP_ALERTS_EVERY_SECONDS` (alertas internas del equipo) NO los enciende; hace falta `CP_USAGE_NOTICES_ENABLED=1`.
+ */
+export function usageNoticesEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  const v = (env.CP_USAGE_NOTICES_ENABLED ?? "").trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 export interface UsageNotice {
   tenantId: string;
   key: string;

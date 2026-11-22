@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { MemoryUsageStore, hourOf } from "./_core/erm/usage";
 import type { DefaultQuota } from "./_core/erm/quota";
-import { crmContactOf, formatUsageAmount, runUsageNotices, type UsageNotice } from "./commerce/usageNotices";
+import { crmContactOf, formatUsageAmount, runUsageNotices, usageNoticesEnabled, type UsageNotice } from "./commerce/usageNotices";
 import { platformTemplates } from "./mail/templates";
 
 const NOW = Date.UTC(2026, 9, 15, 10, 30);
@@ -107,5 +107,18 @@ describe("avisos de consumo", () => {
     const full = t.usageThreshold({ label: "Correos enviados", periodLabel: "hoy", used: "120", limit: "100", level: "exceeded", hard: true, host: null });
     expect(full.subject).toContain("Has alcanzado el límite");
     expect(full.text).toContain("Hasta el próximo periodo no se puede usar más");
+  });
+});
+
+describe("interruptor de los avisos a clientes", () => {
+  it("está apagado por defecto, también con las alertas internas activadas", () => {
+    expect(usageNoticesEnabled({})).toBe(false);
+    expect(usageNoticesEnabled({ CP_ALERTS_EVERY_SECONDS: "900" })).toBe(false);
+    expect(usageNoticesEnabled({ CP_USAGE_NOTICES_ENABLED: "0" })).toBe(false);
+    expect(usageNoticesEnabled({ CP_USAGE_NOTICES_ENABLED: "" })).toBe(false);
+  });
+  it("solo se enciende con CP_USAGE_NOTICES_ENABLED=1", () => {
+    expect(usageNoticesEnabled({ CP_USAGE_NOTICES_ENABLED: "1" })).toBe(true);
+    expect(usageNoticesEnabled({ CP_USAGE_NOTICES_ENABLED: "true" })).toBe(true);
   });
 });
