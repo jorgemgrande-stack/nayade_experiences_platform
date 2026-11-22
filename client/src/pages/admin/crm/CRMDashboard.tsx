@@ -5325,7 +5325,9 @@ export default function CRMDashboard() {
   const searchStr = useSearch();
   const tabFromSearch = (s: string): Tab => {
     try {
-      const t = new URLSearchParams(s).get("tab");
+      const raw = new URLSearchParams(s).get("tab");
+      // Alias heredados de los enlaces internos (Calendario, Actividades del día): «reservas», «presupuestos», «facturas»
+      const t = raw === "reservas" ? "reservations" : raw === "presupuestos" ? "quotes" : raw === "facturas" ? "invoices" : raw;
       if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones" || t === "pagos_pendientes" || t === "bonos") return t;
     } catch { /* ignore */ }
     // Rutas directas del panel (/admin/crm/presupuestos, /admin/crm/reservas): abren su pestaña
@@ -5405,8 +5407,11 @@ export default function CRMDashboard() {
   const [viewResId, setViewResId] = useState<number | null>(() => {
     try {
       const p = new URLSearchParams(window.location.search);
-      const id = p.get("resId");
-      return id ? parseInt(id, 10) : null;
+      // `resId` (formato propio) o `id` en una URL de reservas (enlaces de Calendario y Actividades del día)
+      const tabParam = p.get("tab");
+      const id = p.get("resId") ?? (tabParam === "reservas" || tabParam === "reservations" ? p.get("id") : null);
+      const n = id ? parseInt(id, 10) : NaN;
+      return Number.isFinite(n) ? n : null;
     } catch { return null; }
   });
   const [editResId, setEditResId] = useState<number | null>(null);
