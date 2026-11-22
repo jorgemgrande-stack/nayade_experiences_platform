@@ -22,7 +22,7 @@ import mysql from "mysql2/promise";
 import { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import { MysqlQuotaExceptionStore, QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { DEFAULT_QUOTAS, parseDefaultQuotas } from "../_core/erm/quota";
-import { crmContactOf, runUsageNotices } from "../commerce/usageNotices";
+import { crmContactOf, runUsageNotices, usageNoticesEnabled } from "../commerce/usageNotices";
 import { choosePublicDomain } from "../_core/tenantIdentity";
 import { MysqlUsageStore } from "../_core/erm/usage";
 import { costModelFromEnv } from "../_core/erm/costs";
@@ -311,8 +311,9 @@ async function main() {
     crm = { service: new CrmService({ store, activation }), store };
   }
 
-  // Avisos de consumo a cada empresa (80 % / 100 % de un límite de su plan), con el mismo ritmo que las alertas
-  if (usage && crm && platformMail.mailer && process.env.CP_ALERTS_EVERY_SECONDS) {
+  // Avisos de consumo a cada empresa (80 % / 100 % de un límite de su plan), al ritmo de las alertas pero con interruptor propio
+  // (CP_USAGE_NOTICES_ENABLED=1, apagado por defecto): las alertas internas no escriben a clientes
+  if (usage && crm && platformMail.mailer && process.env.CP_ALERTS_EVERY_SECONDS && usageNoticesEnabled()) {
     const crmStore = crm.store;
     const notify = platformMail.mailer.usageNotifier();
     const defaults = parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? DEFAULT_QUOTAS;
