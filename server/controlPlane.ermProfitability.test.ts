@@ -300,7 +300,7 @@ describe("API de rentabilidad", () => {
   const USAGE_ONLY = "rentab-usage-token-bbbbbbbbbbbbbbbbbbb";
   const BILLING_ONLY = "rentab-billing-token-ccccccccccccccccc";
   // Tokens con los permisos EXACTOS de cada rol de operador (lo que recibe su sesión)
-  const ROLE_TOKEN = { sales: "rol-comercial-token-aaaaaaaaaaaaaaaa", support: "rol-soporte-token-bbbbbbbbbbbbbbbbbb", readonly: "rol-lectura-token-cccccccccccccccccc", admin: "rol-admin-token-dddddddddddddddddddd" } as const;
+  const ROLE_TOKEN = { sales: "rol-comercial-token-aaaaaaaaaaaaaaaa", support: "rol-soporte-token-bbbbbbbbbbbbbbbbbb", readonly: "rol-lectura-token-cccccccccccccccccc", admin: "rol-admin-token-dddddddddddddddddddd", superadmin: "rol-superadmin-token-eeeeeeeeeeeeeeee" } as const;
   const OP: Actor = { type: "operator", id: "test" };
 
   beforeAll(async () => {
@@ -396,8 +396,13 @@ describe("API de rentabilidad", () => {
     const sales = await call("/tenants/grande/resources", ROLE_TOKEN.sales);
     expect(sales.status).toBe(200);
     expect(JSON.stringify(sales.json)).not.toMatch(/Cents|margin|revenue/i);
-    // La administración sí los consulta
-    for (const path of economic) expect((await call(path, ROLE_TOKEN.admin)).status, `admin ${path}`).toBe(200);
+    // La administración y la superadministración sí los consultan
+    for (const role of ["admin", "superadmin"] as const) for (const path of economic) expect((await call(path, ROLE_TOKEN[role])).status, `${role} ${path}`).toBe(200);
+    // Los cinco roles, con sus permisos reales: solo los dos con margins:read leen economía; ningún rol ve economía de una empresa inexistente sin permiso (403 antes que 404)
+    for (const role of Object.keys(ROLE_TOKEN) as Array<keyof typeof ROLE_TOKEN>) {
+      const allowed = ROLE_SCOPES[role].includes("margins:read");
+      expect((await call("/resources/profitability?tenant=no-existe", ROLE_TOKEN[role])).status, `${role} tenant inexistente`).toBe(allowed ? 404 : 403);
+    }
   });
 
   it("ingresos live con su fuente, costes medidos y estimados, y margen no exacto si faltan costes", async () => {

@@ -258,9 +258,6 @@
     "hexEnClases": 17,
     "geometriaAjena": 2
   },
-  "pages/admin/crm/ClientDetail.tsx": {
-    "textoMinusculo": 1
-  },
   "pages/admin/crm/CreditNoteDialog.tsx": {
     "coloresFijos": 6,
     "hexEnClases": 1
@@ -330,9 +327,6 @@
   "pages/admin/help/SupportTicketsPage.tsx": {
     "coloresFijos": 4,
     "geometriaAjena": 5
-  },
-  "pages/admin/home/EssentialHome.tsx": {
-    "geometriaAjena": 3
   },
   "pages/admin/home/OperationalPanelCard.tsx": {
     "geometriaAjena": 1

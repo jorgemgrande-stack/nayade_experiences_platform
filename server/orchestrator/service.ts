@@ -107,7 +107,7 @@ export interface OrchestratorDeps {
   tenantStatus?: Pick<TenantStatusSync, "syncSafely">;
   /**
    * Estado ACTUAL en Stripe de la suscripción de un pedido cobrado allí (releído en su API, nunca de un evento), o
-   * null si no se puede saber. Sin él, un pedido de Stripe nunca se suspende por fin de gracia (solo con «unpaid»).
+   * null si no se puede saber. Sin él, un pedido de Stripe nunca se suspende por fin de gracia. «paused» cuenta como «unpaid» (igual que en el webhook).
    */
   stripeStatus?: (o: CommercialOrder) => Promise<"active" | "past_due" | "unpaid" | "canceled" | null>;
 }

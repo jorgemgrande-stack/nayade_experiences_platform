@@ -1,14 +1,16 @@
 import { useState, useMemo, useEffect } from "react";
 import { PanelEmpty, errorMessage } from "@/components/admin/PanelStates";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  Users, Plus, Search, RefreshCw, Phone, Mail, Building2, MapPin, Tag, AlertCircle, Download, Upload, User, Loader2,
+  Users, Plus, Search, RefreshCw, Phone, Mail, Building2, MapPin, Tag, AlertCircle, Download, Upload, User, Loader2, MoreHorizontal, Sparkles, X,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MetricCard, PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
 import ClientImportDialog, { downloadTextFile } from "@/components/admin/crm/ClientImportDialog";
 import AdminLayout from "@/components/AdminLayout";
 import { Link, useLocation } from "wouter";
@@ -118,21 +120,28 @@ export default function ClientsManager() {
   const fichaHref = (c: ClientRow) => `/admin/crm/clientes/${c.id}`;
 
   const actions = (client: ClientRow) => (
-    <div className="flex flex-wrap items-center justify-end gap-1">
-      <Button size="sm" variant="ghost" asChild className="h-8 px-2 text-primary">
-        <Link href={fichaHref(client)} aria-label={t("crmClients.viewCardAria", { name: clientDisplayName(client) })}>{t("crmClients.viewCard")}</Link>
-      </Button>
-      {canEdit && (
-        <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditClient(client)} aria-label={t("crmClients.editAria", { name: clientDisplayName(client) })}>
-          {t("crmClients.edit")}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" aria-label={`${t("crmClients.colActions")}: ${clientDisplayName(client)}`}>
+          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
         </Button>
-      )}
-      {canEdit && (
-        <Button size="sm" variant="ghost" className="h-8 px-2 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)} aria-label={t("crmClients.deleteAria", { name: clientDisplayName(client) })}>
-          {t("crmClients.delete")}
-        </Button>
-      )}
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link href={fichaHref(client)} aria-label={t("crmClients.viewCardAria", { name: clientDisplayName(client) })}>{t("crmClients.viewCard")}</Link>
+        </DropdownMenuItem>
+        {canEdit && (
+          <DropdownMenuItem onSelect={() => setEditClient(client)} aria-label={t("crmClients.editAria", { name: clientDisplayName(client) })}>
+            {t("crmClients.edit")}
+          </DropdownMenuItem>
+        )}
+        {canEdit && (
+          <DropdownMenuItem variant="destructive" onSelect={() => setDeleteClient(client)} aria-label={t("crmClients.deleteAria", { name: clientDisplayName(client) })}>
+            {t("crmClients.delete")}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   const tagsOf = (client: ClientRow) =>
@@ -145,10 +154,9 @@ export default function ClientsManager() {
   const kindBadge = (client: ClientRow) => {
     const k = clientKind(client);
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-foreground">
-        {k === "empresa" ? <Building2 className="h-3 w-3" aria-hidden="true" /> : <User className="h-3 w-3" aria-hidden="true" />}
+      <StatusBadge tone={k === "empresa" ? "info" : "neutral"} icon={k === "empresa" ? <Building2 aria-hidden="true" /> : <User aria-hidden="true" />}>
         {t(`crmForm.kind.${k}`)}
-      </span>
+      </StatusBadge>
     );
   };
 
@@ -178,21 +186,29 @@ export default function ClientsManager() {
   return (
     <AdminLayout>
       <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
-        {/* Header */}
+        {/* Cabecera: la acción principal es una; importar y exportar pasan a «Más» */}
         <PanelPageHeader
           icon={<Users />}
           title={t("crmClients.title")}
           description={t("crmClients.description")}
           actions={<>
-            <Button variant="outline" onClick={exportClients} disabled={exporting}>
-              {exporting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="mr-2 h-4 w-4" aria-hidden="true" />}
-              {hasFilters ? t("crmClients.exportFiltered") : t("crmClients.export")}
-            </Button>
-            {canImportClients && (
-              <Button variant="outline" onClick={() => setImportOpen(true)}>
-                <Upload className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClients.import")}
-              </Button>
-            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label={t("crmClients.colActions")} disabled={exporting}>
+                  {exporting ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" aria-hidden="true" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={exportClients} disabled={exporting}>
+                  <Download className="mr-2 h-4 w-4" aria-hidden="true" /> {hasFilters ? t("crmClients.exportFiltered") : t("crmClients.export")}
+                </DropdownMenuItem>
+                {canImportClients && (
+                  <DropdownMenuItem onSelect={() => setImportOpen(true)}>
+                    <Upload className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClients.import")}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {canEdit && (
               <Button onClick={() => setCreating(true)}>
                 <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClients.newClient")}
@@ -201,64 +217,70 @@ export default function ClientsManager() {
           </>}
         />
 
-        {/* Stats strip */}
+        {/* Resumen: cada tarjeta es también un filtro */}
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            { label: t("crmClients.stats.total"), value: stats.data?.total },
-            { label: t("crmClients.stats.companies"), value: stats.data?.companies },
-            { label: t("crmClients.stats.individuals"), value: stats.data?.individuals },
-            { label: t("crmClients.stats.newThisMonth"), value: stats.data?.newThisMonth },
-          ].map((s) => (
-            <div key={s.label} className="rounded-xl border border-border bg-card p-4">
-              <div className="text-2xl font-bold tabular-nums text-foreground">{s.value ?? "—"}</div>
-              <div className="text-xs text-muted-foreground">{s.label}</div>
-            </div>
-          ))}
+          <MetricCard icon={<Users />} tone="brand" label={t("crmClients.stats.total")} value={stats.data?.total ?? "—"} onClick={() => setTypeFilter("")} active={typeFilter === ""} />
+          <MetricCard icon={<Building2 />} tone="info" label={t("crmClients.stats.companies")} value={stats.data?.companies ?? "—"} onClick={() => setTypeFilter("empresa")} active={typeFilter === "empresa"} />
+          <MetricCard icon={<User />} tone="success" label={t("crmClients.stats.individuals")} value={stats.data?.individuals ?? "—"} onClick={() => setTypeFilter("particular")} active={typeFilter === "particular"} />
+          <MetricCard icon={<Sparkles />} tone="warning" label={t("crmClients.stats.newThisMonth")} value={stats.data?.newThisMonth ?? "—"} />
         </div>
 
-        {/* Filtros */}
-        <div className="mb-4 flex flex-col gap-3 md:flex-row">
+        {/* Barra de filtros */}
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("crmClients.searchPlaceholder")}
               aria-label={t("crmClients.searchAria")}
-              className="pl-9"
+              className="h-11 rounded-xl pl-10 pr-10"
             />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:flex">
-            <div className="md:w-44">
-              <label htmlFor="clients-type-filter" className="sr-only">{t("crmClients.filterType")}</label>
-              <select id="clients-type-filter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ClientKind | "")} className={selectClass}>
-                <option value="">{t("crmClients.allTypes")}</option>
-                <option value="empresa">{t("crmClients.companies")}</option>
-                <option value="particular">{t("crmClients.individuals")}</option>
-              </select>
-            </div>
-            {canTags && (
-              <div className="flex items-center gap-2 md:w-56">
-                <label htmlFor="clients-tag-filter" className="sr-only">{t("crmClients.filterTag")}</label>
-                <Tag className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <select
-                  id="clients-tag-filter"
-                  value={tagFilter ?? ""}
-                  onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
-                  className={selectClass}
-                >
-                  <option value="">{t("crmClients.allTags")}</option>
-                  {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
+            {search && (
+              <button type="button" onClick={() => setSearch("")} aria-label={t("crmClients.clearFilters")} className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
             )}
           </div>
+          <SegmentedTabs
+            label={t("crmClients.filterType")}
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={[
+              { value: "", label: t("crmClients.stats.total"), count: stats.data?.total ?? null },
+              { value: "empresa", label: t("crmClients.companies"), count: stats.data?.companies ?? null },
+              { value: "particular", label: t("crmClients.individuals"), count: stats.data?.individuals ?? null },
+            ]}
+          />
+          {canTags && (
+            <div className="flex items-center gap-2 lg:w-56">
+              <label htmlFor="clients-tag-filter" className="sr-only">{t("crmClients.filterTag")}</label>
+              <Tag className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <select
+                id="clients-tag-filter"
+                value={tagFilter ?? ""}
+                onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
+                className={selectClass}
+              >
+                <option value="">{t("crmClients.allTags")}</option>
+                {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Listado */}
-        <div className="rounded-xl border border-border bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           {isLoading ? (
-            <p className="py-12 text-center text-muted-foreground" role="status">{t("crmClients.loading")}</p>
+            <div className="divide-y divide-border" role="status" aria-busy="true">
+              <span className="sr-only">{t("crmClients.loading")}</span>
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center gap-3 p-4">
+                  <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
+                  <div className="flex-1 space-y-2"><div className="h-3.5 w-1/3 animate-pulse rounded bg-muted" /><div className="h-3 w-1/2 animate-pulse rounded bg-muted" /></div>
+                </div>
+              ))}
+            </div>
           ) : isError ? (
             <div role="alert" className="flex flex-col items-center gap-3 py-12">
               <AlertCircle className="h-7 w-7 text-destructive" aria-hidden="true" />
@@ -271,55 +293,66 @@ export default function ClientsManager() {
             emptyState
           ) : (
             <>
-              {/* Escritorio: tabla */}
+              {/* Escritorio: filas con avatar; toda la fila abre la ficha */}
               <table className="hidden w-full text-sm md:table">
                 <caption className="sr-only">{t("crmClients.listCaption")}</caption>
                 <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
+                  <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colClient")}</th>
-                    <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colType")}</th>
                     <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colContact")}</th>
                     <th scope="col" className="px-4 py-3 font-medium">{t("crmClients.colCity")}</th>
-                    <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmClients.colActions")}</th>
+                    <th scope="col" className="w-12 px-4 py-3"><span className="sr-only">{t("crmClients.colActions")}</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {clientsList.map((client) => (
-                    <tr key={client.id} className="border-b border-border/60 last:border-0 hover:bg-muted/40" data-client-row>
-                      <td className="px-4 py-3 align-top">
-                        <Link href={fichaHref(client)} className="font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
-                          {clientDisplayName(client)}
-                        </Link>
-                        {clientKind(client) === "empresa" && client.name !== client.company && <div className="text-xs text-muted-foreground">{client.name}</div>}
-                        {client.nif && <div className="text-xs text-muted-foreground">{t("crmClients.nif", { nif: client.nif })}</div>}
-                        {tagsOf(client)}
+                    <tr key={client.id} className="group cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40" data-client-row onClick={(e) => { if (!(e.target as HTMLElement).closest("a,button,[role=menuitem]")) setLocation(fichaHref(client)); }}>
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex items-center gap-3">
+                          <PersonAvatar name={clientDisplayName(client)} id={client.id} company={clientKind(client) === "empresa"} />
+                          <div className="min-w-0">
+                            <Link href={fichaHref(client)} className="block overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
+                              {clientDisplayName(client)}
+                            </Link>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                              {kindBadge(client)}
+                              {clientKind(client) === "empresa" && client.name !== client.company && <span className="overflow-hidden text-ellipsis whitespace-nowrap">{client.name}</span>}
+                              {client.nif && <span>{t("crmClients.nif", { nif: client.nif })}</span>}
+                            </div>
+                            {tagsOf(client)}
+                          </div>
+                        </div>
                       </td>
-                      <td className="px-4 py-3 align-top">{kindBadge(client)}</td>
-                      <td className="px-4 py-3 align-top">
-                        <div className="flex items-center gap-1.5 break-all text-xs text-muted-foreground"><Mail className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.email}</div>
-                        {client.phone && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.phone}</div>}
+                      <td className="px-4 py-3 align-middle">
+                        <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 break-all text-xs text-foreground hover:text-primary hover:underline"><Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> {client.email}</a>
+                        {client.phone && <a href={`tel:${client.phone.replace(/\s/g, "")}`} className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary hover:underline"><Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {client.phone}</a>}
                       </td>
-                      <td className="px-4 py-3 align-top text-xs text-muted-foreground">{client.city || "—"}</td>
-                      <td className="px-4 py-3 align-top">{actions(client)}</td>
+                      <td className="px-4 py-3 align-middle text-xs text-muted-foreground">{client.city ? <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" aria-hidden="true" /> {client.city}</span> : "—"}</td>
+                      <td className="px-4 py-3 text-right align-middle">{actions(client)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {/* Móvil: tarjetas */}
+              {/* Móvil: tarjetas con contacto de un toque */}
               <ul className="divide-y divide-border md:hidden" aria-label={t("crmClients.listCaption")}>
                 {clientsList.map((client) => (
-                  <li key={client.id} className="space-y-1.5 p-4" data-client-row>
-                    <div className="flex items-start justify-between gap-2">
-                      <Link href={fichaHref(client)} className="min-w-0 break-words font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
+                  <li key={client.id} className="flex items-start gap-3 p-4" data-client-row>
+                    <PersonAvatar name={clientDisplayName(client)} id={client.id} company={clientKind(client) === "empresa"} />
+                    <div className="min-w-0 flex-1">
+                      <Link href={fichaHref(client)} className="block break-words font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
                         {clientDisplayName(client)}
                       </Link>
-                      {kindBadge(client)}
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        {kindBadge(client)}
+                        {client.city && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" aria-hidden="true" /> {client.city}</span>}
+                      </div>
+                      {tagsOf(client)}
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 rounded-full px-3 text-xs"><a href={`mailto:${client.email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" /> {t("crmClientDetail.email")}</a></Button>
+                        {client.phone && <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 rounded-full px-3 text-xs"><a href={`tel:${client.phone.replace(/\s/g, "")}`}><Phone className="h-3.5 w-3.5" aria-hidden="true" /> {t("crmClientDetail.phone")}</a></Button>}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 break-all text-xs text-muted-foreground"><Mail className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.email}</div>
-                    {client.phone && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.phone}</div>}
-                    {client.city && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><MapPin className="h-3 w-3 shrink-0" aria-hidden="true" /> {client.city}</div>}
-                    {tagsOf(client)}
                     {actions(client)}
                   </li>
                 ))}

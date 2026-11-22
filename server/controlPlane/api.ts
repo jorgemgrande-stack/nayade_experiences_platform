@@ -118,7 +118,7 @@ import { tenantTermsReader } from "../commercialTerms/tenantView";
 import { TermsBillingService, createTermsBillingRouter, type BillingLink, type NegotiatedBillingGateway } from "../commercialTerms/billing";
 import type { TermsBillingStore } from "../commercialTerms/billingStore";
 import { StripeNegotiatedGateway, catalogProductsOf } from "../commercialTerms/stripeGateway";
-import { NegotiatedBillingService, createNegotiatedBillingRouter } from "../commercialTerms/stripeBilling";
+import { NegotiatedBillingService, mapStripeStatus, createNegotiatedBillingRouter } from "../commercialTerms/stripeBilling";
 import type { TrialConclusionHook } from "../commercialTerms/trialDefer";
 import { TermsLicences, createTermsLicencesRouter } from "../commercialTerms/licences";
 import { CommercialTermsService, type TermsInput } from "../commercialTerms/service";
@@ -2477,9 +2477,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               if ((await st.store.subscription(id))?.orderId !== o.id) continue;
               const sub = await st.gateway.subscription(id);
               if (!sub || sub.metadata.es_env !== st.config.namespace) return null;
-              if (sub.status === "past_due" || sub.status === "unpaid") return sub.status;
-              if (sub.status === "active" || sub.status === "trialing") return "active" as const;
-              return sub.status === "canceled" || sub.status === "incomplete_expired" ? ("canceled" as const) : null;
+              // Misma correspondencia que el webhook (stripe/events.ts) y las condiciones personalizadas: paused cuenta como unpaid
+              return mapStripeStatus(sub.status);
             }
             return null;
           }
