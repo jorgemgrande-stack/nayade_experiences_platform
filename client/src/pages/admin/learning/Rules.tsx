@@ -8,9 +8,9 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { StatusBadge } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 import { experienceLabel, variantLabel, modulesLabel } from "@shared/learningRules";
@@ -102,7 +102,7 @@ export default function Rules() {
                   <h3 className="flex items-center gap-1.5 font-semibold"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden /><span className="truncate">{experienceLabel(r)}</span></h3>
                   <p className="text-sm text-muted-foreground">{variantLabel(r)}</p>
                 </div>
-                <Badge variant={r.active ? "default" : "secondary"}>{r.active ? t("learningManage.rules.active") : t("learningManage.rules.inactive")}</Badge>
+                <StatusBadge tone={r.active ? "success" : "neutral"}>{r.active ? t("learningManage.rules.active") : t("learningManage.rules.inactive")}</StatusBadge>
               </div>
               <dl className="mt-3 space-y-1 text-sm">
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.course")}</dt><dd>{r.courseTitle ?? "—"}</dd></div>
