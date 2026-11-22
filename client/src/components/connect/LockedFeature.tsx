@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronRight, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { panelTextNow as px } from "@/i18n/usePanelText";
 import { CONNECT_STATE_LABELS } from "@shared/connectMarketplace";
 import { useConnectCatalog, type ConnectCatalogItem } from "./useConnect";
 
@@ -44,7 +45,7 @@ export function LockedFeature({ capability, product, children, className, compac
         <span className="block font-medium text-foreground truncate">{item?.name ?? "No incluido en tu plan"}</span>
         {!compact && (
           <span className="block text-xs text-muted-foreground truncate">
-            {item ? `${CONNECT_STATE_LABELS[item.state]}${item.tagline ? ` · ${item.tagline}` : ""}` : "Descubre cómo ampliar tu plataforma"}
+            {item ? `${px(CONNECT_STATE_LABELS[item.state])}${item.tagline ? ` · ${item.tagline}` : ""}` : px("Descubre cómo ampliar tu plataforma")}
           </span>
         )}
       </span>

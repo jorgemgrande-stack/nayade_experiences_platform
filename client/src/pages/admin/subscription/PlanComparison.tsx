@@ -12,6 +12,7 @@ import { ArrowDown, ArrowUp, Building2, Check, ChevronDown, HardDrive, Layers, M
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
+import { usePanelTag, usePanelText } from "@/i18n/usePanelText";
 import type { Translate } from "@shared/i18n/core";
 import { formatMoney } from "@shared/connectCard";
 import type { PanelPlanInfo, PlanCardModel, PlanRequestView, SelfServicePlanKey } from "@shared/subscriptionPlans";
@@ -29,6 +30,8 @@ const scrollToComparison = () => document.getElementById(COMPARISON_ID)?.scrollI
 /** Precio mensual y anual del catálogo (sin recalcular el anual) con la periodicidad y el IVA siempre a la vista. */
 function PriceBox({ plan }: { plan: PanelPlanInfo }) {
   const { t } = useI18n();
+  const px = usePanelText();
+  const tag = usePanelTag();
   const cells = [
     plan.monthly ? { key: "m", price: plan.monthly, per: t("subscription.plans.perMonth"), label: t("subscription.plans.monthly") } : null,
     plan.yearly ? { key: "y", price: plan.yearly, per: t("subscription.plans.perYear"), label: t("subscription.plans.yearly") } : null,
@@ -40,9 +43,9 @@ function PriceBox({ plan }: { plan: PanelPlanInfo }) {
         <div key={c.key} className="min-w-0 px-3 py-3 text-center sm:px-4">
           <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{c.label}</dt>
           <dd className="mt-1 flex flex-wrap items-baseline justify-center gap-x-1 text-foreground">
-            <strong className="text-xl font-extrabold tracking-tight sm:text-2xl">{planMoney(c.price.amountCents, c.price.currency)}</strong>
+            <strong className="text-xl font-extrabold tracking-tight sm:text-2xl">{planMoney(c.price.amountCents, c.price.currency, tag)}</strong>
             <span className="text-xs text-muted-foreground">
-              {c.per} {taxLabel(c.price)}
+              {c.per} {px(taxLabel(c.price))}
             </span>
           </dd>
         </div>
@@ -65,6 +68,7 @@ function PlanCard({
   onChange: (option: PlanOption) => void;
 }) {
   const { t } = useI18n();
+  const px = usePanelText();
   const { plan } = card;
   const titleId = `plan-${plan.key}`;
   const pr = planPresentation(plan);
@@ -94,18 +98,18 @@ function PlanCard({
               {plan.name}
             </h3>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {pr.audience && <span className="sx-tone-tag rounded-full px-2.5 py-0.5 text-xs font-semibold">{pr.audience}</span>}
+              {pr.audience && <span className="sx-tone-tag rounded-full px-2.5 py-0.5 text-xs font-semibold">{px(pr.audience)}</span>}
               {card.currentLabel && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-foreground px-2.5 py-0.5 text-xs font-semibold text-background">
-                  <Check className="h-3 w-3" aria-hidden="true" /> {card.currentLabel}
+                  <Check className="h-3 w-3" aria-hidden="true" /> {px(card.currentLabel)}
                 </span>
               )}
-              <span className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{card.commercialLabel}</span>
+              <span className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{px(card.commercialLabel)}</span>
             </div>
           </div>
         </div>
 
-        {pr.headline && <p className="text-sm font-medium leading-snug text-foreground sm:text-base">{pr.headline}</p>}
+        {pr.headline && <p className="text-sm font-medium leading-snug text-foreground sm:text-base">{px(pr.headline)}</p>}
 
         {benefits.length > 0 && (
           <ul className="space-y-2" aria-label={t("subscription.plans.benefitsOf", { name: plan.name })}>
@@ -244,8 +248,8 @@ interface CompareGroup {
 }
 
 /** Todas las filas de la comparativa (precios, límites agrupados y lo que incluye): nada de lo publicado se oculta. */
-function comparisonModel(cards: PlanCardModel[], t: Translate): CompareGroup[] {
-  const price = (p: PanelPlanInfo["monthly"], per: string) => (p ? `${planMoney(p.amountCents, p.currency)} ${per} · ${taxLabel(p)}` : null);
+function comparisonModel(cards: PlanCardModel[], t: Translate, px: (es: string) => string, tag: string): CompareGroup[] {
+  const price = (p: PanelPlanInfo["monthly"], per: string) => (p ? `${planMoney(p.amountCents, p.currency, tag)} ${per} · ${px(taxLabel(p))}` : null);
   const groups: CompareGroup[] = [
     {
       id: "price",
@@ -253,12 +257,12 @@ function comparisonModel(cards: PlanCardModel[], t: Translate): CompareGroup[] {
       rows: [
         { label: t("subscription.plans.monthly"), cells: cards.map((c) => ({ text: price(c.plan.monthly, t("subscription.plans.perMonth")), node: <Value value={price(c.plan.monthly, t("subscription.plans.perMonth"))} /> })) },
         { label: t("subscription.plans.yearly"), cells: cards.map((c) => ({ text: price(c.plan.yearly, t("subscription.plans.perYear")), node: <Value value={price(c.plan.yearly, t("subscription.plans.perYear"))} /> })) },
-        { label: t("subscription.plans.rowHiring"), cells: cards.map((c) => ({ text: c.commercialLabel, node: <Value value={c.commercialLabel} /> })) },
+        { label: t("subscription.plans.rowHiring"), cells: cards.map((c) => ({ text: px(c.commercialLabel), node: <Value value={px(c.commercialLabel)} /> })) },
       ],
     },
     ...groupedComparisonRows(cards).map((g) => ({
       id: g.id,
-      label: g.label,
+      label: px(g.label),
       rows: g.rows.map((r) => ({ label: r.label, cells: r.cells.map((cell) => ({ text: cell.value, node: <Value value={cell.value} differs={cell.differs} /> })) })),
     })),
   ];
@@ -274,7 +278,8 @@ function comparisonModel(cards: PlanCardModel[], t: Translate): CompareGroup[] {
 /** Comparativa completa: tabla con columnas por plan en escritorio y grupos desplegables en el móvil. */
 function PlanComparisonTable({ cards }: { cards: PlanCardModel[] }) {
   const { t } = useI18n();
-  const groups = comparisonModel(cards, t);
+  const px = usePanelText();
+  const groups = comparisonModel(cards, t, px, usePanelTag());
   const hasCurrent = cards.some((c) => c.isCurrent);
   const th = "px-4 py-3 text-left align-top";
   const td = "px-4 py-3 align-top text-sm text-foreground";
@@ -312,7 +317,7 @@ function PlanComparisonTable({ cards }: { cards: PlanCardModel[] }) {
                       <span aria-hidden="true" className="cx-tone-chip h-2.5 w-2.5 shrink-0 rounded-full" />
                       <span className="text-base font-bold text-foreground">{c.plan.name}</span>
                     </span>
-                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{c.currentLabel ?? pr.audience ?? c.commercialLabel}</span>
+                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{px(c.currentLabel ?? pr.audience ?? c.commercialLabel)}</span>
                   </th>
                 );
               })}

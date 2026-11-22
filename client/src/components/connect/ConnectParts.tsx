@@ -7,6 +7,7 @@
  * Colores solo por significado (`@/lib/panelTones`) o de la marca (`primary`).
  */
 import { useEffect, useState } from "react";
+import { panelTextNow as px, panelTagNow } from "@/i18n/usePanelText";
 import { Link, useLocation } from "wouter";
 import {
   AlertTriangle,
@@ -241,7 +242,7 @@ export function StateBadge({ state, long = false }: { state: ConnectState; long?
   const Icon = meta.icon;
   return (
     <StatusBadge tone={meta.tone} icon={<Icon className={cn("shrink-0", state === "activating" && "animate-spin")} aria-hidden="true" />} className="whitespace-normal text-left">
-      {long ? CONNECT_STATE_LABELS[state] : CONNECT_STATE_SHORT[state]}
+      {px(long ? CONNECT_STATE_LABELS[state] : CONNECT_STATE_SHORT[state])}
     </StatusBadge>
   );
 }
@@ -253,7 +254,7 @@ export function StatePill({ state, className }: { state: ConnectState; className
     <span className={cn("cx-pill inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", className)}>
       <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", `cx-dot-${STATE_TONE[state]}`)} />
       <Icon className={cn("h-3.5 w-3.5 shrink-0 opacity-90", state === "activating" && "motion-safe:animate-spin")} aria-hidden="true" />
-      <span className="min-w-0 break-words">{CONNECT_STATE_SHORT[state]}</span>
+      <span className="min-w-0 break-words">{px(CONNECT_STATE_SHORT[state])}</span>
     </span>
   );
 }
@@ -269,13 +270,13 @@ export function PriceLine({ price, from = false, className }: { price: ConnectPr
   const period = periodLabel(price.kind);
   return (
     <p className={cn("text-sm text-foreground", className)}>
-      {from && <span className="text-muted-foreground">Desde </span>}
-      <strong className="font-semibold">{formatMoney(price.amountCents, price.currency)}</strong>
+      {from && <span className="text-muted-foreground">{px("Desde")} </span>}
+      <strong className="font-semibold">{formatMoney(price.amountCents, price.currency, panelTagNow())}</strong>
       <span className="text-muted-foreground">
-        {period ? ` ${period}` : ""}
+        {period ? ` ${px(period)}` : ""}
         {unitText(price.unit)}
       </span>
-      <span className="block text-xs text-muted-foreground">{taxLabel(price)}</span>
+      <span className="block text-xs text-muted-foreground">{px(taxLabel(price))}</span>
     </p>
   );
 }
@@ -283,14 +284,14 @@ export function PriceLine({ price, from = false, className }: { price: ConnectPr
 /** Precio de la tarjeta («desde» si hay varios). Sin precios publicados: «Precio a consultar». */
 export function Price({ item, className }: { item: Pick<ConnectCatalogItem, "prices">; className?: string }) {
   const h = headlinePrice(item.prices);
-  if (!h) return <p className={cn("text-sm text-muted-foreground", className)}>Precio a consultar</p>;
+  if (!h) return <p className={cn("text-sm text-muted-foreground", className)}>{px("Precio a consultar")}</p>;
   return <PriceLine price={h.price} from={h.from} className={className} />;
 }
 
 /** Todos los precios aprobados, en orden (mensual, anual, pago único…). */
 export function PriceList({ prices }: { prices: ConnectPrice[] }) {
   const sorted = sortPrices(prices);
-  if (sorted.length === 0) return <p className="text-sm text-muted-foreground">Precio a consultar</p>;
+  if (sorted.length === 0) return <p className="text-sm text-muted-foreground">{px("Precio a consultar")}</p>;
   return (
     <ul className="space-y-2">
       {sorted.map((p, i) => (
@@ -315,19 +316,19 @@ export interface ConnectView {
 /** Precio destacado: importe grande, periodicidad e IVA (todo del catálogo). Sin precio: «Precio a consultar». */
 export function BigPrice({ prices, size = "md", showFrom = true, className }: { prices: ConnectPrice[]; size?: "md" | "lg"; showFrom?: boolean; className?: string }) {
   const h = headlinePrice(prices);
-  if (!h) return <p className={cn("text-sm text-muted-foreground", className)}>Precio a consultar</p>;
+  if (!h) return <p className={cn("text-sm text-muted-foreground", className)}>{px("Precio a consultar")}</p>;
   const period = periodLabel(h.price.kind);
   return (
     <div className={cn("min-w-0", className)}>
       <p className="text-foreground">
-        {h.from && showFrom && <span className="text-sm text-muted-foreground">Desde </span>}
-        <strong className={cn("font-bold tracking-tight", size === "lg" ? "text-4xl" : "text-xl")}>{formatMoney(h.price.amountCents, h.price.currency)}</strong>
+        {h.from && showFrom && <span className="text-sm text-muted-foreground">{px("Desde")} </span>}
+        <strong className={cn("font-bold tracking-tight", size === "lg" ? "text-4xl" : "text-xl")}>{formatMoney(h.price.amountCents, h.price.currency, panelTagNow())}</strong>
         <span className={cn("text-muted-foreground", size === "lg" ? "text-lg" : "text-sm")}>
-          {period ? ` ${period}` : ""}
+          {period ? ` ${px(period)}` : ""}
           {unitText(h.price.unit)}
         </span>
       </p>
-      <p className="text-xs text-muted-foreground">{taxLabel(h.price)}</p>
+      <p className="text-xs text-muted-foreground">{px(taxLabel(h.price))}</p>
     </div>
   );
 }
@@ -344,7 +345,7 @@ export function ActivationLine({ activation, className }: { activation: ConnectA
   return (
     <p className={cn("flex items-center gap-1.5 text-xs font-medium", tone, className)}>
       <Icon className={cn("h-3.5 w-3.5 shrink-0", s === "processing" && "motion-safe:animate-spin")} aria-hidden="true" />
-      Activación: {activationLabel(activation)}
+      {px("Activación:")} {px(activationLabel(activation))}
     </p>
   );
 }
@@ -370,16 +371,16 @@ export function ActivationActionsBar({ productKey, activation, canRetry, classNa
   if (!showRetry && !a.nextRetry && !a.reactivate) return null;
   return (
     <div className={cn("flex flex-wrap items-center gap-2 text-xs", className)}>
-      {a.nextRetry && <span className="text-muted-foreground">{a.nextRetry}</span>}
+      {a.nextRetry && <span className="text-muted-foreground">{px(a.nextRetry)}</span>}
       {showRetry && (
         <Button type="button" size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate({ key: productKey })}>
           {retry.isPending ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
-          Reintentar
+          {px("Reintentar")}
         </Button>
       )}
       {a.reactivate && (
         <Button asChild size="sm" variant="outline">
-          <Link href={a.reactivate.href}>{a.reactivate.label}</Link>
+          <Link href={a.reactivate.href}>{px(a.reactivate.label)}</Link>
         </Button>
       )}
     </div>
@@ -464,7 +465,7 @@ export function ProductCard({
           {item.state === "active" ? (
             <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
               <CheckCircle2 className="h-4 w-4 shrink-0 cx-tone-text" aria-hidden="true" />
-              {item.includedIn ? `Incluido en ${item.includedIn.name}` : "Ya forma parte de tu plataforma"}
+              {item.includedIn ? `${px("Incluido en")} ${item.includedIn.name}` : px("Ya forma parte de tu plataforma")}
             </p>
           ) : (
             <BigPrice prices={item.prices} />
@@ -478,13 +479,13 @@ export function ProductCard({
         <div data-card-actions className="relative z-10 flex min-w-0 flex-wrap gap-2">
           {hasAction && (
             <Button type="button" size="sm" className="h-auto min-h-10 min-w-0 max-w-full shrink grow-[999] basis-44 whitespace-normal break-words rounded-xl py-2 text-center font-semibold leading-tight" onClick={run}>
-              {action.label}
+              {px(action.label)}
               <span className="sr-only"> · {item.name}</span>
             </Button>
           )}
           <Button asChild variant="outline" size="sm" className="h-auto min-h-10 max-w-full shrink-0 grow basis-auto rounded-xl bg-transparent px-3 py-2">
             <Link href={href}>
-              Ver ficha <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              {px("Ver ficha")} <ChevronRight className="h-4 w-4" aria-hidden="true" />
               <span className="sr-only"> de {item.name}</span>
             </Link>
           </Button>
@@ -509,7 +510,7 @@ export function AssistedFeatures({ assisted: a, columns = true }: { assisted: No
     <>
         {a.available.length > 0 && (
           <div>
-            <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.availableTitle}</p>
+            <p className="font-semibold text-foreground">{px(ASSISTED_CONTRACT_COPY.availableTitle)}</p>
             <ul className={`mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground${columns ? " sm:columns-2 sm:gap-6" : ""}`}>
               {a.available.map((f) => (
                 <li key={f}>{f}</li>
@@ -519,7 +520,7 @@ export function AssistedFeatures({ assisted: a, columns = true }: { assisted: No
         )}
         {a.inImplementation.length > 0 && (
           <div>
-            <p className="font-semibold text-foreground">{ASSISTED_CONTRACT_COPY.inImplementationTitle}</p>
+            <p className="font-semibold text-foreground">{px(ASSISTED_CONTRACT_COPY.inImplementationTitle)}</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
               {a.inImplementation.map((f) => (
                 <li key={f}>{f}</li>
@@ -538,15 +539,15 @@ function AssistedSummary({ item, planName }: { item: ConnectCatalogItem; planNam
   return (
     <div className="space-y-3 text-sm">
       <p className="text-foreground">
-        <strong>{ASSISTED_CONTRACT_COPY.priceLine(formatMoney(a.monthly.amountCents, a.monthly.currency), a.monthly.taxIncluded)}</strong> {ASSISTED_CONTRACT_COPY.planLine(planName)}
+        <strong>{px(ASSISTED_CONTRACT_COPY.priceLine(formatMoney(a.monthly.amountCents, a.monthly.currency, panelTagNow()), a.monthly.taxIncluded))}</strong> {px(ASSISTED_CONTRACT_COPY.planLine(planName))}
       </p>
       <AssistedFeatures assisted={a} />
       <ol className="list-decimal space-y-0.5 pl-5 text-muted-foreground">
         {ASSISTED_CONTRACT_COPY.steps.map((s) => (
-          <li key={s}>{s}</li>
+          <li key={s}>{px(s)}</li>
         ))}
       </ol>
-      <p className="font-medium text-foreground">{ASSISTED_CONTRACT_COPY.noPayment}</p>
+      <p className="font-medium text-foreground">{px(ASSISTED_CONTRACT_COPY.noPayment)}</p>
     </div>
   );
 }
@@ -568,7 +569,7 @@ export function requestInput(item: Pick<ConnectCatalogItem, "key">, kind: Reques
 }
 /** Texto del botón de envío del diálogo. Puro. */
 export function requestSubmitLabel(kind: RequestKind, pending: boolean): string {
-  return pending ? "Enviando…" : kind === "implementation" ? ASSISTED_CONTRACT_COPY.confirm : kind === "waitlist" ? "Confirmar mi interés" : "Enviar solicitud";
+  return pending ? "Enviando…" : kind === "implementation" ? px(ASSISTED_CONTRACT_COPY.confirm) : kind === "waitlist" ? "Confirmar mi interés" : "Enviar solicitud";
 }
 
 /** Confirmación tras enviar (lo que ha pasado de verdad: solicitud del CRM o incidencia de soporte). */
@@ -581,7 +582,7 @@ export function RequestDone({ kind, done }: { kind: RequestKind; done: { via: "l
   const replyTo = done.assisted ? (done.email ? <> Responderemos a la empresa en <strong>{done.email}</strong>.</> : null) : <> Te responderemos en <strong>{done.email}</strong>.</>;
   return (
     <div role="status" className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm text-foreground">
-      {kind === "implementation" && <p className="mb-1 font-semibold">{ongoing ? "Esta contratación ya está en curso" : ASSISTED_CONTRACT_COPY.done}</p>}
+      {kind === "implementation" && <p className="mb-1 font-semibold">{ongoing ? px("Esta contratación ya está en curso") : px(ASSISTED_CONTRACT_COPY.done)}</p>}
       {done.via === "lead" ? (
         <p>
           {ongoing
@@ -629,7 +630,7 @@ export function RequestDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className={REQUEST_DIALOG_CLASS}>
         <DialogHeader>
-          <DialogTitle>{assisted ? ASSISTED_CONTRACT_COPY.title(item.name) : waitlist ? `Me interesa ${item.name}` : kind === "contact" ? `Contactar sobre ${item.name}` : `Solicitar información de ${item.name}`}</DialogTitle>
+          <DialogTitle>{px(assisted ? ASSISTED_CONTRACT_COPY.title(item.name) : waitlist ? `Me interesa ${item.name}` : kind === "contact" ? `Contactar sobre ${item.name}` : `Solicitar información de ${item.name}`)}</DialogTitle>
           <DialogDescription>
             {assisted
               ? ASSISTED_CONTRACT_COPY.intro

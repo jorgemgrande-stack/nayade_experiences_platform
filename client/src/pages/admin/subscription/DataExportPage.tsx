@@ -13,6 +13,7 @@ import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { trpc } from "@/lib/trpc";
 import { useI18n } from "@/i18n/I18nProvider";
+import { usePanelText } from "@/i18n/usePanelText";
 import { exportAccountNotice } from "@shared/subscriptionRecovery";
 import type { Formatters } from "@shared/i18n/core";
 
@@ -20,6 +21,7 @@ const fmtSize = (f: Formatters, b: number) => (b >= 1048576 ? `${f.number(b / 10
 
 /** Aviso según el estado de la cuenta (la exportación sigue disponible en solo lectura y suspendida), con quién exporta. */
 function AccountNotice({ canExport }: { canExport: boolean }) {
+  const px = usePanelText();
   const sub = usePanelSubscription();
   const d = sub.data;
   if (!d || d.licensing !== "capabilities") return null;
@@ -29,7 +31,7 @@ function AccountNotice({ canExport }: { canExport: boolean }) {
   return (
     <div className="rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 p-4 flex gap-3" role="status">
       <Info className="w-5 h-5 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" aria-hidden="true" />
-      <p className="text-sm text-amber-900 dark:text-amber-100">{text}</p>
+      <p className="text-sm text-amber-900 dark:text-amber-100">{px(text)}</p>
     </div>
   );
 }

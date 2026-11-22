@@ -184,7 +184,7 @@ export function taxLabel(p: Pick<ConnectPrice, "taxIncluded" | "taxRateBp">): st
  * miles hasta las cinco cifras («1899,00 €»). Mismo importe, mismos céntimos y misma moneda: solo cambia la agrupación.
  * Lo usan el marketplace y los importes de los planes (`planMoney` es este mismo).
  */
-export const formatMoney = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" } as Intl.NumberFormatOptions).format(cents / 100);
+export const formatMoney = (cents: number, currency: string, tag = "es-ES") => new Intl.NumberFormat(tag, { style: "currency", currency, useGrouping: "always" } as Intl.NumberFormatOptions).format(cents / 100);
 
 /** Precios en orden de lectura: mensual, anual, pago único, alta; los desconocidos al final. */
 export function sortPrices(prices: ConnectPrice[]): ConnectPrice[] {
