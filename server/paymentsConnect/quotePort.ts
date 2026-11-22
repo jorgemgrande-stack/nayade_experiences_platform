@@ -5,7 +5,7 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { invoices, quotes, leads } from "../../drizzle/schema";
-import { getDb } from "../db";
+import { getDb, logActivity } from "../db";
 import type { QuoteInfo, QuotePort } from "./service";
 
 export const STRIPE_SYSTEM_ACTOR = "Sistema (Stripe)";
@@ -32,6 +32,15 @@ export function realQuotePort(): QuotePort {
       return info;
     },
     async markPaid(quoteId, reference) {
+      // Un presupuesto que ya estaba pagado (en efectivo, por transferencia, por Redsys o por otra sesión de Stripe) NO se
+      // vuelve a facturar: el cargo de Stripe es un cobro duplicado y queda trazado en la ficha para su reembolso manual.
+      const dbPaid = await getDb();
+      if (!dbPaid) throw new Error("Base de datos no disponible");
+      const [current] = await dbPaid.select({ paidAt: quotes.paidAt }).from(quotes).where(eq(quotes.id, quoteId)).limit(1);
+      if (current?.paidAt) {
+        await logActivity("quote", quoteId, "duplicate_payment_detected", 0, STRIPE_SYSTEM_ACTOR, { reference, message: "Cobro de Stripe sobre un presupuesto ya pagado: sin nueva factura; revisar el reembolso" }).catch(() => undefined);
+        return { alreadyPaid: true as const };
+      }
       // Import tardío: crm.ts es enorme y arrastra medio servidor
       const { crmRouter } = await import("../routers/crm");
       const caller = crmRouter.createCaller({

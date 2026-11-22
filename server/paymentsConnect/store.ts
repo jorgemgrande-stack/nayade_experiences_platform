@@ -74,6 +74,8 @@ export interface PaymentStore {
   reclaimFailedEvent(eventId: string): Promise<boolean>;
   insertCheckout(c: Omit<CheckoutRow, "status" | "paidAt" | "paymentIntentId">): Promise<void>;
   getCheckout(sessionId: string): Promise<CheckoutRow | null>;
+  /** Todas las sesiones de pago creadas para un presupuesto (cualquier estado), de la más antigua a la más reciente. */
+  listQuoteCheckouts(quoteId: number): Promise<CheckoutRow[]>;
   /** pending → paid de forma atómica. `true` solo para la llamada que hace el cambio. */
   markCheckoutPaid(sessionId: string, paymentIntentId: string | null, now: number): Promise<boolean>;
   /** Vuelve a «pending» una sesión marcada «paid» cuyo efecto no llegó a aplicarse (para que el reintento de Stripe actúe). */
@@ -233,6 +235,15 @@ export function mysqlPaymentStore(): PaymentStore {
         return r[0] ? toCheckout(r[0]) : null;
       } catch (e) {
         if (e instanceof PaymentsSchemaMissing) return null;
+        throw e;
+      }
+    },
+    async listQuoteCheckouts(quoteId) {
+      try {
+        const r = await rows(sql`SELECT * FROM payment_checkouts WHERE quote_id=${quoteId} AND kind='quote' ORDER BY created_at, session_id`);
+        return r.map(toCheckout);
+      } catch (e) {
+        if (e instanceof PaymentsSchemaMissing) return [];
         throw e;
       }
     },

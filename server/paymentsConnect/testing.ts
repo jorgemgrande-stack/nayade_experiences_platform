@@ -65,6 +65,9 @@ export class MemoryPaymentStore implements PaymentStore {
   async getCheckout(id: string) {
     return this.checkouts.get(id) ?? null;
   }
+  async listQuoteCheckouts(quoteId: number) {
+    return Array.from(this.checkouts.values()).filter((c) => c.kind === "quote" && c.quoteId === quoteId).sort((a, b) => a.createdAt - b.createdAt);
+  }
   async markCheckoutPaid(id: string, pi: string | null, now: number) {
     const c = this.checkouts.get(id);
     if (!c || c.status !== "pending") return false;
@@ -110,6 +113,16 @@ export class FakeConnectGateway implements ConnectGateway {
     const id = `cs_test_${++this.n}`;
     return { id, url: `https://checkout.stripe.test/c/pay/${id}` };
   }
+  /** Sesiones cerradas por el servidor y sesiones que el doble considera ya pagadas (no se pueden cerrar). */
+  expired: string[] = [];
+  completedSessions = new Set<string>();
+  async expireCheckoutSession(p: { accountId: string; sessionId: string }) {
+    this.calls.push(`expireCheckoutSession:${p.sessionId}`);
+    if (this.completedSessions.has(p.sessionId)) return "completed" as const;
+    if (this.expired.includes(p.sessionId)) return "closed" as const;
+    this.expired.push(p.sessionId);
+    return "expired" as const;
+  }
 }
 
 export class FakeQuotes implements QuotePort {
@@ -119,12 +132,19 @@ export class FakeQuotes implements QuotePort {
   async byToken(token: string) {
     return token === this.quote.token ? this.quote : null;
   }
+  duplicates: Array<{ quoteId: number; reference: string }> = [];
   async markPaid(quoteId: number, reference: string) {
     if (this.failNext) {
       this.failNext = false;
       throw new Error("fallo al aplicar");
     }
+    // Como el puerto real: un presupuesto ya cobrado (por otro medio o por otra sesión) no se vuelve a aplicar
+    if (this.quote.paidAt) {
+      this.duplicates.push({ quoteId, reference });
+      return { alreadyPaid: true as const };
+    }
     this.paid.push({ quoteId, reference });
+    this.quote.paidAt = new Date();
   }
 }
 

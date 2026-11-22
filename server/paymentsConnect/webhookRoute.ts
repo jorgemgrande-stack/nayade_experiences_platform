@@ -84,7 +84,7 @@ export function connectWebhookHandler(d: ConnectWebhookDeps) {
       opsLog("error", "StripeConnectWebhook", "apply_failed", { eventId: ev.id, type: ev.type, tenantId, error: e instanceof Error ? e.name : "error" });
       return void res.status(500).json({ error: "apply_failed" });
     }
-    if (outcome === "isolated" || outcome === "amount_mismatch") opsLog("warn", "StripeConnectWebhook", outcome, { eventId: ev.id, type: ev.type, tenantId });
+    if (outcome === "isolated" || outcome === "amount_mismatch" || outcome === "duplicate_payment") opsLog("warn", "StripeConnectWebhook", outcome, { eventId: ev.id, type: ev.type, tenantId });
     res.status(200).json({ received: true, outcome });
   };
 }

@@ -37,7 +37,7 @@ export interface QuoteInfo {
 export interface QuotePort {
   byToken(token: string): Promise<QuoteInfo | null>;
   /** Marca el presupuesto como pagado con la lógica de siempre (factura, reserva, inscripción…). Idempotente. */
-  markPaid(quoteId: number, reference: string): Promise<void>;
+  markPaid(quoteId: number, reference: string): Promise<void | { alreadyPaid: true }>;
 }
 
 /** Pedidos de la tienda web: aplica el resultado de un pago con EL MISMO tratamiento que Redsys (reservas, factura, stock…). */
@@ -137,10 +137,21 @@ export async function startQuoteCheckout(
   const amountCents = eurosToCents(quote.total);
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new PaymentsError("bad_amount", "El presupuesto tiene un importe no válido");
   const currency = quote.currency.toLowerCase();
-  const window = Math.floor(now / (30 * 60_000));
+  // Un presupuesto no puede tener DOS sesiones abiertas: con la clave por ventana de tiempo, una segunda sesión (otra
+  // pestaña, otra ventana de 30 min) dejaba la primera pagable 24 h y el cliente podía pagar dos veces. Antes de abrir una
+  // nueva se cierran las anteriores; si alguna ya está pagada (o pagándose), no se abre otra.
+  const previous = await d.store.listQuoteCheckouts(quote.id);
+  for (const c of previous) {
+    if (c.status === "paid") throw new PaymentsError("quote_unavailable", "Este presupuesto ya tiene un pago registrado");
+    if (c.status !== "pending") continue;
+    const r = await d.gateway.expireCheckoutSession({ accountId: account.accountId, sessionId: c.sessionId });
+    if (r === "completed") throw new PaymentsError("quote_unavailable", "Este presupuesto ya tiene un pago en curso: espera a que se confirme");
+    await d.store.setCheckoutStatus(c.sessionId, "expired");
+  }
   const session = await d.gateway.createCheckoutSession({
     accountId: account.accountId,
-    idempotencyKey: `co-${d.tenantId}-${quote.id}-${amountCents}-${window}`,
+    // La clave cambia con cada sesión anterior: dos clics a la vez comparten sesión; un intento nuevo, no
+    idempotencyKey: `co-${d.tenantId}-${quote.id}-${amountCents}-${previous.length}`,
     amountCents,
     currency,
     description: quote.title ?? `Presupuesto ${quote.id}`,
@@ -206,7 +217,8 @@ export interface ConnectEvent {
   data: { object: Record<string, any> };
 }
 
-export type EventOutcome = "applied" | "duplicate" | "ignored" | "isolated" | "mode_mismatch" | "failed" | "amount_mismatch";
+/** «duplicate_payment»: se cobró una sesión de un presupuesto que YA estaba pagado. No se factura de nuevo: queda para reembolso manual. */
+export type EventOutcome = "applied" | "duplicate" | "ignored" | "isolated" | "mode_mismatch" | "failed" | "amount_mismatch" | "duplicate_payment";
 
 /** Empresa a la que el emisor dice que pertenece el evento (metadato que pusimos nosotros). Se contrasta luego con su base. */
 export function claimedTenantId(ev: ConnectEvent): string | null {
@@ -257,6 +269,19 @@ export async function handleConnectEvent(d: PaymentsDeps, ev: ConnectEvent): Pro
   }
 }
 
+/** Cierra, sin fallar nunca, las sesiones aún abiertas del presupuesto distintas de la pagada (best effort). */
+async function closeOtherQuoteSessions(d: PaymentsDeps, accountId: string, quoteId: number, paidSessionId: string): Promise<void> {
+  try {
+    for (const c of await d.store.listQuoteCheckouts(quoteId)) {
+      if (c.sessionId === paidSessionId || c.status !== "pending") continue;
+      const r = await d.gateway.expireCheckoutSession({ accountId, sessionId: c.sessionId });
+      if (r !== "completed") await d.store.setCheckoutStatus(c.sessionId, "expired");
+    }
+  } catch {
+    /* el pago ya está aplicado: un fallo al cerrar otras sesiones no lo deshace (se reintenta al abrir otra o al cobrar) */
+  }
+}
+
 async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promise<EventOutcome> {
   const o = ev.data.object;
   if (ev.type === "account.application.deauthorized") {
@@ -295,7 +320,12 @@ async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promi
       if (!checkout.merchantOrder) throw new PaymentsError("quote_unavailable", "Sesión de pedido sin referencia");
       await d.shop.applyPaid(checkout.merchantOrder, { amountCents: checkout.amountCents, sessionId, paymentIntent: pi });
     } else {
-      await d.quotes.markPaid(checkout.quoteId!, `stripe:${pi ?? sessionId}`);
+      const r = await d.quotes.markPaid(checkout.quoteId!, `stripe:${pi ?? sessionId}`);
+      // Se cobró una sesión de un presupuesto que ya estaba pagado: no se factura de nuevo (la factura ya existe) y el
+      // cargo queda trazado como «duplicate_payment» (evento + ficha del presupuesto) para su reembolso manual
+      if (r && r.alreadyPaid) return "duplicate_payment";
+      // Presupuesto pagado: se cierran sus otras sesiones abiertas para que no puedan cobrarse
+      await closeOtherQuoteSessions(d, checkout.accountId, checkout.quoteId!, sessionId);
     }
   } catch (e) {
     await d.store.revertCheckoutPaid(sessionId).catch(() => undefined);
