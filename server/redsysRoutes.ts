@@ -24,7 +24,10 @@ import { invoiceClientForQuote } from "./invoiceClient";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
 import { getBusinessEmail } from "./config";
 import { brandName, brandSetting } from "./tenantBrand";
-import { generateDocumentNumber } from "./documentNumbers";
+import { generateDocumentNumber, ensureDocumentCounter, generateDocumentNumberInTx } from "./documentNumbers";
+
+/** El presupuesto ya tiene factura (la emitió otro camino a la vez): no se emite otra. */
+class QuoteAlreadyInvoiced extends Error {}
 import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
@@ -430,7 +433,6 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
           if (quote && !quote.paidAt) {
             const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
             const now = new Date();
-            const invoiceNumber = await generateDocumentNumber("factura", "redsys:ipn", "system");
             const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[]) ?? [];
             // La factura es lo cobrado: el descuento del presupuesto reduce base e IVA de cada tipo
             const chargedRedsys = (updatedReservation.amountPaid ?? 0) > 0 ? Number(updatedReservation.amountPaid) / 100 : Number(quote.total);
@@ -447,48 +449,62 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
 
             // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
             const billToRedsys = await invoiceClientForQuote(_db, quote, { name: lead?.name ?? updatedReservation.customerName, email: lead?.email ?? updatedReservation.customerEmail, phone: lead?.phone ?? updatedReservation.customerPhone });
-            const [invResRedsys] = await _db.insert(invoices).values({
-              issuerSnapshot: await issuerSnapshotForNewInvoice(),
-              invoiceNumber,
-              quoteId: quote.id,
-              reservationId: updatedReservation.id,
-              ...billToRedsys,
-              itemsJson: items as any,
-              subtotal: String(subtotal),
-              discount: String(amountsRedsys.discount),
-              discountReason: amountsRedsys.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
-              taxRate: String(taxRateRedsys),
-              taxAmount: String(taxAmount),
-              taxBreakdown: bdRedsys.length > 0 ? bdRedsys : undefined,
-              total: String(total),
-              status: "cobrada",
-              paymentMethod: payMethod,
-              issuedAt: now,
-              createdAt: now,
-              updatedAt: now,
+            // Número, factura, vínculo con la reserva y estado del presupuesto en UNA transacción con el presupuesto bloqueado:
+            // si otro camino (cobro manual, Stripe, recuperación) ya lo cobró o lo facturó, aquí NO se emite una segunda factura.
+            const issuerSnapRedsys = await issuerSnapshotForNewInvoice();
+            await ensureDocumentCounter("factura");
+            const issuedRedsys = await _db.transaction(async (tx) => {
+              const [lockedQ] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
+              if (!lockedQ || lockedQ.paidAt) return null;
+              const [already] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.quoteId, quote.id)).limit(1);
+              if (already) return null;
+              const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "redsys:ipn", "system", async (candidate) => {
+                const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+                return !!hit;
+              });
+              const [invResRedsys] = await tx.insert(invoices).values({
+                issuerSnapshot: issuerSnapRedsys,
+                invoiceNumber,
+                quoteId: quote.id,
+                reservationId: updatedReservation.id,
+                ...billToRedsys,
+                itemsJson: items as any,
+                subtotal: String(subtotal),
+                discount: String(amountsRedsys.discount),
+                discountReason: amountsRedsys.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
+                taxRate: String(taxRateRedsys),
+                taxAmount: String(taxAmount),
+                taxBreakdown: bdRedsys.length > 0 ? bdRedsys : undefined,
+                total: String(total),
+                status: "cobrada",
+                paymentMethod: payMethod,
+                issuedAt: now,
+                createdAt: now,
+                updatedAt: now,
+              });
+              const invoiceIdRedsys = (invResRedsys as { insertId: number }).insertId;
+              await tx.update(reservations).set({
+                productId: resProdRedsys.productId,
+                extrasJson: resProdRedsys.extrasJson,
+                invoiceId: invoiceIdRedsys,
+                invoiceNumber,
+                updatedAt: Date.now(),
+              } as any).where(eq(reservations.id, updatedReservation.id));
+              await tx.update(quotes).set({
+                status: "aceptado",
+                paidAt: now,
+                redsysOrderId: result.merchantOrder,
+                invoiceNumber,
+                // El enlace se conserva: al volver a abrirlo se ve «pagado» (paidAt impide cobrarlo dos veces)
+                updatedAt: now,
+              }).where(eq(quotes.id, quote.id));
+              if (lead) {
+                await tx.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
+              }
+              return { invoiceNumber, invoiceIdRedsys };
             });
-            const invoiceIdRedsys = (invResRedsys as { insertId: number }).insertId;
-
-            await _db.update(reservations).set({
-              productId: resProdRedsys.productId,
-              extrasJson: resProdRedsys.extrasJson,
-              invoiceId: invoiceIdRedsys,
-              invoiceNumber,
-              updatedAt: Date.now(),
-            } as any).where(eq(reservations.id, updatedReservation.id));
-
-            await _db.update(quotes).set({
-              status: "aceptado",
-              paidAt: now,
-              redsysOrderId: result.merchantOrder,
-              invoiceNumber,
-              // El enlace se conserva: al volver a abrirlo se ve «pagado» (paidAt impide cobrarlo dos veces)
-              updatedAt: now,
-            }).where(eq(quotes.id, quote.id));
-
-            if (lead) {
-              await _db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
-            }
+            if (!issuedRedsys) throw new QuoteAlreadyInvoiced();
+            const { invoiceNumber } = issuedRedsys;
 
             console.log(`[Redsys IPN] Presupuesto ${quote.quoteNumber} marcado como PAGADO. Factura: ${invoiceNumber}`);
 
@@ -550,7 +566,8 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
             });
           }
         } catch (e) {
-          console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
+          if (e instanceof QuoteAlreadyInvoiced) console.warn("[Redsys IPN] El presupuesto ya estaba cobrado o facturado por otro camino: no se emite una segunda factura (revisar si hay cobro duplicado).");
+          else console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
         }
       }
     }
@@ -1243,7 +1260,6 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
         try {
           const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
           const now = new Date();
-          const invoiceNumber = await generateDocumentNumber("factura", "recovery:admin", "system");
           const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[]) ?? [];
           // La factura es lo cobrado: el descuento del presupuesto reduce base e IVA de cada tipo
           const [paidNow] = await _db.select({ amountPaid: reservations.amountPaid }).from(reservations).where(eq(reservations.id, primary.id)).limit(1);
@@ -1256,47 +1272,54 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
 
           // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
           const billTo = await invoiceClientForQuote(_db, quote, { name: lead?.name ?? primary.customerName, email: lead?.email ?? primary.customerEmail ?? "", phone: lead?.phone ?? primary.customerPhone });
-          const [invRes] = await _db.insert(invoices).values({
-            issuerSnapshot: await issuerSnapshotForNewInvoice(),
-            invoiceNumber,
-            quoteId: quote.id,
-            reservationId: primary.id,
-            ...billTo,
-            itemsJson: items as any,
-            subtotal: String(subtotal),
-            discount: String(amounts.discount),
-            discountReason: amounts.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
-            taxRate: String(taxRate),
-            taxAmount: String(taxAmount),
-            taxBreakdown: bd.length > 0 ? bd : undefined,
-            total: String(total),
-            status: "cobrada",
-            paymentMethod: "tarjeta_redsys",
-            issuedAt: now,
-            createdAt: now,
-            updatedAt: now,
+          const issuerSnapRec = await issuerSnapshotForNewInvoice();
+          await ensureDocumentCounter("factura");
+          const issuedRec = await _db.transaction(async (tx) => {
+            const [lockedQ] = await tx.select().from(quotes).where(eq(quotes.id, quote.id)).for("update");
+            if (!lockedQ || lockedQ.paidAt) return null;
+            const [already] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.quoteId, quote.id)).limit(1);
+            if (already) return null;
+            const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "recovery:admin", "system", async (candidate) => {
+              const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+              return !!hit;
+            });
+            const [invRes] = await tx.insert(invoices).values({
+              issuerSnapshot: issuerSnapRec,
+              invoiceNumber,
+              quoteId: quote.id,
+              reservationId: primary.id,
+              ...billTo,
+              itemsJson: items as any,
+              subtotal: String(subtotal),
+              discount: String(amounts.discount),
+              discountReason: amounts.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
+              taxRate: String(taxRate),
+              taxAmount: String(taxAmount),
+              taxBreakdown: bd.length > 0 ? bd : undefined,
+              total: String(total),
+              status: "cobrada",
+              paymentMethod: "tarjeta_redsys",
+              issuedAt: now,
+              createdAt: now,
+              updatedAt: now,
+            });
+            const invoiceId = (invRes as { insertId: number }).insertId;
+            await tx.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, primary.id));
+            await tx.update(quotes).set({
+              status: "aceptado",
+              paidAt: now,
+              redsysOrderId: merchantOrder,
+              invoiceNumber,
+              // El enlace se conserva: al volver a abrirlo se ve «pagado» (paidAt impide cobrarlo dos veces)
+              updatedAt: now,
+            }).where(eq(quotes.id, quote.id));
+            if (lead) {
+              await tx.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
+            }
+            return { invoiceNumber, invoiceId };
           });
-          const invoiceId = (invRes as { insertId: number }).insertId;
-
-          await _db.update(reservations).set({
-            invoiceId,
-            invoiceNumber,
-            updatedAt: Date.now(),
-          } as any).where(eq(reservations.id, primary.id));
-
-          await _db.update(quotes).set({
-            status: "aceptado",
-            paidAt: now,
-            redsysOrderId: merchantOrder,
-            invoiceNumber,
-            // El enlace se conserva: al volver a abrirlo se ve «pagado» (paidAt impide cobrarlo dos veces)
-            updatedAt: now,
-          }).where(eq(quotes.id, quote.id));
-
-          if (lead) {
-            await _db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now })
-              .where(eq(leads.id, lead.id));
-          }
+          if (!issuedRec) throw new QuoteAlreadyInvoiced();
+          const { invoiceNumber, invoiceId } = issuedRec;
 
           log.push(`? Factura creada: ${invoiceNumber}`);
           log.push(`? Presupuesto ${quote.quoteNumber} marcado aceptado/pagado`);
@@ -1336,7 +1359,8 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
             log.push(`? Email de confirmación enviado a ${clientEmail}`);
           }
         } catch (e: any) {
-          log.push(`? Error en flujo presupuesto: ${e.message}`);
+          if (e instanceof QuoteAlreadyInvoiced) log.push("?? El presupuesto ya estaba cobrado o facturado por otro camino: no se emite una segunda factura");
+          else log.push(`? Error en flujo presupuesto: ${e.message}`);
         }
       }
     }

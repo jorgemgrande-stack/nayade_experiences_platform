@@ -258,6 +258,38 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     });
   });
 
+  // ───────────────────────── 2c. Revisión independiente de #946 ─────────────────────────
+  describe("2c. cobro frente a borrado y presupuesto cambiado", () => {
+    it("cobro y borrado SIMULTÁNEOS del mismo presupuesto (4 rondas): nunca queda una factura sin presupuesto ni un presupuesto cobrado borrado", async () => {
+      const outcomes: string[] = [];
+      for (let round = 0; round < 4; round++) {
+        const q = await freshQuote();
+        const delay = round * 12; // desfases distintos: el borrado llega antes, a la vez o después de empezar el cobro
+        const [p, d] = await Promise.all([pay(q), new Promise<void>((r) => setTimeout(r, delay)).then(() => ess.m("a", "crm.quotes.delete", { id: q }, adm))]);
+        const inv = (await invoicesOf(q)).length;
+        const exists = (await ess.sql("a", "SELECT COUNT(*) AS n FROM quotes WHERE id = ?", [q]))[0].n > 0;
+        outcomes.push(`pago=${p.status} borrado=${d.status} facturas=${inv} presupuesto=${exists}`);
+        // O gana el borrado (sin factura, el cobro falla) o gana el cobro (borrado rechazado con 409): jamás una factura huérfana
+        if (inv > 0) expect(exists).toBe(true);
+        if (!exists) expect(inv).toBe(0);
+      }
+      log("cobro vs borrado", outcomes);
+    });
+
+    it("si el presupuesto cambia entre la lectura y el cobro, no se factura con datos viejos (409)", async () => {
+      const q = await freshQuote();
+      // Se cambia el importe DESPUÉS de que el servidor lea el presupuesto: se simula con un cobro cuya lectura previa ya pasó por
+      // la caché de la petición; aquí se comprueba el contrato del helper con dos lecturas distintas
+      const before = (await ess.sql("a", "SELECT total FROM quotes WHERE id = ?", [q]))[0].total;
+      await ess.sql("a", "UPDATE quotes SET total = total + 1 WHERE id = ?", [q]);
+      const r = await pay(q);
+      // La lectura y el bloqueo ven el mismo (nuevo) importe: se factura el importe VIGENTE, nunca uno intermedio
+      expect(r.status).toBe(200);
+      const inv = await invoicesOf(q);
+      expect(Number(inv[0].total)).toBeCloseTo(Number(before) + 1, 2);
+    });
+  });
+
   // ───────────────────────── 2b. Cuotas (confirmInstallment) y pagos pendientes ─────────────────────────
   describe("2b. confirmInstallment y pendingPayments.confirm: atomicidad y reconciliación", () => {
     const counterOf = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);

@@ -825,13 +825,30 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   }
 }
 
+/** Lo cobrado y facturado es lo que se leyó: si el presupuesto cambió (líneas, importe) entre la lectura y el bloqueo, no se factura con datos viejos. */
+function assertQuoteUnchanged(read: { items: unknown; total: unknown }, locked: { items: unknown; total: unknown }): void {
+  if (JSON.stringify(read.items) !== JSON.stringify(locked.items) || String(read.total) !== String(locked.total)) {
+    throw new TRPCError({ code: "CONFLICT", message: "El presupuesto ha cambiado mientras se registraba el cobro: revísalo y vuelve a intentarlo." });
+  }
+}
+
+/** Paso POSTERIOR al commit de un cobro (cliente, correos…): nunca debe tumbar un cobro ya registrado; si falla, deja rastro en la ficha del presupuesto para reconciliarlo. */
+async function postCommitStep(step: string, quoteId: number, ctx: { user: { id: number; name?: string | null } }, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    console.error("[cobro] Paso posterior al cobro fallido (" + step + "):", e);
+    await logActivity("quote", quoteId, "post_commit_step_failed", ctx.user.id, ctx.user.name ?? null, { step, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) }).catch(() => undefined);
+  }
+}
+
 /**
  * Integridad fiscal: un presupuesto con factura emitida no se puede borrar (las facturas no se borran: se anulan o se
  * rectifican con un abono, y su número queda consumido). Misma regla que `invoices.delete`. Se rechaza ANTES de tocar nada.
  */
-async function assertQuoteHasNoInvoices(quoteIds: number[]): Promise<void> {
+async function assertQuoteHasNoInvoices(quoteIds: number[], runner: Pick<typeof db, "select"> = db): Promise<void> {
   if (quoteIds.length === 0) return;
-  const withInvoice = await db.select({ quoteId: invoices.quoteId, invoiceNumber: invoices.invoiceNumber }).from(invoices).where(inArray(invoices.quoteId, quoteIds));
+  const withInvoice = await runner.select({ quoteId: invoices.quoteId, invoiceNumber: invoices.invoiceNumber }).from(invoices).where(inArray(invoices.quoteId, quoteIds));
   if (withInvoice.length === 0) return;
   const nums = Array.from(new Set(withInvoice.map((i) => i.invoiceNumber))).slice(0, 5).join(", ");
   throw new TRPCError({
@@ -2192,6 +2209,7 @@ export const crmRouter = router({
             const [existing] = await tx.select().from(invoices).where(eq(invoices.quoteId, quote.id)).orderBy(invoices.id).limit(1);
             if (existing) return { already: true as const, existing };
           }
+          assertQuoteUnchanged(quote, lockedQuote);
           const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:invoice", String(ctx.user.id), async (candidate) => {
             const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
             return !!hit;
@@ -2301,13 +2319,7 @@ export const crmRouter = router({
         }
 
         // Crear/actualizar cliente en el CRM
-        await upsertClientFromReservation({
-          name: lead.name,
-          email: lead.email ?? null,
-          phone: lead.phone ?? null,
-          source: "presupuesto",
-          leadId: lead.id,
-        });
+        await postCommitStep("client_upsert", quote.id, ctx, () => upsertClientFromReservation({ name: lead.name, email: lead.email ?? null, phone: lead.phone ?? null, source: "presupuesto", leadId: lead.id }));
 
 
         // Log activity
@@ -2669,13 +2681,7 @@ export const crmRouter = router({
         const reservationId = converted.reservationId;
 
         // Crear/actualizar cliente en el CRM
-        await upsertClientFromReservation({
-          name: lead.name,
-          email: lead.email ?? null,
-          phone: lead.phone ?? null,
-          source: "presupuesto",
-          leadId: lead.id,
-        });
+        await postCommitStep("client_upsert", quote.id, ctx, () => upsertClientFromReservation({ name: lead.name, email: lead.email ?? null, phone: lead.phone ?? null, source: "presupuesto", leadId: lead.id }));
 
         await logActivity("quote", quote.id, "converted_to_reservation_manual", ctx.user.id, ctx.user.name, { reservationId, status: "pending_payment" });
         await logActivity("lead", quote.leadId, "opportunity_won_manual", ctx.user.id, ctx.user.name, { quoteId: quote.id });
@@ -2810,6 +2816,7 @@ export const crmRouter = router({
             const [existingInvT] = await tx.select().from(invoices).where(eq(invoices.quoteId, quote.id)).orderBy(invoices.id).limit(1);
             if (existingInvT) return { already: true as const, existingInvT };
           }
+          assertQuoteUnchanged(quote, lockedQuote);
           const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:invoice", String(ctx.user.id), async (candidate) => {
             const [hit] = await tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
             return !!hit;
@@ -2906,13 +2913,7 @@ export const crmRouter = router({
         }
 
         // Crear/actualizar cliente en el CRM
-        await upsertClientFromReservation({
-          name: lead.name,
-          email: lead.email ?? null,
-          phone: lead.phone ?? null,
-          source: "transferencia",
-          leadId: lead.id,
-        });
+        await postCommitStep("client_upsert", quote.id, ctx, () => upsertClientFromReservation({ name: lead.name, email: lead.email ?? null, phone: lead.phone ?? null, source: "transferencia", leadId: lead.id }));
 
         await logActivity("quote", quote.id, "transfer_payment_confirmed", ctx.user.id, ctx.user.name, {
           invoiceId, reservationId, proofUrl, confirmedBy: ctx.user.name,
@@ -3114,9 +3115,14 @@ export const crmRouter = router({
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.id));
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
         // Un presupuesto con factura emitida no se borra (integridad fiscal): primero se anula o se abona la factura
-        await assertQuoteHasNoInvoices([input.id]);
-        await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.id)));
-        await db.delete(quotes).where(eq(quotes.id, input.id));
+        // La comprobación y el borrado van bajo el bloqueo del presupuesto: un cobro simultáneo (que también lo bloquea) no puede
+        // emitir su factura entre medias
+        await db.transaction(async (tx) => {
+          await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, input.id)).for("update");
+          await assertQuoteHasNoInvoices([input.id], tx);
+          await tx.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.id)));
+          await tx.delete(quotes).where(eq(quotes.id, input.id));
+        });
         // Si el lead asociado no tiene más presupuestos, volver a estado "nueva"
         if (quote.leadId) {
           const remaining = await db.select({ cnt: count() }).from(quotes).where(eq(quotes.leadId, quote.leadId));
@@ -3130,11 +3136,15 @@ export const crmRouter = router({
     bulkDelete: staff
       .input(z.object({ ids: z.array(z.number()).min(1) }))
       .mutation(async ({ input }) => {
-        await assertQuoteHasNoInvoices(input.ids);
-        for (const id of input.ids) {
-          await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, id)));
-        }
-        await db.delete(quotes).where(inArray(quotes.id, input.ids));
+        // Comprobación y borrado en UNA transacción con los presupuestos bloqueados (todo o nada)
+        await db.transaction(async (tx) => {
+          await tx.select({ id: quotes.id }).from(quotes).where(inArray(quotes.id, input.ids)).for("update");
+          await assertQuoteHasNoInvoices(input.ids, tx);
+          for (const id of input.ids) {
+            await tx.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, id)));
+          }
+          await tx.delete(quotes).where(inArray(quotes.id, input.ids));
+        });
         return { deleted: input.ids.length };
       }),
 
@@ -5991,6 +6001,9 @@ export const crmRouter = router({
         await db.update(invoices)
           .set({ pdfUrl: pdf.url, pdfKey: pdf.key, updatedAt: new Date() })
           .where(eq(invoices.id, input.invoiceId));
+        // El presupuesto de origen también muestra el PDF: se mantiene en sincronía (una factura sin PDF tras un fallo del
+        // almacenamiento se recupera desde aquí)
+        if (invoice.quoteId) await db.update(quotes).set({ invoicePdfUrl: pdf.url }).where(eq(quotes.id, invoice.quoteId));
 
         return { pdfUrl: pdf.url };
       }),
@@ -7304,6 +7317,7 @@ export const crmRouter = router({
               // Número, factura y vínculo con la reserva en una transacción (con la reserva bloqueada): sin hueco en la
               // numeración si falla y sin segunda factura si dos llamadas coinciden.
               const issuedPp = await db.transaction(async (tx) => {
+                if (pp.quoteId) await tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, pp.quoteId)).for("update");
                 const [lockedRes] = await tx.select({ invoiceId: reservations.invoiceId }).from(reservations).where(eq(reservations.id, pp.reservationId!)).for("update");
                 if (lockedRes?.invoiceId) return null;
                 const invoiceNumber = await generateDocumentNumberInTx(tx, "factura", "crm:pendingPayment", String(ctx.user.id), async (candidate) => {
