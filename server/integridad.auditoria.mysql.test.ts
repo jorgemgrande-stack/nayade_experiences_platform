@@ -146,29 +146,110 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
       for (const r of result) { expect(r.facturas).toBe(1); expect(r.reservas).toBe(1); }
     });
 
-    it("FALLO A MEDIAS: si falla el alta de la reserva, el reintento emite una SEGUNDA factura", async () => {
-      const q = await freshQuote();
+    const counterOf = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
+    const withFailingReservation = async <T>(fn: () => Promise<T>): Promise<T> => {
       await ess.sql("a", "CREATE TRIGGER audit_fail_res BEFORE INSERT ON reservations FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fallo inyectado'");
-      let first: Res;
-      try {
-        first = await pay(q);
-      } finally {
-        await ess.sql("a", "DROP TRIGGER IF EXISTS audit_fail_res");
-      }
+      try { return await fn(); } finally { await ess.sql("a", "DROP TRIGGER IF EXISTS audit_fail_res"); }
+    };
+
+    it("CORREGIDO (F2b): un fallo a medias NO deja factura huérfana ni consume número, y el reintento emite UNA factura", async () => {
+      const q = await freshQuote();
+      const before = await counterOf();
+      const first = await withFailingReservation(() => pay(q));
       const afterFail = await invoicesOf(q);
       const quoteRow = (await ess.sql("a", "SELECT status, paidAt FROM quotes WHERE id = ?", [q]))[0];
-      log("tras el fallo inyectado", { http: first.status, facturas: afterFail, presupuesto: quoteRow });
+      const counterAfterFail = await counterOf();
+      log("tras el fallo inyectado", { http: first.status, facturas: afterFail.length, presupuesto: quoteRow, contador: [before, counterAfterFail] });
+      expect(first.status).not.toBe(200);
+      expect(afterFail.length).toBe(0); // sin factura huérfana
+      expect(quoteRow.paidAt).toBeNull(); // el presupuesto sigue sin cobrar
+      expect(counterAfterFail).toBe(before); // el número no se consumió: sin hueco en la serie
 
       const second = await pay(q);
       const afterRetry = await invoicesOf(q);
       log("tras el reintento", { http: second.status, facturas: afterRetry });
-      // OBSERVADO HOY (hipótesis): 1.º intento falla con una factura huérfana «generada» sin reserva;
-      // el reintento no ve paidAt y emite otra factura → 2 facturas por un solo cobro.
-      // DESPUÉS: transacción única (o idempotencia por restricción única) → siempre exactamente 1 factura.
-      expect(first.status).not.toBe(200);
-      expect(afterFail.length).toBe(1);
       expect(second.status).toBe(200);
-      expect(afterRetry.length).toBe(2);
+      expect(afterRetry.length).toBe(1);
+      expect(await counterOf()).toBe(before + 1);
+      expect(afterRetry[0].invoiceNumber).toMatch(new RegExp("-" + String(before + 1).padStart(4, "0") + "$"));
+    });
+
+    it("numeración: 8 cobros simultáneos de presupuestos distintos dan números únicos y correlativos (sin huecos)", async () => {
+      const qs: number[] = [];
+      for (let i = 0; i < 8; i++) qs.push(await freshQuote());
+      const before = await counterOf();
+      const rs = await Promise.all(qs.map((q) => pay(q)));
+      expect(rs.every((r) => r.status === 200)).toBe(true);
+      const nums = (await ess.sql("a", "SELECT invoiceNumber FROM invoices WHERE quoteId IN (" + qs.join(",") + ")")).map((r: any) => Number(String(r.invoiceNumber).split("-").pop()));
+      nums.sort((x: number, y: number) => x - y);
+      log("números", nums);
+      expect(new Set(nums).size).toBe(8);
+      expect(nums).toEqual(Array.from({ length: 8 }, (_, i) => before + 1 + i));
+    });
+
+    it("OTRAS RUTAS: confirmTransfer ×6 simultáneos → UNA factura y UNA reserva", async () => {
+      const q = await freshQuote();
+      await ess.sql("a", "UPDATE quotes SET transfer_proof_url = 'https://ejemplo.invalid/justificante.pdf' WHERE id = ?", [q]);
+      const rs = await Promise.all(Array.from({ length: 6 }, () => ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm)));
+      log("confirmTransfer", rs.map((r) => r.status));
+      expect(rs.every((r) => r.status === 200)).toBe(true);
+      expect((await invoicesOf(q)).length).toBe(1);
+      const qn = (await ess.sql("a", "SELECT quoteNumber FROM quotes WHERE id = ?", [q]))[0].quoteNumber;
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations WHERE notes LIKE ?", ["%" + qn + "%"]))[0].n)).toBe(1);
+    });
+
+    it("OTRAS RUTAS: confirmTransfer + confirmPayment mezclados y simultáneos → UNA factura", async () => {
+      const q = await freshQuote();
+      await ess.sql("a", "UPDATE quotes SET transfer_proof_url = 'https://ejemplo.invalid/justificante.pdf' WHERE id = ?", [q]);
+      const rs = await Promise.all([
+        pay(q), ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm),
+        pay(q), ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm),
+      ]);
+      expect(rs.every((r) => r.status === 200)).toBe(true);
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("OTRAS RUTAS: fallo a medias en confirmTransfer tampoco deja factura ni consume número", async () => {
+      const q = await freshQuote();
+      await ess.sql("a", "UPDATE quotes SET transfer_proof_url = 'https://ejemplo.invalid/justificante.pdf' WHERE id = ?", [q]);
+      const before = await counterOf();
+      const first = await withFailingReservation(() => ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm));
+      expect(first.status).not.toBe(200);
+      expect((await invoicesOf(q)).length).toBe(0);
+      expect(await counterOf()).toBe(before);
+      const second = await ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm);
+      expect(second.status).toBe(200);
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("OTRAS RUTAS: convertToReservation ×6 simultáneos → UNA reserva", async () => {
+      const q = await freshQuote();
+      const rs = await Promise.all(Array.from({ length: 6 }, () => ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm)));
+      expect(rs.every((r) => r.status === 200)).toBe(true);
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations WHERE quote_id = ? AND status <> 'cancelled'", [q]))[0].n)).toBe(1);
+    });
+
+    it("OTRAS RUTAS: confirmManualPayment ×6 sobre la misma factura → solo UNA pasa a cobrada, el resto se rechaza", async () => {
+      const q = await freshQuote();
+      const paid = ok(await pay(q), "cobro");
+      const rs = await Promise.all(Array.from({ length: 6 }, () => ess.m("a", "crm.invoices.confirmManualPayment", { invoiceId: paid.invoiceId, paymentMethod: "transferencia" }, adm)));
+      const codes = rs.map((r) => r.status).sort();
+      log("confirmManualPayment", codes);
+      expect(codes.filter((c) => c === 200).length).toBe(1);
+      expect(codes.filter((c) => c === 400).length).toBe(5);
+    });
+
+    it("OTRAS RUTAS: pendingPayments.confirm ×6 → un solo cobro y UNA factura para la reserva", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const resId = Number((await ess.sql("a", "SELECT id FROM reservations WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: "Persona Sintética", productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pago pendiente");
+      const pp = Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      const rs = await Promise.all(Array.from({ length: 6 }, () => ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm)));
+      const codes = rs.map((r) => r.status).sort();
+      log("pendingPayments.confirm", codes);
+      expect(codes.filter((c) => c === 200).length).toBe(1);
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE reservationId = ?", [resId]))[0].n)).toBe(1);
     });
   });
 
