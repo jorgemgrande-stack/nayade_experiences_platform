@@ -104,6 +104,7 @@ async function sendEmail({ to, subject, html, category }: { to: string; subject:
 
 // logActivity ahora viene de db.ts (centralizado)
 import { logActivity } from "../db";
+import { keyedLock } from "../_core/studioFormsSubmit";
 import { stripeAvailableForPublic, stripeCheckoutForToken } from "../paymentsConnect/publicApi";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
@@ -810,6 +811,21 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   }
 }
 
+/**
+ * Integridad fiscal: un presupuesto con factura emitida no se puede borrar (las facturas no se borran: se anulan o se
+ * rectifican con un abono, y su número queda consumido). Misma regla que `invoices.delete`. Se rechaza ANTES de tocar nada.
+ */
+async function assertQuoteHasNoInvoices(quoteIds: number[]): Promise<void> {
+  if (quoteIds.length === 0) return;
+  const withInvoice = await db.select({ quoteId: invoices.quoteId, invoiceNumber: invoices.invoiceNumber }).from(invoices).where(inArray(invoices.quoteId, quoteIds));
+  if (withInvoice.length === 0) return;
+  const nums = Array.from(new Set(withInvoice.map((i) => i.invoiceNumber))).slice(0, 5).join(", ");
+  throw new TRPCError({
+    code: "CONFLICT",
+    message: `No se puede borrar: ${withInvoice.length === 1 ? "el presupuesto tiene" : "hay presupuestos con"} factura emitida (${nums}). Las facturas no se borran: anúlala o emite un abono (factura rectificativa).`,
+  });
+}
+
 export const crmRouter = router({
   // --- LEADS -----------------------------------------------------------------
 
@@ -1207,7 +1223,29 @@ export const crmRouter = router({
         const catalogLineIds = new Set<number>();
 
         // -- Fallback: si no hay activitiesJson, buscar por selectedProduct en packs/experiences/legoPacks --
-        if (activities.length === 0) {
+        // -- Solicitud de producto (web): el producto y la modalidad que vio la persona (por id, no por título) --
+        if (activities.length === 0 && lead.experienceId) {
+          const [reqExp] = await db.select().from(experiences).where(eq(experiences.id, lead.experienceId));
+          if (reqExp) {
+            const reqQty = lead.numberOfPersons ?? 1;
+            const reqVariant = lead.variantId ? (await db.select().from(experienceVariants).where(and(eq(experienceVariants.id, lead.variantId), eq(experienceVariants.experienceId, reqExp.id))))[0] : undefined;
+            const reqBase = parseFloat(String(reqExp.basePrice ?? 0));
+            const reqMod = reqVariant ? parseFloat(String(reqVariant.priceModifier ?? "0")) : 0;
+            const reqUnit = !reqVariant ? reqBase : reqVariant.priceType === "percentage" ? reqBase * (1 + reqMod / 100) : reqMod;
+            catalogLineIds.add(reqExp.id);
+            quoteItems.push({
+              description: reqVariant ? `${reqExp.title} — ${reqVariant.name}` : reqExp.title,
+              quantity: reqQty,
+              unitPrice: parseFloat(reqUnit.toFixed(2)),
+              total: parseFloat((reqUnit * reqQty).toFixed(2)),
+              fiscalRegime: reqExp.fiscalRegime === "reav" ? "reav" : "general",
+              taxRate: reqExp.taxRate != null ? parseFloat(String(reqExp.taxRate)) : 21,
+              productId: reqExp.id,
+            });
+          }
+        }
+
+        if (activities.length === 0 && quoteItems.length === 0) {
           const productName = lead.selectedProduct;
           const qty = lead.numberOfPersons ?? 1;
 
@@ -2079,7 +2117,7 @@ export const crmRouter = router({
           cardTerminalOperationId: z.number().optional(), // Vincular operación TPV (tarjeta)
         })
       )
-      .mutation(async ({ input, ctx }) => {
+      .mutation(({ input, ctx }) => keyedLock(`confirmPayment:${input.quoteId}`, async () => {
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
@@ -2517,7 +2555,7 @@ export const crmRouter = router({
         }
 
         return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl, reavExpedientId, reavExpedientNumber };
-      }),
+      })),
 
     // --- ESCENARIO B: Convertir a reserva SIN pago previo (admin manual) ------
     convertToReservation: staff
@@ -3017,9 +3055,9 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.id));
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
-        // Borrar actividad e invoices relacionadas
+        // Un presupuesto con factura emitida no se borra (integridad fiscal): primero se anula o se abona la factura
+        await assertQuoteHasNoInvoices([input.id]);
         await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.id)));
-        await db.delete(invoices).where(eq(invoices.quoteId, input.id));
         await db.delete(quotes).where(eq(quotes.id, input.id));
         // Si el lead asociado no tiene más presupuestos, volver a estado "nueva"
         if (quote.leadId) {
@@ -3034,9 +3072,9 @@ export const crmRouter = router({
     bulkDelete: staff
       .input(z.object({ ids: z.array(z.number()).min(1) }))
       .mutation(async ({ input }) => {
+        await assertQuoteHasNoInvoices(input.ids);
         for (const id of input.ids) {
           await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, id)));
-          await db.delete(invoices).where(eq(invoices.quoteId, id));
         }
         await db.delete(quotes).where(inArray(quotes.id, input.ids));
         return { deleted: input.ids.length };
