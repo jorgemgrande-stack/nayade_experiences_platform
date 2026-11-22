@@ -35,5 +35,17 @@ Frases con concordancia de género o plural («marcado/a», «este/esta {voc.ord
 ## Revisión lingüística nativa (posterior)
 Términos dudosos señalados por los agentes: «Anfrage» (oportunidad/lead), «Leistung» (servicio), «Freigeben» (validar/aprobar), «Einheit»/«Termin»/«Durchführung» (sesión/convocatoria/edición), «Kopf-/Fußbereich», «Geschäftsdaten» frente a «Unternehmensdaten», abreviaturas de columnas («Unterl. ausst.», «Bearb.-Status», «Erinn.»), textos con valor jurídico (desistimiento, condiciones del checkout, exportación de datos), «Mitarbeiter(*in)» frente a «Vertrieb».
 
+## Verificación real en Quantum (22/11/2026, SHA publicado cebf7154)
+Revisado con la sesión de administración de Jorge: menú, Inicio, Anfragen, Angebote, Bestellungen, Konfiguration (Marca y diseño, Integraciones), Weiterbildung, Produkte, Abonnement, y diseño estrecho (400 px, sin desbordes). Persistencia por usuario comprobada (borrada la copia local, el idioma vuelve desde el servidor).
+
+Restos conocidos tras esa revisión:
+- Diálogos de compra y solicitud del marketplace (`PurchaseDialog`, `RequestDialog`): casi enteros en español (textos de cobro, no tocados a propósito).
+- Contenido del catálogo de planes y productos (nombres, resúmenes, ventajas, límites) y lemas editados a mano en la base de datos que no estén en `connectCatalogDe.ts`.
+- Mensajes de error dinámicos o de terceros (Meta, Google Ads, servidor de correo, detalle de la última comprobación HTTPS) y `toast.error(e.message)`.
+- Importes de la cabecera del plan en formato es-ES (p. ej. 1899,00 €).
+- Pantalla de acceso de la empresa en la vista previa de Marca: es contenido de la empresa, no interfaz del panel.
+- Texto jurídico (desistimiento, condiciones, exportación de datos, avisos de pago pendiente): traducido pero SIN revisión jurídica.
+- Prueba con dos usuarios reales en el navegador: no realizada (solo había una sesión); cubierto por `server/uiLocale.test.ts` y la clave de navegador por id de usuario.
+
 ## Lo que NO se ha hecho
-Comprobación visual en navegador (responsive, textos largos) y prueba de dos usuarios reales: ver el informe final para el estado de la publicación a production.
+Revisión lingüística nativa y revisión jurídica de los textos legales en alemán.
