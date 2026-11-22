@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -478,11 +479,9 @@ export default function ReviewsManager() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {
+                    onClick={async () => {
                       if (
-                        confirm(
-                          t("reviewsAdmin.action.confirmDelete")
-                        )
+                        (await confirmAction({ description: t("reviewsAdmin.action.confirmDelete"), destructive: true }))
                       ) {
                         deleteMutation.mutate({ id: review.id });
                       }

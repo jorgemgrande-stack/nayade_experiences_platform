@@ -6,6 +6,7 @@
  * Con Social Token Net Complete (también tokens internos), los miembros muestran su saldo de puntos, lo ganado
  * participando en la comunidad y un enlace a su monedero.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -258,10 +259,10 @@ function MembersTab({ communityId, canEdit }: { communityId: number; canEdit: bo
   const points = trpc.socialNet.memberPoints.useQuery({ communityId }, { enabled: withPoints });
   const pointsOf = useMemo(() => new Map((points.data ?? []).map((p) => [p.memberId, p])), [points.data]);
 
-  const act = (m: MemberRow, action: "approve" | "block" | "unblock" | "remove") => {
+  const act = async (m: MemberRow, action: "approve" | "block" | "unblock" | "remove") => {
     const reason = action === "block" ? window.prompt(`Motivo del bloqueo de ${m.name} (opcional):`) : null;
     if (action === "block" && reason === null) return;
-    if (action === "remove" && !window.confirm(`¿Dar de baja a ${m.name}? Su contenido se conserva.`)) return;
+    if (action === "remove" && !(await confirmAction({ description: `¿Dar de baja a ${m.name}? Su contenido se conserva.`, destructive: true }))) return;
     setSt.mutate({ memberId: m.id, action, reason: reason || null });
   };
 
@@ -537,8 +538,8 @@ export default function CommunityDetail() {
                 <div className="flex gap-2">
                   <Button variant="outline" asChild><a href={`/comunidad/${c.slug}`} target="_blank" rel="noreferrer"><ExternalLink className="mr-1.5 h-4 w-4" aria-hidden="true" />Área de miembros</a></Button>
                   {canEdit && (
-                    <Button variant="outline" disabled={setStatus.isPending} onClick={() => {
-                      if (c.status === "active" && !window.confirm("Al archivarla, los miembros podrán leerla pero no publicar ni comentar. ¿Archivar?")) return;
+                    <Button variant="outline" disabled={setStatus.isPending} onClick={async () => {
+                      if (c.status === "active" && !(await confirmAction({ description: "Al archivarla, los miembros podrán leerla pero no publicar ni comentar. ¿Archivar?", destructive: true }))) return;
                       setStatus.mutate({ id: c.id, status: c.status === "active" ? "archived" : "active" });
                     }}>{c.status === "active" ? "Archivar" : "Reactivar"}</Button>
                   )}

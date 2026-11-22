@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -100,7 +101,7 @@ export default function ExpenseSuppliersManager() {
                     <td className="p-3 text-center">
                       <div className="flex gap-1 justify-center">
                         <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Pencil className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => { if (confirm("¿Eliminar?")) deleteMut.mutate({ id: item.id }); }}>
+                        <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={async () => { if ((await confirmAction({ description: "¿Eliminar?", destructive: true }))) deleteMut.mutate({ id: item.id }); }}>
                           <Trash2 className="w-3 h-3" />
                         </Button>
                       </div>

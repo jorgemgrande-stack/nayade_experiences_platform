@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -178,7 +179,7 @@ export default function BookingsList() {
                         )}
                         {(b.status === "pendiente" || b.status === "confirmado") && (
                           <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:bg-destructive/10"
-                            onClick={() => { if (confirm(t("opsBookings.cancelConfirm"))) updateStatus.mutate({ id: b.id, status: "cancelado" }); }}>
+                            onClick={async () => { if ((await confirmAction({ description: t("opsBookings.cancelConfirm"), destructive: true }))) updateStatus.mutate({ id: b.id, status: "cancelado" }); }}>
                             {t("opsBookings.cancel")}
                           </Button>
                         )}

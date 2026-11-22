@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import FinanceSyncSetupBanner from "@/components/finance/FinanceSyncSetupBanner";
 import { trpc } from "@/lib/trpc";
@@ -592,8 +593,8 @@ export default function BankMovementsManager() {
                           <Button
                             variant="ghost" size="sm"
                             className="text-red-500 hover:text-red-700"
-                            onClick={() => {
-                              if (!confirm(`¿Eliminar importación "${imp.fileName}" y todos sus movimientos?`)) return;
+                            onClick={async () => {
+                              if (!(await confirmAction({ description: `¿Eliminar importación "${imp.fileName}" y todos sus movimientos?`, destructive: true }))) return;
                               deleteImportMut.mutate({ id: imp.id });
                             }}
                           >

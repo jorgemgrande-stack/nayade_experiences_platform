@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -419,7 +420,7 @@ export default function SettlementsManager() {
                   </Button>
                 )}
                 <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50"
-                  onClick={() => { if (confirm("¿Eliminar liquidación?")) deleteMutation.mutate({ id: selected.id }); }}>
+                  onClick={async () => { if ((await confirmAction({ description: "¿Eliminar liquidación?", destructive: true }))) deleteMutation.mutate({ id: selected.id }); }}>
                   <Trash2 className="w-3 h-3 mr-1" />Eliminar
                 </Button>
               </div>

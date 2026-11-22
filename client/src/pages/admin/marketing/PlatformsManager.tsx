@@ -3,6 +3,7 @@
  * v23.2: Productos con PVP/neto/caducidad · Liquidaciones Pendiente/Emitida/Pagada
  * Diseño oscuro tipo CRM · Coherencia total con CuponesManager
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
@@ -580,8 +581,8 @@ export default function PlatformsManager() {
                   platform={p}
                   onEdit={openEditPlatform}
                   onToggle={(id, active) => togglePlatform.mutate({ id, active })}
-                  onDelete={(id) => {
-                    if (confirm("¿Eliminar esta plataforma? Se eliminarán también sus productos.")) {
+                  onDelete={async (id) => {
+                    if ((await confirmAction({ description: "¿Eliminar esta plataforma? Se eliminarán también sus productos.", destructive: true }))) {
                       deletePlatform.mutate({ id });
                     }
                   }}
@@ -759,8 +760,8 @@ export default function PlatformsManager() {
                                           className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors">
                                           <Edit2 className="w-3.5 h-3.5" />
                                         </button>
-                                        <button onClick={() => {
-                                          if (confirm("¿Eliminar este producto?")) deleteProduct.mutate({ id: p.id });
+                                        <button onClick={async () => {
+                                          if ((await confirmAction({ description: "¿Eliminar este producto?", destructive: true }))) deleteProduct.mutate({ id: p.id });
                                         }} className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/50 hover:text-red-400 transition-colors">
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
@@ -893,8 +894,8 @@ export default function PlatformsManager() {
                                           className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors">
                                           <Edit2 className="w-3.5 h-3.5" />
                                         </button>
-                                        <button onClick={() => {
-                                          if (confirm("¿Eliminar esta liquidación?")) deleteSettlement.mutate({ id: s.id });
+                                        <button onClick={async () => {
+                                          if ((await confirmAction({ description: "¿Eliminar esta liquidación?", destructive: true }))) deleteSettlement.mutate({ id: s.id });
                                         }} className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/50 hover:text-red-400 transition-colors">
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>

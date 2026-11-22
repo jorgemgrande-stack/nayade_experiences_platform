@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -169,7 +170,7 @@ export default function LocationsManager() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onClick={() => { if (confirm(t("productsLocations.confirmRemove"))) hardDeleteMut.mutate({ id: loc.id }); }}
+                      onClick={async () => { if ((await confirmAction({ description: t("productsLocations.confirmRemove"), destructive: true }))) hardDeleteMut.mutate({ id: loc.id }); }}
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsLocations.remove")}
                     </DropdownMenuItem>

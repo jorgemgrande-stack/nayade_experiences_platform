@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -572,8 +573,8 @@ export default function CardTerminalBatchesManager() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          if (confirm("¿Eliminar esta remesa? Las operaciones volverán a estado Pendiente.")) {
+                        onClick={async () => {
+                          if ((await confirmAction({ description: "¿Eliminar esta remesa? Las operaciones volverán a estado Pendiente.", destructive: true }))) {
                             deleteMut.mutate({ batchId: selectedId });
                           }
                         }}

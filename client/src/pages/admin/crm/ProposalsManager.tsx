@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import { TONE_BADGE } from "@/lib/panelTones";
 import { Button } from "@/components/ui/button";
@@ -804,7 +805,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                     <option value="rechazado">{t("crmProposals.status.rechazado")}</option>
                     <option value="expirado">{t("crmProposals.status.expirado")}</option>
                   </select>
-                  <button onClick={() => { if (confirm(t("crmProposals.list.bulkDeleteConfirm", { n: selected.size }))) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }} disabled={bulkDeleteMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                  <button onClick={async () => { if ((await confirmAction({ description: t("crmProposals.list.bulkDeleteConfirm", { n: selected.size }), destructive: true }))) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }} disabled={bulkDeleteMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
                     <Trash2 className="w-3.5 h-3.5" /> {t("crmProposals.list.delete")}
                   </button>
                   <button onClick={() => setSelected(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -857,7 +858,7 @@ export default function RestaurantsManager() {
                             <Edit className="w-3.5 h-3.5" /> Nota
                           </button>
                           <button
-                            onClick={() => { if (confirm("¿Eliminar esta reserva?")) deleteBookingMutation.mutate({ bookingId: b.id as number }); }}
+                            onClick={async () => { if ((await confirmAction({ description: "¿Eliminar esta reserva?", destructive: true }))) deleteBookingMutation.mutate({ bookingId: b.id as number }); }}
                             className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg text-xs font-display font-semibold transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1441,8 +1442,8 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
                           className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
                           <Edit className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => {
-                            if (confirm(`¿Eliminar el turno "${shift.name}"? Esta acción no se puede deshacer.`)) {
+                        <button onClick={async () => {
+                            if ((await confirmAction({ description: `¿Eliminar el turno "${shift.name}"? Esta acción no se puede deshacer.`, destructive: true }))) {
                               deleteShiftMutation.mutate({ id: shift.id, restaurantId: restaurant.id });
                             }
                           }}

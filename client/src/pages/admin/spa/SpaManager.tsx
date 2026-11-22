@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -739,7 +740,7 @@ export default function SpaManager() {
                       <Button
                         size="sm" variant="outline"
                         className="text-red-500 hover:text-red-700 ml-auto"
-                        onClick={() => { if (confirm(`¿Eliminar "${t.name}"?`)) deleteMut.mutate({ id: t.id }); }}
+                        onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${t.name}"?`, destructive: true }))) deleteMut.mutate({ id: t.id }); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>

@@ -3,6 +3,7 @@
  * Completamente modular: se monta solo si el producto tiene has_time_slots=true
  * No modifica ningún flujo existente.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { Clock, Plus, Pencil, Trash2, GripVertical, ChevronUp, ChevronDown, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -302,8 +303,8 @@ export default function TimeSlotsPanel({ productId, hasTimeSlots, onToggle }: Pr
                       variant="ghost"
                       size="icon"
                       className="w-6 h-6 text-slate-400 hover:text-red-600"
-                      onClick={() => {
-                        if (confirm("¿Eliminar este horario?")) deleteMutation.mutate({ id: slot.id });
+                      onClick={async () => {
+                        if ((await confirmAction({ description: "¿Eliminar este horario?", destructive: true }))) deleteMutation.mutate({ id: slot.id });
                       }}
                     >
                       <Trash2 className="w-3 h-3" />

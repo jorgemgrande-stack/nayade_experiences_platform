@@ -4,6 +4,7 @@
  * cursos y materiales (cobertura, recursos pendientes con subida de fichero, publicar), reglas por modalidad y demostración.
  * Toda acción sensible pide motivo y queda en el historial de la matrícula. Sin permisos globales de plataforma.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
@@ -152,7 +153,7 @@ function Courses() {
             <h2 className="text-lg font-semibold">{c.title} <Badge variant="secondary">{c.status === "draft" ? t("learningAdmin.courseStatus.draft") : c.status === "published" ? t("learningAdmin.courseStatus.published") : t("learningAdmin.courseStatus.archived")}</Badge></h2>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" asChild><a href={`/admin/formacion/vista-previa/curso/${c.id}`}>{t("learningAdmin.courses.preview")}</a></Button>
-              {c.status !== "published" && <Button size="sm" disabled={c.coverage.files.pending > 0 && false} onClick={() => confirm(t("learningAdmin.courses.publishConfirm", { title: c.title, missing: c.coverage.files.pending ? t("learningAdmin.courses.missingFiles", { n: c.coverage.files.pending }) : "" })) && setStatus.mutate({ courseId: c.id, status: "published" })}>{t("learningAdmin.courses.publish")}</Button>}
+              {c.status !== "published" && <Button size="sm" disabled={c.coverage.files.pending > 0 && false} onClick={async () => (await confirmAction({ description: t("learningAdmin.courses.publishConfirm", { title: c.title, missing: c.coverage.files.pending ? t("learningAdmin.courses.missingFiles", { n: c.coverage.files.pending }) : "" }) })) && setStatus.mutate({ courseId: c.id, status: "published" })}>{t("learningAdmin.courses.publish")}</Button>}
               {c.status === "published" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ courseId: c.id, status: "draft" })}>{t("learningAdmin.courses.backToDraft")}</Button>}
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -125,7 +126,7 @@ export default function CostCentersManager() {
                       <Button
                         size="sm" variant="ghost"
                         className="text-red-500 hover:text-red-700"
-                        onClick={() => { if (confirm(`¿Eliminar "${item.name}"? Esta acción no se puede deshacer.`)) deleteMut.mutate({ id: item.id }); }}
+                        onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${item.name}"? Esta acción no se puede deshacer.`, destructive: true }))) deleteMut.mutate({ id: item.id }); }}
                         title="Eliminar"
                       >
                         <Trash2 className="w-3 h-3" />

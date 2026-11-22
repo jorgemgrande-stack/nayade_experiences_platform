@@ -6,6 +6,7 @@
  *
  * Vista previa del acceso en escritorio y móvil con el mismo componente que la pantalla real (AuthShell).
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Monitor, RotateCcw, Smartphone } from "lucide-react";
@@ -301,8 +302,8 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
             type="button"
             variant="outline"
             disabled={save.isPending}
-            onClick={() => {
-              if (!window.confirm(t("brandEditor.actions.confirmReset"))) return;
+            onClick={async () => {
+              if (!(await confirmAction({ description: t("brandEditor.actions.confirmReset"), destructive: true }))) return;
               const reset = Object.fromEntries(LOGIN_KEYS.map((k) => [k, ""]));
               setV((x) => ({ ...x, ...reset }));
               setBgMode("web");

@@ -2,6 +2,7 @@
  * Web › Redirecciones: conserva los enlaces antiguos cuando cambias la dirección de una página o un producto.
  * Solo rutas de tu propia web (nunca otros dominios). El servidor avisa de bucles, cadenas y rutas que ya existen.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowRight, CornerDownRight, Pencil, Plus, Trash2 } from "lucide-react";
@@ -94,7 +95,7 @@ export default function Redirecciones() {
                   <td className="p-3">{r.hits}</td>
                   <td className="p-3 text-right">
                     <Button size="sm" variant="ghost" aria-label={tx("Modificar")} onClick={() => setForm({ id: r.id, fromPath: r.fromPath, toPath: r.toPath, statusCode: r.statusCode === 302 ? 302 : 301, isActive: r.isActive, note: r.note ?? "" })}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="sm" variant="ghost" aria-label={tx("Eliminar")} onClick={() => { if (window.confirm(tx("¿Eliminar la redirección desde {fromPath}? Los enlaces antiguos dejarán de funcionar.", { fromPath: r.fromPath }))) remove.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" aria-label={tx("Eliminar")} onClick={async () => { if ((await confirmAction({ description: tx("¿Eliminar la redirección desde {fromPath}? Los enlaces antiguos dejarán de funcionar.", { fromPath: r.fromPath }), destructive: true }))) remove.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /></Button>
                   </td>
                 </tr>
               ))}

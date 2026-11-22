@@ -5,6 +5,7 @@
  * verificación de al menos 24 caracteres, y comprobación de la primera llamada. Cada paso se marca con datos reales
  * (voiceSetup.status).
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -402,7 +403,7 @@ export default function VoiceSetup() {
                   disabled={disconnect.isPending}
                   className={`${btn} border border-red-500/50 text-red-700 dark:text-red-300`}
                   onClick={async () => {
-                    if (!window.confirm("¿Desconectar Vapi de tu panel? Las llamadas dejarán de registrarse.")) return;
+                    if (!(await confirmAction({ description: "¿Desconectar Vapi de tu panel? Las llamadas dejarán de registrarse.", destructive: true }))) return;
                     try {
                       await disconnect.mutateAsync();
                       setVerifyOn(false);

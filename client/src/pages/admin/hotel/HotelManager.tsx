@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -625,7 +626,7 @@ export default function HotelManager() {
                       <Button
                         size="sm" variant="outline"
                         className="text-red-500 hover:text-red-700 ml-auto"
-                        onClick={() => { if (confirm(`¿Eliminar "${room.name}"?`)) deleteMut.mutate({ id: room.id }); }}
+                        onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${room.name}"?`, destructive: true }))) deleteMut.mutate({ id: room.id }); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>

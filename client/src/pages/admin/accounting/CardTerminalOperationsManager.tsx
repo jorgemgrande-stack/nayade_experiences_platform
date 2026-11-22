@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "../../../components/ui/button";
@@ -325,8 +326,8 @@ export default function CardTerminalOperationsManager() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (confirm("¿Reparar operaciones enlazadas con estado incorrecto? Se pondrán en 'Conciliado'.")) {
+            onClick={async () => {
+              if ((await confirmAction({ description: "¿Reparar operaciones enlazadas con estado incorrecto? Se pondrán en 'Conciliado'." }))) {
                 repairStatusMut.mutate();
               }
             }}

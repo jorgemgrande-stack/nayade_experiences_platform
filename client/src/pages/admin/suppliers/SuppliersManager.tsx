@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -471,10 +472,10 @@ export default function SuppliersManager() {
                   variant="outline" size="sm"
                   className="text-orange-600 border-orange-200 hover:bg-orange-50"
                   disabled={inviteMutation.isPending}
-                  onClick={() => {
+                  onClick={async () => {
                     const email = (selected as any).adminEmail?.trim();
                     if (!email) { toast.error("El proveedor no tiene email. Edítalo y añade uno antes de invitar."); return; }
-                    if (confirm(`¿Enviar invitación al portal de proveedor a ${email}?`))
+                    if ((await confirmAction({ description: `¿Enviar invitación al portal de proveedor a ${email}?` })))
                       inviteMutation.mutate({ supplierId: selected.id });
                   }}
                   title="Crear/invitar usuario del proveedor para acceder a su portal"

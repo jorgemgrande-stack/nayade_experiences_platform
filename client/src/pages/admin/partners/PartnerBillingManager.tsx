@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -87,7 +88,7 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
               <CheckCircle className="w-3.5 h-3.5" /> Emitir
             </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-600 gap-1.5"
-              onClick={() => { if (confirm("¿Eliminar esta liquidación?")) deleteBatch.mutate({ id: batchId }); }}
+              onClick={async () => { if ((await confirmAction({ description: "¿Eliminar esta liquidación?", destructive: true }))) deleteBatch.mutate({ id: batchId }); }}
               disabled={deleteBatch.isPending}>
               <Trash2 className="w-3.5 h-3.5" /> Eliminar
             </Button>

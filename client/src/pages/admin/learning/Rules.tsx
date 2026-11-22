@@ -2,6 +2,7 @@
  * Elephant Learning · Reglas de acceso con nombres comerciales (lotes 3-4): qué producto y modalidad abre qué módulos y durante cuánto.
  * Las reglas nuevas nacen INACTIVAS. Activar una regla hace que un pago confirmado conceda acceso, así que pide confirmación expresa.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -31,8 +32,8 @@ function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () =
   const course = cat.data?.courses.find((c) => c.id === courseId);
   const valid = experienceId !== "" && courseId !== "" && moduleIds.length > 0 && (days === "" || (Number(days) >= 1 && Number(days) <= 3650));
   const wasActive = rule?.active ?? false;
-  function submit() {
-    if (active && !wasActive && !confirm(t("learningManage.rules.activateConfirm"))) return;
+  async function submit() {
+    if (active && !wasActive && !(await confirmAction({ description: t("learningManage.rules.activateConfirm") }))) return;
     save.mutate({ id: rule?.id, experienceId: Number(experienceId), variantId: variantId === "" ? null : Number(variantId), courseId: Number(courseId), moduleIds, durationDays: days === "" ? null : Number(days), startMode: "on_grant", fixedStart: null, active });
   }
   return (

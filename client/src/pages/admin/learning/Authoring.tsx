@@ -2,6 +2,7 @@
  * Elephant Learning · Crear formaciones (lote 3): cursos nuevos, estructura, duplicado y archivado.
  * Un curso nuevo nace en borrador (privado). Los cambios de un curso ya publicado se hacen en «Editor» (borrador y publicar).
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -191,10 +192,10 @@ export default function Authoring() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="secondary" onClick={() => setSel(c.id)}>{t("learningManage.authoring.structureBtn")}</Button>
                   <Button size="sm" variant="outline" disabled={duplicate.isPending} onClick={() => duplicate.mutate({ courseId: c.id })}><Copy className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.duplicate")}</Button>
-                  {c.status === "draft" && <Button size="sm" variant="outline" onClick={() => confirm(t("learningManage.authoring.publishConfirm", { title: c.title })) && setStatus.mutate({ courseId: c.id, status: "published" })}>{t("learningManage.authoring.publish")}</Button>}
+                  {c.status === "draft" && <Button size="sm" variant="outline" onClick={async () => (await confirmAction({ description: t("learningManage.authoring.publishConfirm", { title: c.title }) })) && setStatus.mutate({ courseId: c.id, status: "published" })}>{t("learningManage.authoring.publish")}</Button>}
                   {c.status === "published" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ courseId: c.id, status: "draft" })}>{t("learningManage.authoring.backToDraft")}</Button>}
                   {c.status !== "archived" ? (
-                    <Button size="sm" variant="ghost" onClick={() => confirm(t("learningManage.authoring.archiveConfirm", { title: c.title })) && archive.mutate({ courseId: c.id, archive: true })}><Archive className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.archive")}</Button>
+                    <Button size="sm" variant="ghost" onClick={async () => (await confirmAction({ description: t("learningManage.authoring.archiveConfirm", { title: c.title }), destructive: true })) && archive.mutate({ courseId: c.id, archive: true })}><Archive className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.archive")}</Button>
                   ) : (
                     <Button size="sm" variant="ghost" onClick={() => archive.mutate({ courseId: c.id, archive: false })}><ArchiveRestore className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.authoring.restore")}</Button>
                   )}

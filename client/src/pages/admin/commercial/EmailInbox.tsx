@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -883,9 +884,9 @@ export default function EmailInbox() {
                         const newPath = parts.join(f.delimiter ?? "/");
                         renameFolderMut.mutate({ accountId: folderAccountId, oldPath: f.path, newPath });
                       }}
-                      onDelete={() => {
+                      onDelete={async () => {
                         if (!folderAccountId) return;
-                        if (!confirm(`¿Eliminar la carpeta "${f.name}" y todos sus emails?`)) return;
+                        if (!(await confirmAction({ description: `¿Eliminar la carpeta "${f.name}" y todos sus emails?`, destructive: true }))) return;
                         deleteFolderMut.mutate({ accountId: folderAccountId, path: f.path });
                       }}
                     />

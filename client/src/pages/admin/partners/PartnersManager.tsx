@@ -1,4 +1,5 @@
 import { randomId } from "@shared/randomId";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
@@ -485,7 +486,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
               <Button size="sm" variant="ghost"
                 title="Desvincular usuario"
                 className="text-foreground/30 hover:text-red-400 h-7 w-7 p-0"
-                onClick={() => { if (confirm("¿Desvincular usuario?")) removeMut.mutate({ userId: u.id }); }}>
+                onClick={async () => { if ((await confirmAction({ description: "¿Desvincular usuario?", destructive: true }))) removeMut.mutate({ userId: u.id }); }}>
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>
