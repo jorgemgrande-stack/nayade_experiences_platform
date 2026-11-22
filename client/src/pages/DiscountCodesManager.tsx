@@ -187,7 +187,7 @@ export default function DiscountCodesManager() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
-              <Tag className="w-6 h-6 text-violet-400" />
+              <Tag className="w-6 h-6 text-primary" />
               {t("discounts.title")}
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
@@ -196,7 +196,7 @@ export default function DiscountCodesManager() {
                 : t("discounts.description")}
             </p>
           </div>
-          <Button onClick={openCreate} className="bg-violet-600 hover:bg-violet-700 text-white gap-2">
+          <Button onClick={openCreate} className="gap-2">
             <Plus className="w-4 h-4" /> {t("discounts.newCode")}
           </Button>
         </div>
@@ -204,7 +204,7 @@ export default function DiscountCodesManager() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: t("discounts.stats.total"), value: total, icon: Tag, color: "text-violet-400" },
+            { label: t("discounts.stats.total"), value: total, icon: Tag, color: "text-primary" },
             { label: t("discounts.stats.active"), value: items.filter(i => i.status === "active").length, icon: ToggleRight, color: "text-green-400" },
             { label: t("discounts.stats.inactive"), value: items.filter(i => i.status === "inactive").length, icon: ToggleLeft, color: "text-yellow-400" },
             { label: t("discounts.stats.expired"), value: items.filter(i => i.status === "expired").length, icon: Calendar, color: "text-red-400" },
@@ -279,7 +279,7 @@ export default function DiscountCodesManager() {
                   {items.map((item) => (
                     <TableRow key={item.id} className="border-border hover:bg-muted/20">
                       <TableCell>
-                        <span className="font-mono font-bold text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded text-sm">
+                        <span className="font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded text-sm">
                           {item.code}
                         </span>
                       </TableCell>
@@ -456,7 +456,6 @@ export default function DiscountCodesManager() {
             <Button
               onClick={handleSubmit}
               disabled={createMutation.isPending || updateMutation.isPending}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
             >
               {editingId ? t("discounts.form.save") : t("discounts.form.create")}
             </Button>
