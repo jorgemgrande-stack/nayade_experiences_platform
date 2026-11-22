@@ -81,7 +81,7 @@ export default function TraducirPagina({ slug, locale }: { slug: string; locale:
                   return (
                     <div key={key} className="grid gap-2 rounded-md border p-3 md:grid-cols-2">
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground">{f.blockType} · {f.path}{pending.has(key) && <span className="ml-2 text-amber-700">{tx("sin traducir")}</span>}</p>
+                        <p className="text-xs uppercase text-muted-foreground">{f.blockType} · {f.path}{pending.has(key) && <span className="ml-2 text-warning">{tx("sin traducir")}</span>}</p>
                         <p className="mt-1 whitespace-pre-wrap text-sm" lang="es">{orig}</p>
                       </div>
                       <div>

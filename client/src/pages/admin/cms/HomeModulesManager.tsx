@@ -4,6 +4,8 @@ import AdminLayout from "@/components/AdminLayout";
 import { LayoutGrid, CheckCircle, Loader2, ArrowUp, ArrowDown, X, Plus } from "lucide-react";
 import { useVocabulary } from "@/lib/vocabulary";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
+import { PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 
 // ─── Constantes de módulos disponibles ───────────────────────────────────────
 const HOME_MODULES = [
@@ -33,8 +35,8 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const { data: allExperiences } = trpc.products.getAll.useQuery();
-  const { data: moduleItems, refetch } = trpc.homeModules.getModule.useQuery({ moduleKey });
+  const { data: allExperiences, isError: expError, error: expErr, refetch: refetchExp } = trpc.products.getAll.useQuery();
+  const { data: moduleItems, refetch, isError: modError, error: modErr } = trpc.homeModules.getModule.useQuery({ moduleKey });
 
   const setModule = trpc.homeModules.setModule.useMutation({
     onSuccess: () => {
@@ -82,6 +84,10 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
 
   const availableExperiences = allExperiences?.filter((e: Exp) => !selectedIds.includes(e.id) && e.isActive) ?? [];
 
+  if (expError || modError) {
+    return <PanelError className="mb-5" error={expErr ?? modErr} onRetry={() => { void refetchExp(); void refetch(); }} />;
+  }
+
   return (
     <div className="bg-muted/30 border border-border/50 rounded-xl p-5 mb-5">
       {/* Header del módulo */}
@@ -92,11 +98,11 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
           <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
         </div>
         {saving && (
-          <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+          <span className="flex items-center gap-1.5 text-xs text-warning font-medium">
             <Loader2 className="w-3 h-3 animate-spin" />{" "}{tx("Guardando...")}</span>
         )}
         {saved && (
-          <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+          <span className="flex items-center gap-1.5 text-xs text-success font-medium">
             <CheckCircle className="w-3 h-3" />{" "}{tx("Guardado")}</span>
         )}
       </div>
@@ -105,7 +111,7 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
         {/* Columna izquierda: seleccionados */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">
+            <span className="bg-primary text-primary-foreground text-xs font-bold rounded-full px-2 py-0.5">
               {selectedIds.length}
             </span>
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{tx("Productos seleccionados")}</span>
@@ -115,7 +121,7 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
           ) : (
             <div className="flex flex-col gap-2">
               {selectedExperiences.map((exp, idx) => (
-                <div key={exp.id} className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
+                <div key={exp.id} className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg p-2">
                   {exp.image1 ? (
                     <img src={exp.image1} alt={exp.title} className="w-10 h-10 object-cover rounded-md shrink-0" />
                   ) : (
@@ -123,7 +129,7 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-foreground truncate">{exp.title}</div>
-                    <div className="text-[10px] text-muted-foreground">{exp.basePrice}€</div>
+                    <div className="text-xs text-muted-foreground">{exp.basePrice}€</div>
                   </div>
                   <div className="flex flex-col gap-1">
                     <button
@@ -143,7 +149,7 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
                   </div>
                   <button
                     onClick={() => toggleExperience(exp.id)}
-                    className="w-7 h-7 bg-red-500/20 border border-red-500/30 rounded-md flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-colors shrink-0"
+                    className="w-7 h-7 bg-danger/10 border border-danger/30 rounded-md flex items-center justify-center text-danger hover:bg-danger/20 transition-colors shrink-0"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -171,11 +177,11 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-foreground truncate">{exp.title}</div>
-                    <div className="text-[10px] text-muted-foreground">{exp.basePrice}€</div>
+                    <div className="text-xs text-muted-foreground">{exp.basePrice}€</div>
                   </div>
                   <button
                     onClick={() => toggleExperience(exp.id)}
-                    className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold rounded-md px-2.5 py-1.5 transition-colors shrink-0"
+                    className="flex items-center gap-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md px-2.5 py-1.5 transition-colors shrink-0"
                   >
                     <Plus className="w-3 h-3" />{" "}{tx("Añadir")}</button>
                 </div>
@@ -196,16 +202,11 @@ export default function HomeModulesManager() {
   return (
     <AdminLayout title={title}>
       <div className="px-6 py-6">
-        {/* Page header */}
-        <div className="flex items-center gap-3 mb-6 pb-5 border-b border-border/50">
-          <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
-            <LayoutGrid className="w-5 h-5 text-orange-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground leading-none">{title}</h1>
-            <p className="text-xs text-muted-foreground mt-1">{tx("Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.")}</p>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<LayoutGrid />}
+          title={title}
+          description={tx("Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.")}
+        />
 
         {/* Módulos */}
         {HOME_MODULES.map((m) => (licensed ? { ...m, ...GENERIC_LABELS[m.key] } : m)).map((mod) => (

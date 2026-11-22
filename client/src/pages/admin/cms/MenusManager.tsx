@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { TONE_SURFACE } from "@/lib/panelTones";
 
 type MenuItem = {
   id: number;
@@ -58,7 +61,7 @@ function InlineEdit({
           className={`h-7 text-sm px-2 w-40 ${className}`}
           placeholder={tx(placeholder)}
         />
-        <button onClick={save} className="text-green-600 hover:text-green-700"><Check className="w-4 h-4" /></button>
+        <button onClick={save} className="text-success hover:text-success"><Check className="w-4 h-4" /></button>
         <button onClick={cancel} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
       </span>
     );
@@ -97,7 +100,7 @@ function InlineUrl({ value, onSave }: { value: string | null; onSave: (v: string
           className="h-6 text-xs px-2 w-48"
           placeholder={tx("/contacto o https://…")}
         />
-        <button onClick={save} className="text-green-600 hover:text-green-700"><Check className="w-3.5 h-3.5" /></button>
+        <button onClick={save} className="text-success hover:text-success"><Check className="w-3.5 h-3.5" /></button>
         <button onClick={cancel} className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
       </span>
     );
@@ -164,7 +167,7 @@ function AddItemRow({
         placeholder="/contacto"
         className="h-7 text-xs px-2 w-36"
       />
-      <button onClick={submit} className="text-green-600 hover:text-green-700"><Check className="w-4 h-4" /></button>
+      <button onClick={submit} className="text-success hover:text-success"><Check className="w-4 h-4" /></button>
       <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
     </div>
   );
@@ -177,7 +180,7 @@ export default function MenusManager() {
   const [zone, setZone] = useState<"header" | "footer">("header");
   const utils = trpc.useUtils();
 
-  const { data: allItems = [], isLoading } = trpc.cms.getMenuItems.useQuery({ zone });
+  const { data: allItems = [], isLoading, isError, error, refetch } = trpc.cms.getMenuItems.useQuery({ zone });
 
   const updateMut = trpc.cms.updateMenuItem.useMutation({
     onSuccess: () => utils.cms.getMenuItems.invalidate(),
@@ -241,8 +244,15 @@ export default function MenusManager() {
   if (isLoading) {
     return (
       <AdminLayout title={tx("Gestión de Menús")}>
-        <div className="flex items-center justify-center h-48 text-muted-foreground">
-          <Loader2 className="w-6 h-6 animate-spin mr-2" />{" "}{tx("Cargando menú...")}</div>
+        <PanelLoading label={tx("Cargando menú...")} />
+      </AdminLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <AdminLayout title={tx("Gestión de Menús")}>
+        <div className="px-6 py-6"><PanelError error={error} onRetry={() => void refetch()} /></div>
       </AdminLayout>
     );
   }
@@ -250,31 +260,22 @@ export default function MenusManager() {
   return (
     <AdminLayout title={tx("Gestión de Menús")}>
       <div className="px-6 py-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6 pb-5 border-b border-border/50">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
-            <Navigation className="w-5 h-5 text-orange-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground leading-none">{tx("Menú de tu web")}</h1>
-            <p className="text-xs text-muted-foreground mt-1">{tx("Pulsa un texto o un enlace para cambiarlo · Usa las flechas para ordenar · Los cambios se guardan solos")}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      <PanelPageHeader
+        icon={<Navigation />}
+        title={tx("Menú de tu web")}
+        description={tx("Pulsa un texto o un enlace para cambiarlo · Usa las flechas para ordenar · Los cambios se guardan solos")}
+        actions={<>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => utils.cms.getMenuItems.invalidate()}
             disabled={updateMut.isPending || reorderMut.isPending}
           >
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />{" "}{tx("Actualizar")}</Button>
-          <a href="/" target="_blank" rel="noreferrer">
-            <Button size="sm" variant="outline">
-              <Globe className="w-3.5 h-3.5 mr-1.5" />{" "}{tx("Ver sitio")}</Button>
-          </a>
-        </div>
-      </div>
+            <RefreshCw className="w-4 h-4 mr-1.5" aria-hidden="true" />{tx("Actualizar")}</Button>
+          <Button variant="outline" asChild>
+            <a href="/" target="_blank" rel="noreferrer"><Globe className="w-4 h-4 mr-1.5" aria-hidden="true" />{tx("Ver sitio")}</a>
+          </Button>
+        </>}
+      />
 
       {/* Menú de arriba o pie de página */}
       <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label={tx("Qué menú")}>
@@ -455,7 +456,7 @@ export default function MenusManager() {
       </div>
 
       {/* Info */}
-      <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-800 dark:text-blue-300">
+      <div className={`mt-4 rounded-xl border p-3 text-xs text-foreground ${TONE_SURFACE.info}`}>
         <strong>{tx("Consejo:")}</strong>{" "}{tx("los cambios se guardan al momento y se ven en tu web al volver a cargarla. Las páginas sin publicar no aparecen en el menú aunque estén en esta lista. El pie de página muestra además los datos de tu empresa y los textos legales.")}</div>
       </div>
     </AdminLayout>

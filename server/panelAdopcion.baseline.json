@@ -148,38 +148,6 @@
   "pages/admin/careNet/Reservas.tsx": {
     "geometriaAjena": 1
   },
-  "pages/admin/cms/BlogManager.tsx": {
-    "coloresFijos": 7
-  },
-  "pages/admin/cms/GalleryManager.tsx": {
-    "coloresFijos": 1,
-    "textoMinusculo": 2
-  },
-  "pages/admin/cms/HomeModulesManager.tsx": {
-    "coloresFijos": 8,
-    "textoMinusculo": 4
-  },
-  "pages/admin/cms/Idiomas.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/cms/MenusManager.tsx": {
-    "coloresFijos": 6
-  },
-  "pages/admin/cms/MultimediaManager.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
-  "pages/admin/cms/PagesManager.tsx": {
-    "textoMinusculo": 4
-  },
-  "pages/admin/cms/SlideshowManager.tsx": {
-    "coloresFijos": 4,
-    "textoMinusculo": 3,
-    "geometriaAjena": 2
-  },
-  "pages/admin/cms/TraducirPagina.tsx": {
-    "coloresFijos": 1
-  },
   "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
     "coloresFijos": 78,
     "textoMinusculo": 12
@@ -423,16 +391,6 @@
     "coloresFijos": 15,
     "hexEnClases": 7,
     "textoMinusculo": 12
-  },
-  "pages/admin/learning/Authoring.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/learning/CourseEditor.tsx": {
-    "coloresFijos": 13,
-    "textoMinusculo": 2
-  },
-  "pages/admin/learning/Materials.tsx": {
-    "coloresFijos": 3
   },
   "pages/admin/lifeNet/LifeHome.tsx": {
     "geometriaAjena": 2

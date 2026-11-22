@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { toastError } from "@/components/admin/PanelStates";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { useI18n } from "@/i18n/I18nProvider";
+import { PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 
 type Form = { id?: number; fromPath: string; toPath: string; statusCode: 301 | 302; isActive: boolean; note: string };
 const EMPTY: Form = { fromPath: "", toPath: "", statusCode: 301, isActive: true, note: "" };
@@ -43,13 +45,14 @@ export default function Redirecciones() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold"><CornerDownRight className="h-6 w-6" />{" "}{tx("Redirecciones de tu web")}</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{tx("Si cambias la dirección de una página o de un producto, añade aquí la antigua y quienes tengan el enlace guardado llegarán a la nueva (y los buscadores la heredan). Solo se redirige dentro de tu web. Cada cambio queda registrado.")}</p>
-          </div>
-          <Button onClick={() => setForm({ ...EMPTY })}><Plus className="mr-1.5 h-4 w-4" />{" "}{tx("Nueva redirección")}</Button>
-        </div>
+        <PanelPageHeader
+          className="mb-0"
+          icon={<CornerDownRight />}
+          title={tx("Redirecciones de tu web")}
+          description={tx("Si cambias la dirección de una página o de un producto, añade aquí la antigua y quienes tengan el enlace guardado llegarán a la nueva (y los buscadores la heredan). Solo se redirige dentro de tu web. Cada cambio queda registrado.")}
+          actions={<Button onClick={() => setForm({ ...EMPTY })}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{tx("Nueva redirección")}</Button>}
+        />
+        {list.isError && <PanelError error={list.error} onRetry={() => void list.refetch()} />}
 
         {form && (
           <div className="space-y-3 rounded-xl border p-4">
