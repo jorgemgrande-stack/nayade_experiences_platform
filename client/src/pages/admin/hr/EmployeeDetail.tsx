@@ -364,7 +364,7 @@ export default function EmployeeDetail() {
             <div className="flex items-center gap-2">
               {!editing ? (
                 <>
-                  <Button size="sm" onClick={() => setEditing(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                  <Button size="sm" onClick={() => setEditing(true)}>
                     <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar empleado
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)}
@@ -596,7 +596,7 @@ export default function EmployeeDetail() {
           {tab === "documentos" && (
             <div className="max-w-4xl">
               <div className="flex justify-end mb-3">
-                <Button size="sm" onClick={() => setDocModalOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                <Button size="sm" onClick={() => setDocModalOpen(true)}>
                   <Plus className="w-3.5 h-3.5 mr-1.5" /> Subir documento
                 </Button>
               </div>
@@ -737,7 +737,7 @@ export default function EmployeeDetail() {
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDocModalOpen(false)}>Cancelar</Button>
-              <Button onClick={submitDocument} disabled={docUploading || addDocument.isPending} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={submitDocument} disabled={docUploading || addDocument.isPending}>
                 {(docUploading || addDocument.isPending) ? "Subiendo…" : "Subir"}
               </Button>
             </DialogFooter>
@@ -817,7 +817,7 @@ export default function EmployeeDetail() {
                   </Button>
                 </>
               ) : (
-                <Button onClick={closeModalReset} className="bg-orange-600 hover:bg-orange-700 text-white">Cerrar</Button>
+                <Button onClick={closeModalReset}>Cerrar</Button>
               )}
             </DialogFooter>
           </DialogContent>

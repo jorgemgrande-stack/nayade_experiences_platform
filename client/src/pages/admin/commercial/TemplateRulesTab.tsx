@@ -240,7 +240,7 @@ function RuleCard({
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancelar</Button>
-            <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" onClick={save}>Guardar</Button>
+            <Button size="sm" onClick={save}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -399,7 +399,7 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
           </div>
 
           <div className="flex gap-2">
-            <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white text-xs" onClick={save} disabled={upsert.isPending}>
+            <Button size="sm" className="text-xs" onClick={save} disabled={upsert.isPending}>
               {upsert.isPending ? "Guardando..." : "Guardar configuración"}
             </Button>
             <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowTest(true)}>
@@ -529,7 +529,7 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => { setShowNewRule(false); resetRuleForm(); }}>Cancelar</Button>
-            <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white"
+            <Button size="sm" 
               disabled={!ruleForm.name || createRule.isPending}
               onClick={() => createRule.mutate({ templateKey: config.key, ...ruleForm, isActive: true, sortOrder: (rules?.length ?? 0) })}>
               Crear regla
@@ -551,7 +551,7 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setShowTest(false)}>Cancelar</Button>
-            <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white"
+            <Button size="sm" 
               disabled={!testEmail || sendTest.isPending}
               onClick={() => sendTest.mutate({ to: testEmail, templateKey: config.key })}>
               Enviar prueba

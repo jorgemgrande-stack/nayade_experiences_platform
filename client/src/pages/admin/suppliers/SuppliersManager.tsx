@@ -378,7 +378,7 @@ export default function SuppliersManager() {
               <Building2 className="w-4 h-4 text-blue-600" />
               Proveedores
             </h2>
-            <Button size="sm" onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button size="sm" onClick={openCreate}>
               <Plus className="w-3 h-3 mr-1" />Nuevo
             </Button>
           </div>

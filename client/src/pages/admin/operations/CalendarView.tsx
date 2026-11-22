@@ -171,7 +171,7 @@ function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) 
           </p>
           <div className="flex gap-2 pt-2 border-t border-slate-700">
             <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">{t("opsCalendar.close")}</Button>
-            <Button size="sm" onClick={() => navigate(productEditionsHref(s.experienceId))} className="bg-violet-600 hover:bg-violet-700 text-white ml-auto gap-1">
+            <Button size="sm" onClick={() => navigate(productEditionsHref(s.experienceId))} className="ml-auto gap-1">
               <ExternalLink className="w-3.5 h-3.5" /> {t("opsCalendar.session.openEditions")}
             </Button>
           </div>

@@ -189,7 +189,7 @@ export default function PayslipsManager() {
               <Button variant="outline" onClick={() => { setBulkPeriod(period); setBulkOpen(true); }}>
                 <Upload className="w-4 h-4 mr-1.5" /> Carga masiva
               </Button>
-              <Button onClick={openCreate} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={openCreate}>
                 <Plus className="w-4 h-4 mr-1.5" /> Nueva nómina
               </Button>
             </div>
@@ -426,7 +426,7 @@ export default function PayslipsManager() {
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setBulkOpen(false)}>Cerrar</Button>
-              <Button onClick={submitBulk} disabled={bulkUpload.isPending || !bulkText.trim()} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={submitBulk} disabled={bulkUpload.isPending || !bulkText.trim()}>
                 {bulkUpload.isPending ? "Procesando…" : "Procesar"}
               </Button>
             </DialogFooter>

@@ -995,7 +995,7 @@ export default function BankMovementsManager() {
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setSelectedMovement(null)}>Cancelar</Button>
-                <Button onClick={saveDetail} disabled={savingDetail} className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Button onClick={saveDetail} disabled={savingDetail}>
                   {savingDetail ? "Guardando..." : "Guardar"}
                 </Button>
               </div>

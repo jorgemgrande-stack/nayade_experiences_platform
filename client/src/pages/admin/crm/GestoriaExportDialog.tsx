@@ -164,7 +164,7 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>{t("crmInvoices.cancelar")}</Button>
-          <Button onClick={handleExport} disabled={busy || !!invalid} className="bg-orange-600 hover:bg-orange-700 text-white">
+          <Button onClick={handleExport} disabled={busy || !!invalid}>
             {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
             {busy ? t("crmInvoices.preparando") : t("crmInvoices.descargarZip")}
           </Button>

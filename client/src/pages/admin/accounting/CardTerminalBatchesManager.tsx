@@ -271,7 +271,7 @@ export default function CardTerminalBatchesManager() {
               <Play className="w-4 h-4 mr-2" />
               {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
             </Button>
-            <Button onClick={() => setGenOpen(true)} className="bg-orange-600 hover:bg-orange-500 text-white">
+            <Button onClick={() => setGenOpen(true)}>
               <Package className="w-4 h-4 mr-2" />
               Generar remesas
             </Button>

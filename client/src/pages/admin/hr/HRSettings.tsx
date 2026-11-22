@@ -116,7 +116,7 @@ export default function HRSettings() {
                 </div>
               </div>
 
-              <Button onClick={submit} disabled={save.isPending} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={submit} disabled={save.isPending}>
                 <Save className="w-4 h-4 mr-1.5" />
                 {save.isPending ? "Guardando…" : "Guardar configuración"}
               </Button>
