@@ -4333,7 +4333,7 @@ function QuoteDetailModal({
                 <button
                   key={m}
                   onClick={() => setInstPayMethod(m)}
-                  className={`py-2 px-3 rounded-lg border text-xs font-medium transition-colors capitalize ${instPayMethod === m ? "bg-violet-600 border-violet-500 text-white" : "bg-foreground/[0.05] border-foreground/[0.12] text-foreground/60 hover:border-foreground/30"}`}
+                  className={`py-2 px-3 rounded-lg border text-xs font-medium transition-colors capitalize ${instPayMethod === m ? "bg-primary border-primary text-primary-foreground" : "bg-foreground/[0.05] border-foreground/[0.12] text-foreground/60 hover:border-foreground/30"}`}
                 >
                   {m === "tarjeta_fisica" ? t("crmQuotes.tarjetaFisica") : m === "transferencia" ? t("crmQuotes.transferencia") : t("crmQuotes.efectivo")}
                 </button>
@@ -7509,7 +7509,7 @@ export default function CRMDashboard() {
                       onClick={() => setInvoiceTypeFilter(ty)}
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                         invoiceTypeFilter === ty
-                          ? "bg-violet-600 text-white border-violet-600"
+                          ? "bg-primary text-primary-foreground border-primary"
                           : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
                       }`}
                     >
@@ -9162,7 +9162,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
             <button
               key={f.key}
               onClick={() => setStatusFilter(f.key)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${statusFilter === f.key ? "bg-purple-600 text-white" : "text-foreground/50 hover:text-foreground"}`}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${statusFilter === f.key ? "bg-primary text-primary-foreground" : "text-foreground/50 hover:text-foreground"}`}
             >
               {f.label}
             </button>

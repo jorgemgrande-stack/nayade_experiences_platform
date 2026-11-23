@@ -581,8 +581,8 @@ export default function UsersManager() {
         {/* ── Header ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">{t("usersAdmin.header.title")}</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h1 className="text-xl font-bold text-foreground">{t("usersAdmin.header.title")}</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
               {t("usersAdmin.header.count", { n: users.length })}
             </p>
           </div>
