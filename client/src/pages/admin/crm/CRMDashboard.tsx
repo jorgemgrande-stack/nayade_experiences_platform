@@ -135,7 +135,7 @@ type QuoteStatus = "borrador" | "enviado" | "visualizado" | "convertido_carrito"
 /** Error de un campo, enlazado con aria-describedby. */
 function FieldError({ id, msg }: { id: string; msg?: string | null }) {
   if (!msg) return null;
-  return <p id={id} role="alert" className="text-xs text-red-400 mt-1">{msg}</p>;
+  return <p id={id} role="alert" className="text-xs text-danger mt-1">{msg}</p>;
 }
 const invalidProps = (msg: string | undefined, id: string) =>
   msg ? { "aria-invalid": true as const, "aria-describedby": id } : {};
@@ -184,14 +184,14 @@ function QuoteStatusBadge({ status }: { status: QuoteStatus }) {
   const { t } = useI18n();
   const map: Record<QuoteStatus, { label: string; className: string }> = {
     borrador:           { label: t("crmQuotes.borrador"),         className: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
-    enviado:            { label: t("crmQuotes.enviado"),           className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-    visualizado:        { label: t("crmQuotes.visualizado"),       className: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
-    convertido_carrito: { label: t("crmQuotes.pagoIniciado"),     className: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
-    pago_fallido:       { label: t("crmQuotes.pagoFallido"),      className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+    enviado:            { label: t("crmQuotes.enviado"),           className: "bg-info/15 text-info border-info/30" },
+    visualizado:        { label: t("crmQuotes.visualizado"),       className: "bg-info/15 text-info border-info/30" },
+    convertido_carrito: { label: t("crmQuotes.pagoIniciado"),     className: "bg-primary/15 text-primary border-primary/30" },
+    pago_fallido:       { label: t("crmQuotes.pagoFallido"),      className: "bg-warning/15 text-warning border-warning/30" },
     aceptado:           { label: t("crmQuotes.aceptado"),          className: TONE_BADGE.success },
-    rechazado:          { label: t("crmQuotes.rechazado"),         className: "bg-red-500/15 text-red-400 border-red-500/30" },
-    expirado:           { label: t("crmQuotes.expirado"),          className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-    perdido:            { label: t("crmQuotes.perdido"),           className: "bg-red-500/15 text-red-400 border-red-500/30" },
+    rechazado:          { label: t("crmQuotes.rechazado"),         className: "bg-danger/15 text-danger border-danger/30" },
+    expirado:           { label: t("crmQuotes.expirado"),          className: "bg-warning/15 text-warning border-warning/30" },
+    perdido:            { label: t("crmQuotes.perdido"),           className: "bg-danger/15 text-danger border-danger/30" },
   };
   const { label, className } = map[status] ?? { label: status, className: "bg-slate-500/15 text-slate-400 border-slate-500/30" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}>{label}</span>;
@@ -200,8 +200,8 @@ function QuoteStatusBadge({ status }: { status: QuoteStatus }) {
 function PriorityDot({ priority }: { priority: Priority }) {
   const map: Record<Priority, string> = {
     baja: "bg-slate-400",
-    media: "bg-amber-400",
-    alta: "bg-red-400",
+    media: "bg-warning",
+    alta: "bg-danger",
   };
   return <span className={`inline-block w-2 h-2 rounded-full ${map[priority] ?? "bg-slate-400"}`} title={priority} />;
 }
@@ -228,43 +228,43 @@ function useCountUp(target: number, duration = 800) {
 const COUNTER_STYLES = {
   blue: {
     bg: "bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/80 dark:via-blue-900/40 dark:to-[#080e1c]",
-    border: "border-blue-200 dark:border-blue-500/30",
-    activeBorder: "border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.35)]",
-    glow: "bg-blue-500/10",
-    icon: "text-blue-600 dark:text-blue-400",
-    number: "text-blue-700 dark:text-blue-300",
-    label: "text-blue-600/70 dark:text-blue-300/70",
-    dot: "bg-blue-500 dark:bg-blue-400",
+    border: "border-info",
+    activeBorder: "border-info shadow-[0_0_20px_rgba(59,130,246,0.35)]",
+    glow: "bg-info/10",
+    icon: "text-info",
+    number: "text-info",
+    label: "text-info/70",
+    dot: "bg-info",
   },
   amber: {
     bg: "bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/80 dark:via-amber-900/30 dark:to-[#080e1c]",
-    border: "border-amber-200 dark:border-amber-500/30",
-    activeBorder: "border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.35)]",
-    glow: "bg-amber-500/10",
-    icon: "text-amber-600 dark:text-amber-400",
-    number: "text-amber-700 dark:text-amber-300",
-    label: "text-amber-600/70 dark:text-amber-300/70",
-    dot: "bg-amber-500 dark:bg-amber-400",
+    border: "border-warning",
+    activeBorder: "border-warning shadow-[0_0_20px_rgba(245,158,11,0.35)]",
+    glow: "bg-warning/10",
+    icon: "text-warning",
+    number: "text-warning",
+    label: "text-warning/70",
+    dot: "bg-warning",
   },
   green: {
     bg: "bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/80 dark:via-emerald-900/30 dark:to-[#080e1c]",
-    border: "border-emerald-200 dark:border-emerald-500/30",
-    activeBorder: "border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.35)]",
-    glow: "bg-emerald-500/10",
-    icon: "text-emerald-600 dark:text-emerald-400",
-    number: "text-emerald-700 dark:text-emerald-300",
-    label: "text-emerald-600/70 dark:text-emerald-300/70",
-    dot: "bg-emerald-500 dark:bg-emerald-400",
+    border: "border-success",
+    activeBorder: "border-success shadow-[0_0_20px_rgba(16,185,129,0.35)]",
+    glow: "bg-success/10",
+    icon: "text-success",
+    number: "text-success",
+    label: "text-success/70",
+    dot: "bg-success",
   },
   red: {
     bg: "bg-gradient-to-br from-red-50 to-white dark:from-red-950/80 dark:via-red-900/30 dark:to-[#080e1c]",
-    border: "border-red-200 dark:border-red-500/30",
-    activeBorder: "border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.35)]",
-    glow: "bg-red-500/10",
-    icon: "text-red-600 dark:text-red-400",
-    number: "text-red-700 dark:text-red-300",
-    label: "text-red-600/70 dark:text-red-300/70",
-    dot: "bg-red-500 dark:bg-red-400",
+    border: "border-danger",
+    activeBorder: "border-danger shadow-[0_0_20px_rgba(239,68,68,0.35)]",
+    glow: "bg-danger/10",
+    icon: "text-danger",
+    number: "text-danger",
+    label: "text-danger/70",
+    dot: "bg-danger",
   },
   slate: {
     bg: "bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:via-slate-700/30 dark:to-[#080e1c]",
@@ -278,43 +278,43 @@ const COUNTER_STYLES = {
   },
   orange: {
     bg: "bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/80 dark:via-orange-900/30 dark:to-[#080e1c]",
-    border: "border-orange-200 dark:border-orange-500/30",
-    activeBorder: "border-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.35)]",
-    glow: "bg-orange-500/10",
-    icon: "text-orange-600 dark:text-orange-400",
-    number: "text-orange-700 dark:text-orange-300",
-    label: "text-orange-600/70 dark:text-orange-300/70",
-    dot: "bg-orange-500 dark:bg-orange-400",
+    border: "border-warning",
+    activeBorder: "border-warning shadow-[0_0_20px_rgba(249,115,22,0.35)]",
+    glow: "bg-warning/10",
+    icon: "text-warning",
+    number: "text-warning",
+    label: "text-warning/70",
+    dot: "bg-warning",
   },
   indigo: {
     bg: "bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/80 dark:via-indigo-900/30 dark:to-[#080e1c]",
-    border: "border-indigo-200 dark:border-indigo-500/30",
-    activeBorder: "border-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.35)]",
-    glow: "bg-indigo-500/10",
-    icon: "text-indigo-600 dark:text-indigo-400",
-    number: "text-indigo-700 dark:text-indigo-300",
-    label: "text-indigo-600/70 dark:text-indigo-300/70",
-    dot: "bg-indigo-500 dark:bg-indigo-400",
+    border: "border-primary",
+    activeBorder: "border-primary shadow-[0_0_20px_rgba(99,102,241,0.35)]",
+    glow: "bg-primary/10",
+    icon: "text-primary",
+    number: "text-primary",
+    label: "text-primary/70",
+    dot: "bg-primary",
   },
   violet: {
     bg: "bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/80 dark:via-violet-900/30 dark:to-[#080e1c]",
-    border: "border-violet-200 dark:border-violet-500/30",
-    activeBorder: "border-violet-400 shadow-[0_0_20px_rgba(139,92,246,0.35)]",
-    glow: "bg-violet-500/10",
-    icon: "text-violet-600 dark:text-violet-400",
-    number: "text-violet-700 dark:text-violet-300",
-    label: "text-violet-600/70 dark:text-violet-300/70",
-    dot: "bg-violet-500 dark:bg-violet-400",
+    border: "border-primary",
+    activeBorder: "border-primary shadow-[0_0_20px_rgba(139,92,246,0.35)]",
+    glow: "bg-primary/10",
+    icon: "text-primary",
+    number: "text-primary",
+    label: "text-primary/70",
+    dot: "bg-primary",
   },
   purple: {
     bg: "bg-gradient-to-br from-purple-50 to-white dark:from-purple-950/80 dark:via-purple-900/30 dark:to-[#080e1c]",
-    border: "border-purple-200 dark:border-purple-500/30",
-    activeBorder: "border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.35)]",
-    glow: "bg-purple-500/10",
-    icon: "text-purple-600 dark:text-purple-400",
-    number: "text-purple-700 dark:text-purple-300",
-    label: "text-purple-600/70 dark:text-purple-300/70",
-    dot: "bg-purple-500 dark:bg-purple-400",
+    border: "border-primary",
+    activeBorder: "border-primary shadow-[0_0_20px_rgba(168,85,247,0.35)]",
+    glow: "bg-primary/10",
+    icon: "text-primary",
+    number: "text-primary",
+    label: "text-primary/70",
+    dot: "bg-primary",
   },
 };
 
@@ -322,13 +322,13 @@ const COUNTER_STYLES = {
 function AnulOpBadge({ status }: { status: string }) {
   const { t } = useI18n();
   const map: Record<string, { label: string; cls: string }> = {
-    recibida: { label: t("crmCancellations.recibida"), cls: "bg-blue-500/15 text-blue-300 border-blue-500/20" },
-    en_revision: { label: t("crmCancellations.enRevision"), cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
-    pendiente_documentacion: { label: t("crmCancellations.pendDocs"), cls: "bg-orange-500/15 text-orange-300 border-orange-500/20" },
-    pendiente_decision: { label: t("crmCancellations.pendDecision"), cls: "bg-yellow-500/15 text-yellow-300 border-yellow-500/20" },
-    resuelta: { label: t("crmCancellations.resuelta"), cls: "bg-green-500/15 text-green-300 border-green-500/20" },
+    recibida: { label: t("crmCancellations.recibida"), cls: "bg-info/15 text-info border-info/20" },
+    en_revision: { label: t("crmCancellations.enRevision"), cls: "bg-warning/15 text-warning border-warning/20" },
+    pendiente_documentacion: { label: t("crmCancellations.pendDocs"), cls: "bg-warning/15 text-warning border-warning/20" },
+    pendiente_decision: { label: t("crmCancellations.pendDecision"), cls: "bg-warning/15 text-warning border-warning/20" },
+    resuelta: { label: t("crmCancellations.resuelta"), cls: "bg-success/15 text-success border-success/20" },
     cerrada: { label: t("crmCancellations.cerrada"), cls: "bg-gray-500/15 text-gray-400 border-gray-500/20" },
-    incidencia: { label: t("crmCancellations.incidencia"), cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+    incidencia: { label: t("crmCancellations.incidencia"), cls: "bg-danger/15 text-danger border-danger/20" },
   };
   const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
@@ -337,9 +337,9 @@ function AnulResBadge({ status }: { status: string }) {
   const { t } = useI18n();
   const map: Record<string, { label: string; cls: string }> = {
     sin_resolver: { label: t("crmCancellations.sinResolver"), cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
-    rechazada: { label: t("crmCancellations.rechazada"), cls: "bg-red-500/15 text-red-300 border-red-500/20" },
-    aceptada_total: { label: t("crmCancellations.aceptadaTotal"), cls: "bg-green-500/15 text-green-300 border-green-500/20" },
-    aceptada_parcial: { label: t("crmCancellations.aceptadaParcial"), cls: "bg-teal-500/15 text-teal-300 border-teal-500/20" },
+    rechazada: { label: t("crmCancellations.rechazada"), cls: "bg-danger/15 text-danger border-danger/20" },
+    aceptada_total: { label: t("crmCancellations.aceptadaTotal"), cls: "bg-success/15 text-success border-success/20" },
+    aceptada_parcial: { label: t("crmCancellations.aceptadaParcial"), cls: "bg-success/15 text-success border-success/20" },
   };
   const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
@@ -348,11 +348,11 @@ function AnulFinBadge({ status }: { status: string }) {
   const { t } = useI18n();
   const map: Record<string, { label: string; cls: string }> = {
     sin_compensacion: { label: t("crmCancellations.sinComp"), cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
-    pendiente_devolucion: { label: t("crmCancellations.pendDev"), cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
-    devuelta_economicamente: { label: t("crmCancellations.devuelta"), cls: "bg-green-500/15 text-green-300 border-green-500/20" },
-    pendiente_bono: { label: t("crmCancellations.pendBono"), cls: "bg-purple-500/15 text-purple-300 border-purple-500/20" },
-    compensada_bono: { label: t("crmCancellations.bonoEnviado"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/20" },
-    incidencia_economica: { label: t("crmCancellations.incidEc"), cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+    pendiente_devolucion: { label: t("crmCancellations.pendDev"), cls: "bg-warning/15 text-warning border-warning/20" },
+    devuelta_economicamente: { label: t("crmCancellations.devuelta"), cls: "bg-success/15 text-success border-success/20" },
+    pendiente_bono: { label: t("crmCancellations.pendBono"), cls: "bg-primary/15 text-primary border-primary/20" },
+    compensada_bono: { label: t("crmCancellations.bonoEnviado"), cls: "bg-primary/15 text-primary border-primary/20" },
+    incidencia_economica: { label: t("crmCancellations.incidEc"), cls: "bg-danger/15 text-danger border-danger/20" },
   };
   const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
@@ -483,7 +483,7 @@ function LeadDetailModal({
     return (
       <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+          <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
       </DialogContent>
     );
@@ -513,7 +513,7 @@ function LeadDetailModal({
         <div className="flex items-center gap-3 flex-wrap">
           <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
           {(lead as any).source === "venta_perdida" && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/25">{t("crmLeads.ventaAbandonada")}</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-danger/15 text-danger border border-danger/25">{t("crmLeads.ventaAbandonada")}</span>
           )}
           <PriorityDot priority={lead.priority as Priority} />
           <span className="text-xs text-foreground/50 capitalize">{t("crmLeads.prioridad", { priority: lead.priority })}</span>
@@ -524,11 +524,11 @@ function LeadDetailModal({
         {/* Contact info */}
         <div className="grid grid-cols-2 gap-3">
           {lead.phone && (
-            <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm text-foreground/70 hover:text-orange-400 transition-colors">
+            <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm text-foreground/70 hover:text-warning transition-colors">
               <Phone className="w-3.5 h-3.5" /> {lead.phone}
             </a>
           )}
-          <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-sm text-foreground/70 hover:text-orange-400 transition-colors">
+          <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-sm text-foreground/70 hover:text-warning transition-colors">
             <Mail className="w-3.5 h-3.5" /> {lead.email}
           </a>
         </div>
@@ -580,7 +580,7 @@ function LeadDetailModal({
                   <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2.5">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-semibold text-white">{act.experienceTitle}</span>
-                      <span className="text-xs text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full">{t("crmLeads.pax", { participants: act.participants })}</span>
+                      <span className="text-xs text-warning font-bold bg-warning/10 px-2 py-0.5 rounded-full">{t("crmLeads.pax", { participants: act.participants })}</span>
                     </div>
                     {act.details && Object.keys(act.details).length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
@@ -590,7 +590,7 @@ function LeadDetailModal({
                             type: 'Tipo', notes: 'Notas'
                           };
                           return (
-                            <span key={k} className="text-xs bg-sky-500/10 text-sky-300 border border-sky-500/20 rounded-full px-2 py-0.5">
+                            <span key={k} className="text-xs bg-info/10 text-info border border-info/20 rounded-full px-2 py-0.5">
                               {labelMap[k] ?? k}: <strong>{String(v)}</strong>
                             </span>
                           );
@@ -623,7 +623,7 @@ function LeadDetailModal({
                   </div>
                   <div className="flex items-center gap-2">
                     <QuoteStatusBadge status={q.status as QuoteStatus} />
-                    <span className="text-sm font-bold text-orange-400">{format.currency(Number(q.total), "EUR", EUR2)}</span>
+                    <span className="text-sm font-bold text-warning">{format.currency(Number(q.total), "EUR", EUR2)}</span>
                   </div>
                 </div>
               ))}
@@ -634,17 +634,17 @@ function LeadDetailModal({
         {/* Email automation preferences */}
         <div>
           <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.emailsAutomaticos")}</h4>
-          <div className={`rounded-lg border px-4 py-3 flex items-start justify-between gap-3 ${emailPrefs?.automationsPaused ? "bg-amber-950/30 border-amber-700/40" : "bg-foreground/[0.04] border-foreground/[0.10]"}`}>
+          <div className={`rounded-lg border px-4 py-3 flex items-start justify-between gap-3 ${emailPrefs?.automationsPaused ? "bg-warning/30 border-warning/40" : "bg-foreground/[0.04] border-foreground/[0.10]"}`}>
             <div className="flex items-start gap-2.5">
               {emailPrefs?.automationsPaused
-                ? <BellOff className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                : <Bell className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />}
+                ? <BellOff className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+                : <Bell className="w-4 h-4 text-success mt-0.5 shrink-0" />}
               <div>
                 <div className="text-sm font-medium text-white">
                   {emailPrefs?.automationsPaused ? t("crmLeads.automatizacionesPausadas") : t("crmLeads.automatizacionesActivas")}
                 </div>
                 {emailPrefs?.automationsPaused && emailPrefs.pauseReason && (
-                  <div className="text-xs text-amber-400/80 mt-0.5">{t("crmLeads.motivo", { pauseReason: emailPrefs.pauseReason })}</div>
+                  <div className="text-xs text-warning/80 mt-0.5">{t("crmLeads.motivo", { pauseReason: emailPrefs.pauseReason })}</div>
                 )}
                 {emailPrefs?.automationsPaused && emailPrefs.pausedAt && (
                   <div className="text-xs text-foreground/40 mt-0.5">{t("crmLeads.pausadoEl")}{" "}{format.date(emailPrefs.pausedAt, {})}
@@ -660,7 +660,7 @@ function LeadDetailModal({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-xs h-7 border-green-700/50 text-green-400 hover:bg-green-900/30"
+                  className="text-xs h-7 border-success/50 text-success hover:bg-success/30"
                   onClick={() => setPrefs.mutate({ email: lead.email, automationsPaused: false })}
                   disabled={setPrefs.isPending}
                 >
@@ -669,7 +669,7 @@ function LeadDetailModal({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-xs h-7 border-amber-700/50 text-amber-400 hover:bg-amber-900/30"
+                  className="text-xs h-7 border-warning/50 text-warning hover:bg-warning/30"
                   onClick={() => setShowPauseInput(v => !v)}
                 >
                   <BellOff className="w-3 h-3 mr-1" />{" "}{t("crmLeads.pausar")}</Button>
@@ -757,7 +757,7 @@ function LeadDetailModal({
         <Button
           variant="outline"
           size="sm"
-          className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+          className="border-danger/30 text-danger hover:bg-danger/10"
           onClick={() => markLost.mutate({ id: leadId })}
         >
           <XCircle className="w-4 h-4 mr-1" />{" "}{t("crmLeads.marcarPerdido")}</Button>
@@ -880,7 +880,7 @@ function LeadEditModal({
     return (
       <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+          <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
       </DialogContent>
     );
@@ -923,18 +923,18 @@ function LeadEditModal({
     <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <Pencil className="w-4 h-4 text-orange-400" /> {voc.editLead}
+          <Pencil className="w-4 h-4 text-warning" /> {voc.editLead}
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
         {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-foreground/65 text-xs">{t("crmLeads.nombre")}{" "}<span className="text-red-400">*</span></Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.nombre")}{" "}<span className="text-danger">*</span></Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">{t("crmLeads.email")}{" "}<span className="text-red-400">*</span></Label>
+            <Label className="text-foreground/65 text-xs">{t("crmLeads.email")}{" "}<span className="text-danger">*</span></Label>
             <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
@@ -951,7 +951,7 @@ function LeadEditModal({
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label className="text-foreground/65 text-xs">{voc.interests}</Label>
-            <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 transition-colors">
+            <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-warning hover:text-warning transition-colors">
               <Plus className="w-3 h-3" /> {voc.addInterest}
             </button>
           </div>
@@ -997,14 +997,14 @@ function LeadEditModal({
                       className="bg-foreground/[0.05] border-foreground/[0.12] text-white w-14 h-8 text-xs text-center"
                     />
                     {activityLines.length > 1 && (
-                      <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-red-400 transition-colors ml-1">
+                      <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-danger transition-colors ml-1">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
                 </div>
                 {line.experienceTitle && (
-                  <p className="text-xs text-emerald-400 pl-6">✓ {line.experienceTitle}</p>
+                  <p className="text-xs text-success pl-6">✓ {line.experienceTitle}</p>
                 )}
               </div>
             ))}
@@ -1145,7 +1145,7 @@ function RegimeCell({ item, onChange }: {
       <div className="col-span-2 flex items-center justify-center"
         title={t("crmLeads.regimenFiscalHeredadoDel")}>
         <span className={`text-[10px] font-semibold px-2 py-1 rounded-md border whitespace-nowrap ${
-          isReav ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+          isReav ? "bg-warning/15 text-warning border-warning/30"
                  : "bg-foreground/[0.06] text-foreground/70 border-foreground/[0.12]"}`}>
           {regimeLabel(item)}
         </span>
@@ -1154,7 +1154,7 @@ function RegimeCell({ item, onChange }: {
   }
   return (
     <select
-      className="col-span-2 bg-foreground/[0.05] border border-orange-500/30 text-white text-xs rounded-md px-1 py-1.5 h-9"
+      className="col-span-2 bg-foreground/[0.05] border border-warning/30 text-white text-xs rounded-md px-1 py-1.5 h-9"
       title={t("crmLeads.lineaManualElRegimen")}
       value={isReav ? "reav" : ((item as any).taxRate === 10 ? "general_10" : "general")}
       onChange={(e) => {
@@ -1264,19 +1264,19 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
     <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <Users className="w-4 h-4 text-violet-400" /> {voc.newLead}
+          <Users className="w-4 h-4 text-primary" /> {voc.newLead}
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
         {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="new-lead-name" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.nombre")}{" "}<span className="text-red-400">*</span></Label>
+            <Label htmlFor="new-lead-name" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.nombre")}{" "}<span className="text-danger">*</span></Label>
             <Input id="new-lead-name" required value={name} onChange={e => setName(e.target.value)} placeholder={t("crmLeads.anaGarcia")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.name, "new-lead-name-error")} />
             <FieldError id="new-lead-name-error" msg={errors.name} />
           </div>
           <div>
-            <Label htmlFor="new-lead-email" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.email")}{" "}<span className="text-red-400">*</span></Label>
+            <Label htmlFor="new-lead-email" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.email")}{" "}<span className="text-danger">*</span></Label>
             <Input id="new-lead-email" required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.email, "new-lead-email-error")} />
             <FieldError id="new-lead-email-error" msg={errors.email} />
           </div>
@@ -1295,7 +1295,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label className="text-xs text-foreground/60">{voc.interests}</Label>
-            <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
+            <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-primary hover:text-primary transition-colors">
               <Plus className="w-3 h-3" /> {voc.addInterest}
             </button>
           </div>
@@ -1326,15 +1326,15 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                       className="bg-foreground/[0.05] border-foreground/[0.12] text-white w-14 h-8 text-xs text-center"
                     />
                     {activityLines.length > 1 && (
-                      <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-red-400 transition-colors ml-1">
+                      <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-danger transition-colors ml-1">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
                 </div>
                 {line.experienceId && (
-                  <p className="text-xs text-emerald-400 pl-6 mt-1.5 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  <p className="text-xs text-success pl-6 mt-1.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
                     {voc.licensed ? t("crmLeads.vinculadoAlCatalogo") : <>{line.family === "experience" ? t("crmLeads.experiencia") : t("crmLeads.pack")}{" "}{t("crmLeads.vinculadoDelCatalogo")}</>}
                   </p>
                 )}
@@ -1511,7 +1511,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
     <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <CalendarCheck className="w-5 h-5 text-emerald-400" /> {voc.newOrder}
+          <CalendarCheck className="w-5 h-5 text-success" /> {voc.newOrder}
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4 py-2">
@@ -1548,7 +1548,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => { setNewClientName(clientSearch); setNewClientEmail(""); setNewClientPhone(""); setNewClientCompany(""); setShowClientSugg(false); setShowCreateClient(true); }}
-                  className="mt-2 w-full flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 border border-dashed border-emerald-500/40 hover:border-emerald-500/70 rounded-lg px-3 py-2 transition-colors"
+                  className="mt-2 w-full flex items-center gap-2 text-sm text-success hover:text-success border border-dashed border-success/40 hover:border-success/70 rounded-lg px-3 py-2 transition-colors"
                 >
                   <UserPlus className="w-4 h-4 shrink-0" />{t("crmReservations.crearNuevoCliente", { clientSearch })}</button>
               )}
@@ -1558,9 +1558,9 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
 
           {/* Cliente seleccionado — mostrar resumen con opción de cambiar */}
           {customerName && !showCreateClient && (
-            <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-500/25 rounded-lg px-3 py-2">
+            <div className="flex items-center justify-between bg-success/40 border border-success/25 rounded-lg px-3 py-2">
               <div>
-                <p className="text-sm font-medium text-emerald-300">{customerName}</p>
+                <p className="text-sm font-medium text-success">{customerName}</p>
                 {customerEmail && <p className="text-xs text-foreground/50">{customerEmail}</p>}
               </div>
               <button type="button" onClick={() => { setCustomerName(""); setCustomerEmail(""); setCustomerPhone(""); setClientSearch(""); }} className="text-xs text-foreground/40 hover:text-foreground/70 underline underline-offset-2">{t("crmReservations.cambiar")}</button>
@@ -1569,9 +1569,9 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
 
           {/* Formulario inline de nuevo cliente */}
           {showCreateClient && (
-            <div className="bg-emerald-950/30 border border-emerald-500/25 rounded-lg p-3 space-y-2.5">
+            <div className="bg-success/30 border border-success/25 rounded-lg p-3 space-y-2.5">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-success uppercase tracking-wider flex items-center gap-1.5">
                   <UserPlus className="w-3.5 h-3.5" />{" "}{t("crmReservations.nuevoCliente")}</p>
                 <button type="button" onClick={() => setShowCreateClient(false)} className="text-foreground/40 hover:text-foreground/70" aria-label={t("crmReservations.cerrarElAltaDe")}>
                   <X className="w-3.5 h-3.5" />
@@ -1631,9 +1631,9 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           <div className="relative">
             <Label htmlFor="new-order-product" className="text-xs text-foreground/60 mb-1 block">{voc.productRequired}</Label>
             {productName ? (
-              <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-500/25 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between bg-success/40 border border-success/25 rounded-lg px-3 py-2">
                 <div>
-                  <p className="text-sm font-medium text-emerald-300">{productName}</p>
+                  <p className="text-sm font-medium text-success">{productName}</p>
                   <p className="text-xs text-foreground/50 mt-0.5">
                     {productPricingType === "per_person" ? t("crmReservations.precioPorPersona") : t("crmReservations.precioPorUnidad")}
                   </p>
@@ -1925,7 +1925,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
     <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto *:min-w-0">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2 pr-6">
-          <Plus className="w-5 h-5 text-orange-400" /> {voc.licensed ? t("crmQuotes.nuevoPresupuesto2") : t("crmQuotes.nuevoPresupuesto")}
+          <Plus className="w-5 h-5 text-warning" /> {voc.licensed ? t("crmQuotes.nuevoPresupuesto2") : t("crmQuotes.nuevoPresupuesto")}
           <span className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">{voc.agreeLead(t("crmQuotes.sinLeadPrevio", { lead: voc.lead }), t("crmQuotes.sinLeadPrevia", { lead: voc.lead }))}</span>
         </DialogTitle>
       </DialogHeader>
@@ -1934,7 +1934,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         {/* ── Sección cliente ── */}
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2 mb-1">
-            <User className="w-4 h-4 text-orange-400" />
+            <User className="w-4 h-4 text-warning" />
             <span className="text-xs font-semibold uppercase tracking-widest text-foreground/60">{t("crmQuotes.datosDelCliente")}</span>
           </div>
 
@@ -2025,7 +2025,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label className="text-foreground/65 text-xs">{t("crmQuotes.conceptos")}{" "}<span className="text-foreground/40">{t("crmQuotes.escribeOBuscaUn")}</span></Label>
-            <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
+            <Button size="sm" variant="ghost" className="text-warning hover:text-warning text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0 }])}>
               <Plus className="w-3 h-3 mr-1" />{" "}{t("crmQuotes.anadirLinea")}</Button>
           </div>
@@ -2066,8 +2066,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input aria-label={t("crmQuotes.precioUnitarioDeLa", { v: idx + 1 })} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{format.currency(item.total, "EUR", EUR2)}</div>
-                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1" aria-label={t("crmQuotes.quitarLaLinea", { v: idx + 1 })}
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-warning" : "text-warning"}`}>{format.currency(item.total, "EUR", EUR2)}</div>
+                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-danger p-1" aria-label={t("crmQuotes.quitarLaLinea", { v: idx + 1 })}
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
@@ -2090,7 +2090,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
               <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponibleGeneral")}</span><span>{format.currency((discountedGeneral - taxAmount), "EUR", EUR2)}</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((discountedSubtotal - discountedGeneral), "EUR", EUR2)}</span></div>
+              <div className="flex justify-between text-sm text-warning/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((discountedSubtotal - discountedGeneral), "EUR", EUR2)}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
@@ -2100,10 +2100,10 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
             <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.ivaIncluidoEnEl", { rate: row.rate })}</span><span>{format.currency(row.amount, "EUR", EUR2)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
-            <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
+            <div className="text-xs text-warning/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
-            <span>{t("crmQuotes.total2")}</span><span className="text-orange-400 text-xl">{format.currency(total, "EUR", EUR2)}</span>
+            <span>{t("crmQuotes.total2")}</span><span className="text-warning text-xl">{format.currency(total, "EUR", EUR2)}</span>
           </div>
         </div>
 
@@ -2127,9 +2127,9 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           onClick={() => setShowPlanSectionD(!showPlanSectionD)}
           className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-foreground/[0.04] transition-colors"
         >
-          <span className="flex items-center gap-2 text-violet-300 font-medium">
+          <span className="flex items-center gap-2 text-primary font-medium">
             <CreditCard className="w-4 h-4" />{t("crmQuotes.planDePagoFraccionado")}{draftInstallmentsD.length > 0 && (
-              <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-xs px-1.5 py-0.5 rounded-full">
+              <span className="bg-primary/20 text-primary border border-primary/30 text-xs px-1.5 py-0.5 rounded-full">
                 {t("crmQuotes.cuota", { draftInstallmentsDCount: draftInstallmentsD.length })}
               </span>
             )}
@@ -2161,7 +2161,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                       }
                       setDraftInstallmentsD(updated);
                     }}
-                    className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                    className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-primary/50"
                   />
                   <input
                     type="date"
@@ -2171,11 +2171,11 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                       updated[idx] = { ...updated[idx], dueDate: e.target.value };
                       setDraftInstallmentsD(updated);
                     }}
-                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary/50"
                   />
                 </div>
                 <div className="flex items-center justify-between pl-7">
-                  <label className="flex items-center gap-1.5 text-xs text-violet-300 cursor-pointer select-none">
+                  <label className="flex items-center gap-1.5 text-xs text-primary cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={inst.isRequiredForConfirmation}
@@ -2184,9 +2184,9 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                         updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
                         setDraftInstallmentsD(updated);
                       }}
-                      className="accent-violet-500 shrink-0"
+                      className="accent-primary shrink-0"
                     />{t("crmQuotes.cuotaInaplazable")}</label>
-                  <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">{t("crmQuotes.eliminar")}</button>
+                  <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-danger hover:text-danger text-xs">{t("crmQuotes.eliminar")}</button>
                 </div>
               </div>
             ))}
@@ -2205,14 +2205,14 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                   notes: "",
                 }]);
               }}
-              className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+              className="text-xs text-primary hover:text-primary flex items-center gap-1"
             >{t("crmQuotes.anadirCuota")}</button>
             {draftInstallmentsD.length > 0 && (() => {
               const sum = draftInstallmentsD.reduce((s, i) => s + i.amountCents, 0);
               const totalCents = Math.round(total * 100);
               const diff = Math.abs(sum - totalCents);
               return (
-                <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
+                <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
                   <span>{t("crmQuotes.suma", { formatEur: format.currency((sum / 100), "EUR", EUR2) })}</span>
                   <span>{t("crmQuotes.total3", { formatEur: format.currency(total, "EUR", EUR2) })}</span>
                   {diff > 1 && <span>{t("crmQuotes.dif", { formatEur: format.currency((diff / 100), "EUR", EUR2) })}</span>}
@@ -2400,13 +2400,13 @@ function QuoteBuilderModal({
     <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <FileText className="w-5 h-5 text-orange-400" />{" "}{t("crmQuotes.nuevoPresupuesto")}{leadName && <span className="text-foreground/50 text-sm font-normal ml-1">{t("crmQuotes.para", { leadName })}</span>}
+          <FileText className="w-5 h-5 text-warning" />{" "}{t("crmQuotes.nuevoPresupuesto")}{leadName && <span className="text-foreground/50 text-sm font-normal ml-1">{t("crmQuotes.para", { leadName })}</span>}
         </DialogTitle>
       </DialogHeader>
       {/* Boton Autogenerar con IA */}
-      <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-        <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
-        <span className="text-emerald-300 text-sm flex-1">
+      <div className="flex items-center gap-2 p-3 rounded-xl bg-success/10 border border-success/30">
+        <Sparkles className="w-4 h-4 text-success shrink-0" />
+        <span className="text-success text-sm flex-1">
           {voc.licensed
             ? (autoFilled ? t("crmQuotes.conceptosGeneradosDesdeLos") : t("crmQuotes.autogeneraLosConceptosDel"))
             : (autoFilled ? t("crmQuotes.conceptosGeneradosDesdeLas") : t("crmQuotes.autogeneraLosConceptosDel2"))}
@@ -2414,7 +2414,7 @@ function QuoteBuilderModal({
         <Button
           size="sm"
           variant="outline"
-          className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60 shrink-0"
+          className="border-success/40 text-success hover:bg-success/10 hover:border-success/60 shrink-0"
           onClick={handleAutoFill}
           disabled={previewQuery.isFetching}
         >
@@ -2467,7 +2467,7 @@ function QuoteBuilderModal({
             <Button
               size="sm"
               variant="ghost"
-              className="text-orange-400 hover:text-orange-300 text-xs h-6"
+              className="text-warning hover:text-warning text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }])}
             >
               <Plus className="w-3 h-3 mr-1" />{" "}{t("crmQuotes.anadirLinea")}</Button>
@@ -2519,13 +2519,13 @@ function QuoteBuilderModal({
                   value={item.unitPrice}
                   onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))}
                 />
-                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-warning" : "text-warning"}`}>
                   {format.currency(item.total, "EUR", EUR2)}
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
+                  className="col-span-1 text-foreground/40 hover:text-danger p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))}
                   disabled={items.length === 1}
                 >
@@ -2549,9 +2549,9 @@ function QuoteBuilderModal({
         <div className="bg-foreground/[0.05] rounded-xl p-3">
           <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmQuotes.codigoDeDescuentoOpcional")}</Label>
           {promoData ? (
-            <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded-lg px-3 py-2">
-              <span className="font-mono font-bold text-green-400 text-sm">{promoData.code} — -{promoData.discountPercent}%</span>
-              <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-foreground/50 hover:text-red-400 text-xs ml-2">{t("crmQuotes.quitar")}</button>
+            <div className="flex items-center justify-between bg-success/30 border border-success/40 rounded-lg px-3 py-2">
+              <span className="font-mono font-bold text-success text-sm">{promoData.code} — -{promoData.discountPercent}%</span>
+              <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-foreground/50 hover:text-danger text-xs ml-2">{t("crmQuotes.quitar")}</button>
             </div>
           ) : (
             <div className="flex gap-2">
@@ -2574,23 +2574,23 @@ function QuoteBuilderModal({
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
               <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponibleGeneral")}</span><span>{format.currency((discountedGeneral - taxAmount), "EUR", EUR2)}</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((discountedSubtotal - discountedGeneral), "EUR", EUR2)}</span></div>
+              <div className="flex justify-between text-sm text-warning/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((discountedSubtotal - discountedGeneral), "EUR", EUR2)}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
             <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponible")}</span><span>{format.currency(baseImponible, "EUR", EUR2)}</span></div>
           )}
           {promoDiscount > 0 && (
-            <div className="flex justify-between text-sm text-green-400"><span>{t("crmQuotes.descuento", { code: promoData?.code })}</span><span>-{format.currency(promoDiscount, "EUR", EUR2)}</span></div>
+            <div className="flex justify-between text-sm text-success"><span>{t("crmQuotes.descuento", { code: promoData?.code })}</span><span>-{format.currency(promoDiscount, "EUR", EUR2)}</span></div>
           )}
           {taxRowsB.map(row => (
             <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.ivaIncluidoEnEl", { rate: row.rate })}</span><span>{format.currency(row.amount, "EUR", EUR2)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
-            <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
+            <div className="text-xs text-warning/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
-            <span>{t("crmQuotes.total2")}</span><span className="text-orange-400 text-xl">{format.currency(total, "EUR", EUR2)}</span>
+            <span>{t("crmQuotes.total2")}</span><span className="text-warning text-xl">{format.currency(total, "EUR", EUR2)}</span>
           </div>
         </div>
 
@@ -2620,9 +2620,9 @@ function QuoteBuilderModal({
           onClick={() => setShowPlanSection(!showPlanSection)}
           className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-foreground/[0.04] transition-colors"
         >
-          <span className="flex items-center gap-2 text-violet-300 font-medium">
+          <span className="flex items-center gap-2 text-primary font-medium">
             <CreditCard className="w-4 h-4" />{t("crmQuotes.planDePagoFraccionado")}{draftInstallments.length > 0 && (
-              <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-xs px-1.5 py-0.5 rounded-full">
+              <span className="bg-primary/20 text-primary border border-primary/30 text-xs px-1.5 py-0.5 rounded-full">
                 {t("crmQuotes.cuota2", { draftInstallmentsCount: draftInstallments.length })}
               </span>
             )}
@@ -2654,7 +2654,7 @@ function QuoteBuilderModal({
                       }
                       setDraftInstallments(updated);
                     }}
-                    className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                    className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-primary/50"
                   />
                   <input
                     type="date"
@@ -2664,11 +2664,11 @@ function QuoteBuilderModal({
                       updated[idx] = { ...updated[idx], dueDate: e.target.value };
                       setDraftInstallments(updated);
                     }}
-                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary/50"
                   />
                 </div>
                 <div className="flex items-center justify-between pl-7">
-                  <label className="flex items-center gap-1.5 text-xs text-violet-300 cursor-pointer select-none">
+                  <label className="flex items-center gap-1.5 text-xs text-primary cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={inst.isRequiredForConfirmation}
@@ -2677,9 +2677,9 @@ function QuoteBuilderModal({
                         updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
                         setDraftInstallments(updated);
                       }}
-                      className="accent-violet-500 shrink-0"
+                      className="accent-primary shrink-0"
                     />{t("crmQuotes.cuotaInaplazable")}</label>
-                  <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">{t("crmQuotes.eliminar")}</button>
+                  <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-danger hover:text-danger text-xs">{t("crmQuotes.eliminar")}</button>
                 </div>
               </div>
             ))}
@@ -2698,14 +2698,14 @@ function QuoteBuilderModal({
                   notes: "",
                 }]);
               }}
-              className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+              className="text-xs text-primary hover:text-primary flex items-center gap-1"
             >{t("crmQuotes.anadirCuota")}</button>
             {draftInstallments.length > 0 && (() => {
               const sum = draftInstallments.reduce((s, i) => s + i.amountCents, 0);
               const totalCents = Math.round(total * 100);
               const diff = Math.abs(sum - totalCents);
               return (
-                <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
+                <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
                   <span>{t("crmQuotes.sumaCuotas", { formatEur: format.currency((sum / 100), "EUR", EUR2) })}</span>
                   <span>{t("crmQuotes.total3", { formatEur: format.currency(total, "EUR", EUR2) })}</span>
                   {diff > 1 && <span>{t("crmQuotes.dif", { formatEur: format.currency((diff / 100), "EUR", EUR2) })}</span>}
@@ -2782,9 +2782,9 @@ function ProductAutocompleteInput({
     ? { experience: "Producto", pack: "Paquete", legopack: "Paquete" }
     : { experience: "Actividad", pack: "Pack", legopack: t("crmQuotes.legoPack") };
   const TYPE_COLORS: Record<string, string> = {
-    experience: "text-blue-400",
-    pack: "text-emerald-400",
-    legopack: "text-violet-400",
+    experience: "text-info",
+    pack: "text-success",
+    legopack: "text-primary",
   };
 
   return (
@@ -2826,13 +2826,13 @@ function ProductAutocompleteInput({
                 <span className={`text-[10px] font-semibold shrink-0 ${TYPE_COLORS[r.type] ?? "text-foreground/50"}`}>
                   {TYPE_LABELS[r.type] ?? r.type}
                 </span>
-                <span className="text-sm text-white overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-orange-300 transition-colors">{r.title}</span>
+                <span className="text-sm text-white overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-warning transition-colors">{r.title}</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {r.fiscalRegime === "reav" && (
-                  <span className="text-[10px] text-amber-400 font-semibold">{t("crmQuotes.reav")}</span>
+                  <span className="text-[10px] text-warning font-semibold">{t("crmQuotes.reav")}</span>
                 )}
-                <span className="text-sm font-semibold text-orange-400">{format.currency(r.unitPrice, "EUR", EUR2)}</span>
+                <span className="text-sm font-semibold text-warning">{format.currency(r.unitPrice, "EUR", EUR2)}</span>
               </div>
             </button>
           ))}
@@ -2965,7 +2965,7 @@ function QuoteEditModal({
     return (
       <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+          <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
       </DialogContent>
     );
@@ -2975,7 +2975,7 @@ function QuoteEditModal({
     <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <Pencil className="w-4 h-4 text-orange-400" />{" "}{t("crmQuotes.editarPresupuesto")}</DialogTitle>
+          <Pencil className="w-4 h-4 text-warning" />{" "}{t("crmQuotes.editarPresupuesto")}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
@@ -2995,7 +2995,7 @@ function QuoteEditModal({
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label className="text-foreground/65 text-xs">{t("crmQuotes.conceptos")}</Label>
-            <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
+            <Button size="sm" variant="ghost" className="text-warning hover:text-warning text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }])}>
               <Plus className="w-3 h-3 mr-1" />{" "}{t("crmQuotes.anadirLinea")}</Button>
           </div>
@@ -3028,8 +3028,8 @@ function QuoteEditModal({
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{format.currency(item.total, "EUR", EUR2)}</div>
-                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-warning" : "text-warning"}`}>{format.currency(item.total, "EUR", EUR2)}</div>
+                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-danger p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
@@ -3050,14 +3050,14 @@ function QuoteEditModal({
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
               <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponibleGeneral")}</span><span>{format.currency((discountedBase - taxAmount), "EUR", EUR2)}</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((subtotal - generalSubtotalEdit), "EUR", EUR2)}</span></div>
+              <div className="flex justify-between text-sm text-warning/70"><span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency((subtotal - generalSubtotalEdit), "EUR", EUR2)}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
             <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponible")}</span><span>{format.currency(baseImponible, "EUR", EUR2)}</span></div>
           )}
           {discount > 0 && (
-            <div className="flex justify-between text-sm text-purple-300">
+            <div className="flex justify-between text-sm text-primary">
               <span className="flex items-center gap-1"><Gift className="w-3 h-3" />{" "}{t("crmQuotes.descuentoBono")}</span>
               <span>−{format.currency(discount, "EUR", EUR2)}</span>
             </div>
@@ -3066,23 +3066,23 @@ function QuoteEditModal({
             <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.ivaIncluidoEnEl", { rate: row.rate })}</span><span>{format.currency(row.amount, "EUR", EUR2)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
-            <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
+            <div className="text-xs text-warning/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2">
-            <span>{t("crmQuotes.total2")}</span><span className="text-orange-400 text-xl">{format.currency(total, "EUR", EUR2)}</span>
+            <span>{t("crmQuotes.total2")}</span><span className="text-warning text-xl">{format.currency(total, "EUR", EUR2)}</span>
           </div>
         </div>
 
         {/* ── Panel: Aplicar bono / código de descuento ── */}
         {discount === 0 && (
-          <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3">
+          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3">
             <button
               type="button"
-              className="w-full flex items-center justify-between text-xs font-semibold text-purple-300 uppercase tracking-wider"
+              className="w-full flex items-center justify-between text-xs font-semibold text-primary uppercase tracking-wider"
               onClick={() => setShowBonoPanel((v) => !v)}
             >
               <span className="flex items-center gap-2"><Gift className="w-3.5 h-3.5" />{" "}{t("crmQuotes.aplicarBonoCodigoDe")}</span>
-              <span className="text-purple-400/60">{showBonoPanel ? "▲" : "▼"}</span>
+              <span className="text-primary/60">{showBonoPanel ? "▲" : "▼"}</span>
             </button>
             {showBonoPanel && (
               <div className="mt-3 space-y-2">
@@ -3095,7 +3095,7 @@ function QuoteEditModal({
                     spellCheck={false}
                   />
                   <Button size="sm" variant="outline"
-                    className="border-purple-500/30 text-purple-300 hover:bg-purple-500/10 h-8 px-3"
+                    className="border-primary/30 text-primary hover:bg-primary/10 h-8 px-3"
                     disabled={bonoCode.trim().length < 3 || bonoFetching}
                     onClick={() => setBonoQueryCode(bonoCode.trim())}
                   >
@@ -3103,20 +3103,20 @@ function QuoteEditModal({
                   </Button>
                 </div>
                 {bonoPreview && !bonoPreview.found && (
-                  <p className="text-red-400 text-xs">{t("crmQuotes.codigoNoEncontrado")}</p>
+                  <p className="text-danger text-xs">{t("crmQuotes.codigoNoEncontrado")}</p>
                 )}
                 {bonoPreview?.found && (
                   <div className={`rounded-lg border p-3 space-y-2 text-xs ${
                     bonoPreview.status === "canjeado" ? "border-gray-500/20 bg-gray-500/5" :
-                    bonoPreview.status === "caducado" ? "border-red-500/20 bg-red-500/5" :
-                    "border-purple-500/20 bg-purple-500/5"
+                    bonoPreview.status === "caducado" ? "border-danger/20 bg-danger/5" :
+                    "border-primary/20 bg-primary/5"
                   }`}>
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-bold text-foreground">{bonoPreview.code}</span>
                       <span className={`font-semibold px-2 py-0.5 rounded-full text-xs ${
                         bonoPreview.status === "canjeado" ? "text-gray-400 bg-gray-500/10" :
-                        bonoPreview.status === "caducado" ? "text-red-400 bg-red-500/10" :
-                        "text-purple-300 bg-purple-500/10"
+                        bonoPreview.status === "caducado" ? "text-danger bg-danger/10" :
+                        "text-primary bg-primary/10"
                       }`}>
                         {bonoPreview.status === "canjeado" ? t("crmQuotes.yaCanjeado") : bonoPreview.status === "caducado" ? t("crmQuotes.caducado") : t("crmQuotes.activo")}
                       </span>
@@ -3132,7 +3132,7 @@ function QuoteEditModal({
                       </Button>
                     )}
                     {bonoPreview.status !== "enviado" && bonoPreview.status !== "generado" && (
-                      <p className="text-red-400">{t("crmQuotes.esteBonoNoPuede", { status: bonoPreview.status })}</p>
+                      <p className="text-danger">{t("crmQuotes.esteBonoNoPuede", { status: bonoPreview.status })}</p>
                     )}
                   </div>
                 )}
@@ -3186,10 +3186,10 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
   const rest = rows.filter(r => r.status !== "pending");
 
   const STATUS_STYLE: Record<string, { label: string; color: string }> = {
-    pending:   { label: t("crmQuotes.pendiente"),  color: "text-amber-300" },
-    sent:      { label: t("crmQuotes.enviado"),    color: "text-green-400" },
+    pending:   { label: t("crmQuotes.pendiente"),  color: "text-warning" },
+    sent:      { label: t("crmQuotes.enviado"),    color: "text-success" },
     skipped:   { label: t("crmQuotes.saltado"),    color: "text-gray-500"  },
-    failed:    { label: t("crmQuotes.fallido"),    color: "text-red-400"   },
+    failed:    { label: t("crmQuotes.fallido"),    color: "text-danger"   },
     cancelled: { label: t("crmQuotes.cancelado"),  color: "text-zinc-600"  },
   };
 
@@ -3217,10 +3217,10 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
       {pending.length > 0 && (
         <div className="space-y-1">
           {pending.map(job => (
-            <div key={job.id} className="flex items-center justify-between bg-amber-950/20 border border-amber-700/25 rounded-lg px-3 py-2 gap-3">
+            <div key={job.id} className="flex items-center justify-between bg-warning/20 border border-warning/25 rounded-lg px-3 py-2 gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-amber-300 font-medium">{t("crmQuotes.pendiente")}</span>
+                  <span className="text-xs text-warning font-medium">{t("crmQuotes.pendiente")}</span>
                   <span className="text-xs text-foreground/50 font-mono">{job.templateKey}</span>
                 </div>
                 <div className="text-xs text-foreground/40 mt-0.5">{fmtDate(job.scheduledFor)}</div>
@@ -3229,7 +3229,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
               <button
                 onClick={() => cancelJob.mutate({ id: job.id })}
                 disabled={cancelJob.isPending}
-                className="text-xs text-red-500 hover:text-red-400 shrink-0 px-2 py-1 rounded hover:bg-foreground/[0.06] transition-colors"
+                className="text-xs text-danger hover:text-danger shrink-0 px-2 py-1 rounded hover:bg-foreground/[0.06] transition-colors"
               >{t("crmQuotes.cancelar")}</button>
             </div>
           ))}
@@ -3264,15 +3264,15 @@ type TimelineEventType = "created" | "sent" | "viewed" | "reminder" | "accepted"
 
 const TIMELINE_CONFIG: Record<TimelineEventType, { icon: React.ReactNode; color: string; bg: string }> = {
   created:  { icon: <FileText className="w-3.5 h-3.5" />, color: "text-foreground/65", bg: "bg-foreground/[0.08]" },
-  sent:     { icon: <Send className="w-3.5 h-3.5" />, color: "text-blue-400", bg: "bg-blue-500/20" },
-  viewed:   { icon: <Eye className="w-3.5 h-3.5" />, color: "text-emerald-400", bg: "bg-emerald-500/20" },
-  reminder: { icon: <RefreshCw className="w-3.5 h-3.5" />, color: "text-amber-400", bg: "bg-amber-500/20" },
-  accepted: { icon: <CheckCircle className="w-3.5 h-3.5" />, color: "text-emerald-400", bg: "bg-emerald-500/20" },
-  rejected: { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-400", bg: "bg-red-500/20" },
-  paid:     { icon: <CheckCircle className="w-3.5 h-3.5" />, color: "text-orange-400", bg: "bg-orange-500/20" },
-  lost:     { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-400", bg: "bg-red-500/20" },
+  sent:     { icon: <Send className="w-3.5 h-3.5" />, color: "text-info", bg: "bg-info/20" },
+  viewed:   { icon: <Eye className="w-3.5 h-3.5" />, color: "text-success", bg: "bg-success/20" },
+  reminder: { icon: <RefreshCw className="w-3.5 h-3.5" />, color: "text-warning", bg: "bg-warning/20" },
+  accepted: { icon: <CheckCircle className="w-3.5 h-3.5" />, color: "text-success", bg: "bg-success/20" },
+  rejected: { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-danger", bg: "bg-danger/20" },
+  paid:     { icon: <CheckCircle className="w-3.5 h-3.5" />, color: "text-warning", bg: "bg-warning/20" },
+  lost:     { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-danger", bg: "bg-danger/20" },
   expired:  { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-foreground/50", bg: "bg-foreground/[0.08]" },
-  activity: { icon: <ArrowUpRight className="w-3.5 h-3.5" />, color: "text-purple-400", bg: "bg-purple-500/20" },
+  activity: { icon: <ArrowUpRight className="w-3.5 h-3.5" />, color: "text-primary", bg: "bg-primary/20" },
 };
 
 function QuoteTimeline({ quoteId }: { quoteId: number }) {
@@ -3637,7 +3637,7 @@ function QuoteDetailModal({
     return (
       <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+          <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
       </DialogContent>
     );
@@ -3657,8 +3657,8 @@ function QuoteDetailModal({
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-700/20 border border-orange-500/30 flex items-center justify-center">
-            <FileText className="w-4 h-4 text-orange-400" />
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-700/20 border border-warning/30 flex items-center justify-center">
+            <FileText className="w-4 h-4 text-warning" />
           </div>
           <div>
             <div className="font-bold">{quote.quoteNumber}</div>
@@ -3672,13 +3672,13 @@ function QuoteDetailModal({
           <QuoteStatusBadge status={quote.status as QuoteStatus} />
           {quote.isAutoGenerated && (
             <span
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2.5 py-1 rounded-full"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/15 border border-primary/30 px-2.5 py-1 rounded-full"
               title={t("crmEmpty.hint.autoQuote", { items: voc.licensed ? t("crmQuotes.losProductosOServicios") : t("crmQuotes.lasActividadesSeleccionadas") })}
             >
               <Sparkles className="w-3 h-3" />{t("crmQuotes.generadoConIa")}</span>
           )}
           {quote.sentAt && <span className="text-xs text-foreground/50">{t("crmQuotes.enviado")}{" "}{format.date(quote.sentAt, {})}</span>}
-          {quote.viewedAt && <span className="text-xs text-emerald-400">{t("crmQuotes.visto")}</span>}
+          {quote.viewedAt && <span className="text-xs text-success">{t("crmQuotes.visto")}</span>}
         </div>
 
         <div className="bg-foreground/[0.05] rounded-xl overflow-hidden">
@@ -3697,8 +3697,8 @@ function QuoteDetailModal({
             </thead>
             <tbody>
               {hasGeneral && hasReav && (
-                <tr className="border-t border-foreground/[0.08] bg-blue-500/5">
-                  <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-blue-300 uppercase tracking-wider">{t("crmQuotes.regimenGeneralIva21")}</td>
+                <tr className="border-t border-foreground/[0.08] bg-info/5">
+                  <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-info uppercase tracking-wider">{t("crmQuotes.regimenGeneralIva21")}</td>
                 </tr>
               )}
               {(hasGeneral && hasReav ? generalItems : items).map((item, i) => (
@@ -3706,23 +3706,23 @@ function QuoteDetailModal({
                   <td className="px-4 py-2.5 text-sm text-foreground/80">{item.description}</td>
                   <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
                   <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</td>
-                  <td className="px-4 py-2.5 text-sm font-semibold text-orange-400 text-right">{format.currency(Number(item.total), "EUR", EUR2)}</td>
+                  <td className="px-4 py-2.5 text-sm font-semibold text-warning text-right">{format.currency(Number(item.total), "EUR", EUR2)}</td>
                 </tr>
               ))}
               {hasReav && (
                 <>
-                  <tr className="border-t border-foreground/[0.08] bg-amber-500/5">
-                    <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-amber-300 uppercase tracking-wider">{t("crmQuotes.reavSinIvaRegimen")}</td>
+                  <tr className="border-t border-foreground/[0.08] bg-warning/5">
+                    <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-warning uppercase tracking-wider">{t("crmQuotes.reavSinIvaRegimen")}</td>
                   </tr>
                   {reavItems.map((item, i) => (
                     <tr key={`reav-${i}`} className="border-t border-foreground/[0.08]">
                       <td className="px-4 py-2.5 text-sm text-foreground/80">
                         {item.description}
-                        <span className="ml-1.5 text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">{t("crmQuotes.reav")}</span>
+                        <span className="ml-1.5 text-xs bg-warning/20 text-warning px-1.5 py-0.5 rounded">{t("crmQuotes.reav")}</span>
                       </td>
                       <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
                       <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</td>
-                      <td className="px-4 py-2.5 text-sm font-semibold text-amber-400 text-right">{format.currency(Number(item.total), "EUR", EUR2)}</td>
+                      <td className="px-4 py-2.5 text-sm font-semibold text-warning text-right">{format.currency(Number(item.total), "EUR", EUR2)}</td>
                     </tr>
                   ))}
                 </>
@@ -3740,7 +3740,7 @@ function QuoteDetailModal({
                 <div className="flex justify-between text-sm text-foreground/60">
                   <span>{t("crmQuotes.subtotalRegGeneral")}</span><span>{format.currency(generalItems.reduce((s,i) => s+i.total,0), "EUR", EUR2)}</span>
                 </div>
-                <div className="flex justify-between text-sm text-amber-400/70">
+                <div className="flex justify-between text-sm text-warning/70">
                   <span>{t("crmQuotes.subtotalReavSinIva")}</span><span>{format.currency(reavItems.reduce((s,i) => s+i.total,0), "EUR", EUR2)}</span>
                 </div>
               </>
@@ -3751,11 +3751,11 @@ function QuoteDetailModal({
               </div>
             )}
             {hasReav && !hasGeneral && (
-              <div className="text-xs text-amber-300/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
+              <div className="text-xs text-warning/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
             )}
             <div className="flex justify-between items-center pt-1">
               <span className="font-bold text-foreground">{t("crmQuotes.total2")}</span>
-              <span className="text-xl font-bold text-orange-400">{format.currency(Number(quote.total), "EUR", EUR2)}</span>
+              <span className="text-xl font-bold text-warning">{format.currency(Number(quote.total), "EUR", EUR2)}</span>
             </div>
           </div>
         </div>
@@ -3765,14 +3765,14 @@ function QuoteDetailModal({
           <div>
             <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmQuotes.facturasGeneradas")}</h4>
             {relatedInvoices.map((inv: any) => (
-              <div key={inv.id} className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+              <div key={inv.id} className="flex items-center justify-between bg-success/10 border border-success/20 rounded-lg px-3 py-2">
                 <div>
-                  <span className="text-sm font-medium text-emerald-400">{inv.invoiceNumber}</span>
+                  <span className="text-sm font-medium text-success">{inv.invoiceNumber}</span>
                   <span className="text-xs text-foreground/50 ml-2">{format.date(inv.issuedAt, {})}</span>
                 </div>
                 {inv.pdfUrl && (
                   <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer">
-                    <Button size="sm" variant="ghost" className="text-emerald-400 hover:text-emerald-300 h-7 text-xs">
+                    <Button size="sm" variant="ghost" className="text-success hover:text-success h-7 text-xs">
                       <Download className="w-3.5 h-3.5 mr-1" />{" "}{t("crmQuotes.descargar")}</Button>
                   </a>
                 )}
@@ -3823,16 +3823,16 @@ function QuoteDetailModal({
 
         {/* ─── RESUMEN PLAN DE PAGOS (siempre visible si existe) ─── */}
         {!showPlanEditor && planQuery.data && planQuery.data.installments.length > 0 && (
-          <div className="bg-violet-950/30 border border-violet-500/30 rounded-xl p-4 space-y-2">
+          <div className="bg-primary/30 border border-primary/30 rounded-xl p-4 space-y-2">
             <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-violet-400" />{t("crmQuotes.planDePagoFraccionado2")}</h4>
+              <h4 className="text-sm font-semibold text-primary flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-primary" />{t("crmQuotes.planDePagoFraccionado2")}</h4>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                 planQuery.data.installments.every(i => i.status === "paid")
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  ? "bg-success/20 text-success border border-success/30"
                   : planQuery.data.installments.some(i => i.status === "paid")
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                  : "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                  ? "bg-warning/20 text-warning border border-warning/30"
+                  : "bg-primary/20 text-primary border border-primary/30"
               }`}>
                 {planQuery.data.installments.every(i => i.status === "paid")
                   ? t("crmQuotes.completado")
@@ -3846,18 +3846,18 @@ function QuoteDetailModal({
                 <div key={inst.id} className="flex items-center justify-between text-xs py-1 border-b border-foreground/[0.06] last:border-0">
                   <div className="flex items-center gap-2">
                     <span className="text-foreground/40 w-5">#{inst.installmentNumber}</span>
-                    <span className={inst.status === "paid" ? "text-emerald-300 font-medium" : "text-foreground/80"}>
+                    <span className={inst.status === "paid" ? "text-success font-medium" : "text-foreground/80"}>
                       {format.currency((inst.amountCents / 100))}
                     </span>
                     {inst.isRequiredForConfirmation && (
-                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">{t("crmQuotes.inaplazable")}</span>
+                      <span className="text-[10px] bg-warning/20 text-warning border border-warning/30 px-1.5 py-0.5 rounded-full">{t("crmQuotes.inaplazable")}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     {inst.dueDate && <span className="text-foreground/40">{inst.dueDate}</span>}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
                       inst.status === "paid"
-                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                        ? "bg-success/20 text-success border-success/30"
                         : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
                     }`}>
                       {inst.status === "paid" ? t("crmQuotes.pagada") : t("crmQuotes.pendiente")}
@@ -3873,14 +3873,14 @@ function QuoteDetailModal({
               return (
                 <>
                   <div className="flex justify-between pt-1 text-xs text-foreground/60">
-                    <span>{t("crmQuotes.cobrado")}{" "}<span className="text-emerald-300 font-medium">{format.currency((paidTotal / 100))}</span></span>
-                    <span>{t("crmQuotes.pendiente2")}{" "}<span className="text-amber-300 font-medium">{format.currency((pendingTotal / 100))}</span></span>
+                    <span>{t("crmQuotes.cobrado")}{" "}<span className="text-success font-medium">{format.currency((paidTotal / 100))}</span></span>
+                    <span>{t("crmQuotes.pendiente2")}{" "}<span className="text-warning font-medium">{format.currency((pendingTotal / 100))}</span></span>
                   </div>
                   {hasPending && (
                     <button
                       onClick={() => generateInstallmentLink.mutate({ quoteId, origin: window.location.origin })}
                       disabled={generateInstallmentLink.isPending}
-                      className="w-full mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-violet-300 border border-violet-500/40 hover:bg-violet-500/10 rounded-lg py-1.5 transition-colors disabled:opacity-50"
+                      className="w-full mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-primary border border-primary/40 hover:bg-primary/10 rounded-lg py-1.5 transition-colors disabled:opacity-50"
                     >
                       <ExternalLink className="w-3 h-3" />
                       {generateInstallmentLink.isPending ? t("crmQuotes.enviando") : t("crmQuotes.enviarEnlaceDePago")}
@@ -3897,7 +3897,7 @@ function QuoteDetailModal({
           <div className="bg-foreground/[0.04] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-violet-400" />{t("crmQuotes.planDePagoFraccionado2")}</h4>
+                <CreditCard className="w-4 h-4 text-primary" />{t("crmQuotes.planDePagoFraccionado2")}</h4>
               <div className="flex items-center gap-2">
                 {planQuery.data && !planEditMode && (
                   <button
@@ -3911,13 +3911,13 @@ function QuoteDetailModal({
                       })));
                       setPlanEditMode(true);
                     }}
-                    className="text-xs text-violet-400 hover:text-violet-300 underline"
+                    className="text-xs text-primary hover:text-primary underline"
                   >{t("crmQuotes.editar")}</button>
                 )}
                 {planQuery.data && !planEditMode && (
                   <button
                     onClick={() => setConfirmDeletePlan(true)}
-                    className="text-xs text-red-400 hover:text-red-300 underline"
+                    className="text-xs text-danger hover:text-danger underline"
                   >{t("crmQuotes.eliminar2")}</button>
                 )}
                 {planEditMode && (
@@ -3936,17 +3936,17 @@ function QuoteDetailModal({
                       <span className="text-xs text-foreground/40 w-5">#{inst.installmentNumber}</span>
                       <span className="text-sm font-semibold text-white flex-1">{format.number((inst.amountCents / 100), { minimumFractionDigits: 2 })} €</span>
                       <span className="text-xs text-foreground/55">{inst.dueDate}</span>
-                      {inst.isRequiredForConfirmation && <span className="text-xs bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">{t("crmQuotes.requerida")}</span>}
+                      {inst.isRequiredForConfirmation && <span className="text-xs bg-primary/15 text-primary border border-primary/25 px-1.5 py-0.5 rounded">{t("crmQuotes.requerida")}</span>}
                       {inst.status === "paid" ? (
-                        <span className="text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded">{t("crmQuotes.pagada")}</span>
+                        <span className="text-xs bg-success/15 text-success border border-success/25 px-1.5 py-0.5 rounded">{t("crmQuotes.pagada")}</span>
                       ) : inst.status === "cancelled" ? (
                         <span className="text-xs text-foreground/30">{t("crmQuotes.cancelada")}</span>
                       ) : isOverdue ? (
-                        <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">{t("crmQuotes.vencida")}</span>
+                        <span className="text-xs bg-danger/15 text-danger border border-danger/25 px-1.5 py-0.5 rounded">{t("crmQuotes.vencida")}</span>
                       ) : (
                         <button
                           onClick={() => setConfirmingInstallment({ id: inst.id, installmentNumber: inst.installmentNumber, amountCents: inst.amountCents })}
-                          className="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/25 px-2 py-0.5 rounded transition-colors"
+                          className="text-xs bg-success/20 hover:bg-success/40 text-success border border-success/25 px-2 py-0.5 rounded transition-colors"
                         >{t("crmQuotes.confirmarPago")}</button>
                       )}
                     </div>
@@ -3959,7 +3959,7 @@ function QuoteDetailModal({
                     <div className="flex justify-between items-center pt-1 text-xs text-foreground/50">
                       <span>{t("crmQuotes.totalPlan")}{" "}<strong className="text-white">{format.number((total / 100), { minimumFractionDigits: 2 })} €</strong></span>
                       {Math.abs(total - quoteTotalCents) > 1 && (
-                        <span className="text-amber-400">{t("crmQuotes.diferenciaConPresupuesto", { formatEur: format.currency((quoteTotalCents / 100), "EUR", EUR2) })}</span>
+                        <span className="text-warning">{t("crmQuotes.diferenciaConPresupuesto", { formatEur: format.currency((quoteTotalCents / 100), "EUR", EUR2) })}</span>
                       )}
                     </div>
                   );
@@ -3995,7 +3995,7 @@ function QuoteDetailModal({
                           }
                           setDraftInstallments(updated);
                         }}
-                        className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                        className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-primary/50"
                       />
                       <input
                         type="date"
@@ -4005,11 +4005,11 @@ function QuoteDetailModal({
                           updated[idx] = { ...updated[idx], dueDate: e.target.value };
                           setDraftInstallments(updated);
                         }}
-                        className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                        className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary/50"
                       />
                     </div>
                     <div className="flex items-center justify-between pl-7">
-                      <label className="flex items-center gap-1.5 text-xs text-violet-300 cursor-pointer select-none">
+                      <label className="flex items-center gap-1.5 text-xs text-primary cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={inst.isRequiredForConfirmation}
@@ -4018,11 +4018,11 @@ function QuoteDetailModal({
                             updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
                             setDraftInstallments(updated);
                           }}
-                          className="accent-violet-500 shrink-0"
+                          className="accent-primary shrink-0"
                         />{t("crmQuotes.cuotaInaplazable")}</label>
                       <button
                         onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))}
-                        className="text-red-400 hover:text-red-300 text-xs"
+                        className="text-danger hover:text-danger text-xs"
                       >{t("crmQuotes.eliminar")}</button>
                     </div>
                   </div>
@@ -4042,7 +4042,7 @@ function QuoteDetailModal({
                       notes: "",
                     }]);
                   }}
-                  className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                  className="text-xs text-primary hover:text-primary flex items-center gap-1"
                 >{t("crmQuotes.anadirCuota")}</button>
 
                 {draftInstallments.length > 0 && (() => {
@@ -4050,7 +4050,7 @@ function QuoteDetailModal({
                   const quoteTotalCents = Math.round(Number(quote.total ?? 0) * 100);
                   const diff = Math.abs(sum - quoteTotalCents);
                   return (
-                    <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
+                    <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
                       <span>{t("crmQuotes.sumaCuotas", { formatEur: format.currency((sum / 100), "EUR", EUR2) })}</span>
                       <span>{t("crmQuotes.totalPresupuesto", { formatEur: format.currency(Number(quote.total ?? 0), "EUR", EUR2) })}</span>
                       {diff > 1 && <span>{t("crmQuotes.diferencia", { formatEur: format.currency((diff / 100), "EUR", EUR2) })}</span>}
@@ -4094,7 +4094,7 @@ function QuoteDetailModal({
         )}
         {/* Con plan fraccionado: recordar al admin que confirme cuota a cuota */}
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
-          <span className="text-xs text-violet-300/70 italic self-center">{t("crmQuotes.planFraccionadoConfirmaCada")}</span>
+          <span className="text-xs text-primary/70 italic self-center">{t("crmQuotes.planFraccionadoConfirmaCada")}</span>
         )}
         {/* Enviar / Reenviar */}
         {quote.status === "borrador" && (
@@ -4117,7 +4117,7 @@ function QuoteDetailModal({
           </>
         )}
         {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-          <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
+          <Button size="sm" variant="outline" className="border-info/30 text-info hover:bg-info/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
             {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}{t("crmQuotes.reenviar")}</Button>
         )}
         {/* Pago Pendiente */}
@@ -4125,7 +4125,7 @@ function QuoteDetailModal({
           <Button
             size="sm"
             variant="outline"
-            className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs"
+            className="border-warning/30 text-warning hover:bg-warning/10 text-xs"
             onClick={() => setShowPendingPaymentModal(true)}
           >
             <Clock className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.pagoPendiente")}</Button>
@@ -4135,7 +4135,7 @@ function QuoteDetailModal({
           <Button
             size="sm"
             variant="outline"
-            className={`text-xs ${showPlanEditor ? "border-violet-500/60 text-violet-300 bg-violet-500/10" : "border-violet-500/30 text-violet-400 hover:bg-violet-500/10"}`}
+            className={`text-xs ${showPlanEditor ? "border-primary/60 text-primary bg-primary/10" : "border-primary/30 text-primary hover:bg-primary/10"}`}
             onClick={() => {
               if (!showPlanEditor) {
                 setShowPlanEditor(true);
@@ -4149,14 +4149,14 @@ function QuoteDetailModal({
             <CreditCard className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.planFraccionado")}</Button>
         )}
         {/* Descargar PDF */}
-        <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
+        <Button size="sm" variant="outline" className="border-warning/30 text-warning hover:bg-warning/10 text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
           {generatePdf.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1" />}{t("crmQuotes.descargarPdf")}</Button>
         {/* Duplicar */}
         <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground text-xs" onClick={() => duplicate.mutate({ id: quoteId })} disabled={duplicate.isPending}>
           <Copy className="w-3.5 h-3.5 mr-1" />{" "}{t("crmQuotes.duplicar")}</Button>
         {/* Marcar perdido */}
         {quote.status !== "aceptado" && quote.status !== "perdido" && (
-          <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 text-xs" onClick={() => markLost.mutate({ id: quoteId })} disabled={markLost.isPending}>
+          <Button size="sm" variant="ghost" className="text-danger hover:text-danger text-xs" onClick={() => markLost.mutate({ id: quoteId })} disabled={markLost.isPending}>
             <XCircle className="w-3.5 h-3.5 mr-1" />{" "}{t("crmQuotes.perdido")}</Button>
         )}
       </DialogFooter>
@@ -4170,7 +4170,7 @@ function QuoteDetailModal({
         <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Banknote className="w-5 h-5 text-blue-400" />{t("crmQuotes.confirmarPagoPorTransferencia")}</DialogTitle>
+              <Banknote className="w-5 h-5 text-info" />{t("crmQuotes.confirmarPagoPorTransferencia")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-xs text-foreground/50">{t("crmQuotes.puedesConfirmarLaTransferencia")}</p>
@@ -4179,20 +4179,20 @@ function QuoteDetailModal({
             <div>
               <div className="text-xs text-foreground/60 font-medium mb-2 uppercase tracking-wide">{t("crmQuotes.justificante")}{" "}{selectedBankMovementId ? "(opcional)" : t("crmQuotes.obligatorioSiNoVinculas")}
               </div>
-              <div className="border-2 border-dashed border-foreground/[0.18] rounded-lg p-4 text-center hover:border-blue-500/50 transition-colors">
+              <div className="border-2 border-dashed border-foreground/[0.18] rounded-lg p-4 text-center hover:border-info/50 transition-colors">
                 <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={handleTransferFileChange} className="hidden" id="transfer-proof-input" />
                 <label htmlFor="transfer-proof-input" className="cursor-pointer">
                   {isUploadingProof ? (
                     <div className="flex flex-col items-center gap-2">
-                      <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
+                      <RefreshCw className="w-8 h-8 text-info animate-spin" />
                       <span className="text-sm text-foreground/65">{t("crmQuotes.subiendoJustificante")}</span>
                     </div>
                   ) : transferProofUrl ? (
                     <div className="flex flex-col items-center gap-2">
-                      <CheckCircle className="w-8 h-8 text-emerald-400" />
-                      <span className="text-sm text-emerald-400 font-medium">{t("crmQuotes.justificanteAdjuntado")}</span>
+                      <CheckCircle className="w-8 h-8 text-success" />
+                      <span className="text-sm text-success font-medium">{t("crmQuotes.justificanteAdjuntado")}</span>
                       <span className="text-xs text-foreground/50">{transferFile?.name}</span>
-                      <span className="text-xs text-blue-400 underline">{t("crmQuotes.cambiarArchivo")}</span>
+                      <span className="text-xs text-info underline">{t("crmQuotes.cambiarArchivo")}</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-2">
@@ -4204,7 +4204,7 @@ function QuoteDetailModal({
                 </label>
               </div>
               {transferProofUrl && (
-                <a href={transferProofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 underline mt-2">
+                <a href={transferProofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-info hover:text-info underline mt-2">
                   <Eye className="w-3.5 h-3.5" />{" "}{t("crmQuotes.verJustificanteAdjuntado")}</a>
               )}
             </div>
@@ -4213,12 +4213,12 @@ function QuoteDetailModal({
             <div className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.03] p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
-                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold">{t("crmQuotes.n2a")}</span>{t("crmQuotes.vincularMovimientoBancario")}</div>
+                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full bg-info/20 text-info text-[10px] font-bold">{t("crmQuotes.n2a")}</span>{t("crmQuotes.vincularMovimientoBancario")}</div>
                 {!selectedBankMovementId && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-blue-400 hover:text-blue-300 text-xs h-7 px-2"
+                    className="text-info hover:text-info text-xs h-7 px-2"
                     onClick={() => setShowBankMovementSearch(!showBankMovementSearch)}
                   >
                     {showBankMovementSearch ? t("crmQuotes.ocultar2") : t("crmQuotes.buscarMovimiento")}
@@ -4231,16 +4231,16 @@ function QuoteDetailModal({
                   const mv = (bankMovementsQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementId)
                     ?? { id: selectedBankMovementId, fecha: "–", movimiento: t("crmQuotes.movimientoSeleccionado"), importe: "–" };
                   return (
-                    <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
+                    <div className="rounded-md border border-success/30 bg-success/10 p-2.5 text-xs space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-emerald-400 font-medium flex items-center gap-1">
+                        <span className="text-success font-medium flex items-center gap-1">
                           <CheckCircle className="w-3.5 h-3.5" />{" "}{t("crmQuotes.movimientoSeleccionado")}</span>
                         <button onClick={() => { setSelectedBankMovementId(null); setShowBankMovementSearch(true); }} className="text-foreground/40 hover:text-foreground/70">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                       <div className="text-foreground/70">
-                        {mv.fecha} · {mv.movimiento || "–"} · <span className="text-emerald-400 font-semibold">{mv.importe ? `${format.number(parseFloat(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
+                        {mv.fecha} · {mv.movimiento || "–"} · <span className="text-success font-semibold">{mv.importe ? `${format.number(parseFloat(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                       </div>
                       {mv.masDatos && <div className="text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap">{mv.masDatos}</div>}
                     </div>
@@ -4255,7 +4255,7 @@ function QuoteDetailModal({
                   <div className="relative">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
                     <input
-                      className="w-full text-xs bg-foreground/[0.05] border border-foreground/[0.12] rounded-md pl-8 pr-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      className="w-full text-xs bg-foreground/[0.05] border border-foreground/[0.12] rounded-md pl-8 pr-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-info/50"
                       placeholder={t("crmQuotes.buscarPorConceptoImporte")}
                       value={bankMovementSearch}
                       onChange={(e) => setBankMovementSearch(e.target.value)}
@@ -4274,11 +4274,11 @@ function QuoteDetailModal({
                           <button
                             key={mv.id}
                             onClick={() => { setSelectedBankMovementId(mv.id); setShowBankMovementSearch(false); }}
-                            className="w-full text-left rounded-md border border-foreground/[0.08] hover:border-blue-500/40 bg-foreground/[0.04] hover:bg-blue-500/10 p-2 text-xs transition-colors space-y-0.5"
+                            className="w-full text-left rounded-md border border-foreground/[0.08] hover:border-info/40 bg-foreground/[0.04] hover:bg-info/10 p-2 text-xs transition-colors space-y-0.5"
                           >
                             <div className="flex justify-between items-center">
                               <span className="text-foreground/70 font-medium">{mv.fecha}</span>
-                              <span className="text-emerald-400 font-semibold">{format.number(parseFloat(mv.importe), { minimumFractionDigits: 2 })} €</span>
+                              <span className="text-success font-semibold">{format.number(parseFloat(mv.importe), { minimumFractionDigits: 2 })} €</span>
                             </div>
                             <div className="text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento || "–"}</div>
                             {mv.masDatos && <div className="text-foreground/30 overflow-hidden text-ellipsis whitespace-nowrap">{mv.masDatos}</div>}
@@ -4320,7 +4320,7 @@ function QuoteDetailModal({
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />{t("crmQuotes.confirmarCuota", { installmentNumber: confirmingInstallment?.installmentNumber })}
+              <CheckCircle className="w-5 h-5 text-success" />{t("crmQuotes.confirmarCuota", { installmentNumber: confirmingInstallment?.installmentNumber })}
             </DialogTitle>
             {confirmingInstallment && (
               <p className="text-foreground/60 text-sm pt-1">{t("crmQuotes.importe2")}{" "}<strong className="text-white">{format.number((confirmingInstallment.amountCents / 100), { minimumFractionDigits: 2 })} €</strong>
@@ -4349,7 +4349,7 @@ function QuoteDetailModal({
               <div className="space-y-1.5">
                 <Label className="text-foreground/70 text-xs">{t("crmQuotes.justificanteDeTransferencia")}</Label>
                 {!instProofUrl ? (
-                  <label className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${isUploadingInstProof ? "border-violet-500/40 bg-violet-500/5" : "border-foreground/[0.15] hover:border-foreground/30"}`}>
+                  <label className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${isUploadingInstProof ? "border-primary/40 bg-primary/5" : "border-foreground/[0.15] hover:border-foreground/30"}`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" disabled={isUploadingInstProof} onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
@@ -4378,10 +4378,10 @@ function QuoteDetailModal({
                     {isUploadingInstProof ? <><RefreshCw className="w-4 h-4 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">{t("crmQuotes.subiendo")}</span></> : <><Upload className="w-4 h-4 text-foreground/50" /><span className="text-xs text-foreground/60">{t("crmQuotes.subirJustificantePdfJpg")}</span></>}
                   </label>
                 ) : (
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmQuotes.justificanteSubido")}</span>
-                    <a href={instProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">{t("crmQuotes.ver")}</a>
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-success/10 border border-success/30">
+                    <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                    <span className="text-xs text-success flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmQuotes.justificanteSubido")}</span>
+                    <a href={instProofUrl} target="_blank" rel="noreferrer" className="text-xs text-success hover:underline">{t("crmQuotes.ver")}</a>
                     <button onClick={() => { setInstProofUrl(null); setInstProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">{t("crmQuotes.texto")}</button>
                   </div>
                 )}
@@ -4428,7 +4428,7 @@ function QuoteDetailModal({
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />{t("crmQuotes.confirmarPagoRecibido")}</DialogTitle>
+              <CheckCircle className="w-5 h-5 text-success" />{t("crmQuotes.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-foreground/65 text-sm">{t("crmQuotes.seleccionaElMetodoDe")}</p>
@@ -4438,7 +4438,7 @@ function QuoteDetailModal({
                 <button key={m}
                   onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    paymentMethodSelected === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
+                    paymentMethodSelected === m ? "border-success bg-success/15 text-success" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -4457,10 +4457,10 @@ function QuoteDetailModal({
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />{t("crmQuotes.vincularOperacionTpv")}</div>
+                    <CreditCard className="w-3.5 h-3.5 text-primary" />{t("crmQuotes.vincularOperacionTpv")}</div>
                   {!selectedTpvOpIdForConfirm && (
                     <button
-                      className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                      className="text-xs text-primary hover:text-primary transition-colors"
                       onClick={() => setShowTpvOpSearchForConfirm(!showTpvOpSearchForConfirm)}
                     >
                       {showTpvOpSearchForConfirm ? t("crmQuotes.ocultar2") : t("crmQuotes.buscarOperacion")}
@@ -4472,20 +4472,20 @@ function QuoteDetailModal({
                     const op = (tpvOpsForConfirmQ.data?.data as any[])?.find((o: any) => o.id === selectedTpvOpIdForConfirm)
                       ?? { id: selectedTpvOpIdForConfirm, operationNumber: viewTpvOp, amount: "–" };
                     return (
-                      <div className="rounded-md border border-violet-500/30 bg-violet-500/10 p-2.5 text-xs space-y-1">
+                      <div className="rounded-md border border-primary/30 bg-primary/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-violet-300">{t("crmQuotes.operacionTpvVinculada")}</span>
+                          <span className="font-medium text-primary">{t("crmQuotes.operacionTpvVinculada")}</span>
                           <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setViewTpvOp(""); }}>{t("crmQuotes.texto")}</button>
                         </div>
                         <div className="text-foreground/70 font-mono">{op.operationNumber ?? "–"}</div>
-                        <div className="text-violet-400 font-medium">{op.amount != null ? `${format.number(Number(op.amount), { minimumFractionDigits: 2 })} €` : "–"}</div>
+                        <div className="text-primary font-medium">{op.amount != null ? `${format.number(Number(op.amount), { minimumFractionDigits: 2 })} €` : "–"}</div>
                       </div>
                     );
                   })()
                 ) : showTpvOpSearchForConfirm ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/50"
                       placeholder={t("crmQuotes.buscarPorNOperacion")}
                       value={tpvOpSearchForConfirm}
                       onChange={(e) => setTpvOpSearchForConfirm(e.target.value)}
@@ -4504,7 +4504,7 @@ function QuoteDetailModal({
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
-                              <span className="text-xs text-violet-400 font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
+                              <span className="text-xs text-primary font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
                             </div>
                             <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {format.date(op.operationDatetime, {})}</div>
                           </button>
@@ -4521,7 +4521,7 @@ function QuoteDetailModal({
                 </div>
                 {!viewProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
-                    isUploadingViewProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                    isUploadingViewProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-success/50 hover:bg-success/5"
                   }`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleViewProofFileChange} disabled={isUploadingViewProof} />
                     {isUploadingViewProof ? (
@@ -4531,10 +4531,10 @@ function QuoteDetailModal({
                     )}
                   </label>
                 ) : (
-                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmQuotes.justificanteSubidoCorrectament")}</span>
-                    <a href={viewProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">{t("crmQuotes.ver")}</a>
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success/10 border border-success/30">
+                    <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                    <span className="text-xs text-success flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmQuotes.justificanteSubidoCorrectament")}</span>
+                    <a href={viewProofUrl} target="_blank" rel="noreferrer" className="text-xs text-success hover:underline">{t("crmQuotes.ver")}</a>
                     <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">{t("crmQuotes.texto")}</button>
                   </div>
                 )}
@@ -4542,10 +4542,10 @@ function QuoteDetailModal({
                 {/* Bank movement linking block */}
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <Banknote className="w-3.5 h-3.5 text-blue-400" />{t("crmQuotes.vincularMovimientoBancario")}</div>
+                    <Banknote className="w-3.5 h-3.5 text-info" />{t("crmQuotes.vincularMovimientoBancario")}</div>
                   {!selectedBankMovementIdForConfirm && (
                     <button
-                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                      className="text-xs text-info hover:text-info transition-colors"
                       onClick={() => setShowBankMovementSearchForConfirm(!showBankMovementSearchForConfirm)}
                     >
                       {showBankMovementSearchForConfirm ? t("crmQuotes.ocultar2") : t("crmQuotes.buscarMovimiento")}
@@ -4558,9 +4558,9 @@ function QuoteDetailModal({
                     const mv = (bankMovementsForConfirmQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementIdForConfirm)
                       ?? { id: selectedBankMovementIdForConfirm, fecha: "–", movimiento: t("crmQuotes.movimientoSeleccionado"), importe: "–" };
                     return (
-                      <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
+                      <div className="rounded-md border border-success/30 bg-success/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-emerald-300">{t("crmQuotes.movimientoVinculado")}</span>
+                          <span className="font-medium text-success">{t("crmQuotes.movimientoVinculado")}</span>
                           <button
                             className="text-foreground/40 hover:text-foreground/70 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); }}
@@ -4569,7 +4569,7 @@ function QuoteDetailModal({
                         <div className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                         <div className="flex gap-3 text-foreground/50">
                           <span>{mv.fecha ?? "–"}</span>
-                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
+                          <span className="text-success font-medium">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                         </div>
                       </div>
                     );
@@ -4577,7 +4577,7 @@ function QuoteDetailModal({
                 ) : showBankMovementSearchForConfirm ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-info/50"
                       placeholder={t("crmQuotes.buscarPorConceptoImporte")}
                       value={bankMovementSearchForConfirm}
                       onChange={(e) => setBankMovementSearchForConfirm(e.target.value)}
@@ -4591,13 +4591,13 @@ function QuoteDetailModal({
                         {(bankMovementsForConfirmQ.data?.data as any[] | undefined)?.map((mv: any) => (
                           <button
                             key={mv.id}
-                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-colors"
+                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-info/40 hover:bg-info/5 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForConfirm(mv.id); setShowBankMovementSearchForConfirm(false); }}
                           >
                             <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                             <div className="flex gap-3 mt-0.5 text-xs text-white/50">
                               <span>{mv.fecha ?? "–"}</span>
-                              <span className="text-emerald-400">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
+                              <span className="text-success">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                             </div>
                           </button>
                         ))}
@@ -4655,7 +4655,7 @@ function QuoteDetailModal({
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-400" />{t("crmQuotes.registrarPagoPendiente")}</DialogTitle>
+              <Clock className="w-5 h-5 text-warning" />{t("crmQuotes.registrarPagoPendiente")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-foreground/65 text-sm">{t("crmQuotes.seCrearaUnRegistro")}</p>
@@ -4765,12 +4765,12 @@ function ReservationDetailModal({
 
   const getStatusBadge = (status: string) => {
     const map: Record<string, { label: string; cls: string }> = {
-      paid:            { label: `✅ ${voc.agree("Confirmado", "Confirmada")}`, cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-      pending_payment: { label: t("crmReservations.pendienteDePago"), cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-      cancelled:       { label: `❌ ${voc.agree("Cancelado", "Cancelada")}`, cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-      failed:          { label: `⚠️ ${voc.agree("Fallido", "Fallida")}`, cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+      paid:            { label: `✅ ${voc.agree("Confirmado", "Confirmada")}`, cls: "bg-success/15 text-success border-success/30" },
+      pending_payment: { label: t("crmReservations.pendienteDePago"), cls: "bg-warning/15 text-warning border-warning/30" },
+      cancelled:       { label: `❌ ${voc.agree("Cancelado", "Cancelada")}`, cls: "bg-danger/15 text-danger border-danger/30" },
+      failed:          { label: `⚠️ ${voc.agree("Fallido", "Fallida")}`, cls: "bg-warning/15 text-warning border-warning/30" },
       draft:           { label: t("crmReservations.borrador"),           cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
-      completed:       { label: `🏁 ${voc.agree("Completado", "Completada")}`, cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+      completed:       { label: `🏁 ${voc.agree("Completado", "Completada")}`, cls: "bg-info/15 text-info border-info/30" },
     };
     const s = map[status] ?? { label: status, cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" };
     return (
@@ -4783,12 +4783,12 @@ function ReservationDetailModal({
   const getPaymentBadge = (method: string | null) => {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
-      tarjeta_fisica: { label: voc.licensed ? t("crmReservations.tarjetaEnDatafono") : t("crmReservations.tarjetaFisica"),  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta_redsys: { label: voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys"),  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      redsys:         { label: voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys"),  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta:        { label: t("crmReservations.tarjeta"),          cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      transferencia:  { label: t("crmReservations.transferencia2"),    cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
-      efectivo:       { label: t("crmReservations.efectivo2"),         cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      tarjeta_fisica: { label: voc.licensed ? t("crmReservations.tarjetaEnDatafono") : t("crmReservations.tarjetaFisica"),  cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      tarjeta_redsys: { label: voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys"),  cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      redsys:         { label: voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys"),  cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      tarjeta:        { label: t("crmReservations.tarjeta"),          cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      transferencia:  { label: t("crmReservations.transferencia2"),    cls: "bg-info/15 text-info border-info/30",         icon: "🏦" },
+      efectivo:       { label: t("crmReservations.efectivo2"),         cls: "bg-success/15 text-success border-success/30", icon: "💵" },
       otro:           { label: t("crmReservations.otro2"),             cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
     };
     const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
@@ -4803,7 +4803,7 @@ function ReservationDetailModal({
     return (
       <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+          <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
       </DialogContent>
     );
@@ -4818,14 +4818,14 @@ function ReservationDetailModal({
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/20 to-emerald-700/20 border border-emerald-500/30 flex items-center justify-center">
-              <CalendarCheck className="w-4 h-4 text-emerald-400" />
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/20 to-emerald-700/20 border border-success/30 flex items-center justify-center">
+              <CalendarCheck className="w-4 h-4 text-success" />
             </div>
             <div>
               <div className="font-bold">{res.customerName}</div>
               <div className="flex items-center gap-2 flex-wrap mt-0.5">
                 {res.reservationNumber && (
-                  <span className="font-mono text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-1.5 py-0.5">
+                  <span className="font-mono text-xs font-bold text-warning bg-warning/10 border border-warning/20 rounded px-1.5 py-0.5">
                     {res.reservationNumber}
                   </span>
                 )}
@@ -4838,11 +4838,11 @@ function ReservationDetailModal({
         <div className="space-y-5 mt-4">
           {/* Estado, método de pago y canal */}
           {res.cancellationRequestId && (
-            <div className="mb-3 flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 rounded-xl px-4 py-2.5">
-              <span className="text-orange-400 text-sm">⚠️</span>
+            <div className="mb-3 flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-xl px-4 py-2.5">
+              <span className="text-warning text-sm">⚠️</span>
               <div>
-                <p className="text-orange-400 text-xs font-bold">{t("crmReservations.solicitudDeAnulacionVinculada")}</p>
-                <p className="text-orange-300/70 text-xs">{t("crmReservations.expediente", { cancellationRequestId: res.cancellationRequestId })}</p>
+                <p className="text-warning text-xs font-bold">{t("crmReservations.solicitudDeAnulacionVinculada")}</p>
+                <p className="text-warning/70 text-xs">{t("crmReservations.expediente", { cancellationRequestId: res.cancellationRequestId })}</p>
               </div>
             </div>
           )}
@@ -4850,39 +4850,39 @@ function ReservationDetailModal({
             {getStatusBadge(res.status)}
             {getPaymentBadge(res.paymentMethod)}
             {planQuery.data && planQuery.data.installments.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2.5 py-1 rounded-full">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/15 border border-primary/30 px-2.5 py-1 rounded-full">
                 <CreditCard className="w-3 h-3" />{" "}{t("crmReservations.planDePagos")}</span>
             )}
             {res.channel === "TPV_FISICO" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.tpvPresencial")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-primary bg-primary/15 border border-primary/30 px-2 py-0.5 rounded-full">{t("crmReservations.tpvPresencial")}</span>
             )}
             {res.channel === "VENTA_DELEGADA" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.crmDelegado")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-primary bg-primary/15 border border-primary/30 px-2 py-0.5 rounded-full">{t("crmReservations.crmDelegado")}</span>
             )}
             {(res.channel === "ONLINE_DIRECTO" || !res.channel) && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.onlineDirecto")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-info bg-info/15 border border-info/30 px-2 py-0.5 rounded-full">{t("crmReservations.onlineDirecto")}</span>
             )}
             {res.channel === "ONLINE_ASISTIDO" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.onlineAsistido")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-info bg-info/15 border border-info/30 px-2 py-0.5 rounded-full">{t("crmReservations.onlineAsistido")}</span>
             )}
             {res.channel === "TELEFONO" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.telefono2")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-warning bg-warning/15 border border-warning/30 px-2 py-0.5 rounded-full">{t("crmReservations.telefono2")}</span>
             )}
             {res.channel === "EMAIL" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.email3")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-info bg-info/15 border border-info/30 px-2 py-0.5 rounded-full">{t("crmReservations.email3")}</span>
             )}
             {res.channel === "PARTNER" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-300 bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.partner")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-warning bg-warning/15 border border-warning/30 px-2 py-0.5 rounded-full">{t("crmReservations.partner")}</span>
             )}
             {res.channel === "TICKETING" && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-pink-300 bg-pink-500/15 border border-pink-500/30 px-2 py-0.5 rounded-full">{t("crmReservations.ticketing")}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-danger bg-danger/15 border border-danger/30 px-2 py-0.5 rounded-full">{t("crmReservations.ticketing")}</span>
             )}
           </div>
           {/* Info de ticket TPV si aplica */}
           {res.channel === "TPV_FISICO" && res.notes?.includes("[ORIGEN_TPV]") && (
-            <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
-              <div className="text-xs font-semibold text-violet-300 mb-1">{t("crmReservations.ventaEnCaja")}</div>
-              <div className="text-xs text-violet-200/70">
+            <div className="bg-primary/10 border border-primary/20 rounded-xl p-3">
+              <div className="text-xs font-semibold text-primary mb-1">{t("crmReservations.ventaEnCaja")}</div>
+              <div className="text-xs text-primary/70">
                 {res.notes.replace("[ORIGEN_TPV] ", "")}
               </div>
             </div>
@@ -4898,14 +4898,14 @@ function ReservationDetailModal({
               </div>
               <div>
                 <div className="text-xs text-foreground/50 mb-0.5">{t("crmReservations.email4")}</div>
-                <a href={`mailto:${res.customerEmail}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
+                <a href={`mailto:${res.customerEmail}`} className="text-sm text-info hover:text-info transition-colors">
                   {res.customerEmail}
                 </a>
               </div>
               {res.customerPhone && (
                 <div>
                   <div className="text-xs text-foreground/50 mb-0.5">{t("crmReservations.telefono")}</div>
-                  <a href={`tel:${res.customerPhone}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
+                  <a href={`tel:${res.customerPhone}`} className="text-sm text-info hover:text-info transition-colors">
                     {res.customerPhone}
                   </a>
                 </div>
@@ -4937,15 +4937,15 @@ function ReservationDetailModal({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-foreground/60">{t("crmReservations.importeTotal2")}</span>
-                <span className="text-orange-400 font-bold">{totalEur} €</span>
+                <span className="text-warning font-bold">{totalEur} €</span>
               </div>
               {Number((res as any).discountAmount ?? (res as any).discount_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-emerald-400/80">{t("crmReservations.descuento")}{((res as any).discountReason ?? (res as any).discount_reason) && (
+                  <span className="text-success/80">{t("crmReservations.descuento")}{((res as any).discountReason ?? (res as any).discount_reason) && (
                       <span className="text-foreground/40 text-xs ml-1">— {(res as any).discountReason ?? (res as any).discount_reason}</span>
                     )}
                   </span>
-                  <span className="text-emerald-400 font-semibold">
+                  <span className="text-success font-semibold">
                     −{format.currency(Number((res as any).discountAmount ?? (res as any).discount_amount), "EUR", EUR2)}
                   </span>
                 </div>
@@ -4953,7 +4953,7 @@ function ReservationDetailModal({
               {res.amountPaid !== res.amountTotal && (
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground/60">{t("crmReservations.importeCobrado2")}</span>
-                  <span className="text-emerald-400 font-bold">{amountEur} €</span>
+                  <span className="text-success font-bold">{amountEur} €</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
@@ -4967,7 +4967,7 @@ function ReservationDetailModal({
               {res.paidAt && (
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground/60">{t("crmReservations.pagadaEl")}</span>
-                  <span className="text-emerald-400">{format.dateTime(res.paidAt, DT_FULL)}</span>
+                  <span className="text-success">{format.dateTime(res.paidAt, DT_FULL)}</span>
                 </div>
               )}
             </div>
@@ -4975,16 +4975,16 @@ function ReservationDetailModal({
 
           {/* Plan de pago fraccionado */}
           {planQuery.data && planQuery.data.installments.length > 0 && (
-            <div className="bg-violet-950/30 border border-violet-500/30 rounded-xl p-4 space-y-2">
+            <div className="bg-primary/30 border border-primary/30 rounded-xl p-4 space-y-2">
               <div className="flex items-center justify-between mb-1">
-                <h4 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-violet-400" />{t("crmReservations.planDePagoFraccionado")}</h4>
+                <h4 className="text-sm font-semibold text-primary flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-primary" />{t("crmReservations.planDePagoFraccionado")}</h4>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
                   planQuery.data.installments.every(i => i.status === "paid")
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                    ? "bg-success/20 text-success border-success/30"
                     : planQuery.data.installments.some(i => i.status === "paid")
-                    ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
-                    : "bg-violet-500/20 text-violet-300 border-violet-500/30"
+                    ? "bg-warning/20 text-warning border-warning/30"
+                    : "bg-primary/20 text-primary border-primary/30"
                 }`}>
                   {planQuery.data.installments.every(i => i.status === "paid")
                     ? t("crmReservations.completado")
@@ -4998,18 +4998,18 @@ function ReservationDetailModal({
                   <div key={inst.id} className="flex items-center justify-between text-xs py-1 border-b border-foreground/[0.06] last:border-0">
                     <div className="flex items-center gap-2">
                       <span className="text-foreground/40 w-5">#{inst.installmentNumber}</span>
-                      <span className={inst.status === "paid" ? "text-emerald-300 font-medium" : "text-foreground/80"}>
+                      <span className={inst.status === "paid" ? "text-success font-medium" : "text-foreground/80"}>
                         {format.currency((inst.amountCents / 100))}
                       </span>
                       {inst.isRequiredForConfirmation && (
-                        <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">{t("crmReservations.inaplazable")}</span>
+                        <span className="text-[10px] bg-warning/20 text-warning border border-warning/30 px-1.5 py-0.5 rounded-full">{t("crmReservations.inaplazable")}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       {inst.dueDate && <span className="text-foreground/40">{inst.dueDate}</span>}
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
                         inst.status === "paid"
-                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                          ? "bg-success/20 text-success border-success/30"
                           : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
                       }`}>
                         {inst.status === "paid" ? t("crmReservations.pagada") : t("crmReservations.pendiente2")}
@@ -5023,8 +5023,8 @@ function ReservationDetailModal({
                 const pendingTotal = planQuery.data.installments.filter(i => i.status !== "paid").reduce((s, i) => s + i.amountCents, 0);
                 return (
                   <div className="flex justify-between pt-1 text-xs text-foreground/60">
-                    <span>{t("crmReservations.cobrado")}{" "}<span className="text-emerald-300 font-medium">{format.currency((paidTotal / 100))}</span></span>
-                    <span>{t("crmReservations.pendiente")}{" "}<span className="text-amber-300 font-medium">{format.currency((pendingTotal / 100))}</span></span>
+                    <span>{t("crmReservations.cobrado")}{" "}<span className="text-success font-medium">{format.currency((paidTotal / 100))}</span></span>
+                    <span>{t("crmReservations.pendiente")}{" "}<span className="text-warning font-medium">{format.currency((pendingTotal / 100))}</span></span>
                   </div>
                 );
               })()}
@@ -5033,13 +5033,13 @@ function ReservationDetailModal({
 
           {/* Justificante de transferencia */}
           {res.transferProofUrl && (
-            <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-4">
-              <h4 className="text-xs font-semibold text-sky-300 uppercase tracking-wider mb-2">{t("crmReservations.justificanteDeTransferencia")}</h4>
+            <div className="bg-info/10 border border-info/20 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-info uppercase tracking-wider mb-2">{t("crmReservations.justificanteDeTransferencia")}</h4>
               <a
                 href={res.transferProofUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-sky-400 hover:text-sky-300 transition-colors"
+                className="inline-flex items-center gap-2 text-sm text-info hover:text-info transition-colors"
               >
                 <Paperclip className="w-4 h-4" />{t("crmReservations.verJustificanteAdjunto")}<ExternalLink className="w-3 h-3" />
               </a>
@@ -5048,8 +5048,8 @@ function ReservationDetailModal({
 
           {/* Notas internas */}
           {res.notes && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
-              <h4 className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">{t("crmReservations.notasInternas")}</h4>
+            <div className="bg-warning/10 border border-warning/20 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-warning uppercase tracking-wider mb-2">{t("crmReservations.notasInternas")}</h4>
               <p className="text-sm text-foreground/70">{res.notes}</p>
             </div>
           )}
@@ -5084,7 +5084,7 @@ function ReservationDetailModal({
                           <div className="col-span-6 text-foreground/80">{item.description}</div>
                           <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
                           <div className="col-span-2 text-right text-foreground/65">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</div>
-                          <div className="col-span-2 text-right text-orange-400 font-medium">{format.currency(Number(item.total), "EUR", EUR2)}</div>
+                          <div className="col-span-2 text-right text-warning font-medium">{format.currency(Number(item.total), "EUR", EUR2)}</div>
                         </div>
                       ))}
                     </>
@@ -5092,16 +5092,16 @@ function ReservationDetailModal({
                   {/* REAV items */}
                   {reavItems.length > 0 && (
                     <>
-                      <div className="text-xs font-semibold text-amber-400/70 pt-1 pb-0.5">{t("crmReservations.reavSinIvaRegimen")}</div>
+                      <div className="text-xs font-semibold text-warning/70 pt-1 pb-0.5">{t("crmReservations.reavSinIvaRegimen")}</div>
                       {reavItems.map((item, i) => (
                         <div key={`r-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
                           <div className="col-span-6 text-foreground/80 flex items-center gap-1.5">
                             {item.description}
-                            <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1 py-0.5 rounded">{t("crmReservations.reav")}</span>
+                            <span className="text-[10px] font-bold text-warning bg-warning/10 border border-warning/20 px-1 py-0.5 rounded">{t("crmReservations.reav")}</span>
                           </div>
                           <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
                           <div className="col-span-2 text-right text-foreground/65">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</div>
-                          <div className="col-span-2 text-right text-orange-400 font-medium">{format.currency(Number(item.total), "EUR", EUR2)}</div>
+                          <div className="col-span-2 text-right text-warning font-medium">{format.currency(Number(item.total), "EUR", EUR2)}</div>
                         </div>
                       ))}
                     </>
@@ -5115,14 +5115,14 @@ function ReservationDetailModal({
                       </div>
                     )}
                     {reavItems.length > 0 && (
-                      <div className="flex justify-between text-xs text-amber-400/60">
+                      <div className="flex justify-between text-xs text-warning/60">
                         <span>{t("crmReservations.subtotalReavSinIva")}</span>
                         <span>{format.currency(reavItems.reduce((s, i) => s + Number(i.total), 0), "EUR", EUR2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm font-bold text-foreground">
                       <span>{t("crmReservations.total")}</span>
-                      <span className="text-orange-400">{format.currency(allItems.reduce((s, i) => s + Number(i.total), 0), "EUR", EUR2)}</span>
+                      <span className="text-warning">{format.currency(allItems.reduce((s, i) => s + Number(i.total), 0), "EUR", EUR2)}</span>
                     </div>
                   </div>
                 </div>
@@ -5144,13 +5144,13 @@ function ReservationDetailModal({
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-orange-400">{format.currency(Number(inv.total), "EUR", EUR2)}</span>
+                      <span className="text-sm font-bold text-warning">{format.currency(Number(inv.total), "EUR", EUR2)}</span>
                       {inv.pdfUrl && (
                         <a
                           href={inv.pdfUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+                          className="inline-flex items-center gap-1 text-xs text-success hover:text-success transition-colors"
                         >
                           <FileDown className="w-3.5 h-3.5" />{" "}{t("crmReservations.pdf")}</a>
                       )}
@@ -5168,7 +5168,7 @@ function ReservationDetailModal({
               <div className="space-y-1.5">
                 {activity.map((log: any) => (
                   <div key={log.id} className="flex items-start gap-3 py-2 border-b border-foreground/[0.08] last:border-0">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 mt-2 shrink-0" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-success/60 mt-2 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-foreground/70">{translateAction(log.action)}</div>
                       {log.actorName && (
@@ -5191,7 +5191,7 @@ function ReservationDetailModal({
         <Button
           size="sm"
           variant="outline"
-          className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+          className="border-warning/30 text-warning hover:bg-warning/10"
           onClick={() => { onClose(); onEdit(res.id, res.status); }}
         >
           <Pencil className="w-4 h-4 mr-1" /> {voc.editOrder}
@@ -5217,14 +5217,14 @@ function ReservationDetailModal({
           <Button
             size="sm"
             variant="outline"
-            className="border-orange-500/40 text-orange-400 hover:bg-orange-500/10 ml-auto"
+            className="border-warning/40 text-warning hover:bg-warning/10 ml-auto"
             onClick={() => { onClose(); onCancel(res.id, res.customerName); }}
           >
             <XCircle className="w-4 h-4 mr-1" /> {voc.cancelOrder}
           </Button>
         )}
         {res.cancellationRequestId && (
-          <span className="ml-auto text-xs text-orange-400/70 border border-orange-500/20 rounded px-2 py-1">{t("crmReservations.expedienteActivo", { cancellationRequestId: res.cancellationRequestId })}</span>
+          <span className="ml-auto text-xs text-warning/70 border border-warning/20 rounded px-2 py-1">{t("crmReservations.expedienteActivo", { cancellationRequestId: res.cancellationRequestId })}</span>
         )}
       </DialogFooter>
     </DialogContent>
@@ -5259,7 +5259,7 @@ function CrmTableState({
     return (
       <tr><td colSpan={colSpan} className="text-center py-12 px-4">
         <div role="alert" className="flex flex-col items-center gap-3">
-          <AlertCircle className="w-6 h-6 text-red-400" aria-hidden="true" />
+          <AlertCircle className="w-6 h-6 text-danger" aria-hidden="true" />
           <p className="text-sm text-foreground/80">{errorMessage(error)}</p>
           <Button size="sm" variant="outline" onClick={onRetry}>
             <RefreshCw className="w-4 h-4 mr-1.5" aria-hidden="true" />{" "}{t("crmShared.reintentar")}</Button>
@@ -5947,12 +5947,12 @@ export default function CRMDashboard() {
   const getPaymentMethodBadge = (method: string | null) => {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
-      tarjeta_fisica: { label: t("crmDashboard.tarjetaFisica2"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta_redsys: { label: voc.licensed ? t("crmDashboard.tarjetaPagoOnline2") : t("crmDashboard.tarjetaRedsys2"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      redsys:         { label: voc.licensed ? t("crmDashboard.tarjetaPagoOnline2") : t("crmDashboard.tarjetaRedsys2"), cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta:        { label: t("crmDashboard.tarjeta2"),        cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      transferencia:  { label: t("crmDashboard.transferencia2"),  cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
-      efectivo:       { label: t("crmDashboard.efectivo2"),       cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      tarjeta_fisica: { label: t("crmDashboard.tarjetaFisica2"), cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      tarjeta_redsys: { label: voc.licensed ? t("crmDashboard.tarjetaPagoOnline2") : t("crmDashboard.tarjetaRedsys2"), cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      redsys:         { label: voc.licensed ? t("crmDashboard.tarjetaPagoOnline2") : t("crmDashboard.tarjetaRedsys2"), cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      tarjeta:        { label: t("crmDashboard.tarjeta2"),        cls: "bg-primary/15 text-primary border-primary/30", icon: "💳" },
+      transferencia:  { label: t("crmDashboard.transferencia2"),  cls: "bg-info/15 text-info border-info/30",         icon: "🏦" },
+      efectivo:       { label: t("crmDashboard.efectivo2"),       cls: "bg-success/15 text-success border-success/30", icon: "💵" },
       otro:           { label: t("crmDashboard.otro2"),           cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
       abono:          { label: t("crmDashboard.abono"),          cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" },
     };
@@ -5996,16 +5996,16 @@ export default function CRMDashboard() {
           );
           if (overdue.length === 0 && dueToday.length === 0) return null;
           return (
-            <div className="mx-4 sm:mx-6 mt-4 rounded-xl border border-red-500/30 bg-red-500/8 p-3 space-y-1.5">
-              <p className="text-xs font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
+            <div className="mx-4 sm:mx-6 mt-4 rounded-xl border border-danger/30 bg-danger/8 p-3 space-y-1.5">
+              <p className="text-xs font-bold uppercase tracking-wider text-danger flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5" />{" "}{t("crmDashboard.incidenciasDePagosFraccionados")}</p>
               {overdue.length > 0 && (
-                <p className="text-sm text-red-300">
+                <p className="text-sm text-danger">
                   <strong>{overdue.length}</strong>{" "}{t("crmDashboard.cuota", { n: overdue.length })}{" "}{t("crmDashboard.vencida", { n: overdue.length })}{" "}{t("crmDashboard.sinCobrar", { v: " — " })}{overdue.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
                 </p>
               )}
               {dueToday.length > 0 && (
-                <p className="text-sm text-amber-300">
+                <p className="text-sm text-warning">
                   <strong>{dueToday.length}</strong>{" "}{t("crmDashboard.cuota", { n: dueToday.length })}{" "}{t("crmDashboard.venceHoy", { v: " — " })}{dueToday.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
                 </p>
               )}
@@ -6025,25 +6025,25 @@ export default function CRMDashboard() {
               {!kpisExpanded && (
                 <>
                   {(leadCounters?.ganada ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-medium">
                       <Star className="w-2.5 h-2.5" />{t("crmDashboard.ganadas", { ganada: leadCounters?.ganada })}</span>
                   )}
                   {(leadCounters?.enviada ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-[11px] font-medium">
                       <Send className="w-2.5 h-2.5" />{t("crmDashboard.enviadas", { enviada: leadCounters?.enviada })}</span>
                   )}
                   {(resCounters?.confirmadas ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-medium">
                       <CheckCircle className="w-2.5 h-2.5" />{resCounters?.confirmadas} {voc.ordersLower}
                       {(resCounters?.importeConfirmadas ?? 0) > 0 && <span className="opacity-60">· {format.number(Math.round(resCounters!.importeConfirmadas))} €</span>}
                     </span>
                   )}
                   {(resCounters?.pendientePago ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-[11px] font-medium">
                       <Clock className="w-2.5 h-2.5" />{t("crmDashboard.pendPago", { pendientePago: resCounters?.pendientePago })}</span>
                   )}
                   {(anulCounters?.pending ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger/10 border border-danger/20 text-danger text-[11px] font-medium">
                       <AlertTriangle className="w-2.5 h-2.5" />{t("crmDashboard.anulaciones", { pending: anulCounters?.pending })}</span>
                   )}
                 </>
@@ -6368,11 +6368,11 @@ export default function CRMDashboard() {
                             <td className="px-3 py-2 text-center text-foreground/55">{inst.dueDate}</td>
                             <td className="px-3 py-2 text-center">
                               {isOverdue ? (
-                                <span className="bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">{t("crmDashboard.vencida2")}</span>
+                                <span className="bg-danger/15 text-danger border border-danger/25 px-1.5 py-0.5 rounded">{t("crmDashboard.vencida2")}</span>
                               ) : isToday ? (
-                                <span className="bg-amber-500/15 text-amber-400 border border-amber-500/25 px-1.5 py-0.5 rounded">{t("crmDashboard.hoy")}</span>
+                                <span className="bg-warning/15 text-warning border border-warning/25 px-1.5 py-0.5 rounded">{t("crmDashboard.hoy")}</span>
                               ) : (
-                                <span className="bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">{t("crmDashboard.pendiente")}</span>
+                                <span className="bg-primary/15 text-primary border border-primary/25 px-1.5 py-0.5 rounded">{t("crmDashboard.pendiente")}</span>
                               )}
                             </td>
                           </tr>
@@ -6434,16 +6434,16 @@ export default function CRMDashboard() {
                   <div className="w-1 h-4 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600" />
                   <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.ratioDeConversion")}</span>
                   {(leadCounters?.sinLeer ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 text-xs text-blue-400 font-medium">
+                    <span className="flex items-center gap-1 text-xs text-info font-medium">
                       <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-info opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-info" />
                       </span>
                       {t("crmDashboard.sinLeer", { v: leadCounters?.sinLeer ?? 0 })}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-4 text-xs text-foreground/50">
-                  <span className="text-emerald-400 font-bold text-sm">
+                  <span className="text-success font-bold text-sm">
                     {leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0}%
                   </span>
                   <span>{leadCounters?.ganada ?? 0} {(leadCounters?.ganada ?? 0) === 1 ? voc.agreeLead("ganado", "ganada") : voc.agreeLead("ganados", "ganadas")}{" "}{t("crmDashboard.de", { v: leadCounters?.total ?? 0, v2: (leadCounters?.total ?? 0) === 1 ? voc.lead : voc.leadsLower })}</span>
@@ -6476,13 +6476,13 @@ export default function CRMDashboard() {
               {/* Leyenda */}
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />{t("crmDashboard.ganadas2", { v: leadCounters?.ganada ?? 0 })}</div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-success" />{t("crmDashboard.ganadas2", { v: leadCounters?.ganada ?? 0 })}</div>
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />{t("crmDashboard.enviadas2", { v: leadCounters?.enviada ?? 0 })}</div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-warning/60" />{t("crmDashboard.enviadas2", { v: leadCounters?.enviada ?? 0 })}</div>
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500/40" />{t("crmDashboard.nuevas", { v: leadCounters?.nueva ?? 0 })}</div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-info/40" />{t("crmDashboard.nuevas", { v: leadCounters?.nueva ?? 0 })}</div>
                 <div className="flex items-center gap-1.5 text-xs text-foreground/50">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/40" />{t("crmDashboard.perdidas", { v: leadCounters?.perdida ?? 0 })}</div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-danger/40" />{t("crmDashboard.perdidas", { v: leadCounters?.perdida ?? 0 })}</div>
               </div>
             </div>
           </div>
@@ -6491,8 +6491,8 @@ export default function CRMDashboard() {
 
         {/* ── Banner auditoría reservas sin factura / sin REAV ─────────────── */}
         {auditData && (auditData.sinFacturaCount > 0 || auditData.sinReavCount > 0) && (
-          <div className="mx-6 mb-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
+          <div className="mx-6 mb-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-warning font-semibold text-sm">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />{voc.agree(t("crmEmpty.audit.reviewM", { ordersLower: voc.ordersLower }), t("crmEmpty.audit.reviewF", { ordersLower: voc.ordersLower }))}</div>
             {auditData.sinFacturaCount > 0 && (() => {
               const cashItems = auditData.sinFactura.filter((r: any) => r.paymentMethod === "efectivo");
@@ -6501,25 +6501,25 @@ export default function CRMDashboard() {
                 <>
                   {cashItems.length > 0 && (
                     <div>
-                      <p className="text-xs text-blue-300/80 font-medium mb-1">
+                      <p className="text-xs text-info/80 font-medium mb-1">
                         {voc.agree(t("crmEmpty.audit.cashM", { count: cashItems.length, order: voc.order, orders: voc.ordersLower }), t("crmEmpty.audit.cashF", { count: cashItems.length, order: voc.order, orders: voc.ordersLower }))}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {cashItems.map((r: any) => (
-                          <span key={r.id} className="inline-flex items-center text-[11px] bg-blue-900/40 text-blue-200 rounded overflow-hidden">
+                          <span key={r.id} className="inline-flex items-center text-[11px] bg-info/40 text-info rounded overflow-hidden">
                             <button
                               onClick={() => setGenInvoiceResId(r.id)}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-blue-800/60 transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-info/60 transition-colors cursor-pointer"
                               title={voc.agree(t("crmEmpty.hint.cashInvoiceM", { order: voc.order }), t("crmEmpty.hint.cashInvoiceF", { order: voc.order }))}
                             >
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
-                              <span className="text-blue-300/60">·</span>
+                              <span className="text-info/60">·</span>
                               <span>{r.customerName}</span>
-                              {r.amountEur > 0 && <span className="text-blue-300/70">{fmtAmount(r.amountEur, format)}</span>}
-                              <FilePlus className="w-3 h-3 text-blue-400 ml-0.5" />
+                              {r.amountEur > 0 && <span className="text-info/70">{fmtAmount(r.amountEur, format)}</span>}
+                              <FilePlus className="w-3 h-3 text-info ml-0.5" />
                             </button>
                             <button
                               onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
-                              className="px-1.5 py-1 hover:bg-blue-700/60 text-blue-400 hover:text-blue-200 transition-colors border-l border-blue-700/40"
+                              className="px-1.5 py-1 hover:bg-info/60 text-info hover:text-info transition-colors border-l border-info/40"
                               title={t("crmDashboard.ignorarMarcarComoNo")}
                             >
                               <X className="w-3 h-3" />
@@ -6531,25 +6531,25 @@ export default function CRMDashboard() {
                   )}
                   {otherItems.length > 0 && (
                     <div>
-                      <p className="text-xs text-amber-300/80 font-medium mb-1">
+                      <p className="text-xs text-warning/80 font-medium mb-1">
                         {voc.agree(t("crmEmpty.audit.otherM", { count: otherItems.length, order: voc.order, orders: voc.ordersLower }), t("crmEmpty.audit.otherF", { count: otherItems.length, order: voc.order, orders: voc.ordersLower }))}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {otherItems.map((r: any) => (
-                          <span key={r.id} className="inline-flex items-center text-[11px] bg-amber-900/40 text-amber-200 rounded overflow-hidden">
+                          <span key={r.id} className="inline-flex items-center text-[11px] bg-warning/40 text-warning rounded overflow-hidden">
                             <button
                               onClick={() => setGenInvoiceResId(r.id)}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-amber-800/60 transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-warning/60 transition-colors cursor-pointer"
                               title={voc.agree(t("crmEmpty.hint.invoiceM", { order: voc.order }), t("crmEmpty.hint.invoiceF", { order: voc.order }))}
                             >
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
-                              <span className="text-amber-300/60">·</span>
+                              <span className="text-warning/60">·</span>
                               <span>{r.customerName}</span>
-                              {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur, format)}</span>}
-                              <FilePlus className="w-3 h-3 text-amber-400 ml-0.5" />
+                              {r.amountEur > 0 && <span className="text-warning/70">{fmtAmount(r.amountEur, format)}</span>}
+                              <FilePlus className="w-3 h-3 text-warning ml-0.5" />
                             </button>
                             <button
                               onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
-                              className="px-1.5 py-1 hover:bg-amber-700/60 text-amber-400 hover:text-amber-200 transition-colors border-l border-amber-700/40"
+                              className="px-1.5 py-1 hover:bg-warning/60 text-warning hover:text-warning transition-colors border-l border-warning/40"
                               title={t("crmDashboard.ignorarMarcarComoNo")}
                             >
                               <X className="w-3 h-3" />
@@ -6564,20 +6564,20 @@ export default function CRMDashboard() {
             })()}
             {voc.showReav && auditData.sinReavCount > 0 && (
               <div>
-                <p className="text-xs text-amber-300/80 font-medium mb-1">
+                <p className="text-xs text-warning/80 font-medium mb-1">
                   {t("crmDashboard.reserva", { sinReavCount: auditData.sinReavCount })}{" "}{t("crmDashboard.reavSinExpedienteRevisar")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {auditData.sinReav.map(r => (
                     <button
                       key={r.id}
                       onClick={() => { handleTabChange("reservations"); setViewResId(r.id); }}
-                      className="inline-flex items-center gap-1.5 text-[11px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 rounded px-2 py-1 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-[11px] bg-warning/40 hover:bg-warning/60 text-warning rounded px-2 py-1 transition-colors cursor-pointer"
                       title={t("crmDashboard.verReserva")}
                     >
                       <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
-                      <span className="text-amber-300/60">·</span>
+                      <span className="text-warning/60">·</span>
                       <span>{r.customerName}</span>
-                      <ExternalLink className="w-3 h-3 text-amber-400 ml-0.5" />
+                      <ExternalLink className="w-3 h-3 text-warning ml-0.5" />
                     </button>
                   ))}
                 </div>
@@ -6589,20 +6589,20 @@ export default function CRMDashboard() {
         {/* ── Banner alertas TPV / coherencia cobros + gastos ─────────────── */}
         {((tpvPaymentAlerts && (tpvPaymentAlerts.unlinkedTpvOps > 0 || tpvPaymentAlerts.staleFailedPayments > 0)) ||
           (expenseStats && (expenseStats.candidatesCount > 0 || expenseStats.staleExpensesCount > 0))) && (
-          <div className="mx-4 sm:mx-6 mb-2 rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 flex flex-col gap-1.5">
-            <div className="flex items-center gap-2 text-blue-400 font-semibold text-sm">
+          <div className="mx-4 sm:mx-6 mb-2 rounded-xl border border-info/30 bg-info/8 px-4 py-3 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-info font-semibold text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />{t("crmDashboard.coherenciaFinancieraIncidencia")}</div>
             {(tpvPaymentAlerts?.unlinkedTpvOps ?? 0) > 0 && (
-              <a href="/admin/contabilidad/operaciones-tpv" className="text-xs text-blue-300/80 hover:text-blue-200 transition-colors">{t("crmDashboard.operacion", { unlinkedTpvOps: tpvPaymentAlerts!.unlinkedTpvOps })}{" "}{t("crmDashboard.tpvSinVincularA", { order: voc.order })}</a>
+              <a href="/admin/contabilidad/operaciones-tpv" className="text-xs text-info/80 hover:text-info transition-colors">{t("crmDashboard.operacion", { unlinkedTpvOps: tpvPaymentAlerts!.unlinkedTpvOps })}{" "}{t("crmDashboard.tpvSinVincularA", { order: voc.order })}</a>
             )}
             {(tpvPaymentAlerts?.staleFailedPayments ?? 0) > 0 && (
-              <span className="text-xs text-amber-300/80">{t("crmDashboard.presupuesto2", { staleFailedPayments: tpvPaymentAlerts!.staleFailedPayments })}{" "}{t("crmDashboard.conPagoFallidoSin")}</span>
+              <span className="text-xs text-warning/80">{t("crmDashboard.presupuesto2", { staleFailedPayments: tpvPaymentAlerts!.staleFailedPayments })}{" "}{t("crmDashboard.conPagoFallidoSin")}</span>
             )}
             {(expenseStats?.candidatesCount ?? 0) > 0 && (
-              <a href="/admin/contabilidad/gastos" className="text-xs text-violet-300/80 hover:text-violet-200 transition-colors">{t("crmDashboard.cargo", { candidatesCount: expenseStats!.candidatesCount })}{" "}{t("crmDashboard.sinRegistrarComoGasto")}</a>
+              <a href="/admin/contabilidad/gastos" className="text-xs text-primary/80 hover:text-primary transition-colors">{t("crmDashboard.cargo", { candidatesCount: expenseStats!.candidatesCount })}{" "}{t("crmDashboard.sinRegistrarComoGasto")}</a>
             )}
             {(expenseStats?.staleExpensesCount ?? 0) > 0 && (
-              <a href="/admin/contabilidad/gastos" className="text-xs text-yellow-300/80 hover:text-yellow-200 transition-colors">{t("crmDashboard.gasto", { staleExpensesCount: expenseStats!.staleExpensesCount })}{" "}{t("crmDashboard.sinJustificar30Dias")}</a>
+              <a href="/admin/contabilidad/gastos" className="text-xs text-warning/80 hover:text-warning transition-colors">{t("crmDashboard.gasto", { staleExpensesCount: expenseStats!.staleExpensesCount })}{" "}{t("crmDashboard.sinJustificar30Dias")}</a>
             )}
           </div>
         )}
@@ -6655,7 +6655,7 @@ export default function CRMDashboard() {
             />
           </div>
           {filterStatus !== "all" && (
-            <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 text-xs" onClick={() => setFilterStatus("all")}>
+            <Button size="sm" variant="outline" className="border-warning/30 text-warning hover:bg-warning/10 text-xs" onClick={() => setFilterStatus("all")}>
               <Filter className="w-3.5 h-3.5 mr-1" />{" "}{t("crmDashboard.limpiarFiltro")}</Button>
           )}
           {/* Filtro por canal — visible solo en el tab de reservas */}
@@ -6666,15 +6666,15 @@ export default function CRMDashboard() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosCanales")}</SelectItem>
-                <SelectItem value="TPV_FISICO" className="text-violet-300 text-xs">{t("crmDashboard.tpvPresencial")}</SelectItem>
-                <SelectItem value="ONLINE_DIRECTO" className="text-sky-300 text-xs">{t("crmDashboard.onlineDirecto")}</SelectItem>
-                <SelectItem value="ONLINE_ASISTIDO" className="text-blue-300 text-xs">{t("crmDashboard.onlineAsistido")}</SelectItem>
-                <SelectItem value="VENTA_DELEGADA" className="text-purple-300 text-xs">{t("crmDashboard.crmDelegado")}</SelectItem>
-                <SelectItem value="TELEFONO" className="text-amber-300 text-xs">{t("crmDashboard.telefono")}</SelectItem>
-                <SelectItem value="EMAIL" className="text-cyan-300 text-xs">{t("crmDashboard.email")}</SelectItem>
-                <SelectItem value="PARTNER" className="text-orange-300 text-xs">{t("crmDashboard.partner")}</SelectItem>
-                <SelectItem value="TICKETING" className="text-pink-300 text-xs">{t("crmDashboard.ticketing")}</SelectItem>
-                <SelectItem value="coupon" className="text-orange-300 text-xs">{t("crmDashboard.cuponOrigen")}</SelectItem>
+                <SelectItem value="TPV_FISICO" className="text-primary text-xs">{t("crmDashboard.tpvPresencial")}</SelectItem>
+                <SelectItem value="ONLINE_DIRECTO" className="text-info text-xs">{t("crmDashboard.onlineDirecto")}</SelectItem>
+                <SelectItem value="ONLINE_ASISTIDO" className="text-info text-xs">{t("crmDashboard.onlineAsistido")}</SelectItem>
+                <SelectItem value="VENTA_DELEGADA" className="text-primary text-xs">{t("crmDashboard.crmDelegado")}</SelectItem>
+                <SelectItem value="TELEFONO" className="text-warning text-xs">{t("crmDashboard.telefono")}</SelectItem>
+                <SelectItem value="EMAIL" className="text-info text-xs">{t("crmDashboard.email")}</SelectItem>
+                <SelectItem value="PARTNER" className="text-warning text-xs">{t("crmDashboard.partner")}</SelectItem>
+                <SelectItem value="TICKETING" className="text-danger text-xs">{t("crmDashboard.ticketing")}</SelectItem>
+                <SelectItem value="coupon" className="text-warning text-xs">{t("crmDashboard.cuponOrigen")}</SelectItem>
                 <SelectItem value="MANUAL" className="text-foreground/60 text-xs">{t("crmDashboard.manualOtro")}</SelectItem>
                 <SelectItem value="API" className="text-foreground/60 text-xs">{t("crmDashboard.api")}</SelectItem>
               </SelectContent>
@@ -6689,7 +6689,7 @@ export default function CRMDashboard() {
               <SelectContent>
                 <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosOrigenes")}</SelectItem>
                 {/* Solicitudes de información o de plaza hechas desde la ficha de un producto */}
-                <SelectItem value="web" className="text-sky-300 text-xs">{t("crmDashboard.solicitudesWeb")}</SelectItem>
+                <SelectItem value="web" className="text-info text-xs">{t("crmDashboard.solicitudesWeb")}</SelectItem>
                 {(leadSourcesData ?? []).map((src: any) => (
                   <SelectItem key={src.id} value={String(src.id)} className="text-xs">
                     <span style={{ color: src.color ?? undefined }}>{src.name}</span>
@@ -6735,8 +6735,8 @@ export default function CRMDashboard() {
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Barra acción masiva leads */}
             {selectedLeads.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
-                <span className="text-xs text-blue-300 font-medium shrink-0">{t("crmLeads.seleccionadoS", { size: selectedLeads.size })}</span>
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-info/10 border-b border-info/20">
+                <span className="text-xs text-info font-medium shrink-0">{t("crmLeads.seleccionadoS", { size: selectedLeads.size })}</span>
                 <button onClick={() => bulkMarkSeenLeads.mutate({ ids: Array.from(selectedLeads) })} disabled={bulkMarkSeenLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-foreground/20 hover:bg-foreground/10 transition-colors disabled:opacity-40">
                   <Eye className="w-3.5 h-3.5" />{" "}{t("crmLeads.marcarLeidos")}</button>
                 <select value={bulkLeadsStatus} onChange={e => { if (e.target.value) bulkUpdateLeadsStatus.mutate({ ids: Array.from(selectedLeads), status: e.target.value as any }); }} disabled={bulkUpdateLeadsStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
@@ -6746,7 +6746,7 @@ export default function CRMDashboard() {
                   <option value="ganada">{t("crmLeads.ganada")}</option>
                   <option value="perdida">{t("crmLeads.perdida")}</option>
                 </select>
-                <button type="button" onClick={() => setBulkConfirm("leads")} disabled={bulkDeleteLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                <button type="button" onClick={() => setBulkConfirm("leads")} disabled={bulkDeleteLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-danger/40 text-danger hover:bg-danger/10 transition-colors disabled:opacity-40">
                   <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmLeads.eliminar")}</button>
                 <button onClick={() => setSelectedLeads(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
               </div>
@@ -6782,7 +6782,7 @@ export default function CRMDashboard() {
                       onAction={() => setShowNewLeadModal(true)}
                     />
                   ) : leadsData.rows.map((lead: any) => (
-                    <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedLeads.has(lead.id) ? "bg-blue-500/5" : !lead.seenAt ? "bg-blue-950/20" : ""}`}>
+                    <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedLeads.has(lead.id) ? "bg-info/5" : !lead.seenAt ? "bg-info/20" : ""}`}>
                       <td className="w-10 px-3 py-3">
                         <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedLeads.has(lead.id)} onChange={e => setSelectedLeads(prev => { const s = new Set(prev); e.target.checked ? s.add(lead.id) : s.delete(lead.id); return s; })} />
                       </td>
@@ -6795,8 +6795,8 @@ export default function CRMDashboard() {
                           {/* Punto pulse para leads no leídos */}
                           {!lead.seenAt ? (
                             <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-info opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-info" />
                             </span>
                           ) : (
                             <PriorityDot priority={lead.priority as Priority} />
@@ -6808,12 +6808,12 @@ export default function CRMDashboard() {
                                 <a
                                   href={`/admin/crm/clientes?clientId=${(lead as typeof lead & { clientId?: number }).clientId}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors"
+                                  className="text-sm font-medium text-foreground hover:text-info hover:underline transition-colors"
                                 >{lead.name}</a>
                               ) : (
                                 <span className="text-sm font-medium text-foreground">{lead.name}</span>
                               )}
-                              {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">{t("crmLeads.nuevo")}</span>}
+                              {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-info bg-info/10 px-1.5 py-0.5 rounded-full">{t("crmLeads.nuevo")}</span>}
                             </div>
                             <div className="break-all text-xs text-muted-foreground">{lead.email}</div>
                           </div>
@@ -6825,7 +6825,7 @@ export default function CRMDashboard() {
                             {(lead.activitiesJson as any[]).slice(0, 2).map((act: any, i: number) => (
                               <div key={i} className="flex items-center gap-1.5">
                                 <span className="text-sm text-foreground/80">{act.experienceTitle}</span>
-                                <span className="text-xs text-orange-400 font-semibold">{t("crmLeads.p", { participants: act.participants })}</span>
+                                <span className="text-xs text-warning font-semibold">{t("crmLeads.p", { participants: act.participants })}</span>
                               </div>
                             ))}
                             {(lead.activitiesJson as any[]).length > 2 && (
@@ -6872,7 +6872,7 @@ export default function CRMDashboard() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs"
+                            className="text-info hover:text-info h-7 px-2 text-xs"
                             onClick={() => setEditLeadId(lead.id)}
                             title={voc.licensed ? t("crmLeads.editarOportunidad") : t("crmLeads.editarLead")}
                           >
@@ -6936,8 +6936,8 @@ export default function CRMDashboard() {
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Barra acción masiva quotes */}
             {selectedQuotes.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
-                <span className="text-xs text-blue-300 font-medium shrink-0">{t("crmQuotes.seleccionadoS", { size: selectedQuotes.size })}</span>
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-info/10 border-b border-info/20">
+                <span className="text-xs text-info font-medium shrink-0">{t("crmQuotes.seleccionadoS", { size: selectedQuotes.size })}</span>
                 <select value={bulkQuotesStatus} onChange={e => { if (e.target.value) bulkUpdateQuotesStatus.mutate({ ids: Array.from(selectedQuotes), status: e.target.value as any }); }} disabled={bulkUpdateQuotesStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
                   <option value="">{t("crmQuotes.cambiarEstado")}</option>
                   <option value="borrador">{t("crmQuotes.borrador")}</option>
@@ -6947,7 +6947,7 @@ export default function CRMDashboard() {
                   <option value="perdido">{t("crmQuotes.perdido")}</option>
                   <option value="expirado">{t("crmQuotes.expirado")}</option>
                 </select>
-                <button type="button" onClick={() => setBulkConfirm("quotes")} disabled={bulkDeleteQuotes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                <button type="button" onClick={() => setBulkConfirm("quotes")} disabled={bulkDeleteQuotes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-danger/40 text-danger hover:bg-danger/10 transition-colors disabled:opacity-40">
                   <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmQuotes.eliminar2")}</button>
                 <button onClick={() => setSelectedQuotes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
               </div>
@@ -6983,7 +6983,7 @@ export default function CRMDashboard() {
                       onAction={() => setShowDirectQuoteModal(true)}
                     />
                   ) : quotesData.rows.map((quote: any) => (
-                    <tr key={quote.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group ${selectedQuotes.has(quote.id) ? "bg-blue-500/5" : ""}`}>
+                    <tr key={quote.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group ${selectedQuotes.has(quote.id) ? "bg-info/5" : ""}`}>
                       <td className="w-10 px-3 py-3">
                         <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedQuotes.has(quote.id)} onChange={e => setSelectedQuotes(prev => { const s = new Set(prev); e.target.checked ? s.add(quote.id) : s.delete(quote.id); return s; })} />
                       </td>
@@ -6996,7 +6996,7 @@ export default function CRMDashboard() {
                           <a
                             href={`/admin/crm/clientes?clientId=${(quote as typeof quote & { clientId?: number }).clientId}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-sm font-medium text-foreground/90 hover:text-blue-300 hover:underline transition-colors block"
+                            className="text-sm font-medium text-foreground/90 hover:text-info hover:underline transition-colors block"
                           >{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</a>
                         ) : (
                           <div className="text-sm font-medium text-foreground/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
@@ -7010,23 +7010,23 @@ export default function CRMDashboard() {
                         <div className="flex flex-col gap-1">
                           <QuoteStatusBadge status={quote.status as QuoteStatus} />
                           {quote.status === "aceptado" && !quote.paidAt && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />{t("crmQuotes.pendienteCobro")}</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-full">
+                              <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />{t("crmQuotes.pendienteCobro")}</span>
                           )}
                           {quote.paidAt && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-full">
                               <CheckCircle className="w-2.5 h-2.5" />{t("crmQuotes.cobrado2")}</span>
                           )}
                           {quote.isAutoGenerated && (
                             <span
-                              className="inline-flex items-center gap-1 text-[10px] font-medium text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full"
+                              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full"
                               title={voc.licensed ? t("crmQuotes.generadoAutomaticamenteDesdeLo") : t("crmQuotes.generadoAutomaticamenteDesdeLa")}
                             >
                               <Sparkles className="w-2.5 h-2.5" />{t("crmQuotes.autoIa")}</span>
                           )}
                           {quote.viewedAt && !quote.paidAt && (
                             <span
-                              className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded-full"
+                              className="inline-flex items-center gap-1 text-[10px] font-medium text-info bg-info/10 border border-info/20 px-1.5 py-0.5 rounded-full"
                               title={t("crmQuotes.vistoPorElClienteEl", { date: format.dateTime(quote.viewedAt, DT_FULL) })}
                             >
                               <Eye className="w-2.5 h-2.5" />{t("crmQuotes.visto2")}{" "}{format.date(quote.viewedAt, {})}
@@ -7058,25 +7058,25 @@ export default function CRMDashboard() {
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           {/* Editar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title={t("crmQuotes.editar")}>
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-info h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title={t("crmQuotes.editar")}>
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           {/* Enviar al cliente (solo borrador) */}
                           {(quote.status === "borrador") && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title={t("crmQuotes.enviarAlCliente")}>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-warning h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title={t("crmQuotes.enviarAlCliente")}>
                               <Send className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Reenviar (usa resend para no resetear el status) */}
                           {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-info h-7 w-7 p-0"
                               onClick={() => resendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title={t("crmQuotes.reenviarAlCliente")}>
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Confirmar pago — solo sin plan fraccionado; con plan, hacerlo cuota a cuota desde el detalle */}
                           {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && !quote.paymentPlanId && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title={t("crmQuotes.confirmarPagoRecibido")}>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-success h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title={t("crmQuotes.confirmarPagoRecibido")}>
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
@@ -7150,15 +7150,15 @@ export default function CRMDashboard() {
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Barra acción masiva reservas */}
             {selectedRes.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
-                <span className="text-xs text-blue-300 font-medium shrink-0">{t("crmReservations.seleccionadoS", { size: selectedRes.size })}</span>
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-info/10 border-b border-info/20">
+                <span className="text-xs text-info font-medium shrink-0">{t("crmReservations.seleccionadoS", { size: selectedRes.size })}</span>
                 <select value={bulkResStatus} onChange={e => { if (e.target.value) bulkUpdateResStatus.mutate({ ids: Array.from(selectedRes), status: e.target.value as any }); }} disabled={bulkUpdateResStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
                   <option value="">{t("crmReservations.cambiarEstado")}</option>
                   <option value="paid">{t("crmReservations.pagada")}</option>
                   <option value="pending_payment">{t("crmReservations.pendientePago")}</option>
                   <option value="cancelled">{t("crmReservations.cancelada")}</option>
                 </select>
-                <button type="button" onClick={() => setBulkConfirm("reservations")} disabled={bulkDeleteRes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                <button type="button" onClick={() => setBulkConfirm("reservations")} disabled={bulkDeleteRes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-danger/40 text-danger hover:bg-danger/10 transition-colors disabled:opacity-40">
                   <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmReservations.eliminar")}</button>
                 <button onClick={() => setSelectedRes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
               </div>
@@ -7216,7 +7216,7 @@ export default function CRMDashboard() {
                       onAction={() => setShowNewReservationModal(true)}
                     />
                   ) : resData.rows.map((res: any) => (
-                    <tr key={res.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedRes.has(res.id) ? "bg-blue-500/5" : ""}`}>
+                    <tr key={res.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedRes.has(res.id) ? "bg-info/5" : ""}`}>
                       {/* Checkbox */}
                       <td className="w-10 px-3 py-3">
                         <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedRes.has(res.id)} onChange={e => setSelectedRes(prev => { const s = new Set(prev); e.target.checked ? s.add(res.id) : s.delete(res.id); return s; })} />
@@ -7224,7 +7224,7 @@ export default function CRMDashboard() {
                       {/* Nº Reserva */}
                       <td className="px-4 py-3 shrink-0">
                         {res.reservationNumber ? (
-                          <span className="font-mono text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-2 py-0.5 whitespace-nowrap">
+                          <span className="font-mono text-xs font-bold text-warning bg-warning/10 border border-warning/20 rounded px-2 py-0.5 whitespace-nowrap">
                             {res.reservationNumber}
                           </span>
                         ) : (
@@ -7237,7 +7237,7 @@ export default function CRMDashboard() {
                           <a
                             href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block overflow-hidden text-ellipsis whitespace-nowrap"
+                            className="text-sm font-medium text-foreground hover:text-info hover:underline transition-colors block overflow-hidden text-ellipsis whitespace-nowrap"
                           >{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</a>
                         ) : (
                           <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</div>
@@ -7255,7 +7255,7 @@ export default function CRMDashboard() {
                         {res.invoiceNumber && (
                           <button
                             onClick={() => { setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }}
-                            className="text-xs font-mono text-sky-400/60 hover:text-sky-300 transition-colors flex items-center gap-1 mt-0.5">
+                            className="text-xs font-mono text-info/60 hover:text-info transition-colors flex items-center gap-1 mt-0.5">
                             <Receipt className="w-2.5 h-2.5" />{res.invoiceNumber}
                           </button>
                         )}
@@ -7264,12 +7264,12 @@ export default function CRMDashboard() {
                       <td className="px-4 py-3">
                         {res.statusReservation ? (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.statusReservation === "CONFIRMADA" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                            res.statusReservation === "PENDIENTE_CONFIRMACION" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
-                            res.statusReservation === "EN_CURSO" ? "bg-blue-500/15 text-blue-400 border-blue-500/30" :
+                            res.statusReservation === "CONFIRMADA" ? "bg-success/15 text-success border-success/30" :
+                            res.statusReservation === "PENDIENTE_CONFIRMACION" ? "bg-warning/15 text-warning border-warning/30" :
+                            res.statusReservation === "EN_CURSO" ? "bg-info/15 text-info border-info/30" :
                             res.statusReservation === "FINALIZADA" ? "bg-slate-500/15 text-slate-400 border-slate-500/30" :
-                            res.statusReservation === "NO_SHOW" ? "bg-orange-500/15 text-orange-400 border-orange-500/30" :
-                            res.statusReservation === "ANULADA" ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                            res.statusReservation === "NO_SHOW" ? "bg-warning/15 text-warning border-warning/30" :
+                            res.statusReservation === "ANULADA" ? "bg-danger/15 text-danger border-danger/30" :
                             "bg-slate-500/15 text-slate-400 border-slate-500/30"
                           }`}>
                             {res.statusReservation === "PENDIENTE_CONFIRMACION" ? t("crmReservations.pendConf") :
@@ -7283,9 +7283,9 @@ export default function CRMDashboard() {
                         ) : (
                           // Fallback al status legacy
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.status === "paid" || res.status === "confirmed" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                            res.status === "pending_payment" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
-                            res.status === "cancelled" ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                            res.status === "paid" || res.status === "confirmed" ? "bg-success/15 text-success border-success/30" :
+                            res.status === "pending_payment" ? "bg-warning/15 text-warning border-warning/30" :
+                            res.status === "cancelled" ? "bg-danger/15 text-danger border-danger/30" :
                             "bg-slate-500/15 text-slate-400 border-slate-500/30"
                           }`}>
                             {res.status === "paid" || res.status === "confirmed" ? `✅ ${voc.agree("Confirmado", "Confirmada")}` :
@@ -7295,12 +7295,12 @@ export default function CRMDashboard() {
                         )}
                         {res.cancellationRequestId && (
                           <div className="mt-1">
-                            <span className="inline-flex items-center text-[9px] font-bold text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded">{t("crmReservations.anulacion", { cancellationRequestId: res.cancellationRequestId })}</span>
+                            <span className="inline-flex items-center text-[9px] font-bold text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">{t("crmReservations.anulacion", { cancellationRequestId: res.cancellationRequestId })}</span>
                           </div>
                         )}
                         {res.dateModified && (
                           <div className="mt-1">
-                            <span className="inline-flex items-center text-[9px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">{t("crmReservations.fechaMod")}</span>
+                            <span className="inline-flex items-center text-[9px] font-bold text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">{t("crmReservations.fechaMod")}</span>
                           </div>
                         )}
                       </td>
@@ -7308,10 +7308,10 @@ export default function CRMDashboard() {
                       <td className="px-4 py-3">
                         {res.statusPayment ? (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.statusPayment === "PAGADO" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                            res.statusPayment === "PAGO_PARCIAL" ? "bg-sky-500/15 text-sky-400 border-sky-500/30" :
-                            res.statusPayment === "PENDIENTE_VALIDACION" ? "bg-violet-500/15 text-violet-400 border-violet-500/30" :
-                            "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                            res.statusPayment === "PAGADO" ? "bg-success/15 text-success border-success/30" :
+                            res.statusPayment === "PAGO_PARCIAL" ? "bg-info/15 text-info border-info/30" :
+                            res.statusPayment === "PENDIENTE_VALIDACION" ? "bg-primary/15 text-primary border-primary/30" :
+                            "bg-warning/15 text-warning border-warning/30"
                           }`}>
                             {res.statusPayment === "PAGADO" ? t("crmReservations.pagado2") :
                              res.statusPayment === "PAGO_PARCIAL" ? t("crmReservations.parcial") :
@@ -7320,8 +7320,8 @@ export default function CRMDashboard() {
                           </span>
                         ) : (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.status === "paid" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                            "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                            res.status === "paid" ? "bg-success/15 text-success border-success/30" :
+                            "bg-warning/15 text-warning border-warning/30"
                           }`}>
                             {res.status === "paid" ? t("crmReservations.pagado2") : t("crmReservations.pendiente3")}
                           </span>
@@ -7330,15 +7330,15 @@ export default function CRMDashboard() {
                       {/* Canal */}
                       <td className="px-4 py-3 hidden xl:table-cell">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
-                          res.originSource === "coupon_redemption" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
-                          res.channel === "TPV_FISICO" ? "text-violet-300 bg-violet-500/15 border-violet-500/30" :
-                          res.channel === "VENTA_DELEGADA" ? "text-purple-300 bg-purple-500/15 border-purple-500/30" :
-                          res.channel === "ONLINE_DIRECTO" ? "text-sky-300 bg-sky-500/15 border-sky-500/30" :
-                          res.channel === "ONLINE_ASISTIDO" ? "text-blue-300 bg-blue-500/15 border-blue-500/30" :
-                          res.channel === "TELEFONO" ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
-                          res.channel === "EMAIL" ? "text-cyan-300 bg-cyan-500/15 border-cyan-500/30" :
-                          res.channel === "PARTNER" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
-                          res.channel === "TICKETING" ? "text-pink-300 bg-pink-500/15 border-pink-500/30" :
+                          res.originSource === "coupon_redemption" ? "text-warning bg-warning/15 border-warning/30" :
+                          res.channel === "TPV_FISICO" ? "text-primary bg-primary/15 border-primary/30" :
+                          res.channel === "VENTA_DELEGADA" ? "text-primary bg-primary/15 border-primary/30" :
+                          res.channel === "ONLINE_DIRECTO" ? "text-info bg-info/15 border-info/30" :
+                          res.channel === "ONLINE_ASISTIDO" ? "text-info bg-info/15 border-info/30" :
+                          res.channel === "TELEFONO" ? "text-warning bg-warning/15 border-warning/30" :
+                          res.channel === "EMAIL" ? "text-info bg-info/15 border-info/30" :
+                          res.channel === "PARTNER" ? "text-warning bg-warning/15 border-warning/30" :
+                          res.channel === "TICKETING" ? "text-danger bg-danger/15 border-danger/30" :
                           "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
                         }`}>
                           {res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? t("crmReservations.cupon")}` :
@@ -7357,7 +7357,7 @@ export default function CRMDashboard() {
                         {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
                           <a
                             href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`}
-                            className="block text-[9px] text-violet-400/70 hover:text-violet-300 hover:underline mt-0.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-[80px]"
+                            className="block text-[9px] text-primary/70 hover:text-primary hover:underline mt-0.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-[80px]"
                           >
                             #{(res as any).tpvOperationNumber}
                           </a>
@@ -7380,7 +7380,7 @@ export default function CRMDashboard() {
                       {/* Importe */}
                       <td className="px-4 py-3 text-right whitespace-nowrap align-top">
                         <div className="flex flex-col items-end leading-tight">
-                          <span className="text-sm font-bold text-orange-400">{format.currency(((res.amountPaid ?? 0) / 100), "EUR", EUR2)}</span>
+                          <span className="text-sm font-bold text-warning">{format.currency(((res.amountPaid ?? 0) / 100), "EUR", EUR2)}</span>
                           {res.amountPaid !== res.amountTotal && (
                             <span className="text-xs text-foreground/40 whitespace-nowrap">{t("crmReservations.total2", { formatEur: format.currency(((res.amountTotal ?? 0) / 100), "EUR", EUR2) })}</span>
                           )}
@@ -7389,13 +7389,13 @@ export default function CRMDashboard() {
                       <td className="px-2 py-3 text-right whitespace-nowrap align-top">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver detalles */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-sky-300 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-info h-7 w-7 p-0"
                             onClick={() => setViewResId(res.id)}
                             title={t("crmReservations.verDetalles")}>
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           {/* Editar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-warning h-7 w-7 p-0"
                             onClick={() => {
                               setEditResData(res);
                               setEditResStatus(res.status ?? "");
@@ -7538,7 +7538,7 @@ export default function CRMDashboard() {
                     { label: t("crmInvoices.esteAno"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-12-31`); } },
                   ]).map(({ label, fn }) => (
                     <button key={label} onClick={fn}
-                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-foreground/[0.05] text-foreground/65 border border-foreground/[0.12] hover:bg-sky-600/30 hover:text-sky-300 hover:border-sky-500/40 transition-all">
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-foreground/[0.05] text-foreground/65 border border-foreground/[0.12] hover:bg-info/30 hover:text-info hover:border-info/40 transition-all">
                       {label}
                     </button>
                   ))}
@@ -7548,14 +7548,14 @@ export default function CRMDashboard() {
                       type="date"
                       value={invoiceDateFrom}
                       onChange={e => setInvoiceDateFrom(e.target.value)}
-                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
+                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-info/50 [color-scheme:dark]"
                     />
                     <span className="text-foreground/40 text-xs">→</span>
                     <input
                       type="date"
                       value={invoiceDateTo}
                       onChange={e => setInvoiceDateTo(e.target.value)}
-                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
+                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-info/50 [color-scheme:dark]"
                     />
                     {(invoiceDateFrom || invoiceDateTo) && (
                       <button onClick={() => { setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
@@ -7701,7 +7701,7 @@ export default function CRMDashboard() {
                             {/* PDF: ver si existe (o generarlo); descargar siempre, también los abonos */}
                             {inv.pdfUrl ? (
                               <button onClick={() => viewInvoicePdf(inv)} title={inv.invoiceType === "abono" ? t("crmInvoices.visualizarAbono") : t("crmInvoices.visualizarFactura")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-info transition-colors">
                                 <Eye className="w-4 h-4" />
                               </button>
                             ) : (
@@ -7709,7 +7709,7 @@ export default function CRMDashboard() {
                                 onClick={() => regenerateInvoicePdfMutation.mutate({ invoiceId: inv.id })}
                                 disabled={regenerateInvoicePdfMutation.isPending}
                                 title={t("crmInvoices.generarPdf")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-amber-400 transition-colors disabled:opacity-40">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-warning transition-colors disabled:opacity-40">
                                 {regenerateInvoicePdfMutation.isPending
                                   ? <RefreshCw className="w-4 h-4 animate-spin" />
                                   : <FilePlus className="w-4 h-4" />}
@@ -7718,7 +7718,7 @@ export default function CRMDashboard() {
                             <button onClick={() => downloadInvoicePdf(inv)} disabled={downloadingInvoiceId === inv.id}
                               title={inv.invoiceType === "abono" ? t("crmInvoices.descargarAbono") : t("crmInvoices.descargarFactura")}
                               aria-label={`Descargar ${inv.invoiceType === "abono" ? "abono" : "factura"} ${inv.invoiceNumber} en PDF`}
-                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors disabled:opacity-40">
+                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-success transition-colors disabled:opacity-40">
                               {downloadingInvoiceId === inv.id
                                 ? <RefreshCw className="w-4 h-4 animate-spin" />
                                 : <FileDown className="w-4 h-4" />}
@@ -7726,28 +7726,28 @@ export default function CRMDashboard() {
                             {/* Reenviar */}
                             {["generada", "enviada"].includes(inv.status) && (
                               <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title={t("crmInvoices.reenviarPorEmail")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-info transition-colors">
                                 <Send className="w-4 h-4" />
                               </button>
                             )}
                             {/* Confirmar pago manual */}
                             {["generada", "enviada"].includes(inv.status) && inv.invoiceType !== "abono" && (
                               <button onClick={() => setConfirmPaymentInvoiceId(inv.id)} title={t("crmInvoices.confirmarPagoManual")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-success transition-colors">
                                 <CreditCard className="w-4 h-4" />
                               </button>
                             )}
                             {/* Emitir abono (total o parcial) */}
                             {["generada", "enviada", "cobrada"].includes(inv.status) && inv.invoiceType !== "abono" && (
                               <button onClick={() => setCreditNoteInvoiceId(inv.id)} title={t("crmInvoices.emitirAbono")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-violet-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-primary transition-colors">
                                 <RotateCcw className="w-4 h-4" />
                               </button>
                             )}
                             {/* Anular */}
                             {!["anulada", "abonada"].includes(inv.status) && (
                               <button onClick={() => setVoidInvoiceId(inv.id)} title={t("crmInvoices.anularFactura")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-red-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-danger transition-colors">
                                 <Ban className="w-4 h-4" />
                               </button>
                             )}
@@ -7791,10 +7791,10 @@ export default function CRMDashboard() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                   {[
                     { label: t("crmCancellations.total"), value: anulKpis.total, color: "border-foreground/[0.08]" },
-                    { label: t("crmCancellations.recibidas"), value: anulKpis.recibidas, color: "border-blue-500/20" },
-                    { label: t("crmCancellations.enRevision"), value: anulKpis.enRevision, color: "border-amber-500/20" },
-                    { label: t("crmCancellations.pendDocs"), value: anulKpis.pendienteDocumentacion, color: "border-orange-500/20" },
-                    { label: t("crmCancellations.incidencias"), value: anulKpis.incidencias, color: "border-red-500/20" },
+                    { label: t("crmCancellations.recibidas"), value: anulKpis.recibidas, color: "border-info/20" },
+                    { label: t("crmCancellations.enRevision"), value: anulKpis.enRevision, color: "border-warning/20" },
+                    { label: t("crmCancellations.pendDocs"), value: anulKpis.pendienteDocumentacion, color: "border-warning/20" },
+                    { label: t("crmCancellations.incidencias"), value: anulKpis.incidencias, color: "border-danger/20" },
                     { label: t("crmCancellations.cerradas"), value: anulKpis.cerradas, color: "border-gray-500/20" },
                   ].map(({ label, value, color }) => (
                     <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
@@ -7808,10 +7808,10 @@ export default function CRMDashboard() {
               {anulKpis && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { label: t("crmCancellations.aceptadasTotal"), value: anulKpis.resueltasTotal, color: "border-green-500/20" },
-                    { label: t("crmCancellations.aceptadasParcial"), value: anulKpis.resueltasParcial, color: "border-teal-500/20" },
-                    { label: t("crmCancellations.rechazadas"), value: anulKpis.rechazadas, color: "border-red-500/20" },
-                    { label: voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados"), value: anulKpis.compensadasBono, color: "border-purple-500/20" },
+                    { label: t("crmCancellations.aceptadasTotal"), value: anulKpis.resueltasTotal, color: "border-success/20" },
+                    { label: t("crmCancellations.aceptadasParcial"), value: anulKpis.resueltasParcial, color: "border-success/20" },
+                    { label: t("crmCancellations.rechazadas"), value: anulKpis.rechazadas, color: "border-danger/20" },
+                    { label: voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados"), value: anulKpis.compensadasBono, color: "border-primary/20" },
                   ].map(({ label, value, color }) => (
                     <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
                       <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
@@ -7919,8 +7919,8 @@ export default function CRMDashboard() {
                       {!anulLoading && anulError && (
                         <tr>
                           <td colSpan={10} className="text-center py-12">
-                            <AlertTriangle className="w-8 h-8 text-red-400/60 mx-auto mb-2" />
-                            <p className="text-red-400/70 text-sm font-medium">{t("crmCancellations.errorAlCargarLas")}</p>
+                            <AlertTriangle className="w-8 h-8 text-danger/60 mx-auto mb-2" />
+                            <p className="text-danger/70 text-sm font-medium">{t("crmCancellations.errorAlCargarLas")}</p>
                             <button onClick={() => refetchAnul()} className="mt-2 text-xs text-foreground/40 hover:text-foreground/70 underline">{t("crmCancellations.reintentar")}</button>
                           </td>
                         </tr>
@@ -7949,7 +7949,7 @@ export default function CRMDashboard() {
                             {row.linkedReservationId && row.reservationNumber ? (
                               <button
                                 onClick={() => setViewResId(row.linkedReservationId!)}
-                                className="font-mono text-xs text-orange-400 hover:text-orange-300 hover:underline transition-colors"
+                                className="font-mono text-xs text-warning hover:text-warning hover:underline transition-colors"
                                 title={voc.viewOrder}
                               >
                                 {row.reservationNumber}
@@ -7960,9 +7960,9 @@ export default function CRMDashboard() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
-                              {row.reason === "meteorologicas" && <CloudLightning className="w-4 h-4 text-blue-400" />}
-                              {row.reason === "accidente" && <AlertTriangle className="w-4 h-4 text-red-400" />}
-                              {row.reason === "enfermedad" && <HeartPulse className="w-4 h-4 text-pink-400" />}
+                              {row.reason === "meteorologicas" && <CloudLightning className="w-4 h-4 text-info" />}
+                              {row.reason === "accidente" && <AlertTriangle className="w-4 h-4 text-danger" />}
+                              {row.reason === "enfermedad" && <HeartPulse className="w-4 h-4 text-danger" />}
                               {row.reason === "desistimiento" && <XCircle className="w-4 h-4 text-foreground/50" />}
                               {row.reason === "otra" && <HelpCircle className="w-4 h-4 text-foreground/50" />}
                               <span className="text-foreground/65 text-xs capitalize">{row.reason}</span>
@@ -7992,7 +7992,7 @@ export default function CRMDashboard() {
                               </button>
                               <button
                                 onClick={() => setDeleteAnulId(row.id)}
-                                className="p-1.5 rounded-lg text-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                className="p-1.5 rounded-lg text-foreground/30 hover:text-danger hover:bg-danger/10 transition-colors"
                                 title={t("crmCancellations.eliminar")}
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -8050,7 +8050,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-emerald-400" />{" "}{t("crmInvoices.confirmarPagoManual")}</DialogTitle>
+              <CreditCard className="w-5 h-5 text-success" />{" "}{t("crmInvoices.confirmarPagoManual")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -8086,7 +8086,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />{" "}{t("crmInvoices.anularFactura")}</DialogTitle>
+              <AlertTriangle className="w-5 h-5 text-danger" />{" "}{t("crmInvoices.anularFactura")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seEmitiraUnAbono")}</p>
           <DialogFooter>
@@ -8186,7 +8186,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" /> {voc.licensed ? t("crmInvoices.eliminarOportunidad") : t("crmInvoices.eliminarLead")}
+              <AlertTriangle className="w-5 h-5 text-danger" /> {voc.licensed ? t("crmInvoices.eliminarOportunidad") : t("crmInvoices.eliminarLead")}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.estaAccionEsIrreversible")}{" "}{voc.licensed ? t("crmInvoices.laOportunidad") : t("crmInvoices.elLead")}{" "}{t("crmInvoices.yTodaSuActividad")}</p>
@@ -8215,7 +8215,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />{" "}{t("crmInvoices.eliminarPresupuesto")}</DialogTitle>
+              <AlertTriangle className="w-5 h-5 text-danger" />{" "}{t("crmInvoices.eliminarPresupuesto")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.estaAccionEsIrreversible2")}</p>
           <DialogFooter>
@@ -8235,7 +8235,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Send className="w-5 h-5 text-orange-400" />{" "}{t("crmInvoices.enviarPresupuestoAlCliente")}</DialogTitle>
+              <Send className="w-5 h-5 text-warning" />{" "}{t("crmInvoices.enviarPresupuestoAlCliente")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seEnviaraElPresupuesto")}</p>
           <DialogFooter>
@@ -8256,7 +8256,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />{" "}{t("crmInvoices.confirmarPagoRecibido")}</DialogTitle>
+              <CheckCircle className="w-5 h-5 text-success" />{" "}{t("crmInvoices.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-foreground/65 text-sm">{t("crmInvoices.seleccionaElMetodoDe")}</p>
@@ -8267,7 +8267,7 @@ export default function CRMDashboard() {
                   key={m}
                   onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setTpvOpSearchForRow(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    confirmPayMethodRow === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
+                    confirmPayMethodRow === m ? "border-success bg-success/15 text-success" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -8286,10 +8286,10 @@ export default function CRMDashboard() {
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />{t("crmInvoices.vincularOperacionTpv")}</div>
+                    <CreditCard className="w-3.5 h-3.5 text-primary" />{t("crmInvoices.vincularOperacionTpv")}</div>
                   {!selectedTpvOpIdForRow && (
                     <button
-                      className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                      className="text-xs text-primary hover:text-primary transition-colors"
                       onClick={() => setShowTpvOpSearchForRow(!showTpvOpSearchForRow)}
                     >
                       {showTpvOpSearchForRow ? t("crmInvoices.ocultar") : t("crmInvoices.buscarOperacion")}
@@ -8301,20 +8301,20 @@ export default function CRMDashboard() {
                     const op = (tpvOpsForRowQ.data?.data as any[])?.find((o: any) => o.id === selectedTpvOpIdForRow)
                       ?? { id: selectedTpvOpIdForRow, operationNumber: confirmPayTpvOp, amount: "–" };
                     return (
-                      <div className="rounded-md border border-violet-500/30 bg-violet-500/10 p-2.5 text-xs space-y-1">
+                      <div className="rounded-md border border-primary/30 bg-primary/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-violet-300">{t("crmInvoices.operacionTpvVinculada")}</span>
+                          <span className="font-medium text-primary">{t("crmInvoices.operacionTpvVinculada")}</span>
                           <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setConfirmPayTpvOp(""); }}>{t("crmInvoices.texto")}</button>
                         </div>
                         <div className="text-foreground/70 font-mono">{op.operationNumber ?? "–"}</div>
-                        <div className="text-violet-400 font-medium">{op.amount != null ? `${format.number(Number(op.amount), { minimumFractionDigits: 2 })} €` : "–"}</div>
+                        <div className="text-primary font-medium">{op.amount != null ? `${format.number(Number(op.amount), { minimumFractionDigits: 2 })} €` : "–"}</div>
                       </div>
                     );
                   })()
                 ) : showTpvOpSearchForRow ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/50"
                       placeholder={t("crmInvoices.buscarPorNOperacion")}
                       value={tpvOpSearchForRow}
                       onChange={(e) => setTpvOpSearchForRow(e.target.value)}
@@ -8333,7 +8333,7 @@ export default function CRMDashboard() {
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
-                              <span className="text-xs text-violet-400 font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
+                              <span className="text-xs text-primary font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
                             </div>
                             <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {format.date(op.operationDatetime, {})}</div>
                           </button>
@@ -8350,7 +8350,7 @@ export default function CRMDashboard() {
                 </div>
                 {!confirmPayRowProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
-                    isUploadingRowProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                    isUploadingRowProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-success/50 hover:bg-success/5"
                   }`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleRowProofFileChange} disabled={isUploadingRowProof} />
                     {isUploadingRowProof ? (
@@ -8360,19 +8360,19 @@ export default function CRMDashboard() {
                     )}
                   </label>
                 ) : (
-                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmInvoices.justificanteSubidoCorrectament")}</span>
-                    <a href={confirmPayRowProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">{t("crmInvoices.ver")}</a>
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success/10 border border-success/30">
+                    <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                    <span className="text-xs text-success flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t("crmInvoices.justificanteSubidoCorrectament")}</span>
+                    <a href={confirmPayRowProofUrl} target="_blank" rel="noreferrer" className="text-xs text-success hover:underline">{t("crmInvoices.ver")}</a>
                     <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">{t("crmInvoices.texto")}</button>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
-                    <Banknote className="w-3.5 h-3.5 text-blue-400" />{t("crmInvoices.vincularMovimientoBancario")}</div>
+                    <Banknote className="w-3.5 h-3.5 text-info" />{t("crmInvoices.vincularMovimientoBancario")}</div>
                   {!selectedBankMovementIdForRow && (
                     <button
-                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                      className="text-xs text-info hover:text-info transition-colors"
                       onClick={() => setShowBankMovementSearchForRow(!showBankMovementSearchForRow)}
                     >
                       {showBankMovementSearchForRow ? t("crmInvoices.ocultar") : t("crmInvoices.buscarMovimiento")}
@@ -8384,15 +8384,15 @@ export default function CRMDashboard() {
                     const mv = (bankMovementsForRowQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementIdForRow)
                       ?? { id: selectedBankMovementIdForRow, fecha: "–", movimiento: t("crmInvoices.movimientoSeleccionado"), importe: "–" };
                     return (
-                      <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
+                      <div className="rounded-md border border-success/30 bg-success/10 p-2.5 text-xs space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-emerald-300">{t("crmInvoices.movimientoVinculado")}</span>
+                          <span className="font-medium text-success">{t("crmInvoices.movimientoVinculado")}</span>
                           <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); }}>{t("crmInvoices.texto")}</button>
                         </div>
                         <div className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                         <div className="flex gap-3 text-foreground/50">
                           <span>{mv.fecha ?? "–"}</span>
-                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
+                          <span className="text-success font-medium">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                         </div>
                       </div>
                     );
@@ -8400,7 +8400,7 @@ export default function CRMDashboard() {
                 ) : showBankMovementSearchForRow ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-info/50"
                       placeholder={t("crmInvoices.buscarPorConceptoImporte")}
                       value={bankMovementSearchForRow}
                       onChange={(e) => setBankMovementSearchForRow(e.target.value)}
@@ -8414,13 +8414,13 @@ export default function CRMDashboard() {
                         {(bankMovementsForRowQ.data?.data as any[] | undefined)?.map((mv: any) => (
                           <button
                             key={mv.id}
-                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-colors"
+                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-info/40 hover:bg-info/5 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForRow(mv.id); setShowBankMovementSearchForRow(false); }}
                           >
                             <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                             <div className="flex gap-3 mt-0.5 text-xs text-white/50">
                               <span>{mv.fecha ?? "–"}</span>
-                              <span className="text-emerald-400">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
+                              <span className="text-success">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                             </div>
                           </button>
                         ))}
@@ -8478,10 +8478,10 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-400" />{" "}{t("crmInvoices.registrarPagoPendiente")}</DialogTitle>
+              <Clock className="w-5 h-5 text-warning" />{" "}{t("crmInvoices.registrarPagoPendiente")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-foreground/65 text-sm">{t("crmInvoices.seCrearaEnEstado", { theOrder: voc.theOrder })}{" "}<strong className="text-amber-400">{t("crmInvoices.pendienteDeCobro")}</strong>{t("crmInvoices.seRegistraraElPago")}</p>
+            <p className="text-foreground/65 text-sm">{t("crmInvoices.seCrearaEnEstado", { theOrder: voc.theOrder })}{" "}<strong className="text-warning">{t("crmInvoices.pendienteDeCobro")}</strong>{t("crmInvoices.seRegistraraElPago")}</p>
             <div className="space-y-1.5">
               <Label className="text-foreground/70 text-xs">{t("crmInvoices.fechaLimiteDePago")}</Label>
               <Input
@@ -8541,7 +8541,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <XCircle className="w-5 h-5 text-red-400" />{" "}{t("crmInvoices.marcarPresupuestoComoPerdido")}</DialogTitle>
+              <XCircle className="w-5 h-5 text-danger" />{" "}{t("crmInvoices.marcarPresupuestoComoPerdido")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seMarcaraElPresupuesto")}</p>
           <DialogFooter>
@@ -8597,7 +8597,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Pencil className="w-5 h-5 text-amber-400" /> {voc.editOrder}
+              <Pencil className="w-5 h-5 text-warning" /> {voc.editOrder}
             </DialogTitle>
           </DialogHeader>
 
@@ -8607,7 +8607,7 @@ export default function CRMDashboard() {
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="font-semibold text-white text-sm">{editResData.customerName}</div>
                 {editResData.reservationNumber && (
-                  <span className="font-mono text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-1.5 py-0.5">
+                  <span className="font-mono text-xs font-bold text-warning bg-warning/10 border border-warning/20 rounded px-1.5 py-0.5">
                     {editResData.reservationNumber}
                   </span>
                 )}
@@ -8635,7 +8635,7 @@ export default function CRMDashboard() {
                 <select
                   value={editResStatusReservation}
                   onChange={(e) => setEditResStatusReservation(e.target.value)}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50">
                   <option value="">{t("crmReservations.sinCambiar")}</option>
                   <option value="PENDIENTE_CONFIRMACION">{t("crmReservations.pendienteConfirmacion")}</option>
                   <option value="CONFIRMADA">{t("crmReservations.confirmada")}</option>
@@ -8650,7 +8650,7 @@ export default function CRMDashboard() {
                 <select
                   value={editResStatusPayment}
                   onChange={(e) => setEditResStatusPayment(e.target.value)}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50">
                   <option value="">{t("crmReservations.sinCambiar")}</option>
                   <option value="PENDIENTE">{t("crmReservations.pendiente2")}</option>
                   <option value="PAGO_PARCIAL">{t("crmReservations.pagoParcial")}</option>
@@ -8667,7 +8667,7 @@ export default function CRMDashboard() {
                 <select
                   value={editResChannel}
                   onChange={(e) => setEditResChannel(e.target.value)}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50">
                   <option value="">{t("crmReservations.sinCambiar")}</option>
                   <option value="ONLINE_DIRECTO">{t("crmReservations.onlineDirecto2")}</option>
                   <option value="ONLINE_ASISTIDO">{t("crmReservations.onlineAsistido2")}</option>
@@ -8685,7 +8685,7 @@ export default function CRMDashboard() {
                   value={editResChannelDetail}
                   onChange={(e) => setEditResChannelDetail(e.target.value)}
                   placeholder={t("crmReservations.ejGrouponBooking")}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50" />
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-warning/50" />
               </div>
             </div>
 
@@ -8697,15 +8697,15 @@ export default function CRMDashboard() {
                 onChange={(e) => setEditResNotes(e.target.value)}
                 rows={2}
                 placeholder={voc.agree(t("crmEmpty.hint.notesM", { order: voc.order }), t("crmEmpty.hint.notesF", { order: voc.order }))}
-                className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50 resize-none" />
+                className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-warning/50 resize-none" />
             </div>
 
             {/* ── Cambio de fecha ── */}
-            <div className="border border-amber-500/20 rounded-xl p-3 bg-amber-500/5">
+            <div className="border border-warning/20 rounded-xl p-3 bg-warning/5">
               <button
                 type="button"
                 onClick={() => setShowChangeDateSection(!showChangeDateSection)}
-                className="flex items-center gap-2 text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors w-full text-left">
+                className="flex items-center gap-2 text-sm font-medium text-warning hover:text-warning transition-colors w-full text-left">
                 <Calendar className="w-4 h-4" />
                 {voc.licensed ? t("crmReservations.cambiarFechaDeServicio") : t("crmReservations.cambiarFechaDeActividad")}
                 <span className="ml-auto text-xs text-foreground/40">{showChangeDateSection ? t("crmReservations.ocultar") : t("crmReservations.expandir")}</span>
@@ -8718,7 +8718,7 @@ export default function CRMDashboard() {
                       type="date"
                       value={editResNewDate}
                       onChange={(e) => setEditResNewDate(e.target.value)}
-                      className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50" />
+                      className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50" />
                   </div>
                   <div>
                     <label className="block text-xs text-foreground/60 mb-1.5">{t("crmReservations.motivoDelCambioObligatorio")}</label>
@@ -8727,7 +8727,7 @@ export default function CRMDashboard() {
                       onChange={(e) => setEditResDateReason(e.target.value)}
                       rows={2}
                       placeholder={t("crmReservations.ejSolicitudDelCliente")}
-                      className="w-full bg-foreground/[0.05] border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-amber-500/50 resize-none" />
+                      className="w-full bg-foreground/[0.05] border border-warning/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-warning/50 resize-none" />
                   </div>
                   <Button
                     size="sm"
@@ -8748,7 +8748,7 @@ export default function CRMDashboard() {
               size="sm"
               onClick={() => editResId !== null && downloadResPdfMutation.mutate({ id: editResId })}
               disabled={downloadResPdfMutation.isPending}
-              className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
+              className="border-info/30 text-info hover:bg-info/10">
               {downloadResPdfMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileDown className="w-4 h-4 mr-1" />}
               {voc.licensed ? t("crmReservations.descargarPedidoEnPdf") : t("crmReservations.descargarReservaPdf")}
             </Button>
@@ -8788,7 +8788,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" /> {voc.deleteOrder}
+              <AlertTriangle className="w-5 h-5 text-danger" /> {voc.deleteOrder}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-foreground/65 py-2">{t("crmReservations.estaAccionEsIrreversible", { theOrder: voc.theOrder })}</p>
@@ -8811,7 +8811,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <FilePlus className="w-5 h-5 text-violet-400" />{" "}{t("crmReservations.generarFactura")}</DialogTitle>
+              <FilePlus className="w-5 h-5 text-primary" />{" "}{t("crmReservations.generarFactura")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-foreground/65">{t("crmReservations.seEmitiraUnaFactura")}{" "}{voc.licensed ? t("crmReservations.delPedido") : t("crmReservations.deLaReserva")}{t("crmReservations.indicaANombreDe")}</p>
@@ -8996,10 +8996,10 @@ function AnularReservaModal({
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#111] border border-orange-500/30 rounded-2xl p-6 max-w-md w-full">
+      <div className="bg-[#111] border border-warning/30 rounded-2xl p-6 max-w-md w-full">
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 bg-orange-500/10 rounded-full flex items-center justify-center flex-shrink-0">
-            <XCircle className="w-5 h-5 text-orange-400" />
+          <div className="w-10 h-10 bg-warning/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <XCircle className="w-5 h-5 text-warning" />
           </div>
           <div>
             <h2 className="text-white font-semibold">{t("crmReservations.iniciarAnulacion")}</h2>
@@ -9010,8 +9010,8 @@ function AnularReservaModal({
           </button>
         </div>
 
-        <div className="bg-blue-500/8 border border-blue-500/20 rounded-xl px-4 py-3 mb-5">
-          <p className="text-blue-300 text-xs">{t("crmReservations.seCrearaUnExpediente")}{" "}{voc.licensed ? t("crmReservations.delPedido") : t("crmReservations.deLaReserva")}{t("crmReservations.elegirSiCancelarLineas")}</p>
+        <div className="bg-info/8 border border-info/20 rounded-xl px-4 py-3 mb-5">
+          <p className="text-info text-xs">{t("crmReservations.seCrearaUnExpediente")}{" "}{voc.licensed ? t("crmReservations.delPedido") : t("crmReservations.deLaReserva")}{t("crmReservations.elegirSiCancelarLineas")}</p>
         </div>
 
         <div className="space-y-4">
@@ -9038,7 +9038,7 @@ function AnularReservaModal({
               onChange={(e) => setReasonDetail(e.target.value)}
               placeholder={t("crmReservations.explicacionAdicional")}
               rows={2}
-              className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-orange-500/40"
+              className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-warning/40"
             />
           </div>
 
@@ -9122,10 +9122,10 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
   );
 
   const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-    generado:  { label: t("crmVouchers.generado"),  cls: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
-    enviado:   { label: t("crmVouchers.activo"),    cls: "bg-green-500/10 text-green-300 border-green-500/20" },
-    canjeado:  { label: t("crmVouchers.canjeado"),  cls: "bg-purple-500/10 text-purple-300 border-purple-500/20" },
-    caducado:  { label: t("crmVouchers.caducado"),  cls: "bg-amber-500/10 text-amber-300 border-amber-500/20" },
+    generado:  { label: t("crmVouchers.generado"),  cls: "bg-info/10 text-info border-info/20" },
+    enviado:   { label: t("crmVouchers.activo"),    cls: "bg-success/10 text-success border-success/20" },
+    canjeado:  { label: t("crmVouchers.canjeado"),  cls: "bg-primary/10 text-primary border-primary/20" },
+    caducado:  { label: t("crmVouchers.caducado"),  cls: "bg-warning/10 text-warning border-warning/20" },
     anulado:   { label: t("crmVouchers.anulado"),   cls: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
   };
 
@@ -9143,10 +9143,10 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: t("crmVouchers.totalEmitidos"), value: kpis?.total ?? 0, cls: "border-foreground/[0.08]" },
-          { label: t("crmVouchers.activos"),        value: kpis?.activos ?? 0, cls: "border-green-500/20" },
-          { label: t("crmVouchers.canjeados"),      value: kpis?.canjeados ?? 0, cls: "border-purple-500/20" },
-          { label: t("crmVouchers.caducados"),      value: kpis?.caducados ?? 0, cls: "border-amber-500/20" },
-          { label: t("crmVouchers.importePend"), value: `${format.currency((kpis?.importePendiente ?? 0), "EUR", EUR2)}`, cls: "border-green-500/20" },
+          { label: t("crmVouchers.activos"),        value: kpis?.activos ?? 0, cls: "border-success/20" },
+          { label: t("crmVouchers.canjeados"),      value: kpis?.canjeados ?? 0, cls: "border-primary/20" },
+          { label: t("crmVouchers.caducados"),      value: kpis?.caducados ?? 0, cls: "border-warning/20" },
+          { label: t("crmVouchers.importePend"), value: `${format.currency((kpis?.importePendiente ?? 0), "EUR", EUR2)}`, cls: "border-success/20" },
         ].map(({ label, value, cls }) => (
           <div key={label} className={`bg-foreground/[0.03] border ${cls} rounded-xl p-4`}>
             <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
@@ -9209,7 +9209,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                   <tr key={v.id} className="border-b border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors last:border-0">
                     {/* Código */}
                     <td className="px-4 py-3">
-                      <span className="font-mono font-bold text-sm text-purple-300">{v.code}</span>
+                      <span className="font-mono font-bold text-sm text-primary">{v.code}</span>
                       {v.activityName && <p className="text-foreground/40 text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[160px]">{v.activityName}</p>}
                     </td>
 
@@ -9221,9 +9221,9 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
                     {/* Valor */}
                     <td className="px-4 py-3">
-                      <span className="text-orange-400 font-bold font-mono">{format.currency(Number(v.value), "EUR", EUR2)}</span>
+                      <span className="text-warning font-bold font-mono">{format.currency(Number(v.value), "EUR", EUR2)}</span>
                       {v.redeemedAt && (
-                        <p className="text-purple-300/60 text-xs mt-0.5">{t("crmVouchers.canjeado")}{" "}{format.date(v.redeemedAt, {})}
+                        <p className="text-primary/60 text-xs mt-0.5">{t("crmVouchers.canjeado")}{" "}{format.date(v.redeemedAt, {})}
                         </p>
                       )}
                     </td>
@@ -9238,7 +9238,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                       {v.linkedReservationId && v.reservationNumber ? (
                         <button
                           onClick={() => onOpenReservation(v.linkedReservationId!)}
-                          className="font-mono text-xs text-orange-400 hover:text-orange-300 hover:underline transition-colors"
+                          className="font-mono text-xs text-warning hover:text-warning hover:underline transition-colors"
                           title={t("crmVouchers.verReserva")}
                         >
                           {v.reservationNumber}
@@ -9253,7 +9253,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                       {v.cancellationNumber && v.requestId ? (
                         <button
                           onClick={() => onOpenCancellation(v.requestId)}
-                          className="font-mono text-xs text-amber-400/80 hover:text-amber-300 hover:underline transition-colors"
+                          className="font-mono text-xs text-warning/80 hover:text-warning hover:underline transition-colors"
                           title={t("crmVouchers.verExpedienteDeAnulacion")}
                         >
                           {v.cancellationNumber}
@@ -9266,7 +9266,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                     {/* Caduca */}
                     <td className="px-4 py-3">
                       {v.expiresAt ? (
-                        <span className={`text-xs font-medium ${isExpired && isActive ? "text-red-400" : "text-foreground/55"}`}>
+                        <span className={`text-xs font-medium ${isExpired && isActive ? "text-danger" : "text-foreground/55"}`}>
                           {isExpired && isActive && "⚠ "}{format.date(v.expiresAt, {})}
                         </span>
                       ) : (
@@ -9287,7 +9287,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                         {/* Ver detalle */}
                         <button
                           onClick={() => setViewModal(v.id)}
-                          className="p-1.5 rounded-lg text-foreground/40 hover:text-purple-300 hover:bg-purple-500/10 transition-colors"
+                          className="p-1.5 rounded-lg text-foreground/40 hover:text-primary hover:bg-primary/10 transition-colors"
                           title={t("crmVouchers.verDetalleDelBono")}
                         >
                           <Eye className="w-4 h-4" />
@@ -9296,7 +9296,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                           <button
                             onClick={() => resendMut.mutate({ voucherId: v.id })}
                             disabled={resendMut.isPending}
-                            className="p-1.5 rounded-lg text-sky-400/60 hover:text-sky-300 hover:bg-sky-500/10 transition-colors"
+                            className="p-1.5 rounded-lg text-info/60 hover:text-info hover:bg-info/10 transition-colors"
                             title={t("crmVouchers.reenviarEmailAlCliente")}
                           >
                             <Send className="w-4 h-4" />
@@ -9308,7 +9308,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                               setNewExpiry(v.expiresAt ? new Date(v.expiresAt).toISOString().split("T")[0] : "");
                               setExtendModal({ id: v.id, code: v.code, current: v.expiresAt ? format.date(v.expiresAt, {}) : null });
                             }}
-                            className="p-1.5 rounded-lg text-amber-400/60 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                            className="p-1.5 rounded-lg text-warning/60 hover:text-warning hover:bg-warning/10 transition-colors"
                             title={t("crmVouchers.ampliarFechaDeCaducidad")}
                           >
                             <CalendarClock className="w-4 h-4" />
@@ -9317,7 +9317,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                         {v.status !== "canjeado" && v.status !== "anulado" && (
                           <button
                             onClick={() => { setCancelReason(""); setCancelModal({ id: v.id, code: v.code }); }}
-                            className="p-1.5 rounded-lg text-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            className="p-1.5 rounded-lg text-foreground/30 hover:text-danger hover:bg-danger/10 transition-colors"
                             title={t("crmVouchers.anularBono")}
                           >
                             <Ban className="w-4 h-4" />
@@ -9327,7 +9327,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                         {v.status !== "canjeado" && (
                           <button
                             onClick={() => setDeleteConfirm({ id: v.id, code: v.code })}
-                            className="p-1.5 rounded-lg text-foreground/25 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                            className="p-1.5 rounded-lg text-foreground/25 hover:text-danger hover:bg-danger/10 transition-colors"
                             title={t("crmVouchers.eliminarBonoPermanentemente")}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -9348,12 +9348,12 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <CalendarClock className="w-4 h-4 text-amber-400" />{" "}{t("crmVouchers.ampliarCaducidad")}</DialogTitle>
+              <CalendarClock className="w-4 h-4 text-warning" />{" "}{t("crmVouchers.ampliarCaducidad")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-xs text-foreground/60">{t("crmVouchers.bono")}{" "}<span className="font-mono text-purple-300">{extendModal?.code}</span></p>
+            <p className="text-xs text-foreground/60">{t("crmVouchers.bono")}{" "}<span className="font-mono text-primary">{extendModal?.code}</span></p>
             {extendModal?.current && (
-              <p className="text-xs text-foreground/50">{t("crmVouchers.caducidadActual")}{" "}<span className="text-amber-300">{extendModal.current}</span></p>
+              <p className="text-xs text-foreground/50">{t("crmVouchers.caducidadActual")}{" "}<span className="text-warning">{extendModal.current}</span></p>
             )}
             <div>
               <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmVouchers.nuevaFechaDeCaducidad")}</Label>
@@ -9385,10 +9385,10 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <Ban className="w-4 h-4 text-red-400" />{" "}{t("crmVouchers.anularBono")}</DialogTitle>
+              <Ban className="w-4 h-4 text-danger" />{" "}{t("crmVouchers.anularBono")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-foreground/70">{t("crmVouchers.confirmasAnularElBono")}{" "}<span className="font-mono text-purple-300">{cancelModal?.code}</span>{t("crmVouchers.elCodigoQuedaraInactivo")}</p>
+            <p className="text-sm text-foreground/70">{t("crmVouchers.confirmasAnularElBono")}{" "}<span className="font-mono text-primary">{cancelModal?.code}</span>{t("crmVouchers.elCodigoQuedaraInactivo")}</p>
             <div>
               <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmVouchers.motivoOpcional")}</Label>
               <Textarea
@@ -9419,19 +9419,19 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <Eye className="w-4 h-4 text-purple-400" />{" "}{t("crmVouchers.detalleDelBono")}</DialogTitle>
+              <Eye className="w-4 h-4 text-primary" />{" "}{t("crmVouchers.detalleDelBono")}</DialogTitle>
           </DialogHeader>
           {voucherDetail ? (
             <div className="space-y-4 py-1">
               {/* Código y estado */}
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xl font-bold text-purple-300">{voucherDetail.code}</span>
+                <span className="font-mono text-xl font-bold text-primary">{voucherDetail.code}</span>
                 <span className={`inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  voucherDetail.status === "enviado" ? "bg-green-500/10 text-green-300 border-green-500/20" :
-                  voucherDetail.status === "canjeado" ? "bg-purple-500/10 text-purple-300 border-purple-500/20" :
-                  voucherDetail.status === "caducado" ? "bg-amber-500/10 text-amber-300 border-amber-500/20" :
+                  voucherDetail.status === "enviado" ? "bg-success/10 text-success border-success/20" :
+                  voucherDetail.status === "canjeado" ? "bg-primary/10 text-primary border-primary/20" :
+                  voucherDetail.status === "caducado" ? "bg-warning/10 text-warning border-warning/20" :
                   voucherDetail.status === "anulado" ? "bg-gray-500/10 text-gray-400 border-gray-500/20" :
-                  "bg-blue-500/10 text-blue-300 border-blue-500/20"
+                  "bg-info/10 text-info border-info/20"
                 }`}>
                   {voucherDetail.status === "enviado" ? t("crmVouchers.activo") : voucherDetail.status.charAt(0).toUpperCase() + voucherDetail.status.slice(1)}
                 </span>
@@ -9441,7 +9441,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
               <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground/50">{t("crmVouchers.valor")}</span>
-                  <span className="text-orange-400 font-bold font-mono">{format.currency(Number(voucherDetail.value), "EUR", EUR2)}</span>
+                  <span className="text-warning font-bold font-mono">{format.currency(Number(voucherDetail.value), "EUR", EUR2)}</span>
                 </div>
                 {voucherDetail.activityName && (
                   <div className="flex justify-between text-sm">
@@ -9495,13 +9495,13 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                   {voucherDetail.cancellationNumber && (
                     <div className="flex justify-between text-sm">
                       <span className="text-foreground/50">{t("crmVouchers.anulacion")}</span>
-                      <button onClick={() => { setViewModal(null); onOpenCancellation(voucherDetail.requestId!); }} className="font-mono text-amber-400 hover:underline">{voucherDetail.cancellationNumber}</button>
+                      <button onClick={() => { setViewModal(null); onOpenCancellation(voucherDetail.requestId!); }} className="font-mono text-warning hover:underline">{voucherDetail.cancellationNumber}</button>
                     </div>
                   )}
                   {voucherDetail.reservationNumber && (
                     <div className="flex justify-between text-sm">
                       <span className="text-foreground/50">{t("crmVouchers.reserva")}</span>
-                      <button onClick={() => { setViewModal(null); onOpenReservation(voucherDetail.linkedReservationId!); }} className="font-mono text-orange-400 hover:underline">{voucherDetail.reservationNumber}</button>
+                      <button onClick={() => { setViewModal(null); onOpenReservation(voucherDetail.linkedReservationId!); }} className="font-mono text-warning hover:underline">{voucherDetail.reservationNumber}</button>
                     </div>
                   )}
                 </div>
@@ -9528,12 +9528,12 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
-              <Trash2 className="w-4 h-4 text-red-500" />{" "}{t("crmVouchers.eliminarBono")}</DialogTitle>
+              <Trash2 className="w-4 h-4 text-danger" />{" "}{t("crmVouchers.eliminarBono")}</DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <p className="text-sm text-foreground/70">{t("crmVouchers.eliminarPermanentementeElBono")}{" "}<span className="font-mono text-purple-300">{deleteConfirm?.code}</span>?
+            <p className="text-sm text-foreground/70">{t("crmVouchers.eliminarPermanentementeElBono")}{" "}<span className="font-mono text-primary">{deleteConfirm?.code}</span>?
             </p>
-            <p className="text-xs text-red-400/70 mt-2">{t("crmVouchers.estaAccionNoSe")}</p>
+            <p className="text-xs text-danger/70 mt-2">{t("crmVouchers.estaAccionNoSe")}</p>
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setDeleteConfirm(null)}>{t("crmVouchers.cancelar")}</Button>
@@ -9607,9 +9607,9 @@ function PagosPendientesTab() {
 
   const statusBadge = (status: string) => {
     const map: Record<string, { label: string; cls: string }> = {
-      pending:   { label: t("crmPayments.pendiente"),  cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-      overdue:   { label: t("crmPayments.vencido"),    cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-      confirmed: { label: t("crmPayments.confirmado"), cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+      pending:   { label: t("crmPayments.pendiente"),  cls: "bg-warning/15 text-warning border-warning/30" },
+      overdue:   { label: t("crmPayments.vencido"),    cls: "bg-danger/15 text-danger border-danger/30" },
+      confirmed: { label: t("crmPayments.confirmado"), cls: "bg-success/15 text-success border-success/30" },
       cancelled: { label: t("crmPayments.cancelado"),  cls: "bg-foreground/[0.08] text-foreground/50 border-foreground/[0.12]" },
     };
     const s = map[status] ?? { label: status, cls: "bg-foreground/[0.08] text-foreground/50 border-foreground/[0.12]" };
@@ -9709,7 +9709,7 @@ function PagosPendientesTab() {
                     </td>
                     <td className="px-4 py-3">
                       {dueDate ? (
-                        <span className={`text-xs ${isOverdue ? "text-red-400 font-semibold" : "text-foreground/65"}`}>
+                        <span className={`text-xs ${isOverdue ? "text-danger font-semibold" : "text-foreground/65"}`}>
                           {format.date(dueDate, {})}
                           {isOverdue && " ⚠"}
                         </span>
@@ -9728,14 +9728,14 @@ function PagosPendientesTab() {
                             <button
                               onClick={() => { setConfirmId(row.id); setConfirmMethod("transferencia"); }}
                               title={t("crmPayments.confirmarPago")}
-                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition-colors"
+                              className="p-1.5 rounded-lg bg-success/10 hover:bg-success/20 text-success transition-colors"
                             >
                               <CheckCircle className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => resendMut.mutate({ id: row.id })}
                               title={t("crmPayments.reenviarRecordatorio")}
-                              className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors"
+                              className="p-1.5 rounded-lg bg-info/10 hover:bg-info/20 text-info transition-colors"
                               disabled={resendMut.isPending}
                             >
                               <Mail className="w-4 h-4" />
@@ -9743,7 +9743,7 @@ function PagosPendientesTab() {
                             <button
                               onClick={() => setCancelId(row.id)}
                               title={t("crmPayments.cancelar")}
-                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                              className="p-1.5 rounded-lg bg-danger/10 hover:bg-danger/20 text-danger transition-colors"
                             >
                               <XCircle className="w-4 h-4" />
                             </button>
@@ -9752,7 +9752,7 @@ function PagosPendientesTab() {
                         <button
                           onClick={() => setDeleteId(row.id)}
                           title={t("crmPayments.eliminarRegistro")}
-                          className="p-1.5 rounded-lg bg-foreground/[0.05] hover:bg-red-500/20 text-foreground/30 hover:text-red-400 transition-colors"
+                          className="p-1.5 rounded-lg bg-foreground/[0.05] hover:bg-danger/20 text-foreground/30 hover:text-danger transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -9771,7 +9771,7 @@ function PagosPendientesTab() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />{" "}{t("crmPayments.confirmarPagoRecibido")}</DialogTitle>
+              <CheckCircle className="w-5 h-5 text-success" />{" "}{t("crmPayments.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -9807,7 +9807,7 @@ function PagosPendientesTab() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <XCircle className="w-5 h-5 text-red-400" />{" "}{t("crmPayments.cancelarPagoPendiente")}</DialogTitle>
+              <XCircle className="w-5 h-5 text-danger" />{" "}{t("crmPayments.cancelarPagoPendiente")}</DialogTitle>
           </DialogHeader>
           <p className="text-foreground/65 text-sm py-2">{t("crmPayments.seguroQueQuieresCancelar")}</p>
           <DialogFooter>
@@ -9828,11 +9828,11 @@ function PagosPendientesTab() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-400" />{" "}{t("crmPayments.eliminarRegistro")}</DialogTitle>
+              <Trash2 className="w-5 h-5 text-danger" />{" "}{t("crmPayments.eliminarRegistro")}</DialogTitle>
           </DialogHeader>
           <div className="py-2 space-y-2">
             <p className="text-foreground/65 text-sm">{t("crmPayments.estaAccionEliminaraEl")}</p>
-            <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{t("crmPayments.soloEliminaElRegistro")}{" "}{voc.licensed ? t("crmPayments.elPedido") : t("crmPayments.laReserva")}{" "}{t("crmPayments.yElPresupuestoAsociados")}</p>
+            <p className="text-xs text-warning/80 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">{t("crmPayments.soloEliminaElRegistro")}{" "}{voc.licensed ? t("crmPayments.elPedido") : t("crmPayments.laReserva")}{" "}{t("crmPayments.yElPresupuestoAsociados")}</p>
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setDeleteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmPayments.cancelar")}</Button>
@@ -9840,7 +9840,7 @@ function PagosPendientesTab() {
               size="sm"
               onClick={() => deleteId !== null && deleteMut.mutate({ id: deleteId })}
               disabled={deleteMut.isPending}
-              className="bg-red-700 hover:bg-red-800 text-white"
+              className="bg-danger hover:bg-danger/10 text-white"
             >
               {deleteMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}{t("crmPayments.eliminarDefinitivamente")}</Button>
           </DialogFooter>

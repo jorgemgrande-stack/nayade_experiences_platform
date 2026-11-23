@@ -857,7 +857,11 @@ html[data-admin-panel] [data-slot="table-head"] {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted-foreground);
-  white-space: nowrap;
+  /* Se parte en dos líneas en vez de pisar la columna vecina cuando la tabla es estrecha */
+  white-space: normal;
+  overflow-wrap: normal;
+  vertical-align: bottom;
+  line-height: 1.25;
 }
 html[data-admin-panel] main table tbody tr { transition: background-color 120ms ease; }
 html[data-admin-panel] main table tbody tr:hover { background-color: color-mix(in oklab, var(--primary) 5%, transparent); }
