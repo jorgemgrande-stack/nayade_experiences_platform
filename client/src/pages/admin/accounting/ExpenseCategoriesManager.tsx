@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,20 +50,21 @@ export default function ExpenseCategoriesManager() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos")}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2"><Tag className="w-6 h-6 text-orange-500" /> Categorías de Gastos</h1>
-              <p className="text-sm text-muted-foreground">{items.length} categorías configuradas</p>
-            </div>
-          </div>
-          <Button onClick={openCreate} className="gap-2"><Plus className="w-4 h-4" /> Nueva categoría</Button>
-        </div>
+        <PanelPageHeader
+          icon={<Tag />}
+          title="Categorías de Gastos"
+          description={<>{items.length} categorías configuradas</>}
+          actions={
+            <>
+              <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")}><ArrowLeft className="w-4 h-4 mr-1.5" /> Gastos</Button>
+              <Button onClick={openCreate} className="gap-2"><Plus className="w-4 h-4" /> Nueva categoría</Button>
+            </>
+          }
+        />
+        {listQ.isLoading && <PanelLoading />}
+        {listQ.error && <PanelError error={listQ.error} onRetry={() => void listQ.refetch()} />}
 
-        <div className="border rounded-lg overflow-hidden">
+        <div className={`border rounded-lg overflow-hidden ${listQ.isLoading || listQ.error ? "hidden" : ""}`}>
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
