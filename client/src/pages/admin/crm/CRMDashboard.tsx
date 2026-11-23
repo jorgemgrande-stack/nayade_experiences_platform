@@ -111,7 +111,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { PersonAvatar } from "@/components/admin/PanelVisual";
+import { MetricCard, PersonAvatar } from "@/components/admin/PanelVisual";
 import { StatusBadge } from "@/components/admin/PanelUi";
 
 import { useI18n } from "@/i18n/I18nProvider";
@@ -363,6 +363,11 @@ function fmtAmount(n: number, format: ReturnType<typeof useI18n>["format"]): str
   return format.currency(n, "EUR", { maximumFractionDigits: 0 });
 }
 
+const COUNTER_TONE: Record<keyof typeof COUNTER_STYLES, "brand" | "info" | "success" | "warning" | "danger" | "neutral"> = {
+  blue: "info", amber: "warning", green: "success", red: "danger", slate: "neutral", orange: "brand", indigo: "brand", violet: "brand", purple: "brand",
+};
+
+/** Contador del circuito comercial: misma tarjeta de métrica del sistema (tonos por significado, no por gradiente). */
 function CounterCard({
   label,
   value,
@@ -383,51 +388,19 @@ function CounterCard({
   amount?: number;
 }) {
   const { format } = useI18n();
-  const s = COUNTER_STYLES[color] ?? COUNTER_STYLES.blue;
   const numericValue = typeof value === "number" ? value : null;
-  const displayValue = typeof value === "string" ? value : undefined;
   const animated = useCountUp(numericValue ?? 0);
-
+  const money = amount != null && amount > 0 ? fmtAmount(amount, format) : "";
   return (
-    <button
+    <MetricCard
+      icon={<Icon />}
+      tone={COUNTER_TONE[color] ?? "info"}
+      label={label}
+      value={numericValue !== null ? animated : value}
+      detail={[subtitle, money].filter(Boolean).join(" · ") || undefined}
       onClick={onClick}
-      className={`group relative flex flex-col justify-between p-3.5 rounded-xl border transition-all duration-300 text-left w-full overflow-hidden
-        ${s.bg} ${active ? s.activeBorder : s.border}
-        ${onClick ? "cursor-pointer hover:scale-[1.02] hover:brightness-110" : "cursor-default"}
-        ${active ? "scale-[1.02]" : ""}
-      `}
-    >
-      {/* Glow blob */}
-      <div className={`absolute -top-3 -right-3 w-14 h-14 rounded-full blur-xl opacity-50 ${s.glow} transition-opacity duration-300 group-hover:opacity-80`} />
-
-      {/* Top row: label + icon */}
-      <div className="flex items-center justify-between mb-2 relative z-10">
-        <span className={`text-[10px] font-semibold uppercase tracking-widest ${s.label}`}>{label}</span>
-        <div className={`p-1.5 rounded-lg ${s.glow} border ${active ? s.activeBorder : s.border}`}>
-          <Icon className={`w-3.5 h-3.5 ${s.icon}`} />
-        </div>
-      </div>
-
-      {/* Number + Amount */}
-      <div className="relative z-10 flex items-end justify-between gap-1">
-        <div>
-          <span className={`text-2xl font-black tabular-nums tracking-tight ${s.number}`}>
-            {numericValue !== null ? animated : displayValue}
-          </span>
-          {subtitle && <p className={`text-[10px] mt-0.5 ${s.label}`}>{subtitle}</p>}
-        </div>
-        {amount != null && amount > 0 && (
-          <span className={`text-[11px] font-semibold tabular-nums pb-0.5 ${s.number} opacity-70`}>
-            {fmtAmount(amount, format)}
-          </span>
-        )}
-      </div>
-
-      {/* Active indicator bar */}
-      {active && (
-        <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${s.dot}`} />
-      )}
-    </button>
+      active={active}
+    />
   );
 }
 
@@ -1408,7 +1381,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
       </div>
       <DialogFooter className="gap-2">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmLeads.cancelar")}</Button>
-        <Button size="sm" onClick={handleSubmit} disabled={createLead.isPending} className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white">
+        <Button size="sm" onClick={handleSubmit} disabled={createLead.isPending}>
           {createLead.isPending ? t("crmLeads.creando") : voc.createLead}
         </Button>
       </DialogFooter>
@@ -6730,7 +6703,7 @@ export default function CRMDashboard() {
             <Button
               size="sm"
               onClick={() => setShowNewLeadModal(true)}
-              className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white sm:ml-auto"
+              className="sm:ml-auto"
             >
               <Plus className="w-4 h-4 mr-1.5" /> {voc.newLead}
             </Button>
