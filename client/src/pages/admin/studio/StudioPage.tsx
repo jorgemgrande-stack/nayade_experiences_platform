@@ -66,7 +66,7 @@ const MODE_KEY = "elephant-studio-modo";
 const CLIPBOARD_KEY = "elephant-studio-portapapeles";
 /** Pasos del zoom del lienzo */
 const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5];
-const ACCENT = "#5b5bf6";
+const ACCENT = "var(--primary)";
 
 function readMode(): boolean {
   try {
@@ -610,7 +610,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </Link>
         </Button>
         <div className="hidden shrink-0 items-center gap-2 pr-1 md:flex">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${ACCENT}, #8b5cf6)` }} aria-hidden>S</span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-bold text-primary-foreground" style={{ background: `linear-gradient(135deg, ${ACCENT}, color-mix(in oklab, ${ACCENT} 60%, white))` }} aria-hidden>S</span>
           <span className="hidden text-sm font-semibold tracking-tight xl:inline">{tx("Elephant Studio")}</span>
         </div>
         <span className="hidden h-6 w-px bg-border md:block" aria-hidden />
@@ -681,7 +681,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   setDevice(d.key);
                   if (d.key === "mobile") markGuide("mobile");
                 }}
-                className={cn("rounded-md px-2.5 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", device === d.key ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+                className={cn("rounded-md px-2.5 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", device === d.key ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
               >
                 <d.icon className="h-4 w-4" />
               </button>
@@ -694,7 +694,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <button
               type="button"
               onClick={() => setZoom(null)}
-              className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+              className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
               title={tx("Ajustar al espacio disponible")}
               aria-label={tx("Zoom {v} %. Pulsa para ajustar", { v: Math.round(scale * 100) })}
             >
@@ -733,7 +733,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 setPro(m.v);
                 toast(m.v ? tx("Modo profesional: diseño avanzado y pestaña «Avanzado» en el inspector.") : tx("Modo sencillo: lo esencial para editar el contenido de tu web."));
               }}
-              className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", pro === m.v ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+              className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", pro === m.v ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
             >
               {m.label}
             </button>
@@ -779,7 +779,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         </Button>
         <Button
           size="sm"
-          className="h-9 text-white hover:opacity-90"
+          className="h-9 text-primary-foreground hover:opacity-90"
           style={{ background: ACCENT }}
           onClick={() => setConfirmPublish(true)}
           disabled={!page || !!viewing || !pendingPublish || publish.isPending}
@@ -841,12 +841,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           aria-label={tx("Lienzo")}
         >
           {viewing && (
-            <div className="absolute inset-x-0 top-0 z-10 flex h-[52px] items-center justify-between gap-3 border-b border-[#5b5bf6]/30 bg-[#5b5bf6]/10 px-4 text-sm backdrop-blur">
+            <div className="absolute inset-x-0 top-0 z-10 flex h-[52px] items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 text-sm backdrop-blur">
               <span className="min-w-0">{tx("Estás viendo la")}{" "}<strong>{viewing.label}</strong>{tx(". No se puede editar; recupérala para seguir trabajando con ella.")}</span>
               <span className="flex shrink-0 gap-2">
                 <Button size="sm" variant="outline" className="h-8 bg-background" onClick={() => setViewing(null)}>
                   <X className="mr-1 h-3.5 w-3.5" />{" "}{tx("Volver a mi borrador")}</Button>
-                <Button size="sm" className="h-8 text-white" style={{ background: ACCENT }} onClick={() => setConfirmRestore(viewing.id)}>{tx("Recuperar esta versión")}</Button>
+                <Button size="sm" className="h-8 text-primary-foreground" style={{ background: ACCENT }} onClick={() => setConfirmRestore(viewing.id)}>{tx("Recuperar esta versión")}</Button>
               </span>
             </div>
           )}
@@ -963,7 +963,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
-                        className="bg-[#5b5bf6] text-white hover:bg-[#4a4ae0]"
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                         onClick={() => setAddAt({ parent: null, col: 0, index: blocks.length })}
                       >{tx("Añadir un bloque")}</Button>
                       <Button
@@ -1042,7 +1042,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <AlertDialogCancel>{tx("Seguir editando")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={publish.isPending}
-              className="text-white"
+              className="text-primary-foreground"
               style={{ background: ACCENT }}
               onClick={(e) => {
                 e.preventDefault();

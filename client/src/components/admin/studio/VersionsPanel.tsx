@@ -21,7 +21,7 @@ export function VersionsPanel({ slug, open, onOpenChange, viewingId, onView, onR
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader className="border-b border-border p-5">
           <SheetTitle className="flex items-center gap-2">
-            <History className="h-5 w-5 text-[#5b5bf6]" />{" "}{tx("Historial de versiones")}</SheetTitle>
+            <History className="h-5 w-5 text-primary" />{" "}{tx("Historial de versiones")}</SheetTitle>
           <SheetDescription>{tx("Cada vez que publicas se guarda una versión. Puedes verla y recuperarla: se carga como borrador y tu web no cambia hasta que vuelvas a publicar.")}</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -32,7 +32,7 @@ export function VersionsPanel({ slug, open, onOpenChange, viewingId, onView, onR
           ) : (
             <ol className="space-y-2">
               {list.map((v) => (
-                <li key={v.id} className={cn("rounded-lg border p-3", viewingId === v.id ? "border-[#5b5bf6] bg-[#5b5bf6]/5" : "border-border")}>
+                <li key={v.id} className={cn("rounded-lg border p-3", viewingId === v.id ? "border-primary bg-primary/5" : "border-border")}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{tx("Versión")}{" "}{v.number} {v.isCurrent && <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">{tx("En tu web")}</span>}

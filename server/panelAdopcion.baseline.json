@@ -23,16 +23,15 @@
   },
   "components/admin/studio/Guide.tsx": {
     "coloresFijos": 1,
-    "hexEnClases": 6,
+    "hexEnClases": 1,
     "textoMinusculo": 3
   },
   "components/admin/studio/Inspector.tsx": {
-    "hexEnClases": 5,
     "textoMinusculo": 3
   },
   "components/admin/studio/LeftPanel.tsx": {
     "coloresFijos": 2,
-    "hexEnClases": 19,
+    "hexEnClases": 3,
     "textoMinusculo": 10
   },
   "components/admin/studio/PageSettings.tsx": {
@@ -41,12 +40,10 @@
     "textoMinusculo": 1
   },
   "components/admin/studio/QuickInsert.tsx": {
-    "hexEnClases": 1,
     "textoMinusculo": 3
   },
   "components/admin/studio/VersionsPanel.tsx": {
     "coloresFijos": 1,
-    "hexEnClases": 2,
     "textoMinusculo": 1
   },
   "pages/admin/AdminDashboard.tsx": {
@@ -521,7 +518,6 @@
   },
   "pages/admin/studio/StudioPage.tsx": {
     "coloresFijos": 8,
-    "hexEnClases": 5,
     "textoMinusculo": 3,
     "geometriaAjena": 2
   },

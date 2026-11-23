@@ -74,7 +74,7 @@ export function LeftPanel(props: {
             role="tab"
             aria-selected={props.tab === t.key}
             onClick={() => props.onTab(t.key)}
-            className={cn("rounded-md px-2 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", props.tab === t.key ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            className={cn("rounded-md px-2 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", props.tab === t.key ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
           >
             {t.label}
           </button>
@@ -138,7 +138,7 @@ function readOpen(): Partial<Record<GroupKey, boolean>> {
 }
 
 const tileClass =
-  "group flex flex-col items-stretch gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-all hover:-translate-y-px hover:border-[#5b5bf6]/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]";
+  "group flex flex-col items-stretch gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-all hover:-translate-y-px hover:border-primary/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function Group({ id, label, hint, count, open, onToggle, children }: { id: GroupKey; label: string; hint: string; count: number; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   const tx = useStudioText();
@@ -149,7 +149,7 @@ function Group({ id, label, hint, count, open, onToggle, children }: { id: Group
         aria-expanded={open}
         aria-controls={`biblioteca-${id}`}
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b5bf6]"
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} aria-hidden />
         <span className="min-w-0 flex-1">
@@ -295,7 +295,7 @@ function Library({
                         aria-label={tx("{label}: {description}", { label: tx(m.label), description: tx(m.description) })}
                         className={cn(tileClass, "cursor-grab items-center gap-1 px-1 py-2 text-center active:cursor-grabbing")}
                       >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-[#5b5bf6]/10 group-hover:text-[#5b5bf6]">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
                           <Icon className="h-4 w-4" />
                         </span>
                         <span className="text-[11px] font-medium leading-tight">{tx(m.label)}</span>
@@ -311,14 +311,14 @@ function Library({
               ) : (
                 <div className="space-y-1.5">
                   {savedList.map((s) => (
-                    <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-[#5b5bf6]/60">
+                    <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-primary/60">
                       <Preview blocks={[s.block]} title={s.name} description={tx("{type} con su diseño. Arrástralo a la página o haz clic para añadir una copia.", { type: tx(blockLabel(s.block.type)) })}>
                         <button
                           type="button"
                           draggable
                           onDragStart={(e) => startDrag(e, `saved:${s.id}`)}
                           onClick={() => onInsert(`saved:${s.id}`)}
-                          className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 rounded-lg px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6] active:cursor-grabbing"
+                          className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 rounded-lg px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
                         >
                           <BlockThumb blocks={[s.block]} width={56} ratio={16 / 10} />
                           <span className="min-w-0">
@@ -392,12 +392,12 @@ function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, 
             }}
             className={cn("group relative", dragId === b.id && "opacity-40")}
           >
-            {over?.index === i && <span className="absolute inset-x-1 -top-px h-0.5 rounded bg-[#5b5bf6]" aria-hidden />}
-            {over?.index === i + 1 && i === blocks.length - 1 && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded bg-[#5b5bf6]" aria-hidden />}
-            <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors", selected ? "bg-[#5b5bf6]/10 text-foreground" : "hover:bg-muted")}>
+            {over?.index === i && <span className="absolute inset-x-1 -top-px h-0.5 rounded bg-primary" aria-hidden />}
+            {over?.index === i + 1 && i === blocks.length - 1 && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded bg-primary" aria-hidden />}
+            <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors", selected ? "bg-primary/10 text-foreground" : "hover:bg-muted")}>
               <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />
               <button type="button" onClick={() => onSelect(b.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-current={selected || undefined}>
-                <Icon className={cn("h-4 w-4 shrink-0", selected ? "text-[#5b5bf6]" : "text-muted-foreground")} />
+                <Icon className={cn("h-4 w-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
                 <span className="min-w-0">
                   <span className="block text-xs font-medium">{tx(blockLabel(b.type))}</span>
                   <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
@@ -436,9 +436,9 @@ function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDel
               const selected = b.id === selectedId;
               return (
                 <li key={b.id} className="group">
-                  <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors", selected ? "bg-[#5b5bf6]/10 text-foreground" : "hover:bg-muted")}>
+                  <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors", selected ? "bg-primary/10 text-foreground" : "hover:bg-muted")}>
                     <button type="button" onClick={() => onSelect(b.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-current={selected || undefined}>
-                      <Icon className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-[#5b5bf6]" : "text-muted-foreground")} />
+                      <Icon className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
                       <span className="min-w-0">
                         <span className="block text-xs font-medium">{tx(blockLabel(b.type))}</span>
                         <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
@@ -487,11 +487,11 @@ function PageRow({ p, current, onOpen }: { p: SitePage; current: boolean; onOpen
       onClick={onOpen}
       aria-current={current || undefined}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]",
-        current ? "bg-[#5b5bf6]/10 font-medium" : "hover:bg-muted",
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        current ? "bg-primary/10 font-medium" : "hover:bg-muted",
       )}
     >
-      {p.isHome ? <Home className="h-3.5 w-3.5 shrink-0 text-[#5b5bf6]" aria-hidden /> : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+      {p.isHome ? <Home className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden /> : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
       <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
         {p.title}
         {current && <span className="sr-only">{" "}{tx("(abierta)")}</span>}
@@ -517,7 +517,7 @@ function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: {
         ))}
       </div>
     );
-  const settingClass = "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]";
+  const settingClass = "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   return (
     <div className="space-y-4 p-3">
       <section className="rounded-xl border border-border p-1.5" aria-labelledby="sitio-paginas">
