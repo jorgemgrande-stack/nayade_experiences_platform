@@ -2712,8 +2712,8 @@ export const appRouter = router({
           // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
           legoPackLineIds: z.array(z.number().int().positive()).optional(),
           legoPackLinePeople: z.record(z.string(), z.number().int().min(0)).optional(),
-          legoPackLinePeople: z.record(z.string(), z.number()).optional(),
           /** Nombres de los participantes (opcional; solo se guardan si la empresa lo ha activado). */
+          participants: z.array(z.string().max(120)).max(100).optional(),
         })).min(1).max(20),
         /** Idioma de la web en que compra (correos y páginas de retorno). */
         locale: z.string().max(12).optional(),
