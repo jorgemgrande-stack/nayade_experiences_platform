@@ -51,7 +51,7 @@ export default {
     repair: "Zugang reparieren",
     repairing: "Wird repariert…",
     confirmTitle: "Zugang dieser Bestellung reparieren",
-    confirmDesc: "Die Zugangsregel wird erneut auf Bestellung {order} angewendet. Die Einschreibung wird nur bei bestätigter Zahlung erstellt; eine Wiederholung legt keine Duplikate an. Fortfahren?",
+    confirmDesc: "Die Zugangsregel wird erneut auf Bestellung {order} angewendet. Die Einschreibung wird nur bei bestätigter Zahlung erstellt; eine Wiederholung legt keine Duplikate an. Bei der ersten Einschreibung dieser Person und aktiviertem automatischem Einladungsversand erhält sie ihre Zugangs-E-Mail. Fortfahren?",
     granted: "Zugang repariert: {created} neue Einschreibung(en), {existing} bereits vorhanden.",
     skipped: {
       no_schema: "Die Weiterbildung ist für dieses Unternehmen noch nicht verfügbar.",

@@ -49,7 +49,7 @@ export default {
     repair: "Reparar acceso",
     repairing: "Reparando…",
     confirmTitle: "Reparar el acceso de este pedido",
-    confirmDesc: "Se volverá a aplicar la regla de acceso al pedido {order}. Solo se concede la matrícula si el pago está confirmado; repetirlo no crea matrículas duplicadas. ¿Continuar?",
+    confirmDesc: "Se volverá a aplicar la regla de acceso al pedido {order}. Solo se concede la matrícula si el pago está confirmado; repetirlo no crea matrículas duplicadas. Si es la primera matrícula de esa persona y el envío automático de invitaciones está activado, recibirá su correo de acceso. ¿Continuar?",
     granted: "Acceso reparado: {created} matrícula(s) nueva(s), {existing} ya existente(s).",
     skipped: {
       no_schema: "La formación no está disponible todavía en esta empresa.",
