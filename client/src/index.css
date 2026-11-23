@@ -790,3 +790,129 @@ html:not(.dark) select {
     mask-image: linear-gradient(to bottom, #000 70%, transparent);
   }
 }
+
+/* ==========================================================================
+   ELEPHANT DESIGN SYSTEM · BASE VISUAL GLOBAL DEL ADMINISTRADOR (Nivel A)
+   --------------------------------------------------------------------------
+   Una sola capa, sin clases por pantalla: se apoya en los atributos data-slot
+   de los componentes compartidos (ui/*) y en el atributo html[data-admin-panel]
+   que activa AdminLayout. Va fuera de @layer a propósito: así gana a las clases
+   de utilidad fijas (p. ej. bg-[#0d1526]) que arrastran los módulos antiguos.
+   Todo color sale de los tokens del tema, de modo que el color principal de cada
+   empresa (panelTheme) y el modo claro/oscuro se respetan solos.
+   ========================================================================== */
+html[data-admin-panel] {
+  --ep-radius-card: 0.875rem;
+  --ep-radius-control: 0.625rem;
+  --ep-shadow-card: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent), 0 6px 18px -8px color-mix(in oklab, var(--foreground) 14%, transparent);
+  --ep-shadow-float: 0 18px 48px -12px color-mix(in oklab, var(--foreground) 38%, transparent);
+  --ep-hairline: color-mix(in oklab, var(--border) 70%, transparent);
+  font-feature-settings: "cv11", "ss01", "tnum";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Lienzo: un velo de color de marca muy suave detrás del contenido, para dar profundidad sin ruido. */
+html[data-admin-panel] body {
+  background-image:
+    radial-gradient(60rem 28rem at 8% -6%, color-mix(in oklab, var(--primary) 7%, transparent), transparent 70%),
+    radial-gradient(48rem 24rem at 100% 0%, color-mix(in oklab, var(--info) 5%, transparent), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Tipografía: títulos con más presencia y cifras alineadas. */
+html[data-admin-panel] main h1 { letter-spacing: -0.02em; font-weight: 700; }
+html[data-admin-panel] main h2 { letter-spacing: -0.01em; }
+html[data-admin-panel] main :is(td, th, [data-slot="card"]) { font-variant-numeric: tabular-nums; }
+
+/* Superficies: tarjetas con radio y sombra del sistema. */
+html[data-admin-panel] [data-slot="card"] {
+  border-radius: var(--ep-radius-card);
+  border-color: var(--ep-hairline);
+  box-shadow: var(--ep-shadow-card);
+}
+
+/* Modales: siguen el tema (antes quedaban oscuros en modo claro por un hex fijo) y flotan sobre un velo difuminado. */
+html[data-admin-panel] [data-slot="dialog-content"],
+html[data-admin-panel] [data-slot="alert-dialog-content"],
+html[data-admin-panel] [data-slot="sheet-content"] {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border-color: var(--ep-hairline);
+  border-radius: var(--ep-radius-card);
+  box-shadow: var(--ep-shadow-float);
+}
+html[data-admin-panel] [data-slot="dialog-overlay"],
+html[data-admin-panel] [data-slot="alert-dialog-overlay"] {
+  background-color: color-mix(in oklab, var(--background) 55%, black 45%);
+  backdrop-filter: blur(3px);
+}
+html[data-admin-panel] [data-slot="dialog-title"] { letter-spacing: -0.01em; font-weight: 650; }
+
+/* Tablas: cabecera sobria en mayúsculas pequeñas, filas con aire y resalte al pasar. */
+html[data-admin-panel] main table thead tr { background-color: color-mix(in oklab, var(--muted) 55%, transparent); }
+html[data-admin-panel] main table thead th,
+html[data-admin-panel] [data-slot="table-head"] {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+html[data-admin-panel] main table tbody tr { transition: background-color 120ms ease; }
+html[data-admin-panel] main table tbody tr:hover { background-color: color-mix(in oklab, var(--primary) 5%, transparent); }
+html[data-admin-panel] main table tbody td { border-color: var(--ep-hairline); }
+html[data-admin-panel] [data-slot="table-container"] {
+  border: 1px solid var(--ep-hairline);
+  border-radius: var(--ep-radius-card);
+  background-color: var(--card);
+}
+
+/* Pestañas: segmento de píldora del sistema. */
+html[data-admin-panel] [data-slot="tabs-list"] {
+  background-color: color-mix(in oklab, var(--muted) 80%, transparent);
+  border-radius: var(--ep-radius-control);
+  border: 1px solid var(--ep-hairline);
+}
+html[data-admin-panel] [data-slot="tabs-trigger"] { border-radius: calc(var(--ep-radius-control) - 2px); }
+html[data-admin-panel] [data-slot="tabs-trigger"][data-state="active"] {
+  background-color: var(--card);
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--foreground) 14%, transparent);
+  color: var(--foreground);
+}
+
+/* Controles: mismo radio, foco visible con el color de la empresa y respuesta al pulsar. */
+html[data-admin-panel] :is([data-slot="input"], [data-slot="select-trigger"], [data-slot="textarea"]) {
+  border-radius: var(--ep-radius-control);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+html[data-admin-panel] :is([data-slot="input"], [data-slot="select-trigger"], [data-slot="textarea"]):focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent);
+}
+html[data-admin-panel] [data-slot="button"] {
+  border-radius: var(--ep-radius-control);
+  transition: background-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+}
+html[data-admin-panel] [data-slot="button"]:active:not(:disabled) { transform: translateY(1px); }
+html[data-admin-panel] [data-slot="button"]:where(.bg-primary, [class*="bg-primary"]):not(:disabled) {
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--primary) 40%, transparent), 0 4px 10px -4px color-mix(in oklab, var(--primary) 55%, transparent);
+}
+
+/* Navegación lateral: elemento activo con barra de acento y fondo de marca suave. */
+html[data-admin-panel] #panel-sidebar { box-shadow: 1px 0 0 var(--sidebar-border), 8px 0 24px -16px color-mix(in oklab, var(--foreground) 30%, transparent); }
+html[data-admin-panel] #panel-sidebar nav a { border-radius: var(--ep-radius-control); transition: background-color 120ms ease, color 120ms ease; }
+html[data-admin-panel] #panel-sidebar nav a[aria-current="page"] {
+  background-color: color-mix(in oklab, var(--sidebar-primary) 14%, transparent);
+  color: var(--sidebar-foreground);
+  box-shadow: inset 3px 0 0 var(--sidebar-primary);
+  font-weight: 600;
+}
+
+/* Barras de desplazamiento discretas dentro del panel. */
+html[data-admin-panel] * { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent; }
+
+/* Respeto a quien pide menos movimiento. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-admin-panel] * { transition-duration: 0.01ms !important; }
+}
