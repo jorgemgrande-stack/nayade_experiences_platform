@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { useI18n, useFormat } from "@/i18n/I18nProvider";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
 import { EditionsPanel, UpcomingEditionsView } from "./EditionsPanel";
+import { SaleReadinessPanel } from "./SaleReadinessPanel";
 import { ProductTranslationsPanel } from "./ProductTranslationsPanel";
 import { isMultilingual } from "@shared/i18n";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
@@ -162,6 +163,7 @@ export default function ExperiencesManager() {
   const f = useFormat();
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [confirmReadiness, setConfirmReadiness] = useState(false);
   const [form, setForm] = useState<ExpForm>(emptyForm);
   const [search, setSearch] = useState("");
   const [cloneModal, setCloneModal] = useState<{ id: number; originalName: string } | null>(null);
@@ -288,7 +290,7 @@ export default function ExperiencesManager() {
 
   const openCreate = () => { setEditingId(null); setForm({ ...emptyForm, ...newProductDefaults({ licensed: isNewCompany, can: sub.can }) }); setSubmitted(false); setServerError(null); setShowModal(true); };
   const openEdit = (exp: Record<string, unknown>) => {
-    setEditingId(Number(exp.id));
+    setEditingId(Number(exp.id)); setConfirmReadiness(false);
     setForm({
       slug: String(exp.slug ?? ""), title: String(exp.title ?? ""),
       shortDescription: String(exp.shortDescription ?? ""),
@@ -395,7 +397,7 @@ export default function ExperiencesManager() {
       // hasTimeSlots is managed separately via TimeSlotsPanel toggle
     };
     if (editingId) {
-      updateMutation.mutate({ id: editingId, ...data });
+      updateMutation.mutate({ id: editingId, ...data, confirmReadiness });
     } else {
       createMutation.mutate(data);
     }
@@ -754,6 +756,7 @@ export default function ExperiencesManager() {
                 </Select>
                 <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{t(`productsCatalog.offerMode.${form.offerMode}.help`)}</p>
               </div>
+              {editingId && <SaleReadinessPanel experienceId={editingId} targetMode={form.offerMode} confirmed={confirmReadiness} onConfirmChange={setConfirmReadiness} />}
               {form.offerMode === "fixed" || form.offerMode === "priced_request" ? (
                 <div>
                   <Label htmlFor="basePrice">{isNewCompany ? t("productsCatalog.modal.priceLicensed") : t("productsCatalog.modal.priceOriginal")} *</Label>

@@ -125,9 +125,10 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     expect(errCode(await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed" }, admA))).toBe("BAD_REQUEST");
     expect(errCode(await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed", basePrice: "0" }, admA))).toBe("BAD_REQUEST");
     expect((await ess.sql("a", "SELECT offer_mode AS m FROM experiences WHERE id = ?", [ids.fijo]))[0].m).toBe("on_request");
-    expect((await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed", basePrice: "55" }, admA)).status).toBe(200);
+    // Preparación para venta online: sin cuenta de cobros verificada (ni pasarela) la empresa de la prueba no puede volver a precio fijo
+    expect(errCode(await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed", basePrice: "55" }, admA))).toBe("BAD_REQUEST");
     const [back] = await ess.sql("a", "SELECT offer_mode AS m, basePrice FROM experiences WHERE id = ?", [ids.fijo]);
-    expect([back.m, Number(back.basePrice)]).toEqual(["fixed", 55]);
+    expect([back.m, Number(back.basePrice)]).toEqual(["on_request", 0]);
   });
 
   it("clonar conserva cómo se ofrece", async () => {
