@@ -44,13 +44,13 @@ const STATUS_LABELS: Record<BatchStatus, string> = {
 };
 
 const STATUS_COLORS: Record<BatchStatus, string> = {
-  pending: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  suggested: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  auto_ready: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  reconciled: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  difference: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  ignored: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
-  review_required: "bg-red-500/15 text-red-400 border-red-500/30",
+  pending: "bg-warning/15 text-warning border-warning/30",
+  suggested: "bg-info/15 text-info border-info/30",
+  auto_ready: "bg-success/15 text-success border-success/30",
+  reconciled: "bg-success/15 text-success border-success/30",
+  difference: "bg-warning/15 text-warning border-warning/30",
+  ignored: "bg-muted/15 text-muted-foreground border-border",
+  review_required: "bg-danger/15 text-danger border-danger/30",
 };
 
 function scoreIcon(score: number | null | undefined): string {
@@ -256,8 +256,8 @@ export default function CardTerminalBatchesManager() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Remesas TPV</h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <h1 className="text-2xl font-bold text-foreground">Remesas TPV</h1>
+            <p className="text-sm text-muted-foreground mt-1">
               Agrupa operaciones TPV diarias y concília con movimientos bancarios
             </p>
           </div>
@@ -266,7 +266,7 @@ export default function CardTerminalBatchesManager() {
               variant="outline"
               onClick={() => runMatchingMut.mutate()}
               disabled={runMatchingMut.isPending}
-              className="border-zinc-700 text-zinc-300 hover:text-white text-sm"
+              className="border-border text-foreground hover:text-foreground text-sm"
             >
               <Play className="w-4 h-4 mr-2" />
               {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
@@ -281,17 +281,17 @@ export default function CardTerminalBatchesManager() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Total", value: stats.total, icon: Package, color: "text-zinc-300" },
-            { label: "Pendientes", value: stats.pending, icon: Clock, color: "text-yellow-400" },
-            { label: "Acción requerida", value: stats.needsAction, icon: Zap, color: "text-blue-400" },
-            { label: "Conciliadas", value: stats.reconciled, icon: CheckCircle2, color: "text-emerald-400" },
+            { label: "Total", value: stats.total, icon: Package, color: "text-foreground" },
+            { label: "Pendientes", value: stats.pending, icon: Clock, color: "text-warning" },
+            { label: "Acción requerida", value: stats.needsAction, icon: Zap, color: "text-info" },
+            { label: "Conciliadas", value: stats.reconciled, icon: CheckCircle2, color: "text-success" },
           ].map(s => (
-            <Card key={s.label} className="bg-zinc-900 border-zinc-800">
+            <Card key={s.label} className="bg-card border-border">
               <CardContent className="p-4 flex items-center gap-3">
                 <s.icon className={`w-5 h-5 ${s.color}`} />
                 <div>
                   <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                  <div className="text-xs text-zinc-500">{s.label}</div>
+                  <div className="text-xs text-muted-foreground">{s.label}</div>
                 </div>
               </CardContent>
             </Card>
@@ -299,33 +299,33 @@ export default function CardTerminalBatchesManager() {
         </div>
 
         {/* Filters */}
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="p-4">
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Desde</Label>
+                <Label className="text-xs text-muted-foreground">Desde</Label>
                 <Input
                   type="date"
                   value={fromDate}
                   onChange={e => setFromDate(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white w-40"
+                  className="bg-muted border-border text-foreground w-40"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Hasta</Label>
+                <Label className="text-xs text-muted-foreground">Hasta</Label>
                 <Input
                   type="date"
                   value={toDate}
                   onChange={e => setToDate(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white w-40"
+                  className="bg-muted border-border text-foreground w-40"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Estado</Label>
+                <Label className="text-xs text-muted-foreground">Estado</Label>
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value as BatchStatus | "")}
-                  className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded-md px-3 py-2 h-10"
+                  className="bg-muted border border-border text-foreground text-sm rounded-md px-3 py-2 h-10"
                 >
                   <option value="">Todos</option>
                   {(Object.keys(STATUS_LABELS) as BatchStatus[]).map(s => (
@@ -337,7 +337,7 @@ export default function CardTerminalBatchesManager() {
                 variant="outline"
                 size="sm"
                 onClick={() => utils.cardTerminalBatches.list.invalidate()}
-                className="border-zinc-700 text-zinc-300 hover:text-white"
+                className="border-border text-foreground hover:text-foreground"
               >
                 <RefreshCw className="w-4 h-4" />
               </Button>
@@ -349,24 +349,24 @@ export default function CardTerminalBatchesManager() {
         <div className="flex gap-4">
           {/* Batch list */}
           <div className="flex-1 min-w-0">
-            <Card className="bg-zinc-900 border-zinc-800">
+            <Card className="bg-card border-border">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-zinc-300">
+                <CardTitle className="text-sm font-medium text-foreground">
                   {batches.length} remesa(s)
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {listQ.isLoading ? (
-                  <div className="flex items-center justify-center py-12 text-zinc-500 text-sm">Cargando...</div>
+                  <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">Cargando...</div>
                 ) : batches.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-zinc-500">
+                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                     <Package className="w-8 h-8" />
                     <span className="text-sm">No hay remesas en este período</span>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setGenOpen(true)}
-                      className="mt-2 border-zinc-700 text-zinc-300"
+                      className="mt-2 border-border text-foreground"
                     >
                       Generar remesas
                     </Button>
@@ -377,35 +377,35 @@ export default function CardTerminalBatchesManager() {
                       <button
                         key={batch.id}
                         onClick={() => setSelectedId(batch.id === selectedId ? null : batch.id)}
-                        className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-zinc-800/50 transition-colors ${
-                          selectedId === batch.id ? "bg-zinc-800/70" : ""
+                        className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-muted/50 transition-colors ${
+                          selectedId === batch.id ? "bg-muted/70" : ""
                         }`}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-medium text-white">{fmtDate(batch.batchDate)}</span>
+                            <span className="text-sm font-medium text-foreground">{fmtDate(batch.batchDate)}</span>
                             <Badge className={`text-xs border px-1.5 py-0 ${STATUS_COLORS[batch.status as BatchStatus] ?? ""}`}>
                               {STATUS_LABELS[batch.status as BatchStatus] ?? batch.status}
                             </Badge>
                             {batch.suggestedScore != null && (
-                              <span className="text-xs text-zinc-400">
+                              <span className="text-xs text-muted-foreground">
                                 {scoreIcon(batch.suggestedScore)} {batch.suggestedScore}%
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-zinc-400">
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span>Terminal: {batch.terminalCode ?? "—"}</span>
                             <span>{batch.operationCount} ops</span>
                             {batch.differenceAmount && (
-                              <span className="text-orange-400">Δ {fmt(batch.differenceAmount)}</span>
+                              <span className="text-warning">Δ {fmt(batch.differenceAmount)}</span>
                             )}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-sm font-semibold text-emerald-400">{fmt(batch.totalNet)}</div>
-                          <div className="text-xs text-zinc-500">neto</div>
+                          <div className="text-sm font-semibold text-success">{fmt(batch.totalNet)}</div>
+                          <div className="text-xs text-muted-foreground">neto</div>
                         </div>
-                        <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform ${selectedId === batch.id ? "rotate-90" : ""}`} />
+                        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${selectedId === batch.id ? "rotate-90" : ""}`} />
                       </button>
                     ))}
                   </div>
@@ -418,14 +418,14 @@ export default function CardTerminalBatchesManager() {
           {selectedId && detail && (
             <div className="w-[420px] shrink-0 flex flex-col gap-3">
               {/* Batch header */}
-              <Card className="bg-zinc-900 border-zinc-800">
+              <Card className="bg-card border-border">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div>
-                      <CardTitle className="text-base text-white">
+                      <CardTitle className="text-base text-foreground">
                         Remesa {fmtDate(detail.batchDate)}
                       </CardTitle>
-                      <div className="text-xs text-zinc-400 mt-0.5">
+                      <div className="text-xs text-muted-foreground mt-0.5">
                         Terminal {detail.terminalCode ?? "—"} · Comercio {detail.commerceCode ?? "—"}
                       </div>
                     </div>
@@ -436,30 +436,30 @@ export default function CardTerminalBatchesManager() {
                 </CardHeader>
                 <CardContent className="pt-0 space-y-2">
                   <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-zinc-800/60 rounded p-2">
-                      <div className="text-emerald-400 font-semibold text-sm">{fmt(detail.totalSales)}</div>
-                      <div className="text-xs text-zinc-500">Ventas</div>
+                    <div className="bg-muted/60 rounded p-2">
+                      <div className="text-success font-semibold text-sm">{fmt(detail.totalSales)}</div>
+                      <div className="text-xs text-muted-foreground">Ventas</div>
                     </div>
-                    <div className="bg-zinc-800/60 rounded p-2">
-                      <div className="text-red-400 font-semibold text-sm">{fmt(detail.totalRefunds)}</div>
-                      <div className="text-xs text-zinc-500">Devol.</div>
+                    <div className="bg-muted/60 rounded p-2">
+                      <div className="text-danger font-semibold text-sm">{fmt(detail.totalRefunds)}</div>
+                      <div className="text-xs text-muted-foreground">Devol.</div>
                     </div>
-                    <div className="bg-zinc-800/60 rounded p-2">
-                      <div className="text-white font-bold text-sm">{fmt(detail.totalNet)}</div>
-                      <div className="text-xs text-zinc-500">Neto</div>
+                    <div className="bg-muted/60 rounded p-2">
+                      <div className="text-foreground font-bold text-sm">{fmt(detail.totalNet)}</div>
+                      <div className="text-xs text-muted-foreground">Neto</div>
                     </div>
                   </div>
 
                   {detail.differenceAmount && (
-                    <div className="bg-orange-500/10 border border-orange-500/30 rounded p-3 space-y-2">
+                    <div className="bg-warning/10 border border-warning/30 rounded p-3 space-y-2">
                       <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
-                        <span className="text-xs text-orange-300">
+                        <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                        <span className="text-xs text-warning">
                           Diferencia con banco: {fmt(detail.differenceAmount)}
                         </span>
                       </div>
                       {detail.notes && (
-                        <div className="text-xs text-zinc-400 italic border-t border-orange-500/20 pt-2">
+                        <div className="text-xs text-muted-foreground italic border-t border-warning/20 pt-2">
                           Justificación: {detail.notes}
                         </div>
                       )}
@@ -468,21 +468,21 @@ export default function CardTerminalBatchesManager() {
 
                   {/* Suggested bank movement (auto-matching) */}
                   {isSuggested(detail.status) && detail.suggestedBankMovementId && (
-                    <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 space-y-2">
+                    <div className="bg-info/10 border border-info/30 rounded p-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-blue-300 font-medium">
+                        <span className="text-xs text-info font-medium">
                           {scoreIcon(detail.suggestedScore)} Match automático · Score {detail.suggestedScore}%
                         </span>
                       </div>
-                      <div className="text-xs text-zinc-400">
-                        Mov. bancario ID: <span className="text-zinc-200">{detail.suggestedBankMovementId}</span>
+                      <div className="text-xs text-muted-foreground">
+                        Mov. bancario ID: <span className="text-foreground">{detail.suggestedBankMovementId}</span>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           onClick={() => acceptMut.mutate({ batchId: selectedId })}
                           disabled={acceptMut.isPending}
-                          className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white text-xs h-7"
+                          className="flex-1 bg-success hover:bg-success/90 text-primary-foreground text-xs h-7"
                         >
                           <ThumbsUp className="w-3 h-3 mr-1" />
                           Aceptar
@@ -492,7 +492,7 @@ export default function CardTerminalBatchesManager() {
                           variant="outline"
                           onClick={() => rejectMut.mutate({ batchId: selectedId })}
                           disabled={rejectMut.isPending}
-                          className="flex-1 border-red-900/50 text-red-400 hover:text-red-300 text-xs h-7"
+                          className="flex-1 border-danger/50 text-danger hover:text-danger text-xs h-7"
                         >
                           <ThumbsDown className="w-3 h-3 mr-1" />
                           Rechazar
@@ -503,9 +503,9 @@ export default function CardTerminalBatchesManager() {
 
                   {/* Review required alert */}
                   {detail.status === "review_required" && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                      <span className="text-xs text-red-300">
+                    <div className="bg-danger/10 border border-danger/30 rounded p-2 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-danger shrink-0" />
+                      <span className="text-xs text-danger">
                         Sin movimiento bancario coincidente. Concilia manualmente.
                       </span>
                     </div>
@@ -513,12 +513,12 @@ export default function CardTerminalBatchesManager() {
 
                   {/* Bank movement linked */}
                   {detail.bankMovement && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded p-2">
-                      <div className="text-xs text-emerald-300 font-medium mb-1">Movimiento bancario vinculado</div>
-                      <div className="text-xs text-zinc-300">
+                    <div className="bg-success/10 border border-success/30 rounded p-2">
+                      <div className="text-xs text-success font-medium mb-1">Movimiento bancario vinculado</div>
+                      <div className="text-xs text-foreground">
                         {detail.bankMovement.fecha} · {fmt(detail.bankMovement.importe)}
                       </div>
-                      <div className="text-xs text-zinc-500 truncate">
+                      <div className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                         {detail.bankMovement.movimiento ?? "—"}
                       </div>
                     </div>
@@ -530,7 +530,7 @@ export default function CardTerminalBatchesManager() {
                       <Button
                         size="sm"
                         onClick={() => { setRecBmId(null); setRecNotes(""); setRecOpen(true); }}
-                        className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs h-7"
+                        className="bg-success hover:bg-success/90 text-primary-foreground text-xs h-7"
                       >
                         <Link2 className="w-3 h-3 mr-1" />
                         Conciliar
@@ -540,7 +540,7 @@ export default function CardTerminalBatchesManager() {
                       <Button
                         size="sm"
                         onClick={() => { setJustifyText(""); setJustifyOpen(true); }}
-                        className="bg-amber-700 hover:bg-amber-600 text-white text-xs h-7"
+                        className="bg-warning hover:bg-warning/90 text-primary-foreground text-xs h-7"
                       >
                         <FileCheck className="w-3 h-3 mr-1" />
                         Justificar diferencia
@@ -552,7 +552,7 @@ export default function CardTerminalBatchesManager() {
                         variant="outline"
                         onClick={() => unreconcileMut.mutate({ batchId: selectedId })}
                         disabled={unreconcileMut.isPending}
-                        className="border-zinc-600 text-zinc-300 hover:text-white text-xs h-7"
+                        className="border-border text-foreground hover:text-foreground text-xs h-7"
                       >
                         <Unlink className="w-3 h-3 mr-1" />
                         Desconciliar
@@ -563,7 +563,7 @@ export default function CardTerminalBatchesManager() {
                         size="sm"
                         variant="outline"
                         onClick={() => { setIgnNotes(""); setIgnOpen(true); }}
-                        className="border-zinc-600 text-zinc-300 hover:text-white text-xs h-7"
+                        className="border-border text-foreground hover:text-foreground text-xs h-7"
                       >
                         <Ban className="w-3 h-3 mr-1" />
                         Ignorar
@@ -579,7 +579,7 @@ export default function CardTerminalBatchesManager() {
                           }
                         }}
                         disabled={deleteMut.isPending}
-                        className="border-red-900/50 text-red-400 hover:text-red-300 text-xs h-7"
+                        className="border-danger/50 text-danger hover:text-danger text-xs h-7"
                       >
                         <Trash2 className="w-3 h-3 mr-1" />
                         Eliminar
@@ -590,9 +590,9 @@ export default function CardTerminalBatchesManager() {
               </Card>
 
               {/* Operations */}
-              <Card className="bg-zinc-900 border-zinc-800">
+              <Card className="bg-card border-border">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     Operaciones ({detail.operations?.length ?? 0})
                   </CardTitle>
                 </CardHeader>
@@ -601,30 +601,30 @@ export default function CardTerminalBatchesManager() {
                     {(detail.operations ?? []).map(op => (
                       <div key={op.batchOpId} className="px-3 py-2 flex items-center gap-2">
                         {op.batchOpType === "VENTA" ? (
-                          <ArrowUpRight className="w-3 h-3 text-emerald-400 shrink-0" />
+                          <ArrowUpRight className="w-3 h-3 text-success shrink-0" />
                         ) : (
-                          <ArrowDownLeft className="w-3 h-3 text-red-400 shrink-0" />
+                          <ArrowDownLeft className="w-3 h-3 text-danger shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-zinc-300 truncate">Op. {op.operationNumber}</div>
-                          <div className="text-xs text-zinc-500">
+                          <div className="text-xs text-foreground overflow-hidden text-ellipsis whitespace-nowrap">Op. {op.operationNumber}</div>
+                          <div className="text-xs text-muted-foreground">
                             {op.card ? `****${op.card.slice(-4)}` : "—"} ·{" "}
                             {op.operationDatetime
                               ? new Date(op.operationDatetime).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
                               : "—"}
                           </div>
                         </div>
-                        <div className={`text-xs font-medium shrink-0 ${op.batchOpType === "VENTA" ? "text-emerald-400" : "text-red-400"}`}>
+                        <div className={`text-xs font-medium shrink-0 ${op.batchOpType === "VENTA" ? "text-success" : "text-danger"}`}>
                           {fmt(op.amount)}
                         </div>
                         {op.linkedEntityId && (
-                          <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs px-1 py-0">
+                          <Badge className="bg-info/15 text-info border-info/30 text-xs px-1 py-0">
                             {op.linkedEntityType}
                           </Badge>
                         )}
                         <button
                           onClick={() => { setDelOpTarget({ batchOpId: op.batchOpId, operationNumber: op.operationNumber ?? null, amount: String(op.amount) }); setDelOpOpen(true); }}
-                          className="shrink-0 p-1 rounded hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors"
+                          className="shrink-0 p-1 rounded hover:bg-danger/10 text-muted-foreground hover:text-danger transition-colors"
                           title="Eliminar operación de la remesa"
                         >
                           <X className="w-3 h-3" />
@@ -637,37 +637,37 @@ export default function CardTerminalBatchesManager() {
 
               {/* Bank movement suggestions (manual search) */}
               {!isReconciled(detail.status) && detail.status !== "ignored" && (
-                <Card className="bg-zinc-900 border-zinc-800">
+                <Card className="bg-card border-border">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+                    <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Movimientos bancarios sugeridos
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-0">
                     {suggestQ.isLoading ? (
-                      <div className="px-4 py-3 text-xs text-zinc-500">Buscando...</div>
+                      <div className="px-4 py-3 text-xs text-muted-foreground">Buscando...</div>
                     ) : suggestions.length === 0 ? (
-                      <div className="px-4 py-3 text-xs text-zinc-500">
+                      <div className="px-4 py-3 text-xs text-muted-foreground">
                         No se encontraron movimientos bancarios compatibles en ±4 días
                       </div>
                     ) : (
                       <div className="divide-y divide-zinc-800 max-h-56 overflow-y-auto">
                         {suggestions.map(bm => {
                           const score = bm.confidenceScore;
-                          const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-yellow-400" : "text-zinc-400";
+                          const scoreColor = score >= 70 ? "text-success" : score >= 40 ? "text-warning" : "text-muted-foreground";
                           const isSelected = recBmId === bm.id;
                           return (
                             <button
                               key={bm.id}
                               onClick={() => setRecBmId(isSelected ? null : bm.id)}
-                              className={`w-full text-left px-4 py-2.5 flex items-center gap-2 hover:bg-zinc-800/50 transition-colors ${isSelected ? "bg-zinc-800/70 ring-1 ring-emerald-500/40 ring-inset" : ""}`}
+                              className={`w-full text-left px-4 py-2.5 flex items-center gap-2 hover:bg-muted/50 transition-colors ${isSelected ? "bg-muted/70 ring-1 ring-success/40 ring-inset" : ""}`}
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs text-zinc-300">{bm.fecha}</span>
-                                  <span className="text-xs font-semibold text-white">{fmt(bm.importe)}</span>
+                                  <span className="text-xs text-foreground">{bm.fecha}</span>
+                                  <span className="text-xs font-semibold text-foreground">{fmt(bm.importe)}</span>
                                 </div>
-                                <div className="text-xs text-zinc-500 truncate">{bm.movimiento ?? "—"}</div>
+                                <div className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{bm.movimiento ?? "—"}</div>
                               </div>
                               <div className={`text-xs font-bold shrink-0 ${scoreColor}`}>{score}%</div>
                             </button>
@@ -680,7 +680,7 @@ export default function CardTerminalBatchesManager() {
                         <Button
                           size="sm"
                           onClick={() => { setRecNotes(""); setRecOpen(true); }}
-                          className="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-xs h-7"
+                          className="w-full bg-success hover:bg-success/90 text-primary-foreground text-xs h-7"
                         >
                           <Link2 className="w-3 h-3 mr-1" />
                           Conciliar con este movimiento
@@ -697,44 +697,44 @@ export default function CardTerminalBatchesManager() {
 
       {/* Generate dialog */}
       <Dialog open={genOpen} onOpenChange={setGenOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
           <DialogHeader>
             <DialogTitle>Generar remesas TPV</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-muted-foreground">
               Se agrupan todas las operaciones TPV del período seleccionado por fecha y terminal,
               creando una remesa diaria para cada grupo.
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Desde</Label>
+                <Label className="text-xs text-muted-foreground">Desde</Label>
                 <Input
                   type="date"
                   value={genFrom}
                   onChange={e => setGenFrom(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white"
+                  className="bg-muted border-border text-foreground"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Hasta</Label>
+                <Label className="text-xs text-muted-foreground">Hasta</Label>
                 <Input
                   type="date"
                   value={genTo}
                   onChange={e => setGenTo(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white"
+                  className="bg-muted border-border text-foreground"
                 />
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGenOpen(false)} className="border-zinc-700 text-zinc-300">
+            <Button variant="outline" onClick={() => setGenOpen(false)} className="border-border text-foreground">
               Cancelar
             </Button>
             <Button
               onClick={() => generateMut.mutate({ fromDate: genFrom, toDate: genTo })}
               disabled={generateMut.isPending || !genFrom || !genTo}
-              className="bg-orange-600 hover:bg-orange-500 text-white"
+              className="bg-warning hover:bg-warning/90 text-primary-foreground"
             >
               {generateMut.isPending ? "Generando..." : "Generar"}
             </Button>
@@ -744,47 +744,47 @@ export default function CardTerminalBatchesManager() {
 
       {/* Reconcile confirmation dialog */}
       <Dialog open={recOpen} onOpenChange={setRecOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
           <DialogHeader>
             <DialogTitle>Conciliar remesa</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {recBmId == null && (
               <div className="space-y-2">
-                <Label className="text-xs text-zinc-400">ID movimiento bancario</Label>
+                <Label className="text-xs text-muted-foreground">ID movimiento bancario</Label>
                 <Input
                   type="number"
                   placeholder="ID del movimiento"
                   onChange={e => setRecBmId(parseInt(e.target.value) || null)}
-                  className="bg-zinc-800 border-zinc-700 text-white"
+                  className="bg-muted border-border text-foreground"
                 />
               </div>
             )}
             {recBmId && detail && (
-              <div className="bg-zinc-800/60 rounded p-3 text-sm space-y-1">
+              <div className="bg-muted/60 rounded p-3 text-sm space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Remesa neto:</span>
-                  <span className="text-white font-medium">{fmt(detail.totalNet)}</span>
+                  <span className="text-muted-foreground">Remesa neto:</span>
+                  <span className="text-foreground font-medium">{fmt(detail.totalNet)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Mov. banco ID:</span>
-                  <span className="text-white">{recBmId}</span>
+                  <span className="text-muted-foreground">Mov. banco ID:</span>
+                  <span className="text-foreground">{recBmId}</span>
                 </div>
               </div>
             )}
             <div className="space-y-1">
-              <Label className="text-xs text-zinc-400">Notas (opcional)</Label>
+              <Label className="text-xs text-muted-foreground">Notas (opcional)</Label>
               <Textarea
                 value={recNotes}
                 onChange={e => setRecNotes(e.target.value)}
                 placeholder="Observaciones sobre la conciliación..."
-                className="bg-zinc-800 border-zinc-700 text-white text-sm resize-none"
+                className="bg-muted border-border text-foreground text-sm resize-none"
                 rows={2}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRecOpen(false)} className="border-zinc-700 text-zinc-300">
+            <Button variant="outline" onClick={() => setRecOpen(false)} className="border-border text-foreground">
               Cancelar
             </Button>
             <Button
@@ -793,7 +793,7 @@ export default function CardTerminalBatchesManager() {
                 reconcileMut.mutate({ batchId: selectedId, bankMovementId: recBmId, notes: recNotes || undefined });
               }}
               disabled={reconcileMut.isPending || !recBmId}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white"
+              className="bg-success hover:bg-success/90 text-primary-foreground"
             >
               {reconcileMut.isPending ? "Conciliando..." : "Confirmar conciliación"}
             </Button>
@@ -803,27 +803,27 @@ export default function CardTerminalBatchesManager() {
 
       {/* Ignore dialog */}
       <Dialog open={ignOpen} onOpenChange={setIgnOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
           <DialogHeader>
             <DialogTitle>Ignorar remesa</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-muted-foreground">
               Esta remesa quedará marcada como ignorada y no aparecerá en las conciliaciones pendientes.
             </p>
             <div className="space-y-1">
-              <Label className="text-xs text-zinc-400">Motivo (opcional)</Label>
+              <Label className="text-xs text-muted-foreground">Motivo (opcional)</Label>
               <Textarea
                 value={ignNotes}
                 onChange={e => setIgnNotes(e.target.value)}
                 placeholder="Motivo por el que se ignora esta remesa..."
-                className="bg-zinc-800 border-zinc-700 text-white text-sm resize-none"
+                className="bg-muted border-border text-foreground text-sm resize-none"
                 rows={2}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIgnOpen(false)} className="border-zinc-700 text-zinc-300">
+            <Button variant="outline" onClick={() => setIgnOpen(false)} className="border-border text-foreground">
               Cancelar
             </Button>
             <Button
@@ -832,7 +832,7 @@ export default function CardTerminalBatchesManager() {
                 ignoreMut.mutate({ batchId: selectedId, notes: ignNotes || undefined });
               }}
               disabled={ignoreMut.isPending}
-              className="bg-zinc-700 hover:bg-zinc-600 text-white"
+              className="bg-muted hover:bg-muted text-foreground"
             >
               {ignoreMut.isPending ? "Guardando..." : "Ignorar remesa"}
             </Button>
@@ -842,37 +842,37 @@ export default function CardTerminalBatchesManager() {
 
       {/* Delete operation dialog */}
       <Dialog open={delOpOpen} onOpenChange={(v) => { setDelOpOpen(v); if (!v) setDelOpTarget(null); }}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
           <DialogHeader>
             <DialogTitle>Eliminar operación</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {delOpTarget && (
-              <div className="bg-zinc-800/60 rounded p-3 space-y-1 text-sm">
+              <div className="bg-muted/60 rounded p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Operación:</span>
-                  <span className="text-white">Op. {delOpTarget.operationNumber ?? "—"}</span>
+                  <span className="text-muted-foreground">Operación:</span>
+                  <span className="text-foreground">Op. {delOpTarget.operationNumber ?? "—"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Importe:</span>
-                  <span className="text-white font-medium">{fmt(delOpTarget.amount)}</span>
+                  <span className="text-muted-foreground">Importe:</span>
+                  <span className="text-foreground font-medium">{fmt(delOpTarget.amount)}</span>
                 </div>
               </div>
             )}
-            <p className="text-sm text-zinc-400">
-              La operación se desvinculará de esta remesa y volverá a estado <span className="text-white">Pendiente</span>. Los totales de la remesa se recalcularán automáticamente.
+            <p className="text-sm text-muted-foreground">
+              La operación se desvinculará de esta remesa y volverá a estado <span className="text-foreground">Pendiente</span>. Los totales de la remesa se recalcularán automáticamente.
             </p>
             {detail?.status === "reconciled" || detail?.status === "difference" ? (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded p-2 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <span className="text-xs text-amber-300">
+              <div className="bg-warning/10 border border-warning/30 rounded p-2 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <span className="text-xs text-warning">
                   La remesa está conciliada. Al eliminar la operación se recalculará la diferencia con el banco.
                 </span>
               </div>
             ) : null}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDelOpOpen(false); setDelOpTarget(null); }} className="border-zinc-700 text-zinc-300">
+            <Button variant="outline" onClick={() => { setDelOpOpen(false); setDelOpTarget(null); }} className="border-border text-foreground">
               Cancelar
             </Button>
             <Button
@@ -881,7 +881,7 @@ export default function CardTerminalBatchesManager() {
                 removeOpMut.mutate({ batchId: selectedId, batchOpId: delOpTarget.batchOpId });
               }}
               disabled={removeOpMut.isPending}
-              className="bg-red-700 hover:bg-red-600 text-white"
+              className="bg-danger hover:bg-danger/90 text-primary-foreground"
             >
               {removeOpMut.isPending ? "Eliminando..." : "Eliminar operación"}
             </Button>
@@ -891,47 +891,47 @@ export default function CardTerminalBatchesManager() {
 
       {/* Justify difference dialog */}
       <Dialog open={justifyOpen} onOpenChange={setJustifyOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-amber-400" />
+              <FileCheck className="w-4 h-4 text-warning" />
               Justificar diferencia
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {detail?.differenceAmount && (
-              <div className="bg-orange-500/10 border border-orange-500/30 rounded p-3 text-sm space-y-1">
+              <div className="bg-warning/10 border border-warning/30 rounded p-3 text-sm space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Neto remesa:</span>
-                  <span className="text-white font-medium">{fmt(detail.totalNet)}</span>
+                  <span className="text-muted-foreground">Neto remesa:</span>
+                  <span className="text-foreground font-medium">{fmt(detail.totalNet)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Importe banco:</span>
-                  <span className="text-white">{fmt(detail.bankMovement?.importe)}</span>
+                  <span className="text-muted-foreground">Importe banco:</span>
+                  <span className="text-foreground">{fmt(detail.bankMovement?.importe)}</span>
                 </div>
-                <div className="flex justify-between border-t border-orange-500/20 pt-1">
-                  <span className="text-orange-300">Diferencia:</span>
-                  <span className="text-orange-300 font-semibold">{fmt(detail.differenceAmount)}</span>
+                <div className="flex justify-between border-t border-warning/20 pt-1">
+                  <span className="text-warning">Diferencia:</span>
+                  <span className="text-warning font-semibold">{fmt(detail.differenceAmount)}</span>
                 </div>
               </div>
             )}
-            <p className="text-sm text-zinc-400">
-              Explica el motivo de la diferencia. La remesa pasará a estado <span className="text-emerald-400">Conciliada</span> y dejará de aparecer en las alertas del dashboard.
+            <p className="text-sm text-muted-foreground">
+              Explica el motivo de la diferencia. La remesa pasará a estado <span className="text-success">Conciliada</span> y dejará de aparecer en las alertas del dashboard.
             </p>
             <div className="space-y-1">
-              <Label className="text-xs text-zinc-400">Justificación <span className="text-red-400">*</span></Label>
+              <Label className="text-xs text-muted-foreground">Justificación <span className="text-danger">*</span></Label>
               <Textarea
                 value={justifyText}
                 onChange={e => setJustifyText(e.target.value)}
                 placeholder="Ej: Comisión bancaria de 35,30 € descontada por el banco en la liquidación del terminal..."
-                className="bg-zinc-800 border-zinc-700 text-white text-sm resize-none"
+                className="bg-muted border-border text-foreground text-sm resize-none"
                 rows={3}
               />
-              <p className="text-xs text-zinc-500">Mínimo 5 caracteres</p>
+              <p className="text-xs text-muted-foreground">Mínimo 5 caracteres</p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setJustifyOpen(false)} className="border-zinc-700 text-zinc-300">
+            <Button variant="outline" onClick={() => setJustifyOpen(false)} className="border-border text-foreground">
               Cancelar
             </Button>
             <Button
@@ -940,7 +940,7 @@ export default function CardTerminalBatchesManager() {
                 justifyMut.mutate({ batchId: selectedId, justification: justifyText.trim() });
               }}
               disabled={justifyMut.isPending || justifyText.trim().length < 5}
-              className="bg-amber-700 hover:bg-amber-600 text-white"
+              className="bg-warning hover:bg-warning/90 text-primary-foreground"
             >
               {justifyMut.isPending ? "Guardando..." : "Confirmar justificación"}
             </Button>

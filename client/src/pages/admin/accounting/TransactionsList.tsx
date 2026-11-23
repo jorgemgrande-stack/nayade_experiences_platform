@@ -21,17 +21,17 @@ import { toastError } from "@/lib/errorMessage";
 
 // ─── Configuraciones visuales ────────────────────────────────────────────────
 const typeConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  ingreso:   { label: "Ingreso",   color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",   icon: <TrendingUp className="w-3 h-3" /> },
-  reembolso: { label: "Reembolso", color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",           icon: <TrendingDown className="w-3 h-3" /> },
-  comision:  { label: "Comisión",  color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",       icon: <Receipt className="w-3 h-3" /> },
-  gasto:     { label: "Gasto",     color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",   icon: <TrendingDown className="w-3 h-3" /> },
+  ingreso:   { label: "Ingreso",   color: "bg-success/10 text-success",   icon: <TrendingUp className="w-3 h-3" /> },
+  reembolso: { label: "Reembolso", color: "bg-danger/10 text-danger",           icon: <TrendingDown className="w-3 h-3" /> },
+  comision:  { label: "Comisión",  color: "bg-info/10 text-info",       icon: <Receipt className="w-3 h-3" /> },
+  gasto:     { label: "Gasto",     color: "bg-warning/10 text-warning",   icon: <TrendingDown className="w-3 h-3" /> },
 };
 
 const statusConfig: Record<string, { label: string; color: string }> = {
-  pendiente:   { label: "Pendiente",   color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  completado:  { label: "Completado",  color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  fallido:     { label: "Fallido",     color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  reembolsado: { label: "Reembolsado", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400" },
+  pendiente:   { label: "Pendiente",   color: "bg-warning/10 text-warning" },
+  completado:  { label: "Completado",  color: "bg-success/10 text-success" },
+  fallido:     { label: "Fallido",     color: "bg-danger/10 text-danger" },
+  reembolsado: { label: "Reembolsado", color: "bg-muted text-foreground" },
 };
 
 const channelConfig: Record<string, { label: string; icon: React.ReactNode }> = {
@@ -170,17 +170,17 @@ export default function TransactionsList() {
 
       {/* KPIs rápidos */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
-          <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide mb-1">Ingresos (página)</p>
-          <p className="text-2xl font-bold text-green-800 dark:text-green-300">€{totalIngresos.toFixed(2)}</p>
+        <div className="bg-success/10 border border-success/40 rounded-xl p-4">
+          <p className="text-xs font-semibold text-success uppercase tracking-wide mb-1">Ingresos (página)</p>
+          <p className="text-2xl font-bold text-success">€{totalIngresos.toFixed(2)}</p>
         </div>
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
-          <p className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase tracking-wide mb-1">Gastos/Reembolsos</p>
-          <p className="text-2xl font-bold text-red-800 dark:text-red-300">€{totalGastos.toFixed(2)}</p>
+        <div className="bg-danger/10 border border-danger/40 rounded-xl p-4">
+          <p className="text-xs font-semibold text-danger uppercase tracking-wide mb-1">Gastos/Reembolsos</p>
+          <p className="text-2xl font-bold text-danger">€{totalGastos.toFixed(2)}</p>
         </div>
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
           <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">Balance neto</p>
-          <p className={`text-2xl font-bold ${totalIngresos - totalGastos >= 0 ? "text-green-800 dark:text-green-300" : "text-red-800 dark:text-red-300"}`}>
+          <p className={`text-2xl font-bold ${totalIngresos - totalGastos >= 0 ? "text-success" : "text-danger"}`}>
             €{(totalIngresos - totalGastos).toFixed(2)}
           </p>
         </div>
@@ -311,7 +311,7 @@ export default function TransactionsList() {
                       </td>
                       {/* Importe */}
                       <td className="px-4 py-3 text-right">
-                        <span className={`text-sm font-bold ${t.type === "ingreso" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+                        <span className={`text-sm font-bold ${t.type === "ingreso" ? "text-success" : "text-danger"}`}>
                           {t.type === "ingreso" ? "+" : "-"}€{parseFloat(String(t.amount)).toFixed(2)}
                         </span>
                         {regime && (
@@ -338,9 +338,9 @@ export default function TransactionsList() {
                       <td className="px-4 py-3">
                         {regime ? (
                           <Badge variant="outline" className={`text-xs ${
-                            regime === "reav" ? "border-purple-400 text-purple-600 dark:text-purple-400" :
-                            regime === "mixed" ? "border-amber-400 text-amber-600 dark:text-amber-400" :
-                            "border-blue-400 text-blue-600 dark:text-blue-400"
+                            regime === "reav" ? "border-primary/40 text-primary" :
+                            regime === "mixed" ? "border-warning/40 text-warning" :
+                            "border-info/40 text-info"
                           }`}>
                             {regime === "reav" ? "REAV" : regime === "mixed" ? "Mixto" : "IVA 21%"}
                           </Badge>
@@ -349,17 +349,17 @@ export default function TransactionsList() {
                       {/* Cliente / Producto */}
                       <td className="px-4 py-3 max-w-xs">
                         {(t as any).clientName && (
-                          <p className="text-xs font-medium text-foreground flex items-center gap-1 truncate">
+                          <p className="text-xs font-medium text-foreground flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap">
                             <User className="w-3 h-3 shrink-0" />{(t as any).clientName}
                           </p>
                         )}
                         {(t as any).productName && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 truncate mt-0.5">
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">
                             <ShoppingBag className="w-3 h-3 shrink-0" />{(t as any).productName}
                           </p>
                         )}
                         {!(t as any).clientName && !(t as any).productName && (
-                          <p className="text-xs text-muted-foreground truncate">{transactionDescription(t.description) ?? "—"}</p>
+                          <p className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{transactionDescription(t.description) ?? "—"}</p>
                         )}
                       </td>
                       {/* Estado */}
@@ -371,11 +371,11 @@ export default function TransactionsList() {
                       {/* Acciones */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                          <Button variant="ghost" size="icon" className="w-7 h-7 text-info hover:text-info hover:bg-info/10"
                             onClick={() => setViewTxId(t.id)} title="Ver transacción">
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                          <Button variant="ghost" size="icon" className="w-7 h-7 text-danger hover:text-danger hover:bg-danger/10"
                             onClick={() => setDeleteTx({ id: t.id, number: t.transactionNumber })} title="Borrar transacción">
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -438,7 +438,7 @@ export default function TransactionsList() {
               ].map(([label, value]) => (
                 <div key={label as string} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0">
                   <span className="text-muted-foreground shrink-0">{label}</span>
-                  <span className="font-medium text-right truncate">{value as string}</span>
+                  <span className="font-medium text-right overflow-hidden text-ellipsis whitespace-nowrap">{value as string}</span>
                 </div>
               ))}
             </div>
@@ -457,7 +457,7 @@ export default function TransactionsList() {
       <Dialog open={deleteTx !== null} onOpenChange={open => { if (!open) setDeleteTx(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-red-600">Borrar transacción</DialogTitle>
+            <DialogTitle className="text-danger">Borrar transacción</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             ¿Seguro que quieres eliminar la transacción <span className="font-mono font-bold text-foreground">{deleteTx?.number}</span>?

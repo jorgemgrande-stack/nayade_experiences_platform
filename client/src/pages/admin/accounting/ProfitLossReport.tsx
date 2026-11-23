@@ -25,7 +25,7 @@ function DeltaBadge({ current, prev }: { current: number; prev: number }) {
   const pct = ((current - prev) / Math.abs(prev)) * 100;
   const up = pct >= 0;
   return (
-    <span className={`text-xs font-medium flex items-center gap-0.5 ${up ? "text-emerald-600" : "text-red-500"}`}>
+    <span className={`text-xs font-medium flex items-center gap-0.5 ${up ? "text-success" : "text-danger"}`}>
       {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
       {Math.abs(pct).toFixed(1)}%
     </span>
@@ -119,7 +119,7 @@ export default function ProfitLossReport() {
       <div className="space-y-2">
         {data.map((d, i) => (
           <div key={i} className="flex items-center gap-2 text-sm">
-            <span className="w-32 truncate text-muted-foreground text-xs" title={d.label}>{d.label}</span>
+            <span className="w-32 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground text-xs" title={d.label}>{d.label}</span>
             <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
               <div className={`h-full rounded-full ${colorClass} transition-all`}
                 style={{ width: `${maxVal > 0 ? (d.value / maxVal) * 100 : 0}%` }} />
@@ -138,7 +138,7 @@ export default function ProfitLossReport() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-indigo-500" />
+              <BarChart3 className="w-6 h-6 text-info" />
               Cuenta de Resultados
             </h1>
             <p className="text-sm text-muted-foreground">Análisis financiero integrado · EBITDA · Previsión de tesorería</p>
@@ -179,14 +179,14 @@ export default function ProfitLossReport() {
           <div className="flex items-center gap-2 text-sm">
             <button
               onClick={() => setView("operational")}
-              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${view === "operational" ? "bg-emerald-600 text-white border-emerald-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${view === "operational" ? "bg-success text-primary-foreground border-success/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
               title="Vista operativa: excluye gastos solo fiscales. Refleja el rendimiento real del negocio."
             >
               Vista operativa
             </button>
             <button
               onClick={() => setView("fiscal")}
-              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${view === "fiscal" ? "bg-amber-600 text-white border-amber-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${view === "fiscal" ? "bg-warning text-primary-foreground border-warning/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
               title="Vista fiscal/contable: incluye TODOS los gastos. Coherente con la base del Impuesto de Sociedades."
             >
               Vista fiscal
@@ -197,13 +197,13 @@ export default function ProfitLossReport() {
           <div className="ml-auto flex items-center gap-2 text-sm">
             <button
               onClick={() => setConciliatedOnly(false)}
-              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${!conciliatedOnly ? "bg-indigo-600 text-white border-indigo-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${!conciliatedOnly ? "bg-info text-primary-foreground border-info/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
             >
               Incluir pendientes
             </button>
             <button
               onClick={() => setConciliatedOnly(true)}
-              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${conciliatedOnly ? "bg-indigo-600 text-white border-indigo-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${conciliatedOnly ? "bg-info text-primary-foreground border-info/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
             >
               <CheckCircle2 className="w-3 h-3" /> Solo conciliado
             </button>
@@ -227,12 +227,12 @@ export default function ProfitLossReport() {
               {/* Ingresos */}
               <Card>
                 <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-green-600 mb-1">
+                  <div className="flex items-center gap-2 text-success mb-1">
                     <TrendingUp className="w-4 h-4" />
                     <span className="text-xs font-medium">Ingresos</span>
                     {prev && <DeltaBadge current={report.summary.totalRevenue} prev={prev.totalRevenue} />}
                   </div>
-                  <p className="text-2xl font-bold text-green-700">{fmt(report.summary.totalRevenue)}</p>
+                  <p className="text-2xl font-bold text-success">{fmt(report.summary.totalRevenue)}</p>
                   <p className="text-xs text-muted-foreground">{report.summary.reservationCount} reservas</p>
                   {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.totalRevenue)}</p>}
                 </CardContent>
@@ -241,26 +241,26 @@ export default function ProfitLossReport() {
               {/* Gastos */}
               <Card>
                 <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-red-600 mb-1">
+                  <div className="flex items-center gap-2 text-danger mb-1">
                     <TrendingDown className="w-4 h-4" />
                     <span className="text-xs font-medium">Gastos</span>
                     {prev && <DeltaBadge current={-report.summary.totalExpenses} prev={-prev.totalExpenses} />}
                   </div>
-                  <p className="text-2xl font-bold text-red-700">{fmt(report.summary.totalExpenses)}</p>
+                  <p className="text-2xl font-bold text-danger">{fmt(report.summary.totalExpenses)}</p>
                   <p className="text-xs text-muted-foreground">{conciliatedOnly ? "Solo conciliados" : "Total registrado"}</p>
                   {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.totalExpenses)}</p>}
                 </CardContent>
               </Card>
 
               {/* EBITDA */}
-              <Card className={`md:col-span-1 border-2 ${ebitda >= 0 ? "border-indigo-200 bg-indigo-50/30" : "border-red-200 bg-red-50/30"}`}>
+              <Card className={`md:col-span-1 border-2 ${ebitda >= 0 ? "border-info/40 bg-info/10" : "border-danger/40 bg-danger/10"}`}>
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <BarChart3 className={`w-4 h-4 ${ebitda >= 0 ? "text-indigo-600" : "text-red-600"}`} />
+                    <BarChart3 className={`w-4 h-4 ${ebitda >= 0 ? "text-info" : "text-danger"}`} />
                     <span className="text-xs font-medium">EBITDA</span>
                     {prev && <DeltaBadge current={ebitda} prev={prev.grossProfit} />}
                   </div>
-                  <p className={`text-2xl font-bold ${ebitda >= 0 ? "text-indigo-700" : "text-red-700"}`}>{fmt(ebitda)}</p>
+                  <p className={`text-2xl font-bold ${ebitda >= 0 ? "text-info" : "text-danger"}`}>{fmt(ebitda)}</p>
                   <p className="text-xs text-muted-foreground">Margen {ebitdaMargin.toFixed(1)}%</p>
                   {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.grossProfit)}</p>}
                 </CardContent>
@@ -269,11 +269,11 @@ export default function ProfitLossReport() {
               {/* Ticket medio */}
               <Card>
                 <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-orange-600 mb-1">
+                  <div className="flex items-center gap-2 text-warning mb-1">
                     <Euro className="w-4 h-4" />
                     <span className="text-xs font-medium">Ticket medio</span>
                   </div>
-                  <p className="text-2xl font-bold text-orange-700">
+                  <p className="text-2xl font-bold text-warning">
                     {report.summary.reservationCount > 0
                       ? fmt(report.summary.totalRevenue / report.summary.reservationCount)
                       : "—"}
@@ -285,36 +285,36 @@ export default function ProfitLossReport() {
 
             {/* KPI permanente de distorsión fiscal (mes + año) */}
             {distortionQ.data && distortionQ.data.year_.count > 0 && (
-              <Card className="border border-amber-500/30 bg-amber-500/[0.08]">
+              <Card className="border border-warning/30 bg-warning/[0.08]">
                 <CardContent className="pt-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      <AlertTriangle className="w-4 h-4 text-warning" />
                       <span className="text-sm font-semibold text-foreground">Distorsión fiscal</span>
-                      <span className="text-[11px] text-muted-foreground">Gastos solo fiscales · {distortionQ.data.year}</span>
+                      <span className="text-xs text-muted-foreground">Gastos solo fiscales · {distortionQ.data.year}</span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
                       <div>
-                        <div className="text-[11px] text-muted-foreground">Este mes</div>
-                        <div className="font-semibold text-amber-400">
+                        <div className="text-xs text-muted-foreground">Este mes</div>
+                        <div className="font-semibold text-warning">
                           {fmt(distortionQ.data.month_.amount)}
-                          <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                          <span className="text-xs text-muted-foreground font-normal ml-1">
                             ({distortionQ.data.month_.count} gasto{distortionQ.data.month_.count !== 1 ? "s" : ""})
                           </span>
                         </div>
                       </div>
                       <div>
-                        <div className="text-[11px] text-muted-foreground">Este año</div>
-                        <div className="font-semibold text-amber-400">
+                        <div className="text-xs text-muted-foreground">Este año</div>
+                        <div className="font-semibold text-warning">
                           {fmt(distortionQ.data.year_.amount)}
-                          <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                          <span className="text-xs text-muted-foreground font-normal ml-1">
                             ({distortionQ.data.year_.count} gasto{distortionQ.data.year_.count !== 1 ? "s" : ""})
                           </span>
                         </div>
                       </div>
                       <div>
-                        <div className="text-[11px] text-muted-foreground">Sobre gasto operativo</div>
-                        <div className="font-semibold text-amber-400">
+                        <div className="text-xs text-muted-foreground">Sobre gasto operativo</div>
+                        <div className="font-semibold text-warning">
                           {distortionQ.data.pctOfOperational.toFixed(1)} %
                         </div>
                       </div>
@@ -326,11 +326,11 @@ export default function ProfitLossReport() {
 
             {/* Aviso de transparencia contextual al periodo filtrado */}
             {view === "operational" && report.summary.excludedTaxOnly && report.summary.excludedTaxOnly.count > 0 && (
-              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-warning/30 bg-warning/5 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-warning mt-0.5 shrink-0" />
                 <div className="flex-1 text-foreground/80 leading-snug">
                   Esta cuenta de resultados excluye <strong>{report.summary.excludedTaxOnly.count} gasto(s)</strong> marcados
-                  como <span className="font-semibold text-amber-400">Solo fiscal</span> por un importe total
+                  como <span className="font-semibold text-warning">Solo fiscal</span> por un importe total
                   de <strong>{fmt(report.summary.excludedTaxOnly.amount)}</strong> en el periodo seleccionado. Estos gastos sí computan
                   en gestoría, IVA, Impuesto de Sociedades y tesorería, pero no afectan al rendimiento operativo del negocio.
                   Usa <span className="font-semibold">Vista fiscal</span> arriba para incluirlos.
@@ -338,8 +338,8 @@ export default function ProfitLossReport() {
               </div>
             )}
             {view === "fiscal" && (
-              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/50 bg-amber-500/10 text-xs">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-warning/50 bg-warning/10 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-warning mt-0.5 shrink-0" />
                 <div className="flex-1 text-foreground/90 leading-snug">
                   <strong>Vista fiscal activa.</strong> Esta cuenta de resultados incluye TODOS los gastos
                   (operativos + solo fiscales). Las cifras de EBITDA y margen mostradas son la base contable
@@ -351,13 +351,13 @@ export default function ProfitLossReport() {
 
             {/* Del EBITDA al resultado neto — cierre fiscal del ejercicio */}
             {execQ.data && (
-              <Card className="border border-amber-500/30 bg-amber-500/[0.08]">
+              <Card className="border border-warning/30 bg-warning/[0.08]">
                 <CardContent className="pt-4">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-semibold text-foreground">
                       Del EBITDA al resultado neto · ejercicio {execYear}
                     </span>
-                    <span className="text-[11px] text-muted-foreground">Estimación · incluye Impuesto de Sociedades</span>
+                    <span className="text-xs text-muted-foreground">Estimación · incluye Impuesto de Sociedades</span>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
@@ -366,20 +366,20 @@ export default function ProfitLossReport() {
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">− Impuesto de Sociedades</div>
-                      <div className="text-xl font-bold text-amber-400">{fmt(execQ.data.corporateTax)}</div>
+                      <div className="text-xl font-bold text-warning">{fmt(execQ.data.corporateTax)}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Carga fiscal total (IVA+IRPF+IS)</div>
                       <div className="text-xl font-bold text-foreground/70">{fmt(execQ.data.fiscalTotal)}</div>
                     </div>
-                    <div className={`rounded-lg px-3 py-1.5 ${execQ.data.netResult >= 0 ? "bg-emerald-100/60" : "bg-red-100/60"}`}>
+                    <div className={`rounded-lg px-3 py-1.5 ${execQ.data.netResult >= 0 ? "bg-success/10" : "bg-danger/10"}`}>
                       <div className="text-xs text-muted-foreground">= Resultado neto estimado</div>
-                      <div className={`text-xl font-bold ${execQ.data.netResult >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                      <div className={`text-xl font-bold ${execQ.data.netResult >= 0 ? "text-success" : "text-danger"}`}>
                         {fmt(execQ.data.netResult)}
                       </div>
                     </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     El coste laboral ({fmt(execQ.data.laborCost)} · {execQ.data.laborPctOfRevenue.toFixed(1)} % de
                     ingresos) ya está incluido en los gastos del EBITDA. La liquidación oficial la realiza la gestoría.
                   </p>
@@ -390,46 +390,46 @@ export default function ProfitLossReport() {
             {/* KPI Cards — fila 2: tesorería */}
             {cf && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="border border-blue-200 bg-blue-50/20">
+                <Card className="border border-info/40 bg-info/10">
                   <CardContent className="pt-4">
-                    <div className="flex items-center gap-2 text-blue-600 mb-1">
+                    <div className="flex items-center gap-2 text-info mb-1">
                       <Wallet className="w-4 h-4" />
                       <span className="text-xs font-medium">Saldo bancario</span>
                     </div>
-                    <p className="text-2xl font-bold text-blue-700">{fmt(cf.currentBalance)}</p>
+                    <p className="text-2xl font-bold text-info">{fmt(cf.currentBalance)}</p>
                     <p className="text-xs text-muted-foreground">Último mov. {cf.lastBalanceDate}</p>
                   </CardContent>
                 </Card>
 
-                <Card className="border border-emerald-200 bg-emerald-50/20">
+                <Card className="border border-success/40 bg-success/10">
                   <CardContent className="pt-4">
-                    <div className="flex items-center gap-2 text-emerald-600 mb-1">
+                    <div className="flex items-center gap-2 text-success mb-1">
                       <ArrowUpRight className="w-4 h-4" />
                       <span className="text-xs font-medium">Ingresos pendientes</span>
                     </div>
-                    <p className="text-2xl font-bold text-emerald-700">{fmt(cf.pendingIncome)}</p>
+                    <p className="text-2xl font-bold text-success">{fmt(cf.pendingIncome)}</p>
                     <p className="text-xs text-muted-foreground">{cf.pendingReservationCount} reservas confirmadas</p>
                   </CardContent>
                 </Card>
 
-                <Card className="border border-amber-500/30 bg-amber-500/[0.08]">
+                <Card className="border border-warning/30 bg-warning/[0.08]">
                   <CardContent className="pt-4">
-                    <div className="flex items-center gap-2 text-amber-400 mb-1">
+                    <div className="flex items-center gap-2 text-warning mb-1">
                       <AlertTriangle className="w-4 h-4" />
                       <span className="text-xs font-medium">Gastos pendientes</span>
                     </div>
-                    <p className="text-2xl font-bold text-amber-400">{fmt(cf.pendingExpenses)}</p>
+                    <p className="text-2xl font-bold text-warning">{fmt(cf.pendingExpenses)}</p>
                     <p className="text-xs text-muted-foreground">Sin pagar (pending/justified)</p>
                   </CardContent>
                 </Card>
 
-                <Card className={`border-2 ${cf.estimatedBalance >= 0 ? "border-teal-300 bg-teal-50/30" : "border-red-300 bg-red-50/30"}`}>
+                <Card className={`border-2 ${cf.estimatedBalance >= 0 ? "border-success/40 bg-success/10" : "border-danger/40 bg-danger/10"}`}>
                   <CardContent className="pt-4">
-                    <div className={`flex items-center gap-2 mb-1 ${cf.estimatedBalance >= 0 ? "text-teal-600" : "text-red-600"}`}>
+                    <div className={`flex items-center gap-2 mb-1 ${cf.estimatedBalance >= 0 ? "text-success" : "text-danger"}`}>
                       <Wallet className="w-4 h-4" />
                       <span className="text-xs font-medium">Caja estimada 30d</span>
                     </div>
-                    <p className={`text-2xl font-bold ${cf.estimatedBalance >= 0 ? "text-teal-700" : "text-red-700"}`}>
+                    <p className={`text-2xl font-bold ${cf.estimatedBalance >= 0 ? "text-success" : "text-danger"}`}>
                       {fmt(cf.estimatedBalance)}
                     </p>
                     <p className="text-xs text-muted-foreground">Saldo + ingresos − gastos</p>
@@ -448,8 +448,8 @@ export default function ProfitLossReport() {
                       <thead>
                         <tr className="border-b">
                           <th className="text-left p-2 font-medium">Mes</th>
-                          <th className="text-right p-2 font-medium text-green-700">Ingresos</th>
-                          <th className="text-right p-2 font-medium text-red-700">Gastos</th>
+                          <th className="text-right p-2 font-medium text-success">Ingresos</th>
+                          <th className="text-right p-2 font-medium text-danger">Gastos</th>
                           <th className="text-right p-2 font-medium">EBITDA</th>
                           <th className="text-right p-2 font-medium text-muted-foreground">Margen</th>
                         </tr>
@@ -458,9 +458,9 @@ export default function ProfitLossReport() {
                         {report.monthly.map((m) => (
                           <tr key={m.month} className="border-b hover:bg-muted/20">
                             <td className="p-2 font-medium">{m.month}</td>
-                            <td className="p-2 text-right text-green-700">{fmt(m.revenue)}</td>
-                            <td className="p-2 text-right text-red-700">{fmt(m.expenses)}</td>
-                            <td className={`p-2 text-right font-bold ${m.profit >= 0 ? "text-indigo-700" : "text-red-700"}`}>
+                            <td className="p-2 text-right text-success">{fmt(m.revenue)}</td>
+                            <td className="p-2 text-right text-danger">{fmt(m.expenses)}</td>
+                            <td className={`p-2 text-right font-bold ${m.profit >= 0 ? "text-info" : "text-danger"}`}>
                               {fmt(m.profit)}
                             </td>
                             <td className="p-2 text-right text-muted-foreground text-xs">
@@ -472,9 +472,9 @@ export default function ProfitLossReport() {
                       <tfoot>
                         <tr className="bg-muted/30 font-bold">
                           <td className="p-2">TOTAL</td>
-                          <td className="p-2 text-right text-green-700">{fmt(report.summary.totalRevenue)}</td>
-                          <td className="p-2 text-right text-red-700">{fmt(report.summary.totalExpenses)}</td>
-                          <td className={`p-2 text-right ${ebitda >= 0 ? "text-indigo-700" : "text-red-700"}`}>{fmt(ebitda)}</td>
+                          <td className="p-2 text-right text-success">{fmt(report.summary.totalRevenue)}</td>
+                          <td className="p-2 text-right text-danger">{fmt(report.summary.totalExpenses)}</td>
+                          <td className={`p-2 text-right ${ebitda >= 0 ? "text-info" : "text-danger"}`}>{fmt(ebitda)}</td>
                           <td className="p-2 text-right text-muted-foreground text-xs">{ebitdaMargin.toFixed(1)}%</td>
                         </tr>
                       </tfoot>
@@ -488,7 +488,7 @@ export default function ProfitLossReport() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Revenue by channel */}
               <Card>
-                <CardHeader><CardTitle className="text-base text-green-700">Ingresos por canal · ticket medio</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base text-success">Ingresos por canal · ticket medio</CardTitle></CardHeader>
                 <CardContent>
                   {report.revenueByChannel.length === 0 ? (
                     <p className="text-muted-foreground text-sm">Sin datos en el período</p>
@@ -497,7 +497,7 @@ export default function ProfitLossReport() {
                       <BarChart
                         data={report.revenueByChannel.map((r) => ({ label: CHANNEL_LABELS[r.channel] ?? r.channel, value: r.amount }))}
                         maxVal={Math.max(...report.revenueByChannel.map((r) => r.amount))}
-                        colorClass="bg-green-500"
+                        colorClass="bg-success"
                       />
                       <div className="overflow-x-auto mt-2">
                         <table className="w-full text-xs">
@@ -526,7 +526,7 @@ export default function ProfitLossReport() {
 
               {/* Expenses by category */}
               <Card>
-                <CardHeader><CardTitle className="text-base text-red-700">Gastos por categoría</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base text-danger">Gastos por categoría</CardTitle></CardHeader>
                 <CardContent>
                   {report.expensesByCategory.length === 0 ? (
                     <p className="text-muted-foreground text-sm">Sin gastos en el período</p>
@@ -535,7 +535,7 @@ export default function ProfitLossReport() {
                       data={report.expensesByCategory.sort((a, b) => b.amount - a.amount)
                         .map((r) => ({ label: getCategoryName(r.categoryId), value: r.amount }))}
                       maxVal={Math.max(...report.expensesByCategory.map((r) => r.amount))}
-                      colorClass="bg-red-500"
+                      colorClass="bg-danger"
                     />
                   )}
                 </CardContent>
@@ -543,7 +543,7 @@ export default function ProfitLossReport() {
 
               {/* Revenue by product */}
               <Card>
-                <CardHeader><CardTitle className="text-base text-green-700">Ingresos por producto (top 10)</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base text-success">Ingresos por producto (top 10)</CardTitle></CardHeader>
                 <CardContent>
                   {report.revenueByProduct.length === 0 ? (
                     <p className="text-muted-foreground text-sm">Sin datos en el período</p>
@@ -551,7 +551,7 @@ export default function ProfitLossReport() {
                     <BarChart
                       data={report.revenueByProduct.slice(0, 10).map((r) => ({ label: r.product, value: r.amount }))}
                       maxVal={Math.max(...report.revenueByProduct.slice(0, 10).map((r) => r.amount))}
-                      colorClass="bg-emerald-500"
+                      colorClass="bg-success"
                     />
                   )}
                 </CardContent>
@@ -559,7 +559,7 @@ export default function ProfitLossReport() {
 
               {/* Expenses by cost center */}
               <Card>
-                <CardHeader><CardTitle className="text-base text-red-700">Gastos por centro de coste</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base text-danger">Gastos por centro de coste</CardTitle></CardHeader>
                 <CardContent>
                   {report.expensesByCostCenter.length === 0 ? (
                     <p className="text-muted-foreground text-sm">Sin gastos en el período</p>
@@ -568,7 +568,7 @@ export default function ProfitLossReport() {
                       data={report.expensesByCostCenter.sort((a, b) => b.amount - a.amount)
                         .map((r) => ({ label: getCostCenterName(r.costCenterId), value: r.amount }))}
                       maxVal={Math.max(...report.expensesByCostCenter.map((r) => r.amount))}
-                      colorClass="bg-orange-500"
+                      colorClass="bg-warning"
                     />
                   )}
                 </CardContent>

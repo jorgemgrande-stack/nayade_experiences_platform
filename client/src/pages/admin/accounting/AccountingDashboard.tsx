@@ -23,10 +23,10 @@ function fmtEur(v: number): string {
 const CATEGORY_COLORS = ["#2563eb", "#10b981", "#d4a017", "#8b5cf6", "#ef4444", "#0ea5e9", "#f97316", "#6b7280"];
 
 const statusColors: Record<string, string> = {
-  completado: "bg-emerald-100 text-emerald-700",
-  pendiente: "bg-amber-100 text-amber-700",
-  fallido: "bg-red-100 text-red-700",
-  reembolsado: "bg-blue-100 text-blue-700",
+  completado: "bg-success/10 text-success",
+  pendiente: "bg-warning/10 text-warning",
+  fallido: "bg-danger/10 text-danger",
+  reembolsado: "bg-info/10 text-info",
 };
 
 const statusLabels: Record<string, string> = {
@@ -87,12 +87,12 @@ export default function AccountingDashboard() {
 
   const totals = summary?.totals;
   const kpis = [
-    { label: "Ventas (6 meses)", value: fmtEur(totals?.sales ?? 0), sub: `${totals?.salesCount ?? 0} ${voc.ordersLower} y tickets cobrados`, icon: Euro, color: "text-emerald-500", bg: "bg-emerald-50" },
-    { label: "Cobrado", value: fmtEur(totals?.payments ?? 0), sub: "Entradas registradas en cobros", icon: Banknote, color: "text-blue-500", bg: "bg-blue-50" },
-    { label: "Facturado", value: fmtEur(totals?.invoiced ?? 0), sub: `${totals?.invoiceCount ?? 0} ${totals?.invoiceCount === 1 ? "factura" : "facturas"} y ${totals?.ticketCount ?? 0} ${totals?.ticketCount === 1 ? "ticket" : "tickets"} de caja, descontados los abonos`, icon: FileText, color: "text-purple-500", bg: "bg-purple-50" },
+    { label: "Ventas (6 meses)", value: fmtEur(totals?.sales ?? 0), sub: `${totals?.salesCount ?? 0} ${voc.ordersLower} y tickets cobrados`, icon: Euro, color: "text-success", bg: "bg-success/10" },
+    { label: "Cobrado", value: fmtEur(totals?.payments ?? 0), sub: "Entradas registradas en cobros", icon: Banknote, color: "text-info", bg: "bg-info/10" },
+    { label: "Facturado", value: fmtEur(totals?.invoiced ?? 0), sub: `${totals?.invoiceCount ?? 0} ${totals?.invoiceCount === 1 ? "factura" : "facturas"} y ${totals?.ticketCount ?? 0} ${totals?.ticketCount === 1 ? "ticket" : "tickets"} de caja, descontados los abonos`, icon: FileText, color: "text-primary", bg: "bg-primary/10" },
     summary?.pendingQuotes != null
-      ? { label: "Presupuestos sin respuesta", value: String(summary.pendingQuotes), sub: "Enviados y pendientes de aceptar", icon: Clock, color: "text-amber-500", bg: "bg-amber-50" }
-      : { label: "Ticket medio", value: fmtEur(totals?.averageTicket ?? 0), sub: "Venta media cobrada", icon: CreditCard, color: "text-amber-500", bg: "bg-amber-50" },
+      ? { label: "Presupuestos sin respuesta", value: String(summary.pendingQuotes), sub: "Enviados y pendientes de aceptar", icon: Clock, color: "text-warning", bg: "bg-warning/10" }
+      : { label: "Ticket medio", value: fmtEur(totals?.averageTicket ?? 0), sub: "Venta media cobrada", icon: CreditCard, color: "text-warning", bg: "bg-warning/10" },
   ];
   const monthly = summary?.months ?? [];
   const categories = summary?.categories ?? [];
@@ -109,12 +109,12 @@ export default function AccountingDashboard() {
       )}
       {/* ── Salud de la empresa: foto económica consolidada (módulo de impuestos) ── */}
       {canTax && (
-      <div className="mb-8 rounded-2xl border border-amber-300/40 bg-amber-50/40 dark:bg-amber-500/[0.04] p-5">
+      <div className="mb-8 rounded-xl border border-warning/40 bg-warning/10 p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-            <BarChart3 className="w-4 h-4 text-amber-600" /> Salud de la empresa · ejercicio {execYear}
+            <BarChart3 className="w-4 h-4 text-warning" /> Salud de la empresa · ejercicio {execYear}
           </h2>
-          <span className="text-[11px] text-muted-foreground">Resultado, costes laborales y carga fiscal · estimación</span>
+          <span className="text-xs text-muted-foreground">Resultado, costes laborales y carga fiscal · estimación</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
           <HealthTile to="/admin/contabilidad/cuenta-resultados" label="Ingresos"
@@ -149,7 +149,7 @@ export default function AccountingDashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="bg-card rounded-2xl border border-border/50 p-5">
+          <div key={kpi.label} className="bg-card rounded-xl border border-border/50 p-5">
             <div className="flex items-center justify-between mb-4">
               <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", kpi.bg)}>
                 <kpi.icon className={cn("w-5 h-5", kpi.color)} />
@@ -157,29 +157,29 @@ export default function AccountingDashboard() {
             </div>
             <div className="text-2xl font-display font-bold text-foreground mb-1">{kpi.value}</div>
             <div className="text-sm text-muted-foreground">{kpi.label}</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">{kpi.sub}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{kpi.sub}</div>
           </div>
         ))}
       </div>
 
       {/* ── Devengo Partners: ingresos confirmados pendientes de cobro ──── */}
       {(metrics?.partnerPendingAmount ?? 0) > 0 && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-            <Clock className="w-5 h-5 text-amber-600" />
+        <div className="mb-6 bg-warning/10 border border-warning/40 rounded-xl p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center flex-shrink-0">
+            <Clock className="w-5 h-5 text-warning" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-amber-800">
+            <p className="text-sm font-semibold text-warning">
               Ingreso devengado pendiente de cobro — Partners
             </p>
-            <p className="text-xs text-amber-600 mt-0.5">
+            <p className="text-xs text-warning mt-0.5">
               {metrics?.partnerPendingCount} reserva{(metrics?.partnerPendingCount ?? 0) !== 1 ? "s" : ""} confirmada{(metrics?.partnerPendingCount ?? 0) !== 1 ? "s" : ""} de partners, aún sin liquidar.
               El importe quedará contabilizado como ingreso cuando se procese la liquidación correspondiente.
             </p>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-xl font-bold text-amber-700">{fmtEur(metrics?.partnerPendingAmount ?? 0)}</p>
-            <p className="text-[10px] text-amber-500 mt-0.5">Por cobrar</p>
+            <p className="text-xl font-bold text-warning">{fmtEur(metrics?.partnerPendingAmount ?? 0)}</p>
+            <p className="text-xs text-warning mt-0.5">Por cobrar</p>
           </div>
         </div>
       )}
@@ -188,31 +188,31 @@ export default function AccountingDashboard() {
       {cashflow && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-400 to-teal-600" />
+            <div className="w-1 h-4 rounded-full bg-primary" />
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Previsión de tesorería</h3>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-card rounded-2xl border border-blue-200/60 p-4">
+            <div className="bg-card rounded-xl border border-info/60 p-4">
               <p className="text-xs text-muted-foreground mb-1">Saldo bancario</p>
-              <p className="text-xl font-bold text-blue-700">{fmtEur(cashflow.currentBalance)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Último mov. {cashflow.lastBalanceDate}</p>
+              <p className="text-xl font-bold text-info">{fmtEur(cashflow.currentBalance)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Último mov. {cashflow.lastBalanceDate}</p>
             </div>
-            <div className={`bg-card rounded-2xl border p-4 ${cashflow.forecast7d >= 0 ? "border-teal-200/60" : "border-red-300"}`}>
+            <div className={`bg-card rounded-xl border p-4 ${cashflow.forecast7d >= 0 ? "border-success/60" : "border-danger/40"}`}>
               <p className="text-xs text-muted-foreground mb-1">Caja prevista 7 días</p>
-              <p className={`text-xl font-bold ${cashflow.forecast7d >= 0 ? "text-teal-700" : "text-red-600"}`}>
+              <p className={`text-xl font-bold ${cashflow.forecast7d >= 0 ? "text-success" : "text-danger"}`}>
                 {fmtEur(cashflow.forecast7d)}
               </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Saldo − gastos urgentes</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Saldo − gastos urgentes</p>
             </div>
-            <div className="bg-card rounded-2xl border border-emerald-200/60 p-4">
+            <div className="bg-card rounded-xl border border-success/60 p-4">
               <p className="text-xs text-muted-foreground mb-1">Ingresos pendientes</p>
-              <p className="text-xl font-bold text-emerald-700">{fmtEur(cashflow.pendingIncome)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{cashflow.pendingReservationCount} {voc.ordersLower}</p>
+              <p className="text-xl font-bold text-success">{fmtEur(cashflow.pendingIncome)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{cashflow.pendingReservationCount} {voc.ordersLower}</p>
             </div>
-            <div className="bg-card rounded-2xl border border-amber-200/60 p-4">
+            <div className="bg-card rounded-xl border border-warning/60 p-4">
               <p className="text-xs text-muted-foreground mb-1">Gastos pendientes</p>
-              <p className="text-xl font-bold text-amber-700">{fmtEur(cashflow.pendingExpenses)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Sin pagar registrados</p>
+              <p className="text-xl font-bold text-warning">{fmtEur(cashflow.pendingExpenses)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Sin pagar registrados</p>
             </div>
           </div>
         </div>
@@ -223,106 +223,106 @@ export default function AccountingDashboard() {
       {/* ── Control de conciliación ──────────────────────────────────────── */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-blue-600" />
+          <div className="w-1 h-4 rounded-full bg-primary" />
           <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Control de conciliación · {reconStats?.periodLabel ?? "—"}</h3>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* 1. % TPV conciliado */}
           <Link href="/admin/contabilidad/conciliacion-tpv">
             <div className={cn(
-              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
-              (reconStats?.pctReconciled ?? 0) >= 80 ? "border-emerald-500/30" : (reconStats?.pctReconciled ?? 0) >= 50 ? "border-amber-500/30" : "border-red-500/30"
+              "bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (reconStats?.pctReconciled ?? 0) >= 80 ? "border-success/30" : (reconStats?.pctReconciled ?? 0) >= 50 ? "border-warning/30" : "border-danger/30"
             )}>
               <div className="flex items-center justify-between mb-3">
-                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (reconStats?.pctReconciled ?? 0) >= 80 ? "bg-emerald-50 dark:bg-emerald-900/30" : "bg-amber-50 dark:bg-amber-900/30")}>
-                  <CheckCircle className={cn("w-4 h-4", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-emerald-500" : "text-amber-500")} />
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (reconStats?.pctReconciled ?? 0) >= 80 ? "bg-success/10" : "bg-warning/10")}>
+                  <CheckCircle className={cn("w-4 h-4", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-success" : "text-warning")} />
                 </div>
               </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-emerald-600 dark:text-emerald-400" : (reconStats?.pctReconciled ?? 0) >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400")}>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-success" : (reconStats?.pctReconciled ?? 0) >= 50 ? "text-warning" : "text-danger")}>
                 {reconStats?.pctReconciled ?? "—"}%
               </div>
               <div className="text-xs text-muted-foreground">% TPV conciliado</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">{reconStats?.reconciledBatches ?? 0}/{reconStats?.totalBatches ?? 0} remesas</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">{reconStats?.reconciledBatches ?? 0}/{reconStats?.totalBatches ?? 0} remesas</div>
             </div>
           </Link>
 
           {/* 2. Remesas TPV pendientes */}
           <Link href="/admin/contabilidad/remesas-tpv">
-            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingBatches ?? 0) > 0 ? "border-amber-500/30" : "border-border/50")}>
+            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingBatches ?? 0) > 0 ? "border-warning/30" : "border-border/50")}>
               <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-amber-50 dark:bg-amber-900/30">
-                  <Clock className="w-4 h-4 text-amber-500" />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-warning/10">
+                  <Clock className="w-4 h-4 text-warning" />
                 </div>
               </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pendingBatches ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pendingBatches ?? 0) > 0 ? "text-warning" : "text-foreground")}>
                 {reconStats?.pendingBatches ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Remesas pendientes</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Pendientes o por revisar</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">Pendientes o por revisar</div>
             </div>
           </Link>
 
           {/* 3. Remesas con diferencias */}
           <Link href="/admin/contabilidad/remesas-tpv">
-            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.differenceBatches ?? 0) > 0 ? "border-orange-500/30" : "border-border/50")}>
+            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.differenceBatches ?? 0) > 0 ? "border-warning/30" : "border-border/50")}>
               <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-orange-50 dark:bg-orange-900/30">
-                  <AlertTriangle className="w-4 h-4 text-orange-500" />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-warning/10">
+                  <AlertTriangle className="w-4 h-4 text-warning" />
                 </div>
               </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.differenceBatches ?? 0) > 0 ? "text-orange-600 dark:text-orange-400" : "text-foreground")}>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.differenceBatches ?? 0) > 0 ? "text-warning" : "text-foreground")}>
                 {reconStats?.differenceBatches ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Con diferencias</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Importe ≠ banco</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">Importe ≠ banco</div>
             </div>
           </Link>
 
           {/* 4. Importe TPV pendiente */}
           <Link href="/admin/contabilidad/remesas-tpv">
-            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingAmount ?? 0) > 0 ? "border-amber-500/30" : "border-border/50")}>
+            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingAmount ?? 0) > 0 ? "border-warning/30" : "border-border/50")}>
               <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-amber-50 dark:bg-amber-900/30">
-                  <Package className="w-4 h-4 text-amber-500" />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-warning/10">
+                  <Package className="w-4 h-4 text-warning" />
                 </div>
               </div>
-              <div className="text-lg font-bold mb-1 text-amber-600 dark:text-amber-400 leading-tight">
+              <div className="text-lg font-bold mb-1 text-warning leading-tight">
                 {reconStats ? fmtEur(reconStats.pendingAmount) : "—"}
               </div>
               <div className="text-xs text-muted-foreground">Importe pend. conciliar</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Total neto remesas</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">Total neto remesas</div>
             </div>
           </Link>
 
           {/* 5. Ingresos bancarios sin conciliar */}
           <Link href="/admin/contabilidad/movimientos-bancarios">
-            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.staleMovementsCount ?? 0) > 0 ? "border-rose-500/30" : "border-border/50")}>
+            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.staleMovementsCount ?? 0) > 0 ? "border-danger/30" : "border-border/50")}>
               <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-rose-50 dark:bg-rose-900/30">
-                  <Banknote className="w-4 h-4 text-rose-500" />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-danger/10">
+                  <Banknote className="w-4 h-4 text-danger" />
                 </div>
               </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.staleMovementsCount ?? 0) > 0 ? "text-rose-600 dark:text-rose-400" : "text-foreground")}>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.staleMovementsCount ?? 0) > 0 ? "text-danger" : "text-foreground")}>
                 {reconStats?.staleMovementsCount ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Ingresos sin conciliar</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">{reconStats ? fmtEur(reconStats.staleMovementsAmount) : "—"}</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">{reconStats ? fmtEur(reconStats.staleMovementsAmount) : "—"}</div>
             </div>
           </Link>
 
           {/* 6. Operaciones TPV sin vincular */}
           <Link href="/admin/contabilidad/operaciones-tpv">
-            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.unlinkedOps ?? 0) > 0 ? "border-blue-500/30" : "border-border/50")}>
+            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.unlinkedOps ?? 0) > 0 ? "border-info/30" : "border-border/50")}>
               <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-blue-50 dark:bg-blue-900/30">
-                  <CreditCard className="w-4 h-4 text-blue-500" />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-info/10">
+                  <CreditCard className="w-4 h-4 text-info" />
                 </div>
               </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.unlinkedOps ?? 0) > 0 ? "text-blue-600 dark:text-blue-400" : "text-foreground")}>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.unlinkedOps ?? 0) > 0 ? "text-info" : "text-foreground")}>
                 {reconStats?.unlinkedOps ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Ops TPV sin vincular</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Sin pedido ni factura</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">Sin pedido ni factura</div>
             </div>
           </Link>
         </div>
@@ -331,61 +331,61 @@ export default function AccountingDashboard() {
       {/* ── Control de gastos ─────────────────────────────────────────────── */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-1 h-4 rounded-full bg-gradient-to-b from-violet-400 to-red-500" />
+          <div className="w-1 h-4 rounded-full bg-primary" />
           <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Control de gastos · {expenseStats?.periodLabel ?? "—"}</h3>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {/* 1. Cargos bancarios sin registrar */}
           <Link href="/admin/contabilidad/gastos">
             <div className={cn(
-              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
-              (expenseStats?.candidatesCount ?? 0) > 0 ? "border-violet-500/30" : "border-border/50"
+              "bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (expenseStats?.candidatesCount ?? 0) > 0 ? "border-primary/30" : "border-border/50"
             )}>
               <div className="flex items-center justify-between mb-3">
-                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.candidatesCount ?? 0) > 0 ? "bg-violet-50 dark:bg-violet-900/30" : "bg-muted/30")}>
-                  <Banknote className={cn("w-4 h-4", (expenseStats?.candidatesCount ?? 0) > 0 ? "text-violet-500" : "text-muted-foreground")} />
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.candidatesCount ?? 0) > 0 ? "bg-primary/10" : "bg-muted/30")}>
+                  <Banknote className={cn("w-4 h-4", (expenseStats?.candidatesCount ?? 0) > 0 ? "text-primary" : "text-muted-foreground")} />
                 </div>
               </div>
-              <div className={cn("text-2xl font-bold mb-1", (expenseStats?.candidatesCount ?? 0) > 0 ? "text-violet-600 dark:text-violet-400" : "text-foreground")}>
+              <div className={cn("text-2xl font-bold mb-1", (expenseStats?.candidatesCount ?? 0) > 0 ? "text-primary" : "text-foreground")}>
                 {expenseStats?.candidatesCount ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Cargos sin registrar</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Movimientos negativos banco</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">Movimientos negativos banco</div>
             </div>
           </Link>
 
           {/* 2. Gastos pendientes de justificación */}
           <Link href="/admin/contabilidad/gastos">
             <div className={cn(
-              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
-              (expenseStats?.staleExpensesCount ?? 0) > 0 ? "border-amber-500/30" : "border-border/50"
+              "bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (expenseStats?.staleExpensesCount ?? 0) > 0 ? "border-warning/30" : "border-border/50"
             )}>
               <div className="flex items-center justify-between mb-3">
-                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "bg-amber-50 dark:bg-amber-900/30" : "bg-muted/30")}>
-                  <Clock className={cn("w-4 h-4", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "text-amber-500" : "text-muted-foreground")} />
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "bg-warning/10" : "bg-muted/30")}>
+                  <Clock className={cn("w-4 h-4", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "text-warning" : "text-muted-foreground")} />
                 </div>
               </div>
-              <div className={cn("text-2xl font-bold mb-1", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
+              <div className={cn("text-2xl font-bold mb-1", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "text-warning" : "text-foreground")}>
                 {expenseStats?.staleExpensesCount ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Gastos pendientes +30d</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Sin justificar ni contabilizar</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">Sin justificar ni contabilizar</div>
             </div>
           </Link>
 
           {/* 3. Gastos conciliados este mes */}
           <Link href="/admin/contabilidad/gastos">
-            <div className="bg-card rounded-2xl border border-emerald-500/30 p-4 cursor-pointer hover:brightness-110 transition-all">
+            <div className="bg-card rounded-xl border border-success/30 p-4 cursor-pointer hover:brightness-110 transition-all">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-50 dark:bg-emerald-900/30">
-                  <Link2 className="w-4 h-4 text-emerald-500" />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-success/10">
+                  <Link2 className="w-4 h-4 text-success" />
                 </div>
               </div>
-              <div className="text-2xl font-bold mb-1 text-emerald-600 dark:text-emerald-400">
+              <div className="text-2xl font-bold mb-1 text-success">
                 {expenseStats?.conciliadoThisMonthCount ?? "—"}
               </div>
               <div className="text-xs text-muted-foreground">Gastos conciliados</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+              <div className="text-xs text-muted-foreground/60 mt-0.5">
                 {expenseStats ? fmtEur(expenseStats.conciliadoThisMonthAmount) : "—"}
               </div>
             </div>
@@ -394,19 +394,19 @@ export default function AccountingDashboard() {
           {/* 4. Importe gastos pendientes */}
           <Link href="/admin/contabilidad/gastos">
             <div className={cn(
-              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
-              (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "border-red-500/30" : "border-border/50"
+              "bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "border-danger/30" : "border-border/50"
             )}>
               <div className="flex items-center justify-between mb-3">
-                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "bg-red-50 dark:bg-red-900/30" : "bg-muted/30")}>
-                  <AlertTriangle className={cn("w-4 h-4", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "text-red-500" : "text-muted-foreground")} />
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "bg-danger/10" : "bg-muted/30")}>
+                  <AlertTriangle className={cn("w-4 h-4", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "text-danger" : "text-muted-foreground")} />
                 </div>
               </div>
-              <div className={cn("text-lg font-bold mb-1 leading-tight", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-foreground")}>
+              <div className={cn("text-lg font-bold mb-1 leading-tight", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "text-danger" : "text-foreground")}>
                 {expenseStats ? fmtEur(expenseStats.pendingExpensesAmount) : "—"}
               </div>
               <div className="text-xs text-muted-foreground">Importe pend. justificar</div>
-              <div className="text-[10px] text-muted-foreground/60 mt-0.5">{expenseStats?.pendingExpensesCount ?? 0} gastos</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">{expenseStats?.pendingExpensesCount ?? 0} gastos</div>
             </div>
           </Link>
         </div>
@@ -434,7 +434,7 @@ export default function AccountingDashboard() {
         </PanelEmpty>
       ) : summary ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2 bg-card rounded-2xl border border-border/50 p-5">
+          <div className="lg:col-span-2 bg-card rounded-xl border border-border/50 p-5">
             <h3 className="font-display font-semibold text-foreground mb-5">
               {summary.hasExpenses ? "Ventas, cobros, facturas y gastos (6 meses)" : "Ventas, cobros y facturas (6 meses)"}
             </h3>
@@ -456,7 +456,7 @@ export default function AccountingDashboard() {
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
+          <div className="bg-card rounded-xl border border-border/50 p-5">
             <h3 className="font-display font-semibold text-foreground mb-5">Ventas por categoría</h3>
             {categories.length === 0 ? (
               <p className="text-sm text-muted-foreground">
@@ -485,7 +485,7 @@ export default function AccountingDashboard() {
       ) : null}
 
       {/* Transactions Table */}
-      <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+      <div className="bg-card rounded-xl border border-border/50 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h3 className="font-display font-semibold text-foreground">Últimos cobros</h3>
           <Badge variant="outline" className="text-xs">{(transactions ?? []).length} registros</Badge>
@@ -517,12 +517,12 @@ export default function AccountingDashboard() {
                       <td className="px-4 py-4 text-sm text-foreground">{tx.clientName || "—"}</td>
                       <td className="px-4 py-4 text-sm text-muted-foreground">{transactionDescription(tx.description) ?? "Venta"}</td>
                       <td className="px-4 py-4">
-                        <span className={cn("font-semibold text-sm", tx.type === "ingreso" ? "text-emerald-600" : "text-red-600")}>
+                        <span className={cn("font-semibold text-sm", tx.type === "ingreso" ? "text-success" : "text-danger")}>
                           {tx.type === "ingreso" ? "+" : "-"}{fmtEur(Math.abs(parseFloat(tx.amount)))}
                         </span>
                       </td>
                       <td className="px-4 py-4">
-                        <Badge className={cn("text-xs flex items-center gap-1 w-fit", statusColors[tx.status] ?? "bg-gray-100 text-gray-700")}>
+                        <Badge className={cn("text-xs flex items-center gap-1 w-fit", statusColors[tx.status] ?? "bg-muted text-foreground")}>
                           <StatusIcon className="w-3 h-3" />
                           {statusLabels[tx.status] ?? tx.status}
                         </Badge>
@@ -548,16 +548,16 @@ function HealthTile({ to, label, value, sub, tone }: {
 }) {
   return (
     <Link href={to}>
-      <div className="bg-card rounded-xl border border-border/50 p-3 hover:border-amber-300/60 transition-colors cursor-pointer h-full">
-        <div className="text-[11px] text-muted-foreground leading-tight">{label}</div>
+      <div className="bg-card rounded-xl border border-border/50 p-3 hover:border-warning/60 transition-colors cursor-pointer h-full">
+        <div className="text-xs text-muted-foreground leading-tight">{label}</div>
         <div className={cn(
           "text-lg font-display font-bold mt-1",
-          tone === "red" ? "text-red-500"
-            : tone === "emerald" ? "text-emerald-600"
-            : tone === "amber" ? "text-amber-600"
+          tone === "red" ? "text-danger"
+            : tone === "emerald" ? "text-success"
+            : tone === "amber" ? "text-warning"
             : "text-foreground",
         )}>{value}</div>
-        {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+        {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
       </div>
     </Link>
   );
