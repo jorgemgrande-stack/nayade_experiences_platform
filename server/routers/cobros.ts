@@ -59,6 +59,8 @@ const view = (a: PaymentAccountRow | null, mode: PaymentMode, connectable: boole
   verifiedAt: a?.verifiedAt ?? null,
   lastEventAt: a?.lastEventAt ?? null,
   lastEventType: a?.lastEventType ?? null,
+  // Última comprobación del estado (no es un aviso de Stripe: sirve para distinguir «ninguno aún» de «sin comprobar»)
+  checkedAt: a?.updatedAt ?? null,
 });
 
 export const cobrosRouter = router({
