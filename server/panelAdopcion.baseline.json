@@ -56,20 +56,20 @@
     "geometriaAjena": 1
   },
   "pages/admin/accounting/CostCentersManager.tsx": {
-    "coloresFijos": 5
+    "coloresFijos": 4
   },
   "pages/admin/accounting/ExpenseCategoriesManager.tsx": {
-    "coloresFijos": 2
+    "coloresFijos": 1
   },
   "pages/admin/accounting/ExpenseSuppliersManager.tsx": {
-    "coloresFijos": 2
+    "coloresFijos": 1
   },
   "pages/admin/accounting/FinanceSyncSetup.tsx": {
     "coloresFijos": 8,
     "geometriaAjena": 5
   },
   "pages/admin/accounting/RecurringExpensesManager.tsx": {
-    "coloresFijos": 7,
+    "coloresFijos": 6,
     "textoMinusculo": 3
   },
   "pages/admin/careNet/Bonos.tsx": {
