@@ -149,6 +149,8 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
+import { assertChargeable, checkoutFingerprint, discountCents as computeDiscountCents, discountLogEntry, discountProblem, eurosToCents, fingerprintLogEntry, lineTotalCents, acquireCheckoutLock, variantUnitCents, variantQuantityProblem, productPeopleProblem, type OrderDiscount } from "./shopCheckoutRules";
+import { getTenantIdOrDefault } from "./_core/tenant";
 import { assertUserAdminAllowed, OWNER_SETTING_KEY } from "./_core/companyOwner";
 import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, legoPackSnapshots, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes, users as usersTable } from "../drizzle/schema";
 
@@ -1975,6 +1977,8 @@ export const appRouter = router({
         isRequired: z.boolean().default(false),
         sortOrder: z.number().default(0),
         validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
+        minQty: z.number().int().min(1).nullable().optional(),
+        maxQty: z.number().int().min(1).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         return createVariant(input);
@@ -1990,6 +1994,8 @@ export const appRouter = router({
         isRequired: z.boolean().optional(),
         sortOrder: z.number().optional(),
         validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
+        minQty: z.number().int().min(1).nullable().optional(),
+        maxQty: z.number().int().min(1).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -2492,8 +2498,8 @@ export const appRouter = router({
       .input(z.object({
         productId: z.number(),
         bookingDate: z.string(),
-        people: z.number().min(1).max(100),
-        variantId: z.number().optional(),
+        people: z.number().int().min(1).max(100),
+        variantId: z.number().int().positive().optional(),
         extras: noClientPricedExtras,
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
@@ -2517,7 +2523,13 @@ export const appRouter = router({
         if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
         // E-6: «bajo petición» y «próximamente» no se compran online, llegue la petición como llegue
         if (offerModeOf(product) !== "fixed") throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(product.title, offerModeOf(product)) });
+        // Inactivo o sin publicar: tampoco se vende por esta vía (igual que en el carrito)
+        if (product.isActive === false || product.isPublished === false) throw new TRPCError({ code: "BAD_REQUEST", message: `«${product.title}» ya no está disponible.` });
         if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto no tiene precio fijo" });
+        {
+          const pp = productPeopleProblem(product as any, input.people);
+          if (pp) throw new TRPCError({ code: "BAD_REQUEST", message: pp });
+        }
 
         // 1b. Validar time slot si el producto lo requiere
         if ((product as any).hasTimeSlots && !input.selectedTimeSlotId && !input.selectedTime) {
@@ -2533,6 +2545,10 @@ export const appRouter = router({
         if (input.variantId) {
           const variants = await getVariantsByExperience(input.productId);
           const variant = variants.find(v => v.id === input.variantId);
+          // Una opción inexistente, caducada o de otro producto se rechaza (antes caía en silencio al precio base)
+          if (!variant) throw new TRPCError({ code: "BAD_REQUEST", message: `La opción elegida de «${product.title}» ya no está disponible. Vuelve a elegirla.` });
+          const vq = variantQuantityProblem(variant as any, input.people);
+          if (vq) throw new TRPCError({ code: "BAD_REQUEST", message: vq });
           if (variant) {
             const mod = parseFloat(String(variant.priceModifier ?? 0));
             if (variant.priceType === "percentage") {
@@ -2679,20 +2695,20 @@ export const appRouter = router({
     cartCheckout: publicProcedure
       .input(z.object({
         items: z.array(z.object({
-          productId: z.number(),
+          productId: z.number().int().positive(),
           bookingDate: z.string(),
-          people: z.number().min(1).max(100),
-          variantId: z.number().optional(),
+          people: z.number().int().min(1).max(100),
+          variantId: z.number().int().positive().optional(),
           extras: noClientPricedExtras,
           // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
-          legoPackLineIds: z.array(z.number()).optional(),
-          legoPackLinePeople: z.record(z.string(), z.number()).optional(),
+          legoPackLineIds: z.array(z.number().int().positive()).optional(),
+          legoPackLinePeople: z.record(z.string(), z.number().int().min(0)).optional(),
         })).min(1).max(20),
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
         customerPhone: z.string().optional(),
         origin: z.string().url(),
-        discountCodeId: z.number().optional(),
+        discountCodeId: z.number().int().positive().optional(),
         /** Código tal como lo validó el cliente; debe coincidir con el id (el id es enumerable). */
         discountCode: z.string().max(50).optional(),
         // discountPercent ya no se acepta del cliente — se consulta en BD por discountCodeId
@@ -2750,12 +2766,11 @@ export const appRouter = router({
             if (!dbInst) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
             const [packRow] = await dbInst.select().from(legoPacksTable).where(eq(legoPacksTable.id, item.productId)).limit(1);
             if (!packRow) throw new TRPCError({ code: "NOT_FOUND", message: `Producto ${item.productId} no encontrado` });
-            if (!packRow.isOnlineSale) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no está disponible para venta online` });
+            if (!packRow.isOnlineSale || !packRow.isActive || !packRow.isPublished) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no está disponible para venta online` });
             const pricing = await calculateLegoPackPrice(item.productId, item.legoPackLineIds);
-            const packPricePerPerson = pricing.totalFinal;
-            if (!(packPricePerPerson > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no tiene precio configurado` });
-            const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
-            const itemAmountCents = Math.round((packPricePerPerson * item.people + extrasTotal) * 100);
+            const packUnitCents = eurosToCents(pricing.totalFinal);
+            if (!(packUnitCents > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no tiene precio configurado` });
+            const itemAmountCents = packUnitCents * item.people + item.extras.reduce((s, e) => s + eurosToCents(e.price) * e.quantity, 0);
             totalAmountCents += itemAmountCents;
             itemsWithPrices.push({
               productId: item.productId,
@@ -2782,40 +2797,37 @@ export const appRouter = router({
           if (offerModeOf(product) !== "fixed") throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(product.title, offerModeOf(product)) });
           // Agotado, retirado o sin publicar: no se vende aunque siga en un carrito guardado
           if (!isPurchasable(product)) throw new TRPCError({ code: "BAD_REQUEST", message: soldOutMessage(product.title) });
-          if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
-          const basePrice = parseFloat(String(product.basePrice));
-          if (!(basePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
-          let pricePerPerson = basePrice;
+          // Importes en céntimos enteros. El precio base puede ser 0 si el precio vive en las opciones de pago (Basic/Premium…)
+          const baseCents = eurosToCents(String(product.basePrice ?? "0"));
+          if (!Number.isFinite(baseCents) || baseCents < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido` });
           let lineName = product.title;
-          if (item.variantId) {
-            const variants = await getVariants(item.productId);
-            const variant = variants.find(v => v.id === item.variantId);
-            if (variant) {
-              const mod = parseFloat(String(variant.priceModifier ?? 0));
-              pricePerPerson = variant.priceType === "percentage"
-                ? basePrice + (basePrice * mod / 100)
-                : mod;
-              // Tienda de una pyme: la opción elegida (talla, color…) figura en el pedido y en la factura
-              if (storefront.kind === "generic") lineName = `${product.title} · ${variant.name}`;
-            } else if (storefront.kind === "generic") {
-              throw new TRPCError({ code: "BAD_REQUEST", message: `La opción elegida de «${product.title}» ya no está disponible. Vuelve a añadirlo al carrito.` });
-            }
-          } else if (storefront.kind === "generic" && (await getVariants(item.productId)).some(v => v.isRequired)) {
+          // La opción elegida debe existir y ser de ESTE producto (las caducadas no se listan); nunca cae al precio base
+          const variants = await getVariants(item.productId);
+          const variant = item.variantId !== undefined ? variants.find(v => v.id === item.variantId) : undefined;
+          if (item.variantId !== undefined && !variant) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `La opción elegida de «${product.title}» ya no está disponible. Vuelve a añadirlo al carrito.` });
+          }
+          // Límites de cantidad de la opción (minQty/maxQty) y del producto (minPersons/maxPersons); nulo = sin límite
+          const qtyProblem = variantQuantityProblem(variant as any, item.people) ?? productPeopleProblem(product as any, item.people);
+          if (qtyProblem) throw new TRPCError({ code: "BAD_REQUEST", message: qtyProblem });
+          if (!variant && variants.some(v => v.isRequired)) {
             throw new TRPCError({ code: "BAD_REQUEST", message: `Elige una opción de «${product.title}» antes de pagar.` });
           }
-          const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+          if (!variant && !product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
+          if (!variant && !(baseCents > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
+          let unitCents = variant ? variantUnitCents(baseCents, variant) : baseCents;
+          // Tienda de una pyme: la opción elegida (talla, color…) figura en el pedido y en la factura
+          if (variant && storefront.kind === "generic") lineName = `${product.title} · ${variant.name}`;
+          const extrasCents = item.extras.reduce((s, e) => s + eurosToCents(e.price) * e.quantity, 0);
           const itemPricingType = (product as any).pricingType ?? "per_person";
           const itemUnitCap = (product as any).unitCapacity ?? null;
           const itemMaxUnits = (product as any).maxUnits ?? null;
           // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
-          assertCheckoutLinePriced(product.title, calcPricing(pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalEuros, `#${item.productId}, opción ${item.variantId ?? "-"}`);
+          assertCheckoutLinePriced(product.title, lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalCents / 100, `#${item.productId}, opción ${item.variantId ?? "-"}`);
           // Reglas de precios de la empresa (Business), antes del cupón: sin reglas, el precio de siempre
-          pricePerPerson = webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: item.people, serviceDate: item.bookingDate }).unitPrice;
-          const { totalEuros: itemBase, unitsBooked: itemUnits } = calcPricing(
-            pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits
-          );
-          const itemTotalEuros = itemBase + extrasTotal;
-          const itemAmountCents = Math.round(itemTotalEuros * 100);
+          unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: item.bookingDate }).unitPrice);
+          const { totalCents: itemBaseCents, unitsBooked: itemUnits } = lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits);
+          const itemAmountCents = itemBaseCents + extrasCents;
           totalAmountCents += itemAmountCents;
           itemsWithPrices.push({
             productId: item.productId,
@@ -2831,105 +2843,111 @@ export const appRouter = router({
           });
           productNames.push(lineName);
         }
-        // 1b. Un descuento por id exige conocer el código (el id es enumerable). Se valida
-        // ANTES de crear reservas para no dejar pre-reservas huérfanas si se rechaza.
+        // 1b. Descuento: se valida SIEMPRE en servidor y ANTES de crear reservas. Un código inexistente, inactivo, caducado
+        // o agotado se rechaza con aviso (antes se ignoraba y se cobraba el precio completo sin decirlo). El id exige además
+        // conocer el código (el id es enumerable). El uso se consume al CONFIRMAR el pago, no aquí.
+        let discountInfo: OrderDiscount | null = null;
+        let discountRow: { id: number; maxUses: number | null; currentUses: number } | null = null;
+        let finalAmountCents = totalAmountCents;
         if (input.discountCodeId) {
           const dbCheck = await getDb();
           const [codeRow] = dbCheck
             ? await dbCheck
-                .select({ code: discountCodes.code })
+                .select({ id: discountCodes.id, code: discountCodes.code, discountType: discountCodes.discountType, discountPercent: discountCodes.discountPercent, discountAmount: discountCodes.discountAmount, status: discountCodes.status, expiresAt: discountCodes.expiresAt, maxUses: discountCodes.maxUses, currentUses: discountCodes.currentUses })
                 .from(discountCodes)
                 .where(eq(discountCodes.id, input.discountCodeId))
                 .limit(1)
             : [];
-          if (
-            codeRow &&
-            (!input.discountCode ||
-              codeRow.code.toUpperCase() !== input.discountCode.toUpperCase().trim())
-          ) {
+          if (codeRow && (!input.discountCode || codeRow.code.toUpperCase() !== input.discountCode.toUpperCase().trim())) {
             throw new TRPCError({
               code: "BAD_REQUEST",
               message: "El código de descuento no es válido. Vuelve a aplicarlo e inténtalo de nuevo.",
             });
           }
+          const problem = discountProblem(codeRow);
+          if (problem) throw new TRPCError({ code: "BAD_REQUEST", message: `${problem} No se ha realizado ningún cobro.` });
+          const dc = computeDiscountCents(totalAmountCents, codeRow);
+          finalAmountCents = totalAmountCents - dc;
+          discountRow = { id: codeRow.id, maxUses: codeRow.maxUses, currentUses: codeRow.currentUses };
+          discountInfo = { id: codeRow.id, code: codeRow.code, percent: Number(codeRow.discountPercent) || 0, discountCents: dc, originalCents: totalAmountCents, finalCents: finalAmountCents };
         }
-        // 1c. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
-        const cartStock = await import("./inventoryDb");
-        await cartStock.assertStockAvailable(itemsWithPrices.filter((it) => !it.stockExcluded).map((it, i) => ({ key: String(i + 1), productId: it.productId, variantId: it.stockVariantId ?? null, quantity: cartStock.orderLineQuantity({ pricing_type: it.pricingType, units_booked: it.unitsBooked, people: it.people }), name: it.productName })), null);
-        // 2. Generar un merchantOrder único para todo el carrito
-        const merchantOrder = generateMerchantOrder();
-        // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
-        const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
-        const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
-        const dbForSnapshots = await getDb();
-        for (const { legoPackSnapshot, stockVariantId, stockExcluded, ...item } of itemsWithPrices) {
-          const { id: reservationId } = await createReservation({
-            ...item,
-            customerName: input.customerName,
-            customerEmail: input.customerEmail,
-            customerPhone: input.customerPhone,
-            merchantOrder,
-            notes: orderNotes(productNames, input.comments),
-            pricingType: item.pricingType,
-            unitCapacity: item.unitCapacity,
-            unitsBooked: item.unitsBooked,
-            // Meta CAPI attribution
-            fbp: input.fbp ?? undefined,
-            fbc: input.fbc ?? undefined,
-            clientIpAddress: cartClientIp,
-            clientUserAgent: cartClientUa,
-          });
-          if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
-          // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
-          if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
-          // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
-          // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
-          // realmente elegido, en vez de expandir el catálogo completo del pack.
-          if (legoPackSnapshot && dbForSnapshots) {
-            try {
-              await dbForSnapshots.insert(legoPackSnapshots).values({
-                legoPackId: legoPackSnapshot.legoPackId,
-                legoPackTitle: legoPackSnapshot.legoPackTitle,
-                operationType: "reservation",
-                operationId: reservationId,
-                linesSnapshot: legoPackSnapshot.lines as any,
-                totalOriginal: String(legoPackSnapshot.totalOriginal.toFixed(2)),
-                totalDiscount: String(legoPackSnapshot.totalDiscount.toFixed(2)),
-                totalFinal: String(legoPackSnapshot.totalFinal.toFixed(2)),
-              });
-            } catch (err) {
-              console.error(`[Checkout] Error guardando snapshot de Lego Pack: ${err}`);
+        // 1b'. Importe cobrable (mín. 0,50 €; 0 € no se cobra): antes de crear reservas, sin pre-reservas huérfanas
+        assertChargeable(finalAmountCents);
+        // 1b''. Idempotencia: el mismo carrito del mismo comprador (clics repetidos) reutiliza el pedido pendiente en vez de
+        // crear otro. Tras un pago fallido, cancelado o caducado el pedido ya no está pendiente y se crea uno nuevo.
+        const fingerprint = checkoutFingerprint({ email: input.customerEmail, items: input.items, finalCents: finalAmountCents, discountCodeId: input.discountCodeId ?? null, comments: input.comments, billing });
+        const releaseLock = await acquireCheckoutLock(`${getTenantIdOrDefault()}|${fingerprint}`);
+        try {
+        const shopOrdersDb = await import("./shopOrdersDb");
+        let merchantOrder: string;
+        const existingOrder = await shopOrdersDb.findPendingOrderByFingerprint(input.customerEmail, fingerprint);
+        if (existingOrder) {
+          merchantOrder = existingOrder;
+        } else {
+          // Código de usos limitados: los pagos en curso «sostienen» un uso durante la ventana, para que dos pagos
+          // simultáneos no agoten el código a la vez (la confirmación del pago lo vuelve a garantizar de forma atómica)
+          if (discountRow && discountRow.maxUses !== null) {
+            const holds = await shopOrdersDb.countPendingDiscountHolds(discountRow.id);
+            if (discountRow.currentUses + holds >= discountRow.maxUses) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "El código de descuento se está usando en otro pago en curso. Inténtalo de nuevo en unos minutos. No se ha realizado ningún cobro." });
             }
           }
-        }
-        // Datos fiscales del comprador: pasan a la factura y a su ficha del CRM cuando se confirma el pago
-        if (billing) await (await import("./shopOrdersDb")).recordCheckoutDetails(merchantOrder, billing);
-        // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor
-        let finalAmountCents = totalAmountCents;
-        if (input.discountCodeId) {
-          const db = await getDb();
-          const [discountRow] = await db!
-            .select({ discountType: discountCodes.discountType, discountPercent: discountCodes.discountPercent, discountAmount: discountCodes.discountAmount, status: discountCodes.status, expiresAt: discountCodes.expiresAt, maxUses: discountCodes.maxUses, currentUses: discountCodes.currentUses })
-            .from(discountCodes)
-            .where(eq(discountCodes.id, input.discountCodeId))
-            .limit(1);
-          if (discountRow && discountRow.status === "active") {
-            const expired = (discountRow.expiresAt && new Date(discountRow.expiresAt) < new Date())
-              || (discountRow.maxUses !== null && discountRow.currentUses >= discountRow.maxUses);
-            if (!expired) {
-              let discountCents: number;
-              if (discountRow.discountType === "fixed") {
-                const fixedEuros = parseFloat((discountRow.discountAmount as unknown as string) ?? "0");
-                discountCents = Math.round(fixedEuros * 100);
-              } else {
-                const pct = parseFloat(discountRow.discountPercent as unknown as string);
-                discountCents = Math.round(totalAmountCents * pct / 100);
+          // 1c. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
+          const cartStock = await import("./inventoryDb");
+          await cartStock.assertStockAvailable(itemsWithPrices.filter((it) => !it.stockExcluded).map((it, i) => ({ key: String(i + 1), productId: it.productId, variantId: it.stockVariantId ?? null, quantity: cartStock.orderLineQuantity({ pricing_type: it.pricingType, units_booked: it.unitsBooked, people: it.people }), name: it.productName })), null);
+          // 2. Generar un merchantOrder único para todo el carrito
+          merchantOrder = generateMerchantOrder();
+          // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
+          const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
+          const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
+          const dbForSnapshots = await getDb();
+          for (const { legoPackSnapshot, stockVariantId, stockExcluded, ...item } of itemsWithPrices) {
+            const { id: reservationId } = await createReservation({
+              ...item,
+              customerName: input.customerName,
+              customerEmail: input.customerEmail,
+              customerPhone: input.customerPhone,
+              merchantOrder,
+              notes: orderNotes(productNames, input.comments),
+              pricingType: item.pricingType,
+              unitCapacity: item.unitCapacity,
+              unitsBooked: item.unitsBooked,
+              // Meta CAPI attribution
+              fbp: input.fbp ?? undefined,
+              fbc: input.fbc ?? undefined,
+              clientIpAddress: cartClientIp,
+              clientUserAgent: cartClientUa,
+            });
+            if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
+            // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
+            if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
+            // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
+            // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
+            // realmente elegido, en vez de expandir el catálogo completo del pack.
+            if (legoPackSnapshot && dbForSnapshots) {
+              try {
+                await dbForSnapshots.insert(legoPackSnapshots).values({
+                  legoPackId: legoPackSnapshot.legoPackId,
+                  legoPackTitle: legoPackSnapshot.legoPackTitle,
+                  operationType: "reservation",
+                  operationId: reservationId,
+                  linesSnapshot: legoPackSnapshot.lines as any,
+                  totalOriginal: String(legoPackSnapshot.totalOriginal.toFixed(2)),
+                  totalDiscount: String(legoPackSnapshot.totalDiscount.toFixed(2)),
+                  totalFinal: String(legoPackSnapshot.totalFinal.toFixed(2)),
+                });
+              } catch (err) {
+                console.error(`[Checkout] Error guardando snapshot de Lego Pack: ${err}`);
               }
-              finalAmountCents = Math.max(0, totalAmountCents - discountCents);
             }
           }
+          // Datos fiscales del comprador: pasan a la factura y a su ficha del CRM cuando se confirma el pago
+          const shopOrders = await import("./shopOrdersDb");
+          if (billing) await shopOrders.recordCheckoutDetails(merchantOrder, billing);
+          // Huella (idempotencia ante clics repetidos) y código de descuento aplicado (se consume al confirmar el pago)
+          await shopOrders.appendOrderLogEntries(merchantOrder, [fingerprintLogEntry(fingerprint, Date.now()), ...(discountInfo ? [discountLogEntry(discountInfo, Date.now())] : [])]);
         }
-        // 4. Construir el formulario Redsys con el importe total
+        // 4. Construir el formulario Redsys con el importe total (en un pedido reutilizado: el mismo, con la misma sesión de Stripe)
         const description = productNames.length === 1
           ? productNames[0]
           : storefront.kind === "generic"
@@ -2957,6 +2975,9 @@ export const appRouter = router({
           itemCount: input.items.length,
           redsysForm,
         };
+        } finally {
+          releaseLock();
+        }
       }),
   }),
 

@@ -36,6 +36,15 @@ vi.mock("./db", async (importOriginal) => {
   };
 });
 
+// Idempotencia del checkout (consultas SQL del pedido): fuera de este test
+vi.mock("./shopOrdersDb", async (importOriginal) => ({
+  ...(await importOriginal<any>()),
+  recordCheckoutDetails: async () => {},
+  appendOrderLogEntries: async () => {},
+  findPendingOrderByFingerprint: async () => null,
+  countPendingDiscountHolds: async () => 0,
+}));
+
 vi.mock("./redsys", async (importOriginal) => {
   const actual: any = await importOriginal();
   return {
@@ -187,14 +196,15 @@ describe("descuento: el id numérico no basta", () => {
     expect((r.redsysForm as any).fields.amount).toBe(10000);
   });
 
-  it("id inexistente → se ignora, como hasta ahora (sin descuento ni error)", async () => {
+  it("id inexistente → se rechaza con aviso (antes se ignoraba y se cobraba sin descuento sin decirlo), sin reservas", async () => {
     state.discountRows = [];
-    const r = await caller().reservations.cartCheckout({
+    state.created.length = 0;
+    await expect(caller().reservations.cartCheckout({
       ...baseCart,
       items: [item()],
       discountCodeId: 99999,
       discountCode: "LOQUESEA",
-    });
-    expect((r.redsysForm as any).fields.amount).toBe(10000);
+    })).rejects.toThrow(/no existe/);
+    expect(state.created).toHaveLength(0);
   });
 });
