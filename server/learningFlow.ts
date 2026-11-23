@@ -235,3 +235,53 @@ export async function pendingLearningOrders(limit = 200): Promise<Array<{ mercha
     .slice(0, limit)
     .map((l) => ({ merchantOrder: String(l.merchant_order), reservationId: Number(l.id), productId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id), email: l.customer_email ? String(l.customer_email) : null, paidAt: l.paid_at == null ? null : Number(l.paid_at) }));
 }
+
+/**
+ * Reembolso o disputa de un pedido de tienda: protege el acceso del alumno SIN borrar nada (la matrícula y su historial
+ * quedan; solo cambia su estado, con motivo y rastro).
+ *  - «revoke»: reembolso total o disputa perdida (el cobro ya no existe).
+ *  - «suspend»: disputa abierta (reversible mientras se resuelve).
+ *  - «reactivate»: disputa ganada; solo reabre las suspendidas por esta misma vía (motivo «Stripe: …»), nunca una suspensión manual.
+ * Idempotente (repetirlo no cambia nada). Sin el esquema del LMS no hace nada. Un fallo real SÍ se propaga: el evento de
+ * Stripe queda «failed» y se reintenta, para que el acceso no quede abierto en silencio.
+ */
+export async function changeLearningAccessForOrder(merchantOrder: string, action: "revoke" | "suspend" | "reactivate", reason: string): Promise<{ changed: number }> {
+  try {
+    const d = await getDb();
+    if (!d) return { changed: 0 };
+    const [list] = (await d.execute(sql`SELECT e.id AS id, e.status AS status FROM learning_enrollments e
+      JOIN reservations r ON r.id = e.order_id WHERE e.source = 'payment' AND r.merchant_order = ${merchantOrder}`)) as unknown as [Array<Record<string, any>>];
+    const { revokeEnrollment, suspendEnrollment, reactivateEnrollment } = await import("./learningDb");
+    // Sin usuario que actúe: lo ejecuta el sistema por aviso firmado de la pasarela
+    const actor = null as unknown as number;
+    let changed = 0;
+    for (const e of list) {
+      const id = Number(e.id);
+      const status = String(e.status);
+      if (action === "revoke" && status !== "revoked") {
+        await revokeEnrollment(id, reason, actor);
+        changed++;
+      } else if (action === "suspend" && status === "active") {
+        await suspendEnrollment(id, reason, actor);
+        changed++;
+      } else if (action === "reactivate" && status === "suspended") {
+        const [ev] = (await d.execute(sql`SELECT detail FROM learning_access_events WHERE enrollment_id = ${id} AND type = 'suspended' ORDER BY id DESC LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+        let why = "";
+        try {
+          const raw = ev?.[0]?.detail;
+          why = String((typeof raw === "string" ? JSON.parse(raw) : raw)?.reason ?? "");
+        } catch {
+          why = "";
+        }
+        if (why.startsWith("Stripe:")) {
+          await reactivateEnrollment(id, reason, actor);
+          changed++;
+        }
+      }
+    }
+    return { changed };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { changed: 0 };
+    throw e;
+  }
+}

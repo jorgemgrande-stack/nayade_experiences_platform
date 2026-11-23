@@ -21,6 +21,7 @@ export default {
   canPayout: "Puede recibir pagos",
   lastEvent: "Último aviso válido de Stripe",
   noEventYet: "Aún no ha llegado ninguno",
+  noEventChecked: "Ninguno aún (estado comprobado el {date})",
   yes: "Sí",
   no: "No",
   requirementsDue: "Stripe todavía pide {n, plural, one {# dato} other {# datos}} para completar la verificación. Continúa el alta para enviarlos.",

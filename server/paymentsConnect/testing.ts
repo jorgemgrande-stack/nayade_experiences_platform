@@ -2,7 +2,7 @@
 import type { StripeAccountFacts } from "../../shared/paymentAccounts";
 import type { CheckoutParams, ConnectGateway } from "./gateway";
 import type { AccountUpdate, CheckoutRow, PaymentAccountRow, PaymentStore } from "./store";
-import type { QuoteInfo, QuotePort, ShopPort } from "./service";
+import type { PaymentIncident, QuoteInfo, QuotePort, ShopPort } from "./service";
 import type { AccountIndexReader, AccountIndexWriter, ClaimResult } from "./accountIndex";
 
 export class MemoryPaymentStore implements PaymentStore {
@@ -64,6 +64,9 @@ export class MemoryPaymentStore implements PaymentStore {
   }
   async getCheckout(id: string) {
     return this.checkouts.get(id) ?? null;
+  }
+  async getCheckoutByPaymentIntent(pi: string) {
+    return Array.from(this.checkouts.values()).find((c) => c.paymentIntentId === pi && c.status === "paid") ?? null;
   }
   async listQuoteCheckouts(quoteId: number) {
     return Array.from(this.checkouts.values()).filter((c) => c.kind === "quote" && c.quoteId === quoteId).sort((a, b) => a.createdAt - b.createdAt);
@@ -134,6 +137,10 @@ export class FakeQuotes implements QuotePort {
     return token === this.quote.token ? this.quote : null;
   }
   duplicates: Array<{ quoteId: number; reference: string }> = [];
+  incidents: Array<{ quoteId: number; incident: PaymentIncident }> = [];
+  async noteIncident(quoteId: number, incident: PaymentIncident) {
+    this.incidents.push({ quoteId, incident });
+  }
   async markPaid(quoteId: number, reference: string) {
     if (this.failNext) {
       this.failNext = false;
@@ -177,5 +184,18 @@ export class FakeShop implements ShopPort {
   }
   async applyFailed(merchantOrder: string) {
     this.failed.push(merchantOrder);
+  }
+  expired: string[] = [];
+  async applyExpired(merchantOrder: string) {
+    this.expired.push(merchantOrder);
+  }
+  incidents: Array<{ merchantOrder: string; incident: PaymentIncident }> = [];
+  failIncident = false;
+  async applyIncident(merchantOrder: string, incident: PaymentIncident) {
+    if (this.failIncident) {
+      this.failIncident = false;
+      throw new Error("fallo al aplicar");
+    }
+    this.incidents.push({ merchantOrder, incident });
   }
 }

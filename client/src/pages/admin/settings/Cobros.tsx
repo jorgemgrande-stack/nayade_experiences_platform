@@ -23,6 +23,7 @@ interface Mode {
   verifiedAt: number | null;
   lastEventAt: number | null;
   lastEventType: string | null;
+  checkedAt?: number | null;
 }
 
 const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: string }> = {
@@ -104,7 +105,7 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
               <dt className="text-muted-foreground">{t("settingsPayments.canPayout")}</dt>
               <dd>{m.payoutsEnabled ? t("settingsPayments.yes") : t("settingsPayments.no")}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.lastEvent")}</dt>
-              <dd>{m.lastEventAt ? `${fmt(m.lastEventAt)} (${m.lastEventType})` : t("settingsPayments.noEventYet")}</dd>
+              <dd>{m.lastEventAt ? `${fmt(m.lastEventAt)} (${m.lastEventType})` : m.checkedAt ? t("settingsPayments.noEventChecked", { date: fmt(m.checkedAt) }) : t("settingsPayments.noEventYet")}</dd>
             </dl>
           )}
           {m.requirementsDue.length > 0 && (
