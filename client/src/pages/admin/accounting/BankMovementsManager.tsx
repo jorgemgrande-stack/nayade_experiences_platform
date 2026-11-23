@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import FinanceSyncSetupBanner from "@/components/finance/FinanceSyncSetupBanner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -348,62 +350,33 @@ export default function BankMovementsManager() {
       <div className="p-6 space-y-6">
         <FinanceSyncSetupBanner />
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Movimientos Bancarios</h1>
-            <p className="text-sm text-muted-foreground mt-1">Importa, gestiona y concilia los movimientos de tu banco: Norma 43, Excel o CSV</p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="bg-info hover:bg-info/90 text-primary-foreground"
-            >
-              {uploading ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Importando...</>
-              ) : (
-                <><Upload className="w-4 h-4 mr-2" /> Importar fichero</>
-              )}
-            </Button>
-            <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv,.txt,.n43,.aeb,.q43" className="hidden" onChange={handleFileChange} />
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<FileSpreadsheet />}
+          title="Movimientos Bancarios"
+          description="Importa, gestiona y concilia los movimientos de tu banco: Norma 43, Excel o CSV"
+          actions={
+            <>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+               
+              >
+                {uploading ? (
+                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Importando...</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" /> Importar fichero</>
+                )}
+              </Button>
+              <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv,.txt,.n43,.aeb,.q43" className="hidden" onChange={handleFileChange} />
+            </>
+          }
+        />
 
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-info/10 rounded-lg"><FileSpreadsheet className="w-5 h-5 text-info" /></div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Total movimientos</div>
-                  <div className="text-xl font-bold text-foreground">{totalMovs}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-success/10 rounded-lg"><TrendingUp className="w-5 h-5 text-success" /></div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Total ingresado</div>
-                  <div className="text-xl font-bold text-success">{fmtAmount(totalIngresado)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-danger/10 rounded-lg"><TrendingDown className="w-5 h-5 text-danger" /></div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Total cargado</div>
-                  <div className="text-xl font-bold text-danger">{fmtAmount(totalCargado)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard icon={<FileSpreadsheet />} tone="info" label="Total movimientos" value={totalMovs} />
+          <MetricCard icon={<TrendingUp />} tone="success" label="Total ingresado" value={fmtAmount(totalIngresado)} />
+          <MetricCard icon={<TrendingDown />} tone="danger" label="Total cargado" value={fmtAmount(totalCargado)} />
         </div>
 
         {/* Tabs */}
@@ -413,7 +386,7 @@ export default function BankMovementsManager() {
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
-                tab === t ? "border-info/40 text-info" : "border-transparent text-muted-foreground hover:text-foreground"
+                tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {t === "movimientos" ? "Movimientos" : `Importaciones (${imports.length})`}
@@ -466,7 +439,7 @@ export default function BankMovementsManager() {
               )}
             </div>
 
-            <div className="rounded-lg border border-border overflow-hidden">
+            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 border-b border-border">
                   <tr>
@@ -555,7 +528,7 @@ export default function BankMovementsManager() {
                 <p className="text-xs mt-1">Usa el botón "Importar fichero" para cargar el extracto de tu banco (Norma 43, Excel o CSV)</p>
               </div>
             ) : (
-              <div className="rounded-lg border border-border overflow-hidden">
+              <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
@@ -767,7 +740,7 @@ export default function BankMovementsManager() {
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
-                                      className="bg-success hover:bg-success/90 text-primary-foreground text-xs"
+                                      className=" text-xs"
                                       disabled={confirmTransferMut.isPending}
                                       onClick={() => {
                                         confirmTransferMut.mutate({
@@ -808,7 +781,7 @@ export default function BankMovementsManager() {
                                 <div className="flex gap-2">
                                   <Button
                                     size="sm"
-                                    className="bg-success hover:bg-success/90 text-primary-foreground text-xs"
+                                    className=" text-xs"
                                     onClick={() => setConfirmingQuoteId(m.quoteId)}
                                   >
                                     <CheckCircle className="w-3 h-3 mr-1" /> Aceptar conciliación
@@ -912,7 +885,7 @@ export default function BankMovementsManager() {
                       </div>
                       <Button
                         size="sm"
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs w-full"
+                        className=" text-xs w-full"
                         disabled={!manualNotes.trim() || manuallyConciliateMut.isPending}
                         onClick={() => {
                           if (selectedMovement) {

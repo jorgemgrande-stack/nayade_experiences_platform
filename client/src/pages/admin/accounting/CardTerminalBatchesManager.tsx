@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,14 +45,14 @@ const STATUS_LABELS: Record<BatchStatus, string> = {
   review_required: "Revisar",
 };
 
-const STATUS_COLORS: Record<BatchStatus, string> = {
-  pending: "bg-warning/15 text-warning border-warning/30",
-  suggested: "bg-info/15 text-info border-info/30",
-  auto_ready: "bg-success/15 text-success border-success/30",
-  reconciled: "bg-success/15 text-success border-success/30",
-  difference: "bg-warning/15 text-warning border-warning/30",
-  ignored: "bg-muted/15 text-muted-foreground border-border",
-  review_required: "bg-danger/15 text-danger border-danger/30",
+const STATUS_TONES: Record<BatchStatus, Tone> = {
+  pending: "warning",
+  suggested: "info",
+  auto_ready: "success",
+  reconciled: "success",
+  difference: "warning",
+  ignored: "neutral",
+  review_required: "danger",
 };
 
 function scoreIcon(score: number | null | undefined): string {
@@ -75,6 +77,15 @@ function fmtDate(s: string | null | undefined): string {
   } catch {
     return s;
   }
+}
+
+function toneOf(color: string): Tone {
+  if (color.includes("success")) return "success";
+  if (color.includes("warning")) return "warning";
+  if (color.includes("danger")) return "danger";
+  if (color.includes("info")) return "info";
+  if (color.includes("primary")) return "brand";
+  return "neutral";
 }
 
 export default function CardTerminalBatchesManager() {
@@ -254,29 +265,28 @@ export default function CardTerminalBatchesManager() {
     <AdminLayout>
       <div className="flex flex-col gap-6 p-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Remesas TPV</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Agrupa operaciones TPV diarias y concília con movimientos bancarios
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => runMatchingMut.mutate()}
-              disabled={runMatchingMut.isPending}
-              className="border-border text-foreground hover:text-foreground text-sm"
-            >
-              <Play className="w-4 h-4 mr-2" />
-              {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
-            </Button>
-            <Button onClick={() => setGenOpen(true)}>
-              <Package className="w-4 h-4 mr-2" />
-              Generar remesas
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<Package />}
+          title="Remesas TPV"
+          description="Agrupa operaciones TPV diarias y concília con movimientos bancarios"
+          actions={
+            <>
+              <Button
+                variant="outline"
+                onClick={() => runMatchingMut.mutate()}
+                disabled={runMatchingMut.isPending}
+                className="border-border text-foreground hover:text-foreground text-sm"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
+              </Button>
+              <Button onClick={() => setGenOpen(true)}>
+                <Package className="w-4 h-4 mr-2" />
+                Generar remesas
+              </Button>
+            </>
+          }
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -286,15 +296,7 @@ export default function CardTerminalBatchesManager() {
             { label: "Acción requerida", value: stats.needsAction, icon: Zap, color: "text-info" },
             { label: "Conciliadas", value: stats.reconciled, icon: CheckCircle2, color: "text-success" },
           ].map(s => (
-            <Card key={s.label} className="bg-card border-border">
-              <CardContent className="p-4 flex items-center gap-3">
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-                <div>
-                  <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                  <div className="text-xs text-muted-foreground">{s.label}</div>
-                </div>
-              </CardContent>
-            </Card>
+            <MetricCard key={s.label} icon={<s.icon />} tone={toneOf(s.color)} label={s.label} value={s.value} />
           ))}
         </div>
 
@@ -384,9 +386,9 @@ export default function CardTerminalBatchesManager() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-foreground">{fmtDate(batch.batchDate)}</span>
-                            <Badge className={`text-xs border px-1.5 py-0 ${STATUS_COLORS[batch.status as BatchStatus] ?? ""}`}>
+                            <StatusBadge tone={STATUS_TONES[batch.status as BatchStatus] ?? "neutral"}>
                               {STATUS_LABELS[batch.status as BatchStatus] ?? batch.status}
-                            </Badge>
+                            </StatusBadge>
                             {batch.suggestedScore != null && (
                               <span className="text-xs text-muted-foreground">
                                 {scoreIcon(batch.suggestedScore)} {batch.suggestedScore}%
@@ -429,9 +431,9 @@ export default function CardTerminalBatchesManager() {
                         Terminal {detail.terminalCode ?? "—"} · Comercio {detail.commerceCode ?? "—"}
                       </div>
                     </div>
-                    <Badge className={`text-xs border px-1.5 py-0.5 ${STATUS_COLORS[detail.status as BatchStatus] ?? ""}`}>
+                    <StatusBadge tone={STATUS_TONES[detail.status as BatchStatus] ?? "neutral"}>
                       {STATUS_LABELS[detail.status as BatchStatus] ?? detail.status}
-                    </Badge>
+                    </StatusBadge>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0 space-y-2">
@@ -482,7 +484,7 @@ export default function CardTerminalBatchesManager() {
                           size="sm"
                           onClick={() => acceptMut.mutate({ batchId: selectedId })}
                           disabled={acceptMut.isPending}
-                          className="flex-1 bg-success hover:bg-success/90 text-primary-foreground text-xs h-7"
+                          className="flex-1 text-xs h-7"
                         >
                           <ThumbsUp className="w-3 h-3 mr-1" />
                           Aceptar
@@ -530,7 +532,7 @@ export default function CardTerminalBatchesManager() {
                       <Button
                         size="sm"
                         onClick={() => { setRecBmId(null); setRecNotes(""); setRecOpen(true); }}
-                        className="bg-success hover:bg-success/90 text-primary-foreground text-xs h-7"
+                        className=" text-xs h-7"
                       >
                         <Link2 className="w-3 h-3 mr-1" />
                         Conciliar
@@ -540,7 +542,7 @@ export default function CardTerminalBatchesManager() {
                       <Button
                         size="sm"
                         onClick={() => { setJustifyText(""); setJustifyOpen(true); }}
-                        className="bg-warning hover:bg-warning/90 text-primary-foreground text-xs h-7"
+                        className=" text-xs h-7"
                       >
                         <FileCheck className="w-3 h-3 mr-1" />
                         Justificar diferencia
@@ -618,9 +620,9 @@ export default function CardTerminalBatchesManager() {
                           {fmt(op.amount)}
                         </div>
                         {op.linkedEntityId && (
-                          <Badge className="bg-info/15 text-info border-info/30 text-xs px-1 py-0">
+                          <StatusBadge tone="info">
                             {op.linkedEntityType}
-                          </Badge>
+                          </StatusBadge>
                         )}
                         <button
                           onClick={() => { setDelOpTarget({ batchOpId: op.batchOpId, operationNumber: op.operationNumber ?? null, amount: String(op.amount) }); setDelOpOpen(true); }}
@@ -680,7 +682,7 @@ export default function CardTerminalBatchesManager() {
                         <Button
                           size="sm"
                           onClick={() => { setRecNotes(""); setRecOpen(true); }}
-                          className="w-full bg-success hover:bg-success/90 text-primary-foreground text-xs h-7"
+                          className="w-full text-xs h-7"
                         >
                           <Link2 className="w-3 h-3 mr-1" />
                           Conciliar con este movimiento
@@ -734,7 +736,7 @@ export default function CardTerminalBatchesManager() {
             <Button
               onClick={() => generateMut.mutate({ fromDate: genFrom, toDate: genTo })}
               disabled={generateMut.isPending || !genFrom || !genTo}
-              className="bg-warning hover:bg-warning/90 text-primary-foreground"
+             
             >
               {generateMut.isPending ? "Generando..." : "Generar"}
             </Button>
@@ -793,7 +795,7 @@ export default function CardTerminalBatchesManager() {
                 reconcileMut.mutate({ batchId: selectedId, bankMovementId: recBmId, notes: recNotes || undefined });
               }}
               disabled={reconcileMut.isPending || !recBmId}
-              className="bg-success hover:bg-success/90 text-primary-foreground"
+             
             >
               {reconcileMut.isPending ? "Conciliando..." : "Confirmar conciliación"}
             </Button>
@@ -940,7 +942,7 @@ export default function CardTerminalBatchesManager() {
                 justifyMut.mutate({ batchId: selectedId, justification: justifyText.trim() });
               }}
               disabled={justifyMut.isPending || justifyText.trim().length < 5}
-              className="bg-warning hover:bg-warning/90 text-primary-foreground"
+             
             >
               {justifyMut.isPending ? "Guardando..." : "Confirmar justificación"}
             </Button>

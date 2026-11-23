@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -310,18 +312,18 @@ export default function CashRegisterManager() {
       <div className="p-6 max-w-6xl mx-auto space-y-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Wallet className="w-7 h-7 text-success" />
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Caja</h1>
-              <p className="text-sm text-muted-foreground">Gestión de efectivo y movimientos de caja</p>
-            </div>
-          </div>
-          <Button onClick={() => { setMovForm(emptyMovForm()); setMovDialog(true); }} className="bg-success hover:bg-success/90">
+        <PanelPageHeader
+          icon={<Wallet />}
+          title="Caja"
+          description="Gestión de efectivo y movimientos de caja"
+          actions={
+            <>
+          <Button onClick={() => { setMovForm(emptyMovForm()); setMovDialog(true); }}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo movimiento
           </Button>
-        </div>
+            </>
+          }
+        />
 
         {/* Panel de alertas de descuadre */}
         {(alertsQ.data?.length ?? 0) > 0 && (
@@ -376,41 +378,15 @@ export default function CashRegisterManager() {
 
         {/* KPI summary */}
         {summary && (
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="bg-card border rounded-xl p-4">
-              <p className="text-xs text-muted-foreground mb-1">Saldo total</p>
-              <p className={`text-xl font-bold ${summary.totalBalance >= 0 ? "text-foreground" : "text-danger"}`}>
-                {fmtEur(summary.totalBalance)}
-              </p>
-              <p className="text-xs text-muted-foreground">{accounts.filter(a => a.isActive).length} cuentas activas</p>
-            </div>
-            <div className="bg-card border rounded-xl p-4">
-              <p className="text-xs text-muted-foreground mb-1">Ingresos hoy</p>
-              <p className="text-xl font-bold text-success">{fmtEur(summary.todayRealIncome ?? summary.todayIncome)}</p>
-              <p className="text-xs text-muted-foreground">ventas y cobros</p>
-            </div>
-            <div className="bg-card border rounded-xl p-4">
-              <p className="text-xs text-muted-foreground mb-1">Gastos hoy</p>
-              <p className="text-xl font-bold text-danger">{fmtEur(summary.todayRealExpenses ?? summary.todayExpenses)}</p>
-              <p className="text-xs text-muted-foreground">solo gastos reales</p>
-            </div>
-            <div className="bg-card border rounded-xl p-4">
-              <p className="text-xs text-muted-foreground mb-1">Traspasos hoy</p>
-              <p className="text-xl font-bold text-info">{fmtEur(summary.todayTransfersOut ?? 0)}</p>
-              <p className="text-xs text-muted-foreground">Caja Central: {fmtEur(summary.centralBalance ?? 0)}</p>
-            </div>
-            <div className="bg-card border rounded-xl p-4">
-              <p className="text-xs text-muted-foreground mb-1">Neto hoy</p>
-              {(() => {
-                const net = (summary.todayRealIncome ?? summary.todayIncome) - (summary.todayRealExpenses ?? summary.todayExpenses);
-                return (
-                  <p className={`text-xl font-bold ${net >= 0 ? "text-success" : "text-danger"}`}>
-                    {net >= 0 ? "+" : ""}{fmtEur(net)}
-                  </p>
-                );
-              })()}
-              <p className="text-xs text-muted-foreground">ingresos − gastos</p>
-            </div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <MetricCard icon={<Wallet />} tone={summary.totalBalance >= 0 ? "brand" : "danger"} label="Saldo total" value={fmtEur(summary.totalBalance)} detail={`${accounts.filter(a => a.isActive).length} cuentas activas`} />
+            <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos hoy" value={fmtEur(summary.todayRealIncome ?? summary.todayIncome)} detail="ventas y cobros" />
+            <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos hoy" value={fmtEur(summary.todayRealExpenses ?? summary.todayExpenses)} detail="solo gastos reales" />
+            <MetricCard icon={<ArrowLeftRight />} tone="info" label="Traspasos hoy" value={fmtEur(summary.todayTransfersOut ?? 0)} detail={`Caja Central: ${fmtEur(summary.centralBalance ?? 0)}`} />
+            {(() => {
+              const net = (summary.todayRealIncome ?? summary.todayIncome) - (summary.todayRealExpenses ?? summary.todayExpenses);
+              return <MetricCard icon={<Banknote />} tone={net >= 0 ? "success" : "danger"} label="Neto hoy" value={`${net >= 0 ? "+" : ""}${fmtEur(net)}`} detail="ingresos − gastos" />;
+            })()}
           </div>
         )}
 
@@ -422,7 +398,7 @@ export default function CashRegisterManager() {
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
                 tab === t
-                  ? "border-success/40 text-success"
+                  ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -469,7 +445,7 @@ export default function CashRegisterManager() {
             </div>
 
             {/* Movements table */}
-            <div className="bg-card border rounded-xl overflow-hidden">
+            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
               <table className="w-full text-sm">
                 <thead className="bg-muted border-b">
                   <tr>
@@ -536,7 +512,7 @@ export default function CashRegisterManager() {
         {tab === "cuentas" && (
           <div className="space-y-4">
             <div className="flex justify-end">
-              <Button onClick={() => { setEditAccId(null); setAccForm(emptyAccForm()); setAccDialog(true); }} className="bg-success hover:bg-success/90">
+              <Button onClick={() => { setEditAccId(null); setAccForm(emptyAccForm()); setAccDialog(true); }}>
                 <Plus className="w-4 h-4 mr-2" /> Nueva cuenta
               </Button>
             </div>
@@ -594,11 +570,11 @@ export default function CashRegisterManager() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={() => { setClosureForm(emptyClosureForm()); setClosureDialog(true); }} className="bg-success hover:bg-success/90">
+              <Button onClick={() => { setClosureForm(emptyClosureForm()); setClosureDialog(true); }}>
                 <Calendar className="w-4 h-4 mr-2" /> Realizar cierre
               </Button>
             </div>
-            <div className="bg-card border rounded-xl overflow-hidden">
+            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
               <table className="w-full text-sm">
                 <thead className="bg-muted border-b">
                   <tr>
@@ -753,7 +729,7 @@ export default function CashRegisterManager() {
                     <Button
                       onClick={() => runSyncMut.mutate()}
                       disabled={runSyncMut.isPending}
-                      className="bg-success hover:bg-success/90 ml-4"
+                      className=" ml-4"
                     >
                       <RefreshCw className={`w-4 h-4 mr-2 ${runSyncMut.isPending ? "animate-spin" : ""}`} />
                       {runSyncMut.isPending ? "Sincronizando..." : "Crear movimientos faltantes"}
@@ -797,7 +773,7 @@ export default function CashRegisterManager() {
             title: "Marcar como revisado",
             description: "Indica que has revisado el descuadre. No modifica el saldo de caja. Podrás ajustar o aceptar la diferencia después.",
             confirmLabel: "Confirmar revisión",
-            confirmClass: "bg-info hover:bg-info/90",
+            confirmClass: "",
           },
           adjust: {
             title: "Crear ajuste de caja",
@@ -805,7 +781,7 @@ export default function CashRegisterManager() {
               ? `Se ${diff > 0 ? "añadirán" : "deducirán"} ${fmtEur(Math.abs(diff))} de la cuenta principal para cuadrar el saldo.`
               : "Sin diferencia que ajustar.",
             confirmLabel: "Crear ajuste",
-            confirmClass: "bg-primary hover:bg-primary/90",
+            confirmClass: "",
           },
           accept: {
             title: "Aceptar diferencia sin ajuste",
@@ -817,7 +793,7 @@ export default function CashRegisterManager() {
             title: "Añadir nota",
             description: "Añade un comentario al histórico de este cierre.",
             confirmLabel: "Guardar nota",
-            confirmClass: "bg-success hover:bg-success/90",
+            confirmClass: "",
           },
         };
 
@@ -1077,7 +1053,7 @@ export default function CashRegisterManager() {
               <Button
                 type="submit"
                 disabled={createMovMut.isPending || !movForm.accountId || !movForm.amount}
-                className="bg-success hover:bg-success/90"
+               
               >
                 {createMovMut.isPending ? "Guardando..." : "Registrar movimiento"}
               </Button>
@@ -1142,7 +1118,7 @@ export default function CashRegisterManager() {
               <Button
                 type="submit"
                 disabled={createAccMut.isPending || updateAccMut.isPending}
-                className="bg-success hover:bg-success/90"
+               
               >
                 {editAccId ? "Guardar cambios" : "Crear cuenta"}
               </Button>
@@ -1209,7 +1185,7 @@ export default function CashRegisterManager() {
               <Button
                 type="submit"
                 disabled={createClosureMut.isPending || !closureForm.accountId}
-                className="bg-info hover:bg-info/90"
+               
               >
                 {createClosureMut.isPending ? "Registrando..." : "Registrar cierre"}
               </Button>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,19 +30,19 @@ const FISCAL_STATUS_LABELS: Record<FiscalStatus, string> = {
   anulado: "Anulado",
 };
 
-const FISCAL_STATUS_COLORS: Record<FiscalStatus, string> = {
-  pendiente_documentacion: "bg-warning/10 text-warning border border-warning/40",
-  documentacion_completa: "bg-info/10 text-info border border-info/40",
-  en_revision: "bg-primary/10 text-primary border border-primary/40",
-  cerrado: "bg-success/10 text-success border border-success/40",
-  anulado: "bg-danger/10 text-danger border border-danger/40",
+const FISCAL_STATUS_TONES: Record<FiscalStatus, Tone> = {
+  pendiente_documentacion: "warning",
+  documentacion_completa: "info",
+  en_revision: "brand",
+  cerrado: "success",
+  anulado: "danger",
 };
 
-const OPERATIVE_STATUS_COLORS: Record<OperativeStatus, string> = {
-  abierto: "bg-success/10 text-success border border-success/40",
-  en_proceso: "bg-warning/10 text-warning border border-warning/40",
-  cerrado: "bg-muted text-foreground border border-border",
-  anulado: "bg-danger/10 text-danger border border-danger/40",
+const OPERATIVE_STATUS_TONES: Record<OperativeStatus, Tone> = {
+  abierto: "success",
+  en_proceso: "warning",
+  cerrado: "neutral",
+  anulado: "danger",
 };
 
 // ─── Semáforo visual ──────────────────────────────────────────────────────────
@@ -238,10 +239,10 @@ export default function ReavManager() {
   return (
     <AdminLayout>
       {/* ── Fondo general claro, sin overflow horizontal ── */}
-      <div className="flex h-full min-h-screen bg-muted overflow-x-hidden">
+      <div className="flex h-full min-h-screen flex-col overflow-x-hidden bg-muted md:flex-row">
 
         {/* ── Panel izquierdo: lista de expedientes ── */}
-        <div className="w-80 min-w-[280px] max-w-xs border-r border-border bg-card flex flex-col shrink-0">
+        <div className="flex w-full shrink-0 flex-col border-b border-border bg-card md:w-80 md:min-w-[280px] md:max-w-xs md:border-b-0 md:border-r">
           {/* Cabecera del panel */}
           <div className="p-4 border-b border-border bg-card sticky top-0 z-10">
             <div className="flex items-center justify-between mb-3">
@@ -252,7 +253,7 @@ export default function ReavManager() {
               <Button
                 size="sm"
                 onClick={() => setShowCreate(true)}
-                className="bg-warning hover:bg-warning/90 text-primary-foreground shadow-sm"
+                className=""
               >
                 <Plus className="w-4 h-4 mr-1" /> Nuevo
               </Button>
@@ -315,9 +316,9 @@ export default function ReavManager() {
                 <button
                   key={exp.id}
                   onClick={() => setSelectedId(exp.id)}
-                  className={`w-full text-left p-3.5 border-b border-border hover:bg-warning/10 transition-colors ${
+                  className={`w-full text-left p-3.5 border-b border-border hover:bg-primary/5 transition-colors ${
                     selectedId === exp.id
-                      ? "bg-warning/10 border-l-[3px] border-l-orange-500"
+                      ? "bg-primary/10 border-l-[3px] border-l-primary"
                       : "border-l-[3px] border-l-transparent"
                   }`}
                 >
@@ -340,9 +341,9 @@ export default function ReavManager() {
                     <span className="text-sm font-bold text-foreground">
                       {parseFloat(exp.saleAmountTotal as string ?? "0").toFixed(2)}€
                     </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${FISCAL_STATUS_COLORS[exp.fiscalStatus as FiscalStatus]}`}>
+                    <StatusBadge tone={FISCAL_STATUS_TONES[exp.fiscalStatus as FiscalStatus]}>
                       {FISCAL_STATUS_LABELS[exp.fiscalStatus as FiscalStatus]}
-                    </span>
+                    </StatusBadge>
                   </div>
                 </button>
               ))
@@ -510,12 +511,12 @@ function ExpedientDetail({
             )}
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${FISCAL_STATUS_COLORS[exp.fiscalStatus as FiscalStatus]}`}>
+            <StatusBadge tone={FISCAL_STATUS_TONES[exp.fiscalStatus as FiscalStatus]}>
               {FISCAL_STATUS_LABELS[exp.fiscalStatus as FiscalStatus]}
-            </span>
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${OPERATIVE_STATUS_COLORS[exp.operativeStatus as OperativeStatus]}`}>
+            </StatusBadge>
+            <StatusBadge tone={OPERATIVE_STATUS_TONES[exp.operativeStatus as OperativeStatus]}>
               {exp.operativeStatus}
-            </span>
+            </StatusBadge>
           </div>
         </div>
       </div>
@@ -696,7 +697,7 @@ function ExpedientDetail({
             <div className="flex gap-2 pt-1">
               <Button
                 size="sm"
-                className="bg-warning hover:bg-warning/90 text-primary-foreground"
+                className=""
                 onClick={() => { onUpdate(infoForm); setEditInfo(false); }}
               >
                 Guardar cambios
@@ -838,13 +839,13 @@ function ExpedientDetail({
                 type="checkbox"
                 checked={newCost.includesVat}
                 onChange={(e) => setNewCost(c => ({ ...c, includesVat: e.target.checked }))}
-                className="accent-orange-500"
+                className="accent-primary"
               />
               IVA incluido
             </label>
             <Button
               size="sm"
-              className="bg-warning hover:bg-warning/90 text-primary-foreground"
+              className=""
               onClick={() => {
                 if (!newCost.description || !newCost.amount) return toast.error("Descripción e importe son obligatorios");
                 onAddCost(newCost);
@@ -1137,7 +1138,7 @@ function DocBlock({
           />
           <Button
             size="sm"
-            className="bg-warning hover:bg-warning/90 text-primary-foreground shrink-0 h-9"
+            className=" shrink-0 h-9"
             onClick={onAdd}
           >
             <Plus className="w-4 h-4" />
@@ -1252,7 +1253,7 @@ function CreateExpedientModal({
               Cancelar
             </Button>
             <Button
-              className="bg-warning hover:bg-warning/90 text-primary-foreground text-sm"
+              className=" text-sm"
               onClick={() => onCreate(form)}
               disabled={loading || !form.serviceDescription}
             >

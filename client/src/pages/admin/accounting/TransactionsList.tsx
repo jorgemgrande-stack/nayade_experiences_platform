@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { transactionDescription } from "@shared/transactionText";
@@ -155,35 +157,22 @@ export default function TransactionsList() {
 
   return (
     <AdminLayout title="Transacciones">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">Transacciones</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {total} registros totales · página {page + 1} de {Math.max(1, totalPages)}
-          </p>
-        </div>
-        <Button variant="outline" onClick={exportCSV} className="gap-2">
-          <Download className="w-4 h-4" /> Exportar CSV
-        </Button>
-      </div>
+      <PanelPageHeader
+        icon={<Receipt />}
+        title="Transacciones"
+        description={`${total} registros totales · página ${page + 1} de ${Math.max(1, totalPages)}`}
+        actions={
+          <Button variant="outline" onClick={exportCSV} className="gap-2">
+            <Download className="w-4 h-4" /> Exportar CSV
+          </Button>
+        }
+      />
 
       {/* KPIs rápidos */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-success/10 border border-success/40 rounded-xl p-4">
-          <p className="text-xs font-semibold text-success uppercase tracking-wide mb-1">Ingresos (página)</p>
-          <p className="text-2xl font-bold text-success">€{totalIngresos.toFixed(2)}</p>
-        </div>
-        <div className="bg-danger/10 border border-danger/40 rounded-xl p-4">
-          <p className="text-xs font-semibold text-danger uppercase tracking-wide mb-1">Gastos/Reembolsos</p>
-          <p className="text-2xl font-bold text-danger">€{totalGastos.toFixed(2)}</p>
-        </div>
-        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
-          <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">Balance neto</p>
-          <p className={`text-2xl font-bold ${totalIngresos - totalGastos >= 0 ? "text-success" : "text-danger"}`}>
-            €{(totalIngresos - totalGastos).toFixed(2)}
-          </p>
-        </div>
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos (página)" value={`€${totalIngresos.toFixed(2)}`} />
+        <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos/Reembolsos" value={`€${totalGastos.toFixed(2)}`} />
+        <MetricCard icon={<Receipt />} tone={totalIngresos - totalGastos >= 0 ? "success" : "danger"} label="Balance neto" value={`€${(totalIngresos - totalGastos).toFixed(2)}`} />
       </div>
 
       {/* Filtros */}
@@ -269,7 +258,7 @@ export default function TransactionsList() {
           <Button variant="ghost" size="sm" onClick={resetFilters} className="mt-3">Limpiar filtros</Button>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>

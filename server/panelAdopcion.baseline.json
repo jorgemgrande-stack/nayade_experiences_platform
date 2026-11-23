@@ -80,38 +80,8 @@
     "coloresFijos": 25,
     "geometriaAjena": 1
   },
-  "pages/admin/accounting/AccountingDashboard.tsx": {
-    "coloresFijos": 74,
-    "textoMinusculo": 19,
-    "geometriaAjena": 20
-  },
-  "pages/admin/accounting/AccountingReports.tsx": {
-    "coloresFijos": 28
-  },
-  "pages/admin/accounting/BankMovementsManager.tsx": {
-    "coloresFijos": 54
-  },
-  "pages/admin/accounting/CardTerminalBatchesManager.tsx": {
-    "coloresFijos": 51
-  },
-  "pages/admin/accounting/CardTerminalConciliationDashboard.tsx": {
-    "coloresFijos": 22
-  },
-  "pages/admin/accounting/CardTerminalOperationsManager.tsx": {
-    "coloresFijos": 37,
-    "textoMinusculo": 2,
-    "dialogosNativos": 2
-  },
-  "pages/admin/accounting/CashRegisterManager.tsx": {
-    "coloresFijos": 69
-  },
   "pages/admin/accounting/CostCentersManager.tsx": {
     "coloresFijos": 5
-  },
-  "pages/admin/accounting/DailyControlCenter.tsx": {
-    "coloresFijos": 71,
-    "textoMinusculo": 16,
-    "geometriaAjena": 15
   },
   "pages/admin/accounting/ExpenseCategoriesManager.tsx": {
     "coloresFijos": 2
@@ -119,25 +89,13 @@
   "pages/admin/accounting/ExpenseSuppliersManager.tsx": {
     "coloresFijos": 2
   },
-  "pages/admin/accounting/ExpensesManager.tsx": {
-    "coloresFijos": 51,
-    "textoMinusculo": 13,
-    "geometriaAjena": 1
-  },
   "pages/admin/accounting/FinanceSyncSetup.tsx": {
     "coloresFijos": 8,
     "geometriaAjena": 5
   },
-  "pages/admin/accounting/ProfitLossReport.tsx": {
-    "coloresFijos": 57,
-    "textoMinusculo": 8
-  },
   "pages/admin/accounting/RecurringExpensesManager.tsx": {
     "coloresFijos": 7,
     "textoMinusculo": 3
-  },
-  "pages/admin/accounting/TransactionsList.tsx": {
-    "coloresFijos": 21
   },
   "pages/admin/careNet/Bonos.tsx": {
     "geometriaAjena": 1
@@ -243,10 +201,6 @@
   },
   "pages/admin/crm/ReservationTicket.tsx": {
     "coloresFijos": 2
-  },
-  "pages/admin/fiscal/ReavManager.tsx": {
-    "coloresFijos": 55,
-    "geometriaAjena": 1
   },
   "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
     "coloresFijos": 2,

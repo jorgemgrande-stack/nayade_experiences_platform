@@ -1,4 +1,6 @@
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +18,15 @@ import {
 
 function fmt(v: number): string {
   return v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+}
+
+function toneOf(color: string): Tone {
+  if (color.includes("success")) return "success";
+  if (color.includes("warning")) return "warning";
+  if (color.includes("danger")) return "danger";
+  if (color.includes("info")) return "info";
+  if (color.includes("primary")) return "brand";
+  return "neutral";
 }
 
 export default function CardTerminalConciliationDashboard() {
@@ -76,32 +87,31 @@ export default function CardTerminalConciliationDashboard() {
     <AdminLayout>
       <div className="flex flex-col gap-6 p-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Conciliación TPV</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Estado del matching automático entre remesas TPV y movimientos bancarios
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => runMatchingMut.mutate()}
-              disabled={runMatchingMut.isPending}
-              className="border-border text-foreground hover:text-foreground"
-            >
-              <Play className="w-4 h-4 mr-2" />
-              {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
-            </Button>
-            <Button
-              onClick={() => navigate("/admin/contabilidad/remesas-tpv")}
-              className="bg-warning hover:bg-warning/90 text-primary-foreground"
-            >
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Ver remesas
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<BarChart3 />}
+          title="Conciliación TPV"
+          description="Estado del matching automático entre remesas TPV y movimientos bancarios"
+          actions={
+            <>
+              <Button
+                variant="outline"
+                onClick={() => runMatchingMut.mutate()}
+                disabled={runMatchingMut.isPending}
+                className="border-border text-foreground hover:text-foreground"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
+              </Button>
+              <Button
+                onClick={() => navigate("/admin/contabilidad/remesas-tpv")}
+                className=""
+              >
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Ver remesas
+              </Button>
+            </>
+          }
+        />
 
         {/* KPI cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -114,16 +124,7 @@ export default function CardTerminalConciliationDashboard() {
                 </Card>
               ))
             : kpis.map(k => (
-                <Card key={k.label} className="bg-card border-border">
-                  <CardContent className="p-4 flex items-start gap-3">
-                    <k.icon className={`w-5 h-5 mt-1 shrink-0 ${k.color}`} />
-                    <div>
-                      <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
-                      <div className="text-xs text-muted-foreground font-medium">{k.label}</div>
-                      <div className="text-xs text-muted-foreground">{k.sub}</div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <MetricCard key={k.label} icon={<k.icon />} tone={toneOf(k.color)} label={k.label} value={k.value} detail={k.sub} />
               ))}
         </div>
 

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,11 +50,11 @@ const STATUS_LABELS: Record<string, string> = {
   conciliado: "Conciliado",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-warning/10 text-warning",
-  justified: "bg-info/10 text-info",
-  accounted: "bg-success/10 text-success",
-  conciliado: "bg-success/10 text-success",
+const STATUS_TONES: Record<string, Tone> = {
+  pending: "warning",
+  justified: "info",
+  accounted: "success",
+  conciliado: "success",
 };
 
 type ExpenseForm = {
@@ -553,81 +554,76 @@ export default function ExpensesManager() {
     <AdminLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <TrendingDown className="w-6 h-6 text-danger" />
-              Gastos
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>
-              {" · "}IVA soportado: <strong className="text-success">{totalIvaSoportado.toFixed(2)} €</strong>
-            </p>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/categorias")}>
-              Categorías
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/proveedores")}>
-              Proveedores
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/recurrentes")}>
-              Recurrentes
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => syncEmailMut.mutate()}
-              disabled={syncEmailMut.isPending}
-              className="gap-2 border-info/40 text-info hover:text-info hover:bg-info/10"
-            >
-              {syncEmailMut.isPending
-                ? <RefreshCw className="w-4 h-4 animate-spin" />
-                : <Mail className="w-4 h-4" />}
-              {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                if (await confirmAction({ description: "¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar." })) {
-                  backfillMut.mutate();
-                }
-              }}
-              disabled={backfillMut.isPending}
-              className="gap-2 border-warning/40 text-warning hover:text-warning hover:bg-warning/10"
-              title="Estima base e IVA de los gastos antiguos sin desglose fiscal"
-            >
-              {backfillMut.isPending
-                ? <RefreshCw className="w-4 h-4 animate-spin" />
-                : <Calculator className="w-4 h-4" />}
-              {backfillMut.isPending ? "Recalculando..." : "Recalcular fiscalidad"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEmailLogsOpen(true)}
-              className="text-muted-foreground hover:text-foreground text-xs px-2"
-              title="Ver historial de emails procesados"
-            >
-              <Clock className="w-3.5 h-3.5 mr-1" />
-              Historial
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportToCSV}
-              className="gap-2"
-              title="Exportar a CSV los gastos filtrados (incluye columna Imputación Operativa para gestoría)"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Exportar CSV
-            </Button>
-            <Button onClick={openCreate} className="gap-2">
-              <Plus className="w-4 h-4" /> Nuevo gasto
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<TrendingDown />}
+          title="Gastos"
+          description={<>{total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>{" · "}IVA soportado: <strong className="text-success">{totalIvaSoportado.toFixed(2)} €</strong></>}
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/categorias")}>
+                Categorías
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/proveedores")}>
+                Proveedores
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/recurrentes")}>
+                Recurrentes
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncEmailMut.mutate()}
+                disabled={syncEmailMut.isPending}
+                className="gap-2 border-info/40 text-info hover:text-info hover:bg-info/10"
+              >
+                {syncEmailMut.isPending
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Mail className="w-4 h-4" />}
+                {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (await confirmAction({ description: "¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar." })) {
+                    backfillMut.mutate();
+                  }
+                }}
+                disabled={backfillMut.isPending}
+                className="gap-2 border-warning/40 text-warning hover:text-warning hover:bg-warning/10"
+                title="Estima base e IVA de los gastos antiguos sin desglose fiscal"
+              >
+                {backfillMut.isPending
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Calculator className="w-4 h-4" />}
+                {backfillMut.isPending ? "Recalculando..." : "Recalcular fiscalidad"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEmailLogsOpen(true)}
+                className="text-muted-foreground hover:text-foreground text-xs px-2"
+                title="Ver historial de emails procesados"
+              >
+                <Clock className="w-3.5 h-3.5 mr-1" />
+                Historial
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToCSV}
+                className="gap-2"
+                title="Exportar a CSV los gastos filtrados (incluye columna Imputación Operativa para gestoría)"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exportar CSV
+              </Button>
+              <Button onClick={openCreate} className="gap-2">
+                <Plus className="w-4 h-4" /> Nuevo gasto
+              </Button>
+            </>
+          }
+        />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -874,7 +870,7 @@ export default function ExpensesManager() {
         </div>
 
         {/* Expenses Table */}
-        <div className="border rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
@@ -943,10 +939,9 @@ export default function ExpensesManager() {
                         })()}
                       </td>
                       <td className="p-3 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${STATUS_COLORS[e.status] ?? "bg-muted text-foreground"}`}>
-                          {e.status === "conciliado" && <LinkIcon className="w-2.5 h-2.5" />}
+                        <StatusBadge tone={STATUS_TONES[e.status] ?? "neutral"} icon={e.status === "conciliado" ? <LinkIcon /> : undefined}>
                           {STATUS_LABELS[e.status] ?? e.status}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td className="p-3 text-center">
                         {e.files.length > 0 ? (
@@ -1210,7 +1205,7 @@ export default function ExpensesManager() {
                   type="checkbox"
                   checked={form.isOperational}
                   onChange={(e) => setForm({ ...form, isOperational: e.target.checked })}
-                  className="mt-0.5 w-4 h-4 rounded border-border accent-emerald-500 cursor-pointer"
+                  className="mt-0.5 w-4 h-4 rounded border-border accent-primary cursor-pointer"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
@@ -1442,7 +1437,7 @@ export default function ExpensesManager() {
                   <Button
                     onClick={handleCreateFromMovement}
                     disabled={createFromMovMut.isPending}
-                    className="bg-info hover:bg-info/90 text-primary-foreground"
+                   
                   >
                     <Banknote className="w-4 h-4 mr-2" />
                     {createFromMovMut.isPending ? "Creando..." : "Crear gasto vinculado"}

@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
 import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { trpc } from "@/lib/trpc";
@@ -22,11 +24,11 @@ function fmtEur(v: number): string {
 
 const CATEGORY_COLORS = ["#2563eb", "#10b981", "#d4a017", "#8b5cf6", "#ef4444", "#0ea5e9", "#f97316", "#6b7280"];
 
-const statusColors: Record<string, string> = {
-  completado: "bg-success/10 text-success",
-  pendiente: "bg-warning/10 text-warning",
-  fallido: "bg-danger/10 text-danger",
-  reembolsado: "bg-info/10 text-info",
+const statusTones: Record<string, Tone> = {
+  completado: "success",
+  pendiente: "warning",
+  fallido: "danger",
+  reembolsado: "info",
 };
 
 const statusLabels: Record<string, string> = {
@@ -87,18 +89,19 @@ export default function AccountingDashboard() {
 
   const totals = summary?.totals;
   const kpis = [
-    { label: "Ventas (6 meses)", value: fmtEur(totals?.sales ?? 0), sub: `${totals?.salesCount ?? 0} ${voc.ordersLower} y tickets cobrados`, icon: Euro, color: "text-success", bg: "bg-success/10" },
-    { label: "Cobrado", value: fmtEur(totals?.payments ?? 0), sub: "Entradas registradas en cobros", icon: Banknote, color: "text-info", bg: "bg-info/10" },
-    { label: "Facturado", value: fmtEur(totals?.invoiced ?? 0), sub: `${totals?.invoiceCount ?? 0} ${totals?.invoiceCount === 1 ? "factura" : "facturas"} y ${totals?.ticketCount ?? 0} ${totals?.ticketCount === 1 ? "ticket" : "tickets"} de caja, descontados los abonos`, icon: FileText, color: "text-primary", bg: "bg-primary/10" },
+    { label: "Ventas (6 meses)", value: fmtEur(totals?.sales ?? 0), sub: `${totals?.salesCount ?? 0} ${voc.ordersLower} y tickets cobrados`, icon: Euro, tone: "success" as const },
+    { label: "Cobrado", value: fmtEur(totals?.payments ?? 0), sub: "Entradas registradas en cobros", icon: Banknote, tone: "info" as const },
+    { label: "Facturado", value: fmtEur(totals?.invoiced ?? 0), sub: `${totals?.invoiceCount ?? 0} ${totals?.invoiceCount === 1 ? "factura" : "facturas"} y ${totals?.ticketCount ?? 0} ${totals?.ticketCount === 1 ? "ticket" : "tickets"} de caja, descontados los abonos`, icon: FileText, tone: "brand" as const },
     summary?.pendingQuotes != null
-      ? { label: "Presupuestos sin respuesta", value: String(summary.pendingQuotes), sub: "Enviados y pendientes de aceptar", icon: Clock, color: "text-warning", bg: "bg-warning/10" }
-      : { label: "Ticket medio", value: fmtEur(totals?.averageTicket ?? 0), sub: "Venta media cobrada", icon: CreditCard, color: "text-warning", bg: "bg-warning/10" },
+      ? { label: "Presupuestos sin respuesta", value: String(summary.pendingQuotes), sub: "Enviados y pendientes de aceptar", icon: Clock, tone: "warning" as const }
+      : { label: "Ticket medio", value: fmtEur(totals?.averageTicket ?? 0), sub: "Venta media cobrada", icon: CreditCard, tone: "warning" as const },
   ];
   const monthly = summary?.months ?? [];
   const categories = summary?.categories ?? [];
 
   return (
     <AdminLayout title="Contabilidad e Informes">
+      <PanelPageHeader icon={<BarChart3 />} title="Contabilidad e Informes" description="Ventas, cobros, facturas y tesorería de tu empresa" />
       {mainError && (
         <PanelError
           className="mb-6"
@@ -147,18 +150,9 @@ export default function AccountingDashboard() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="bg-card rounded-xl border border-border/50 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", kpi.bg)}>
-                <kpi.icon className={cn("w-5 h-5", kpi.color)} />
-              </div>
-            </div>
-            <div className="text-2xl font-display font-bold text-foreground mb-1">{kpi.value}</div>
-            <div className="text-sm text-muted-foreground">{kpi.label}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{kpi.sub}</div>
-          </div>
+          <MetricCard key={kpi.label} icon={<kpi.icon />} tone={kpi.tone} label={kpi.label} value={kpi.value} detail={kpi.sub} />
         ))}
       </div>
 
@@ -192,28 +186,10 @@ export default function AccountingDashboard() {
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Previsión de tesorería</h3>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-card rounded-xl border border-info/60 p-4">
-              <p className="text-xs text-muted-foreground mb-1">Saldo bancario</p>
-              <p className="text-xl font-bold text-info">{fmtEur(cashflow.currentBalance)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Último mov. {cashflow.lastBalanceDate}</p>
-            </div>
-            <div className={`bg-card rounded-xl border p-4 ${cashflow.forecast7d >= 0 ? "border-success/60" : "border-danger/40"}`}>
-              <p className="text-xs text-muted-foreground mb-1">Caja prevista 7 días</p>
-              <p className={`text-xl font-bold ${cashflow.forecast7d >= 0 ? "text-success" : "text-danger"}`}>
-                {fmtEur(cashflow.forecast7d)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Saldo − gastos urgentes</p>
-            </div>
-            <div className="bg-card rounded-xl border border-success/60 p-4">
-              <p className="text-xs text-muted-foreground mb-1">Ingresos pendientes</p>
-              <p className="text-xl font-bold text-success">{fmtEur(cashflow.pendingIncome)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{cashflow.pendingReservationCount} {voc.ordersLower}</p>
-            </div>
-            <div className="bg-card rounded-xl border border-warning/60 p-4">
-              <p className="text-xs text-muted-foreground mb-1">Gastos pendientes</p>
-              <p className="text-xl font-bold text-warning">{fmtEur(cashflow.pendingExpenses)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Sin pagar registrados</p>
-            </div>
+            <MetricCard icon={<Banknote />} tone="info" label="Saldo bancario" value={fmtEur(cashflow.currentBalance)} detail={`Último mov. ${cashflow.lastBalanceDate}`} />
+            <MetricCard icon={<Clock />} tone={cashflow.forecast7d >= 0 ? "success" : "danger"} label="Caja prevista 7 días" value={fmtEur(cashflow.forecast7d)} detail="Saldo − gastos urgentes" />
+            <MetricCard icon={<Euro />} tone="success" label="Ingresos pendientes" value={fmtEur(cashflow.pendingIncome)} detail={`${cashflow.pendingReservationCount} ${voc.ordersLower}`} />
+            <MetricCard icon={<Receipt />} tone="warning" label="Gastos pendientes" value={fmtEur(cashflow.pendingExpenses)} detail="Sin pagar registrados" />
           </div>
         </div>
       )}
@@ -227,104 +203,12 @@ export default function AccountingDashboard() {
           <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Control de conciliación · {reconStats?.periodLabel ?? "—"}</h3>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* 1. % TPV conciliado */}
-          <Link href="/admin/contabilidad/conciliacion-tpv">
-            <div className={cn(
-              "bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all",
-              (reconStats?.pctReconciled ?? 0) >= 80 ? "border-success/30" : (reconStats?.pctReconciled ?? 0) >= 50 ? "border-warning/30" : "border-danger/30"
-            )}>
-              <div className="flex items-center justify-between mb-3">
-                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (reconStats?.pctReconciled ?? 0) >= 80 ? "bg-success/10" : "bg-warning/10")}>
-                  <CheckCircle className={cn("w-4 h-4", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-success" : "text-warning")} />
-                </div>
-              </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-success" : (reconStats?.pctReconciled ?? 0) >= 50 ? "text-warning" : "text-danger")}>
-                {reconStats?.pctReconciled ?? "—"}%
-              </div>
-              <div className="text-xs text-muted-foreground">% TPV conciliado</div>
-              <div className="text-xs text-muted-foreground/60 mt-0.5">{reconStats?.reconciledBatches ?? 0}/{reconStats?.totalBatches ?? 0} remesas</div>
-            </div>
-          </Link>
-
-          {/* 2. Remesas TPV pendientes */}
-          <Link href="/admin/contabilidad/remesas-tpv">
-            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingBatches ?? 0) > 0 ? "border-warning/30" : "border-border/50")}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-warning/10">
-                  <Clock className="w-4 h-4 text-warning" />
-                </div>
-              </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pendingBatches ?? 0) > 0 ? "text-warning" : "text-foreground")}>
-                {reconStats?.pendingBatches ?? "—"}
-              </div>
-              <div className="text-xs text-muted-foreground">Remesas pendientes</div>
-              <div className="text-xs text-muted-foreground/60 mt-0.5">Pendientes o por revisar</div>
-            </div>
-          </Link>
-
-          {/* 3. Remesas con diferencias */}
-          <Link href="/admin/contabilidad/remesas-tpv">
-            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.differenceBatches ?? 0) > 0 ? "border-warning/30" : "border-border/50")}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-warning/10">
-                  <AlertTriangle className="w-4 h-4 text-warning" />
-                </div>
-              </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.differenceBatches ?? 0) > 0 ? "text-warning" : "text-foreground")}>
-                {reconStats?.differenceBatches ?? "—"}
-              </div>
-              <div className="text-xs text-muted-foreground">Con diferencias</div>
-              <div className="text-xs text-muted-foreground/60 mt-0.5">Importe ≠ banco</div>
-            </div>
-          </Link>
-
-          {/* 4. Importe TPV pendiente */}
-          <Link href="/admin/contabilidad/remesas-tpv">
-            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingAmount ?? 0) > 0 ? "border-warning/30" : "border-border/50")}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-warning/10">
-                  <Package className="w-4 h-4 text-warning" />
-                </div>
-              </div>
-              <div className="text-lg font-bold mb-1 text-warning leading-tight">
-                {reconStats ? fmtEur(reconStats.pendingAmount) : "—"}
-              </div>
-              <div className="text-xs text-muted-foreground">Importe pend. conciliar</div>
-              <div className="text-xs text-muted-foreground/60 mt-0.5">Total neto remesas</div>
-            </div>
-          </Link>
-
-          {/* 5. Ingresos bancarios sin conciliar */}
-          <Link href="/admin/contabilidad/movimientos-bancarios">
-            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.staleMovementsCount ?? 0) > 0 ? "border-danger/30" : "border-border/50")}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-danger/10">
-                  <Banknote className="w-4 h-4 text-danger" />
-                </div>
-              </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.staleMovementsCount ?? 0) > 0 ? "text-danger" : "text-foreground")}>
-                {reconStats?.staleMovementsCount ?? "—"}
-              </div>
-              <div className="text-xs text-muted-foreground">Ingresos sin conciliar</div>
-              <div className="text-xs text-muted-foreground/60 mt-0.5">{reconStats ? fmtEur(reconStats.staleMovementsAmount) : "—"}</div>
-            </div>
-          </Link>
-
-          {/* 6. Operaciones TPV sin vincular */}
-          <Link href="/admin/contabilidad/operaciones-tpv">
-            <div className={cn("bg-card rounded-xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.unlinkedOps ?? 0) > 0 ? "border-info/30" : "border-border/50")}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-info/10">
-                  <CreditCard className="w-4 h-4 text-info" />
-                </div>
-              </div>
-              <div className={cn("text-2xl font-bold mb-1", (reconStats?.unlinkedOps ?? 0) > 0 ? "text-info" : "text-foreground")}>
-                {reconStats?.unlinkedOps ?? "—"}
-              </div>
-              <div className="text-xs text-muted-foreground">Ops TPV sin vincular</div>
-              <div className="text-xs text-muted-foreground/60 mt-0.5">Sin pedido ni factura</div>
-            </div>
-          </Link>
+          <MetricCard href="/admin/contabilidad/conciliacion-tpv" icon={<CheckCircle />} tone={(reconStats?.pctReconciled ?? 0) >= 80 ? "success" : (reconStats?.pctReconciled ?? 0) >= 50 ? "warning" : "danger"} label="% TPV conciliado" value={`${reconStats?.pctReconciled ?? "—"}%`} detail={`${reconStats?.reconciledBatches ?? 0}/${reconStats?.totalBatches ?? 0} remesas`} />
+          <MetricCard href="/admin/contabilidad/remesas-tpv" icon={<Clock />} tone={(reconStats?.pendingBatches ?? 0) > 0 ? "warning" : "neutral"} label="Remesas pendientes" value={reconStats?.pendingBatches ?? "—"} detail="Pendientes o por revisar" />
+          <MetricCard href="/admin/contabilidad/remesas-tpv" icon={<AlertTriangle />} tone={(reconStats?.differenceBatches ?? 0) > 0 ? "warning" : "neutral"} label="Con diferencias" value={reconStats?.differenceBatches ?? "—"} detail="Importe ≠ banco" />
+          <MetricCard href="/admin/contabilidad/remesas-tpv" icon={<Package />} tone={(reconStats?.pendingAmount ?? 0) > 0 ? "warning" : "neutral"} label="Importe pend. conciliar" value={reconStats ? fmtEur(reconStats.pendingAmount) : "—"} detail="Total neto remesas" />
+          <MetricCard href="/admin/contabilidad/movimientos-bancarios" icon={<Banknote />} tone={(reconStats?.staleMovementsCount ?? 0) > 0 ? "danger" : "neutral"} label="Ingresos sin conciliar" value={reconStats?.staleMovementsCount ?? "—"} detail={reconStats ? fmtEur(reconStats.staleMovementsAmount) : "—"} />
+          <MetricCard href="/admin/contabilidad/operaciones-tpv" icon={<CreditCard />} tone={(reconStats?.unlinkedOps ?? 0) > 0 ? "info" : "neutral"} label="Ops TPV sin vincular" value={reconStats?.unlinkedOps ?? "—"} detail="Sin pedido ni factura" />
         </div>
       </div>
 
@@ -522,10 +406,9 @@ export default function AccountingDashboard() {
                         </span>
                       </td>
                       <td className="px-4 py-4">
-                        <Badge className={cn("text-xs flex items-center gap-1 w-fit", statusColors[tx.status] ?? "bg-muted text-foreground")}>
-                          <StatusIcon className="w-3 h-3" />
+                        <StatusBadge tone={statusTones[tx.status] ?? "neutral"} icon={<StatusIcon />}>
                           {statusLabels[tx.status] ?? tx.status}
-                        </Badge>
+                        </StatusBadge>
                       </td>
                       <td className="px-4 py-4 text-sm text-muted-foreground">
                         {new Date(tx.createdAt).toLocaleDateString("es-ES")}

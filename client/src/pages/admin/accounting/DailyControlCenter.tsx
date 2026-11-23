@@ -16,6 +16,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge as ToneBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import type { DailyControlData } from "../../../../../server/routers/dailyControl";
@@ -55,17 +57,9 @@ const DONUT_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#0
 function SectionHeader({ icon: Icon, title, color = "blue" }: {
   icon: React.ElementType; title: string; color?: string;
 }) {
-  const gradients: Record<string, string> = {
-    blue:   "",
-    green:  "",
-    amber:  "",
-    red:    "",
-    purple: "",
-    slate:  "from-slate-400 to-slate-600",
-  };
   return (
     <div className="flex items-center gap-2 mb-4">
-      <div className={`w-1 h-5 rounded-full ${gradients[color] ?? gradients.blue}`} />
+      <div className="h-5 w-1 rounded-full bg-primary" />
       <Icon className="w-4 h-4 text-muted-foreground" />
       <h3 className="font-semibold text-foreground text-sm uppercase tracking-wide">{title}</h3>
     </div>
@@ -78,74 +72,70 @@ interface KpiCardProps {
   sub?: string;
   icon: React.ElementType;
   color: string;
-  bg: string;
+  bg?: string;
   pct?: number | null;
   highlight?: boolean;
 }
-function KpiCard({ label, value, sub, icon: Icon, color, bg, pct, highlight }: KpiCardProps) {
+function toneOf(color: string): Tone {
+  if (color.includes("success")) return "success";
+  if (color.includes("warning")) return "warning";
+  if (color.includes("danger")) return "danger";
+  if (color.includes("info")) return "info";
+  if (color.includes("primary")) return "brand";
+  return "neutral";
+}
+function KpiCard({ label, value, sub, icon: Icon, color, pct, highlight }: KpiCardProps) {
   const pctUp   = pct !== null && pct !== undefined && pct > 0;
   const pctDown = pct !== null && pct !== undefined && pct < 0;
+  const pctNode = pct !== null && pct !== undefined ? (
+    <span className={cn("mr-2 inline-flex items-center gap-0.5 font-medium", pctUp ? "text-success" : pctDown ? "text-danger" : "text-muted-foreground")}>
+      {pctUp ? <ArrowUpRight className="h-3 w-3" /> : pctDown ? <ArrowDownRight className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+      {pct === 0 ? "sin cambio" : `${Math.abs(pct)}% vs ayer`}
+    </span>
+  ) : null;
   return (
-    <div className={cn(
-      "bg-card rounded-xl border border-border/50 p-5 flex flex-col gap-3 transition-shadow hover:shadow-md",
-      highlight && "ring-2 ring-info/40",
-    )}>
-      <div className="flex items-start justify-between">
-        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", bg)}>
-          <Icon className={cn("w-5 h-5", color)} />
-        </div>
-        {pct !== null && pct !== undefined && (
-          <span className={cn(
-            "text-xs font-medium flex items-center gap-0.5",
-            pctUp ? "text-success" : pctDown ? "text-danger" : "text-muted-foreground",
-          )}>
-            {pctUp   ? <ArrowUpRight className="w-3 h-3" />
-           : pctDown ? <ArrowDownRight className="w-3 h-3" />
-           :           <Minus className="w-3 h-3" />}
-            {pct === 0 ? "sin cambio" : `${Math.abs(pct)}% vs ayer`}
-          </span>
-        )}
-      </div>
-      <div>
-        <p className="text-2xl font-bold tracking-tight text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground mt-0.5">{label}</p>
-        {sub && <p className="text-xs text-muted-foreground/70 mt-0.5">{sub}</p>}
-      </div>
-    </div>
+    <MetricCard
+      icon={<Icon />}
+      tone={toneOf(color)}
+      label={label}
+      value={value}
+      detail={<>{pctNode}{sub}</>}
+      active={highlight}
+    />
   );
 }
 
 function StatusBadge({ status, type }: { status: string; type: "reservation" | "tpv" }) {
   if (type === "tpv") {
-    const map: Record<string, [string, string]> = {
-      paid:      ["Cobrado",   "bg-success/10 text-success"],
-      pending:   ["Pendiente", "bg-warning/10 text-warning"],
-      cancelled: ["Anulado",   "bg-danger/10 text-danger"],
-      refunded:  ["Reembolso", "bg-info/10 text-info"],
+    const map: Record<string, [string, Tone]> = {
+      paid:      ["Cobrado",   "success"],
+      pending:   ["Pendiente", "warning"],
+      cancelled: ["Anulado",   "danger"],
+      refunded:  ["Reembolso", "info"],
     };
-    const [label, cls] = map[status] ?? [status, "bg-muted text-muted-foreground"];
-    return <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full", cls)}>{label}</span>;
+    const [label, tone] = map[status] ?? [status, "neutral"];
+    return <ToneBadge tone={tone}>{label}</ToneBadge>;
   }
-  const map: Record<string, [string, string]> = {
-    paid:            ["Pagado",        "bg-success/10 text-success"],
-    pending_payment: ["Pend. pago",    "bg-warning/10 text-warning"],
-    draft:           ["Borrador",      "bg-muted text-muted-foreground"],
-    cancelled:       ["Cancelada",     "bg-danger/10 text-danger"],
-    failed:          ["Fallida",       "bg-danger/10 text-danger"],
+  const map: Record<string, [string, Tone]> = {
+    paid:            ["Pagado",        "success"],
+    pending_payment: ["Pend. pago",    "warning"],
+    draft:           ["Borrador",      "neutral"],
+    cancelled:       ["Cancelada",     "danger"],
+    failed:          ["Fallida",       "danger"],
   };
-  const [label, cls] = map[status] ?? [status, "bg-muted text-muted-foreground"];
-  return <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full", cls)}>{label}</span>;
+  const [label, tone] = map[status] ?? [status, "neutral"];
+  return <ToneBadge tone={tone}>{label}</ToneBadge>;
 }
 
 function PaymentBadge({ status }: { status: string }) {
-  const map: Record<string, [string, string]> = {
-    PAGADO:               ["Pagado",       "bg-success/10 text-success"],
-    PENDIENTE:            ["Pendiente",    "bg-warning/10 text-warning"],
-    PAGO_PARCIAL:         ["Parcial",      "bg-warning/10 text-warning"],
-    PENDIENTE_VALIDACION: ["Validando",    "bg-info/10 text-info"],
+  const map: Record<string, [string, Tone]> = {
+    PAGADO:               ["Pagado",       "success"],
+    PENDIENTE:            ["Pendiente",    "warning"],
+    PAGO_PARCIAL:         ["Parcial",      "warning"],
+    PENDIENTE_VALIDACION: ["Validando",    "info"],
   };
-  const [label, cls] = map[status] ?? [status, "bg-muted text-muted-foreground"];
-  return <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full", cls)}>{label}</span>;
+  const [label, tone] = map[status] ?? [status, "neutral"];
+  return <ToneBadge tone={tone}>{label}</ToneBadge>;
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -241,45 +231,43 @@ export default function DailyControlCenter() {
   return (
     <AdminLayout title="Centro de Control Diario">
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Centro de Control Diario</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Informe económico-operativo en tiempo real · <span className="font-medium text-foreground">{fmtDate(date)}</span>
-          </p>
-        </div>
-        {/* Date controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="icon" className="h-9 w-9"
-            onClick={() => setDate(d => offsetDate(d, -1))}>
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <Button variant="outline" size="icon" className="h-9 w-9"
-            onClick={() => setDate(d => offsetDate(d, 1))}
-            disabled={date >= today()}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2"
-            onClick={() => setDate(today())}>
-            Hoy
-          </Button>
-          <Button variant="outline" size="icon" className="h-9 w-9"
-            onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={cn("w-4 h-4", isFetching && "animate-spin")} />
-          </Button>
-          {d && (
-            <span className="text-xs text-muted-foreground hidden sm:block">
-              Act. {new Date(d.lastUpdatedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-        </div>
-      </div>
+      <PanelPageHeader
+        icon={<Activity />}
+        title="Centro de Control Diario"
+        description={<>Informe económico-operativo en tiempo real · <span className="font-medium text-foreground">{fmtDate(date)}</span></>}
+        actions={
+          <>
+            <Button variant="outline" size="icon" className="h-9 w-9"
+              onClick={() => setDate(d => offsetDate(d, -1))}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <Button variant="outline" size="icon" className="h-9 w-9"
+              onClick={() => setDate(d => offsetDate(d, 1))}
+              disabled={date >= today()}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2"
+              onClick={() => setDate(today())}>
+              Hoy
+            </Button>
+            <Button variant="outline" size="icon" className="h-9 w-9"
+              onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={cn("w-4 h-4", isFetching && "animate-spin")} />
+            </Button>
+            {d && (
+              <span className="text-xs text-muted-foreground hidden sm:block">
+                Act. {new Date(d.lastUpdatedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </>
+        }
+      />
 
       {/* ── KPI Cards ────────────────────────────────────────────────────── */}
       <section className="mb-8">
@@ -566,7 +554,7 @@ export default function DailyControlCenter() {
                         <div className="flex items-center gap-1.5">
                           <span className={cn(
                             "text-xs font-bold px-1 py-0.5 rounded uppercase",
-                            op.type === "tpv" ? "bg-primary/10 text-primary" : "bg-info/10 text-info",
+                            op.type === "tpv" ? "bg-primary/10 text-primary" : "info",
                           )}>
                             {op.type === "tpv" ? "TPV" : "RES"}
                           </span>
@@ -713,14 +701,14 @@ export default function DailyControlCenter() {
                   {cashFlow.events
                     .filter(e => cashFilter === "all" || e.kind === cashFilter)
                     .map((e, i) => {
-                      const kindMap: Record<string, [string, string]> = {
-                        cobro_reserva: ["Cobro reserva",   "bg-success/10 text-success"],
-                        cobro_tpv:     ["Cobro TPV",       "bg-success/10 text-success"],
-                        devolucion:    ["Devolución",      "bg-danger/10 text-danger"],
-                        anulacion:     ["Anulación",       "bg-warning/10 text-warning"],
-                        factura:       ["Factura emitida", "bg-info/10 text-info"],
-                        caja_in:       ["Entrada caja",    "bg-success/10 text-success"],
-                        caja_out:      ["Salida caja",     "bg-danger/10 text-danger"],
+                      const kindMap: Record<string, [string, Tone]> = {
+                        cobro_reserva: ["Cobro reserva",   "success"],
+                        cobro_tpv:     ["Cobro TPV",       "success"],
+                        devolucion:    ["Devolución",      "danger"],
+                        anulacion:     ["Anulación",       "warning"],
+                        factura:       ["Factura emitida", "info"],
+                        caja_in:       ["Entrada caja",    "success"],
+                        caja_out:      ["Salida caja",     "danger"],
                       };
                       const [kindLabel, kindCls] = kindMap[e.kind] ?? [e.kind, "bg-muted text-muted-foreground"];
                       const isNegative = e.amountEur < 0;

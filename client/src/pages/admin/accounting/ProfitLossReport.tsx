@@ -3,6 +3,7 @@
  */
 import { useState, useMemo } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -135,24 +136,22 @@ export default function ProfitLossReport() {
     <AdminLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-info" />
-              Cuenta de Resultados
-            </h1>
-            <p className="text-sm text-muted-foreground">Análisis financiero integrado · EBITDA · Previsión de tesorería</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => reportQ.refetch()} disabled={reportQ.isFetching}>
-              <RefreshCw className={`w-4 h-4 mr-1 ${reportQ.isFetching ? "animate-spin" : ""}`} />
-              Actualizar
-            </Button>
-            <Button variant="outline" size="sm" onClick={exportCSV} disabled={!report}>
-              <Download className="w-4 h-4 mr-1" /> Exportar CSV
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<BarChart3 />}
+          title="Cuenta de Resultados"
+          description="Análisis financiero integrado · EBITDA · Previsión de tesorería"
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={() => reportQ.refetch()} disabled={reportQ.isFetching}>
+                <RefreshCw className={`w-4 h-4 mr-1 ${reportQ.isFetching ? "animate-spin" : ""}`} />
+                Actualizar
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportCSV} disabled={!report}>
+                <Download className="w-4 h-4 mr-1" /> Exportar CSV
+              </Button>
+            </>
+          }
+        />
 
         {/* Filtros + Toggle */}
         <div className="flex flex-wrap gap-4 items-end p-4 bg-muted/30 rounded-lg border">
@@ -179,14 +178,14 @@ export default function ProfitLossReport() {
           <div className="flex items-center gap-2 text-sm">
             <button
               onClick={() => setView("operational")}
-              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${view === "operational" ? "bg-success text-primary-foreground border-success/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${view === "operational" ? "bg-primary text-primary-foreground border-primary" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
               title="Vista operativa: excluye gastos solo fiscales. Refleja el rendimiento real del negocio."
             >
               Vista operativa
             </button>
             <button
               onClick={() => setView("fiscal")}
-              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${view === "fiscal" ? "bg-warning text-primary-foreground border-warning/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${view === "fiscal" ? "bg-primary text-primary-foreground border-primary" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
               title="Vista fiscal/contable: incluye TODOS los gastos. Coherente con la base del Impuesto de Sociedades."
             >
               Vista fiscal
@@ -197,13 +196,13 @@ export default function ProfitLossReport() {
           <div className="ml-auto flex items-center gap-2 text-sm">
             <button
               onClick={() => setConciliatedOnly(false)}
-              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${!conciliatedOnly ? "bg-info text-primary-foreground border-info/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${!conciliatedOnly ? "bg-primary text-primary-foreground border-primary" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
             >
               Incluir pendientes
             </button>
             <button
               onClick={() => setConciliatedOnly(true)}
-              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${conciliatedOnly ? "bg-info text-primary-foreground border-info/40" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
+              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${conciliatedOnly ? "bg-primary text-primary-foreground border-primary" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
             >
               <CheckCircle2 className="w-3 h-3" /> Solo conciliado
             </button>

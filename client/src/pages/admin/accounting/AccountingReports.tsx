@@ -4,6 +4,7 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Link } from "wouter";
 import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
@@ -137,21 +138,16 @@ export default function AccountingReports() {
 
   return (
     <AdminLayout title="Informes de ventas">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-            <BarChart2 className="w-5 h-5 text-primary" />
-            Informes de Contabilidad
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Análisis de ventas, fiscalidad y canales de distribución
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-foreground">
-          <RefreshCw className="w-4 h-4" /> Actualizar
-        </Button>
-      </div>
+      <PanelPageHeader
+        icon={<BarChart2 />}
+        title="Informes de Contabilidad"
+        description="Análisis de ventas, fiscalidad y canales de distribución"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-foreground">
+            <RefreshCw className="w-4 h-4" /> Actualizar
+          </Button>
+        }
+      />
 
       {/* Filtro de fechas */}
       <div className="flex items-center gap-3 mb-6 bg-card border border-border rounded-xl p-4">
