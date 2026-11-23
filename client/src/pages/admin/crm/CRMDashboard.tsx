@@ -53,6 +53,10 @@ import GestoriaExportDialog from "./GestoriaExportDialog";
 import { ProposalLeadButton } from "./ProposalsManager";
 import { CatalogConceptSelector, type CatalogProduct } from "@/components/CatalogConceptSelector";
 import {
+  Globe,
+  Ticket,
+  Store,
+  Handshake,
   Users,
   User,
   FileText,
@@ -362,6 +366,19 @@ function fmtAmount(n: number, format: ReturnType<typeof useI18n>["format"]): str
   if (n === 0) return "";
   return format.currency(n, "EUR", { maximumFractionDigits: 0 });
 }
+
+/** Canal de venta: tono semántico + icono propio (el icono distingue canales que comparten tono). */
+const CHANNEL_META: Record<string, { tone: string; Icon: React.ComponentType<{ className?: string }> }> = {
+  TPV_FISICO: { tone: "text-primary bg-primary/15 border-primary/30", Icon: Store },
+  VENTA_DELEGADA: { tone: "text-foreground/80 bg-foreground/[0.07] border-foreground/20", Icon: Users },
+  ONLINE_DIRECTO: { tone: "text-info bg-info/15 border-info/30", Icon: Globe },
+  ONLINE_ASISTIDO: { tone: "text-success bg-success/15 border-success/30", Icon: Users },
+  TELEFONO: { tone: "text-warning bg-warning/15 border-warning/30", Icon: Phone },
+  EMAIL: { tone: "text-info bg-info/15 border-info/30", Icon: Mail },
+  PARTNER: { tone: "text-primary bg-primary/15 border-primary/30", Icon: Handshake },
+  TICKETING: { tone: "text-danger bg-danger/15 border-danger/30", Icon: Ticket },
+};
+const CHANNEL_FALLBACK = "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]";
 
 const COUNTER_TONE: Record<keyof typeof COUNTER_STYLES, "brand" | "info" | "success" | "warning" | "danger" | "neutral"> = {
   blue: "info", amber: "warning", green: "success", red: "danger", slate: "neutral", orange: "brand", indigo: "brand", violet: "brand", purple: "brand",
@@ -6666,14 +6683,14 @@ export default function CRMDashboard() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosCanales")}</SelectItem>
-                <SelectItem value="TPV_FISICO" className="text-primary text-xs">{t("crmDashboard.tpvPresencial")}</SelectItem>
-                <SelectItem value="ONLINE_DIRECTO" className="text-info text-xs">{t("crmDashboard.onlineDirecto")}</SelectItem>
-                <SelectItem value="ONLINE_ASISTIDO" className="text-info text-xs">{t("crmDashboard.onlineAsistido")}</SelectItem>
-                <SelectItem value="VENTA_DELEGADA" className="text-primary text-xs">{t("crmDashboard.crmDelegado")}</SelectItem>
-                <SelectItem value="TELEFONO" className="text-warning text-xs">{t("crmDashboard.telefono")}</SelectItem>
-                <SelectItem value="EMAIL" className="text-info text-xs">{t("crmDashboard.email")}</SelectItem>
-                <SelectItem value="PARTNER" className="text-warning text-xs">{t("crmDashboard.partner")}</SelectItem>
-                <SelectItem value="TICKETING" className="text-danger text-xs">{t("crmDashboard.ticketing")}</SelectItem>
+                <SelectItem value="TPV_FISICO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TPV_FISICO.tone}`}>{(() => { const I = CHANNEL_META.TPV_FISICO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.tpvPresencial")}</span></SelectItem>
+                <SelectItem value="ONLINE_DIRECTO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.ONLINE_DIRECTO.tone}`}>{(() => { const I = CHANNEL_META.ONLINE_DIRECTO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.onlineDirecto")}</span></SelectItem>
+                <SelectItem value="ONLINE_ASISTIDO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.ONLINE_ASISTIDO.tone}`}>{(() => { const I = CHANNEL_META.ONLINE_ASISTIDO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.onlineAsistido")}</span></SelectItem>
+                <SelectItem value="VENTA_DELEGADA" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.VENTA_DELEGADA.tone}`}>{(() => { const I = CHANNEL_META.VENTA_DELEGADA.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.crmDelegado")}</span></SelectItem>
+                <SelectItem value="TELEFONO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TELEFONO.tone}`}>{(() => { const I = CHANNEL_META.TELEFONO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.telefono")}</span></SelectItem>
+                <SelectItem value="EMAIL" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.EMAIL.tone}`}>{(() => { const I = CHANNEL_META.EMAIL.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.email")}</span></SelectItem>
+                <SelectItem value="PARTNER" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.PARTNER.tone}`}>{(() => { const I = CHANNEL_META.PARTNER.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.partner")}</span></SelectItem>
+                <SelectItem value="TICKETING" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TICKETING.tone}`}>{(() => { const I = CHANNEL_META.TICKETING.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{t("crmDashboard.ticketing")}</span></SelectItem>
                 <SelectItem value="coupon" className="text-warning text-xs">{t("crmDashboard.cuponOrigen")}</SelectItem>
                 <SelectItem value="MANUAL" className="text-foreground/60 text-xs">{t("crmDashboard.manualOtro")}</SelectItem>
                 <SelectItem value="API" className="text-foreground/60 text-xs">{t("crmDashboard.api")}</SelectItem>
@@ -7330,17 +7347,9 @@ export default function CRMDashboard() {
                       {/* Canal */}
                       <td className="px-4 py-3 hidden xl:table-cell">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
-                          res.originSource === "coupon_redemption" ? "text-warning bg-warning/15 border-warning/30" :
-                          res.channel === "TPV_FISICO" ? "text-primary bg-primary/15 border-primary/30" :
-                          res.channel === "VENTA_DELEGADA" ? "text-primary bg-primary/15 border-primary/30" :
-                          res.channel === "ONLINE_DIRECTO" ? "text-info bg-info/15 border-info/30" :
-                          res.channel === "ONLINE_ASISTIDO" ? "text-info bg-info/15 border-info/30" :
-                          res.channel === "TELEFONO" ? "text-warning bg-warning/15 border-warning/30" :
-                          res.channel === "EMAIL" ? "text-info bg-info/15 border-info/30" :
-                          res.channel === "PARTNER" ? "text-warning bg-warning/15 border-warning/30" :
-                          res.channel === "TICKETING" ? "text-danger bg-danger/15 border-danger/30" :
-                          "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
+                          res.originSource === "coupon_redemption" ? "text-warning bg-warning/15 border-warning/30" : (CHANNEL_META[res.channel ?? ""]?.tone ?? CHANNEL_FALLBACK)
                         }`}>
+                          {res.originSource !== "coupon_redemption" && CHANNEL_META[res.channel ?? ""] ? (() => { const I = CHANNEL_META[res.channel ?? ""].Icon; return <I className="h-3 w-3 shrink-0" aria-hidden />; })() : null}
                           {res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? t("crmReservations.cupon")}` :
                            res.channel === "TPV_FISICO" ? t("crmReservations.tpv") :
                            res.channel === "VENTA_DELEGADA" ? t("crmReservations.delegada") :
