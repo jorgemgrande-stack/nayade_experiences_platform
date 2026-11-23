@@ -221,7 +221,7 @@ describe("pago del cliente y migración", () => {
     const routers = read("server/routers.ts");
     const i = routers.indexOf("checkoutExtras.assertConsentAccepted");
     expect(i).toBeGreaterThan(0);
-    expect(i).toBeLessThan(routers.indexOf("const merchantOrder = generateMerchantOrder();", i));
+    expect(i).toBeLessThan(routers.indexOf("merchantOrder = generateMerchantOrder();", i));
     expect(routers).toContain("checkoutExtras.recordCheckoutExtras(merchantOrder");
   });
   it("la migración solo añade ajustes vacíos (INSERT IGNORE), sin tocar el esquema", () => {
