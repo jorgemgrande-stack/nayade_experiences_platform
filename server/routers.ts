@@ -2687,7 +2687,13 @@ export const appRouter = router({
           // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
           legoPackLineIds: z.array(z.number()).optional(),
           legoPackLinePeople: z.record(z.string(), z.number()).optional(),
+          /** Nombres de los participantes (opcional; solo se guardan si la empresa lo ha activado). */
+          participants: z.array(z.string().max(120)).max(100).optional(),
         })).min(1).max(20),
+        /** Idioma de la web en que compra (correos y páginas de retorno). */
+        locale: z.string().max(12).optional(),
+        /** Aceptación de condiciones: el servidor la exige solo si la empresa lo ha configurado. */
+        consentAccepted: z.boolean().optional(),
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
         customerPhone: z.string().optional(),
@@ -2710,10 +2716,14 @@ export const appRouter = router({
           if (!(await stripeAvailableForPublic())) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago con Stripe no está disponible en esta empresa." });
         } else if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         const { validateBuyer, normalizeSpanishTaxId, soldOutMessage, isPurchasable, orderNotes } = await import("../shared/shopOrders");
-        const buyerErrors = validateBuyer({ name: input.customerName, email: input.customerEmail, phone: input.customerPhone, wantsInvoice: !!input.billing, nif: input.billing?.nif, billingName: input.billing?.name, billingAddress: input.billing?.address });
+        const buyerErrors = validateBuyer({ name: input.customerName, email: input.customerEmail, phone: input.customerPhone, wantsInvoice: !!input.billing, nif: input.billing?.nif, billingName: input.billing?.name, billingAddress: input.billing?.address }, input.locale);
         const firstBuyerError = Object.values(buyerErrors)[0];
         if (firstBuyerError) throw new TRPCError({ code: "BAD_REQUEST", message: firstBuyerError });
         const billing = input.billing ? { nif: normalizeSpanishTaxId(input.billing.nif)!, ...(input.billing.name?.trim() ? { name: input.billing.name.trim() } : {}), ...(input.billing.address?.trim() ? { address: input.billing.address.trim() } : {}) } : null;
+        // Condiciones de la empresa: sin configurar no se exige nada (comportamiento de siempre)
+        const checkoutExtras = await import("./checkoutExtrasDb");
+        const checkoutCfg = await checkoutExtras.getCheckoutConfig();
+        checkoutExtras.assertConsentAccepted(checkoutCfg, input.consentAccepted, input.locale);
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
         const storefront = await (await import("./storefront")).getStorefront();
         // 1. Calcular el importe total de todos los artículos en backend
@@ -2904,6 +2914,17 @@ export const appRouter = router({
         }
         // Datos fiscales del comprador: pasan a la factura y a su ficha del CRM cuando se confirma el pago
         if (billing) await (await import("./shopOrdersDb")).recordCheckoutDetails(merchantOrder, billing);
+        // Idioma de quien compra, aceptación de condiciones (fecha, huella del texto, IP) y participantes
+        try {
+          await checkoutExtras.recordCheckoutExtras(merchantOrder, {
+            locale: input.locale ? checkoutExtras.uiLocaleOf(input.locale) : null,
+            consent: checkoutCfg.consentRequired && input.consentAccepted ? checkoutExtras.buildConsent(checkoutCfg, input.locale, cartClientIp ?? null) : null,
+            participantsByLine: checkoutCfg.participantsEnabled ? input.items.map((i) => i.participants) : [],
+            quantities: input.items.map((i) => i.people),
+          });
+        } catch (e) {
+          console.error("[Checkout] No se pudieron guardar los datos añadidos del pedido:", (e as Error).message);
+        }
         // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor
         let finalAmountCents = totalAmountCents;
         if (input.discountCodeId) {
