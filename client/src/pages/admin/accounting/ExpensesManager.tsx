@@ -31,8 +31,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Pencil, Trash2, Search, Filter, Upload, FileText, X, Euro,
   TrendingDown, Calendar, ChevronDown, Banknote, LinkIcon,
-  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock, ExternalLink, Eye, Calculator, Download,
-} from "lucide-react";
+  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock, ExternalLink, Eye, Calculator, Download, MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useLocation } from "wouter";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -560,54 +560,36 @@ export default function ExpensesManager() {
           description={<>{total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>{" · "}IVA soportado: <strong className="text-success">{totalIvaSoportado.toFixed(2)} €</strong></>}
           actions={
             <>
-              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/categorias")}>
-                Categorías
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/proveedores")}>
-                Proveedores
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/recurrentes")}>
-                Recurrentes
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => syncEmailMut.mutate()}
-                disabled={syncEmailMut.isPending}
-                className="gap-2 border-info/40 text-info hover:text-info hover:bg-info/10"
-              >
-                {syncEmailMut.isPending
-                  ? <RefreshCw className="w-4 h-4 animate-spin" />
-                  : <Mail className="w-4 h-4" />}
-                {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (await confirmAction({ description: "¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar." })) {
-                    backfillMut.mutate();
-                  }
-                }}
-                disabled={backfillMut.isPending}
-                className="gap-2 border-warning/40 text-warning hover:text-warning hover:bg-warning/10"
-                title="Estima base e IVA de los gastos antiguos sin desglose fiscal"
-              >
-                {backfillMut.isPending
-                  ? <RefreshCw className="w-4 h-4 animate-spin" />
-                  : <Calculator className="w-4 h-4" />}
-                {backfillMut.isPending ? "Recalculando..." : "Recalcular fiscalidad"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setEmailLogsOpen(true)}
-                className="text-muted-foreground hover:text-foreground text-xs px-2"
-                title="Ver historial de emails procesados"
-              >
-                <Clock className="w-3.5 h-3.5 mr-1" />
-                Historial
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5" aria-label="Más acciones de gastos">
+                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" /> Más
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setLocation("/admin/contabilidad/gastos/categorias")}>Categorías</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setLocation("/admin/contabilidad/gastos/proveedores")}>Proveedores</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setLocation("/admin/contabilidad/gastos/recurrentes")}>Recurrentes</DropdownMenuItem>
+                  <DropdownMenuItem disabled={syncEmailMut.isPending} onSelect={() => syncEmailMut.mutate()}>
+                    {syncEmailMut.isPending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Mail className="mr-2 h-4 w-4" aria-hidden="true" />}
+                    {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={backfillMut.isPending}
+                    onSelect={async () => {
+                      if (await confirmAction({ description: "¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar." })) {
+                        backfillMut.mutate();
+                      }
+                    }}
+                  >
+                    {backfillMut.isPending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Calculator className="mr-2 h-4 w-4" aria-hidden="true" />}
+                    {backfillMut.isPending ? "Recalculando..." : "Recalcular fiscalidad"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setEmailLogsOpen(true)}>
+                    <Clock className="mr-2 h-4 w-4" aria-hidden="true" /> Historial de emails procesados
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="outline"
                 size="sm"
