@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { AlertCircle, ArrowLeft, ExternalLink, Loader2, Mail, Package, Phone, Receipt, Search, ShoppingBag, User } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Mail, Package, Phone, Receipt, Search, ShoppingBag, User } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { PanelDataList, PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { SegmentedTabs } from "@/components/admin/PanelVisual";
 import { TONE_TEXT } from "@/lib/panelTones";
 import { toastError } from "@/lib/errorMessage";
 import { ORDER_STAGE_FLOW, STAGES_NOTIFIED, type OrderStage } from "@shared/shopOrders";
@@ -72,18 +73,17 @@ export function OnlineOrdersList() {
             <Input aria-label={t("shopOrders.list.searchLabel")} placeholder={t("shopOrders.list.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={t("shopOrders.list.filterByStatus")}>
-          {FILTERS.map((f) => (
-            <button key={f} type="button" aria-pressed={stage === f} onClick={() => setStage(f)} className={cn("rounded-full border px-3 py-1 text-xs font-medium", stage === f ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
-              {f === "all" ? t("shopOrders.list.all") : t(`shopOrders.stage.${f}`)} ({f === "all" ? all : counts?.[f] ?? 0})
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs
+          label={t("shopOrders.list.filterByStatus")}
+          value={stage}
+          onChange={setStage}
+          options={FILTERS.map((f) => ({ value: f, label: f === "all" ? t("shopOrders.list.all") : t(`shopOrders.stage.${f}`), count: f === "all" ? all : counts?.[f] ?? 0 }))}
+        />
 
         {q.isLoading ? (
           <div className="flex justify-center py-16" role="status" aria-label={t("shopOrders.list.loading")}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : q.error ? (
-          <p className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{t("shopOrders.list.loadError")}</p>
+          <PanelError error={q.error} onRetry={() => q.refetch()} title={t("shopOrders.list.loadError")} />
         ) : !q.data?.items.length ? (
           <PanelEmpty
             icon={<ShoppingBag />}
@@ -136,6 +136,8 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
         <Link href="/admin/tienda/pedidos" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />{t("shopOrders.detail.back")}</Link>
         {q.isLoading ? (
           <div className="flex justify-center py-16" role="status" aria-label={t("shopOrders.list.loading")}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : q.isError ? (
+          <PanelError error={q.error} onRetry={() => q.refetch()} title={t("shopOrders.list.loadError")} />
         ) : !o ? (
           <PanelEmpty icon={<ShoppingBag />} title={t("shopOrders.detail.notFound", { order: merchantOrder })}>
             <Button asChild size="sm" variant="outline"><Link href="/admin/tienda/pedidos">{t("shopOrders.detail.backToOrders")}</Link></Button>

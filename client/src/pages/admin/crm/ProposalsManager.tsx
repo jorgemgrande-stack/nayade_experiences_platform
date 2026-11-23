@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
-import { TONE_BADGE } from "@/lib/panelTones";
+import { PanelPageHeader, StatusBadge as PanelStatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { SegmentedTabs } from "@/components/admin/PanelVisual";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -24,6 +27,7 @@ import {
 import { toast } from "sonner";
 import {
   Plus,
+  Search,
   Send,
   Eye,
   Trash2,
@@ -44,23 +48,20 @@ import { useI18n } from "@/i18n/I18nProvider";
 
 type ProposalStatus = "borrador" | "enviado" | "visualizado" | "aceptado" | "rechazado" | "expirado";
 
-const STATUS_MAP: Record<ProposalStatus, { className: string }> = {
-  borrador: { className: "bg-gray-500/15 text-gray-400 border-gray-500/30" },
-  enviado: { className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-  visualizado: { className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  aceptado: { className: TONE_BADGE.success },
-  rechazado: { className: "bg-red-500/15 text-red-400 border-red-500/30" },
-  expirado: { className: "bg-gray-600/15 text-gray-500 border-gray-600/30" },
+// Tono por significado (no color fijo): borrador/expirado neutros, enviado informa, visualizado avisa
+const STATUS_TONE: Record<ProposalStatus, Tone> = {
+  borrador: "neutral",
+  enviado: "info",
+  visualizado: "warning",
+  aceptado: "success",
+  rechazado: "danger",
+  expirado: "neutral",
 };
 
 function StatusBadge({ status }: { status: ProposalStatus }) {
   const { t } = useI18n();
-  const { className } = STATUS_MAP[status] ?? STATUS_MAP.borrador;
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}>
-      {t(`crmProposals.status.${STATUS_MAP[status] ? status : "borrador"}`)}
-    </span>
-  );
+  const known = status in STATUS_TONE;
+  return <PanelStatusBadge tone={known ? STATUS_TONE[status] : "neutral"}>{t(`crmProposals.status.${known ? status : "borrador"}`)}</PanelStatusBadge>;
 }
 
 // ─── Item row component ────────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ function ItemsEditor({
                   showBadge
                 />
               </div>
-              <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-300 mt-1 shrink-0">
+              <button type="button" onClick={() => removeItem(idx)} className="text-destructive hover:text-destructive/80 mt-1 shrink-0">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -187,7 +188,7 @@ function ItemsEditor({
               <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(idx, { quantity: Number(e.target.value) })} className="h-8 text-xs text-center" />
               <Input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => updateItem(idx, { unitPrice: Number(e.target.value) })} className="h-8 text-xs text-right" />
               <div className="text-right text-xs text-foreground/70 font-medium pr-0.5">{format.currency(item.total)}</div>
-              <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-300 flex justify-end">
+              <button type="button" onClick={() => removeItem(idx)} className="text-destructive hover:text-destructive/80 flex justify-end">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -407,7 +408,7 @@ function ProposalFormModal({
                   key={m}
                   type="button"
                   onClick={() => setForm(f => ({ ...f, mode: m }))}
-                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${form.mode === m ? "bg-blue-600 border-blue-500 text-white" : "border-foreground/20 text-foreground/60 hover:border-foreground/40"}`}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${form.mode === m ? "bg-primary border-primary text-primary-foreground" : "border-foreground/20 text-foreground/60 hover:border-foreground/40"}`}
                 >
                   {m === "configurable" ? t("crmProposals.form.modeConfigurable") : t("crmProposals.form.modeMulti")}
                 </button>
@@ -479,7 +480,7 @@ function ProposalFormModal({
                           />
                           {t("crmProposals.form.recommended")}
                         </label>
-                        <button type="button" onClick={() => removeOption(idx)} className="text-red-400 hover:text-red-300 shrink-0">
+                        <button type="button" onClick={() => removeOption(idx)} className="text-destructive hover:text-destructive/80 shrink-0">
                           <X className="w-4 h-4" />
                         </button>
                       </div>
@@ -736,235 +737,72 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
     : (((listQuery.data as { rows: ProposalRow[]; total: number } | undefined)?.rows) ?? []);
   const total: number = leadId ? rows.length : (((listQuery.data as { rows: ProposalRow[]; total: number } | undefined)?.total) ?? 0);
 
-  // ─── Modo global (página /admin/crm/propuestas) ───────────────────────────
-  if (!leadId) {
+  // Acciones de una propuesta (mismas reglas de habilitación en el listado global y en el de un lead)
+  const rowActions = (p: ProposalRow) => {
+    const canSend = ["borrador", "enviado", "visualizado"].includes(p.status);
+    const canConvert = ["enviado", "visualizado", "aceptado"].includes(p.status) && !p.convertedToQuoteId;
+    const btn = "h-8 w-8 p-0 text-muted-foreground hover:text-foreground";
+    const label = (text: string) => `${text}: ${p.proposalNumber}`;
     return (
-      <div className="-mx-4 sm:-mx-6 -mt-4 sm:-mt-6 min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
-        {/* Header — igual que CRMDashboard */}
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground">{t("crmProposals.list.title")}</h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">{t("crmProposals.list.subtitle")}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Barra búsqueda + filtros + botón — igual que CRMDashboard */}
-        <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap gap-2 items-center">
-          <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-sm">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={t("crmProposals.list.searchPlaceholder")}
-              className="w-full pl-9 pr-3 h-9 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
-            />
-          </div>
-          <div className="flex gap-1 flex-wrap">
-            {(["all", "borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado"] as const).map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${filterStatus === s ? "bg-orange-600 text-white shadow-lg shadow-orange-900/30" : "text-foreground/60 hover:text-foreground hover:bg-foreground/[0.05]"}`}
-              >
-                {s === "all" ? t("crmProposals.list.all") : t(`crmProposals.status.${s}`)}
-              </button>
-            ))}
-          </div>
-          <Button
-            size="sm"
-            onClick={() => setLeadPickerOpen(true)}
-            className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white sm:ml-auto"
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> {t("crmProposals.list.newProposal")}
-          </Button>
-        </div>
-
-        {/* Tabla */}
-        <div className="px-4 sm:px-6 pb-8">
-          {listQuery.isLoading ? (
-            <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 animate-spin text-foreground/40" /></div>
-          ) : listQuery.error ? (
-            <div className="text-center py-8 text-red-400 text-sm">{t("crmProposals.list.errorPrefix", { message: (listQuery.error as { message?: string })?.message ?? t("crmProposals.list.unknownError") })}</div>
-          ) : rows.length === 0 ? (
-            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl flex flex-col items-center py-14 text-foreground/30">
-              <FileText className="w-10 h-10 mb-3 opacity-30" />
-              <p className="text-sm">{filterStatus !== "all" ? t("crmProposals.list.emptyStatus", { status: t(`crmProposals.status.${filterStatus}`) }) : t("crmProposals.list.emptyAll")}</p>
-            </div>
-          ) : (
-            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
-              {selected.size > 0 && (
-                <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
-                  <span className="text-xs text-blue-300 font-medium shrink-0">{t("crmProposals.list.selected", { n: selected.size })}</span>
-                  <select value={bulkStatus} onChange={e => { if (e.target.value) bulkUpdateStatusMutation.mutate({ ids: Array.from(selected), status: e.target.value as ProposalStatus }); }} disabled={bulkUpdateStatusMutation.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                    <option value="">{t("crmProposals.list.changeStatus")}</option>
-                    <option value="borrador">{t("crmProposals.status.borrador")}</option>
-                    <option value="enviado">{t("crmProposals.status.enviado")}</option>
-                    <option value="aceptado">{t("crmProposals.status.aceptado")}</option>
-                    <option value="rechazado">{t("crmProposals.status.rechazado")}</option>
-                    <option value="expirado">{t("crmProposals.status.expirado")}</option>
-                  </select>
-                  <button onClick={async () => { if ((await confirmAction({ description: t("crmProposals.list.bulkDeleteConfirm", { n: selected.size }), destructive: true }))) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }} disabled={bulkDeleteMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
-                    <Trash2 className="w-3.5 h-3.5" /> {t("crmProposals.list.delete")}
-                  </button>
-                  <button onClick={() => setSelected(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
-                </div>
-              )}
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px]">
-                  <thead>
-                    <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                      <th className="w-10 px-3 py-3"><input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={rows.length > 0 && selected.size === rows.length} onChange={e => setSelected(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} /></th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colRef")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colClient")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmProposals.list.colTitle")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colStatus")}</th>
-                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colTotal")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmProposals.list.colDate")}</th>
-                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colActions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(p => (
-                      <tr key={p.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selected.has(p.id) ? "bg-blue-500/5" : ""}`}>
-                        <td className="w-10 px-3 py-3"><input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} /></td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm font-mono font-medium text-violet-400">{p.proposalNumber}</span>
-                          <div className="text-[10px] text-foreground/30 mt-0.5">{t(`crmProposals.mode.${p.mode}`)}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-sm font-medium text-foreground/90">{p.leadName ?? t("crmProposals.list.leadFallback", { id: p.leadId })}</div>
-                          {p.leadEmail && <div className="text-xs text-foreground/40 truncate max-w-[160px]">{p.leadEmail}</div>}
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <span className="text-sm text-foreground/80 line-clamp-1">{p.title}</span>
-                          {p.convertedToQuoteId && <div className="text-[10px] text-emerald-400 mt-0.5 flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" /> {t("crmProposals.list.convertedToQuote")}</div>}
-                        </td>
-                        <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
-                        <td className="px-4 py-3 text-right"><span className="text-sm font-bold text-foreground">{format.currency(parseFloat(p.total ?? "0"))}</span></td>
-                        <td className="px-4 py-3 hidden sm:table-cell">
-                          <div className="text-xs text-foreground/50">
-                            {p.sentAt ? <span className="text-info">{t("crmProposals.list.sentOn", { date: format.date(p.sentAt) })}</span> : format.date(p.createdAt)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0" title={p.publicUrl ? t("crmProposals.list.viewPublic") : t("crmProposals.list.preview")} disabled={generateLinkMutation.isPending} onClick={() => handlePreview(p)}><Eye className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0" title={p.status === "borrador" ? t("crmProposals.list.edit") : t("crmProposals.list.onlyDraft")} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}><Pencil className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-green-300 h-7 w-7 p-0" title={t("crmProposals.list.sendEmail")} disabled={!["borrador", "enviado", "visualizado"].includes(p.status) || sendMutation.isPending} onClick={() => handleSend(p.id)}><Send className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0" title={p.convertedToQuoteId ? t("crmProposals.list.alreadyConverted") : t("crmProposals.list.convertToQuote")} disabled={!["enviado", "visualizado", "aceptado"].includes(p.status) || !!p.convertedToQuoteId} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground/70 h-7 w-7 p-0" title={p.publicUrl ? t("crmProposals.list.copyLink") : t("crmProposals.list.noLinkYet")} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success(t("crmProposals.list.linkCopied")); }}><Copy className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" title={t("crmProposals.list.delete")} onClick={() => setDeleteConfirm(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {total > PAGE_SIZE && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
-                  <span className="text-sm text-foreground/50">{t("crmProposals.list.pageOf", { page: page + 1, pages: Math.ceil(total / PAGE_SIZE), total })}</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">{t("crmProposals.list.prev")}</button>
-                    <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">{t("crmProposals.list.next")}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Modales globales */}
-        {leadPickerOpen && <LeadPickerModal onClose={() => setLeadPickerOpen(false)} onPicked={(id, name) => { setLeadPickerOpen(false); setCreateModal({ open: true, leadId: id, leadName: name }); }} />}
-        {deleteConfirm !== null && (
-          <Dialog open onOpenChange={() => setDeleteConfirm(null)}>
-            <DialogContent className="w-[95vw] max-w-sm">
-              <DialogHeader><DialogTitle>{t("crmProposals.list.deleteTitle")}</DialogTitle></DialogHeader>
-              <p className="text-sm text-foreground/60">{t("crmProposals.list.deleteIrreversible")}</p>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setDeleteConfirm(null)}>{t("crmProposals.list.cancel")}</Button>
-                <Button variant="destructive" onClick={() => handleDelete(deleteConfirm)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : t("crmProposals.list.delete")}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
-        {createModal?.open && <ProposalFormModal leadId={createModal.leadId} leadName={createModal.leadName} onClose={() => setCreateModal(null)} onSaved={invalidate} />}
-        {editModal !== null && getByIdQuery.data && (
-          <ProposalFormModal leadId={getByIdQuery.data.leadId} leadName={t("crmProposals.list.leadFallback", { id: getByIdQuery.data.leadId })} proposal={{ id: getByIdQuery.data.id, title: getByIdQuery.data.title, description: getByIdQuery.data.description, mode: getByIdQuery.data.mode, items: (getByIdQuery.data.items ?? []) as ItemLine[], discount: getByIdQuery.data.discount, validUntil: getByIdQuery.data.validUntil, conditions: getByIdQuery.data.conditions, notes: getByIdQuery.data.notes, options: getByIdQuery.data.options.map(o => ({ id: o.id, title: o.title, description: o.description, items: (o.items ?? []) as ItemLine[], discount: o.discount, isRecommended: o.isRecommended, sortOrder: o.sortOrder })) }} onClose={() => setEditModal(null)} onSaved={invalidate} />
-        )}
-        {convertModal !== null && (() => { const p = rows.find((x: any) => x.id === convertModal); if (!p) return null; return <ConvertModal proposal={{ id: p.id, proposalNumber: p.proposalNumber, mode: p.mode }} onClose={() => setConvertModal(null)} onConverted={invalidate} />; })()}
+      <div className="flex items-center justify-end gap-0.5">
+        <Button type="button" size="sm" variant="ghost" className={btn} title={p.publicUrl ? t("crmProposals.list.viewPublic") : t("crmProposals.list.preview")} aria-label={label(p.publicUrl ? t("crmProposals.list.viewPublic") : t("crmProposals.list.preview"))} disabled={generateLinkMutation.isPending} onClick={() => handlePreview(p)}><Eye className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button type="button" size="sm" variant="ghost" className={btn} title={p.status === "borrador" ? t("crmProposals.list.edit") : t("crmProposals.list.onlyDraft")} aria-label={label(t("crmProposals.list.edit"))} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}><Pencil className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button type="button" size="sm" variant="ghost" className={btn} title={t("crmProposals.list.sendEmail")} aria-label={label(t("crmProposals.list.sendEmail"))} disabled={!canSend || sendMutation.isPending} onClick={() => handleSend(p.id)}><Send className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button type="button" size="sm" variant="ghost" className={btn} title={p.convertedToQuoteId ? t("crmProposals.list.alreadyConverted") : t("crmProposals.list.convertToQuote")} aria-label={label(t("crmProposals.list.convertToQuote"))} disabled={!canConvert} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button type="button" size="sm" variant="ghost" className={btn} title={p.publicUrl ? t("crmProposals.list.copyLink") : t("crmProposals.list.noLinkYet")} aria-label={label(t("crmProposals.list.copyLink"))} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success(t("crmProposals.list.linkCopied")); }}><Copy className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" title={t("crmProposals.list.delete")} aria-label={label(t("crmProposals.list.delete"))} onClick={() => setDeleteConfirm(p.id)}><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
       </div>
     );
-  }
+  };
 
-  // ─── Modo incrustado (dentro de un lead) ──────────────────────────────────
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-foreground/70">{t("crmProposals.list.embeddedTitle", { suffix: leadName ? `— ${leadName}` : "" })}</h3>
-        <Button size="sm" variant="outline" className="text-xs" onClick={() => { if (leadId && leadName) setCreateModal({ open: true, leadId, leadName }); else setLeadPickerOpen(true); }}>
-          <Plus className="w-3.5 h-3.5 mr-1" /> {t("crmProposals.list.newProposal")}
-        </Button>
+  // Cliente (lead) de la propuesta: enlaza al listado de leads filtrado por él
+  const leadCell = (p: ProposalRow) => {
+    const name = p.leadName ?? t("crmProposals.list.leadFallback", { id: p.leadId });
+    const q = p.leadEmail ?? p.leadName;
+    return (
+      <div className="min-w-0">
+        {q ? (
+          <Link href={`/admin/crm?tab=leads&search=${encodeURIComponent(q)}`} aria-label={t("crmProposals.list.openLead", { name })} className="text-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">{name}</Link>
+        ) : (
+          <div className="text-sm font-medium text-foreground">{name}</div>
+        )}
+        {p.leadEmail && <div className="max-w-[200px] truncate text-xs text-muted-foreground">{p.leadEmail}</div>}
       </div>
-      {listQuery.isLoading ? (
-        <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-foreground/40" /></div>
-      ) : listQuery.error ? (
-        <div className="text-center py-8 text-red-400 text-sm">{t("crmProposals.list.errorPrefix", { message: (listQuery.error as { message?: string })?.message ?? "" })}</div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-8 text-foreground/30 text-sm"><FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />{t("crmProposals.list.emptyAll")}</div>
-      ) : (
-        <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px]">
-              <thead>
-                <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colRefShort")}</th>
-                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmProposals.list.colTitle")}</th>
-                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colStatus")}</th>
-                  <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colTotal")}</th>
-                  <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmProposals.list.colActions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(p => (
-                  <tr key={p.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors">
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-mono text-violet-400">{p.proposalNumber}</span>
-                      <div className="text-[10px] text-foreground/30 mt-0.5">{t(`crmProposals.mode.${p.mode}`)}</div>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <span className="text-sm text-foreground/80 line-clamp-1">{p.title}</span>
-                      {p.convertedToQuoteId && <div className="text-[10px] text-emerald-400 mt-0.5">{t("crmProposals.list.toQuote", { id: p.convertedToQuoteId })}</div>}
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
-                    <td className="px-4 py-3 text-right text-sm font-medium">{format.currency(parseFloat(p.total ?? "0"))}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-0.5">
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-foreground/50 hover:text-amber-300" title={p.publicUrl ? t("crmProposals.list.viewPublic") : t("crmProposals.list.preview")} disabled={generateLinkMutation.isPending} onClick={() => handlePreview(p)}><Eye className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.status === "borrador" ? "text-foreground/50 hover:text-blue-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}><Pencil className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["borrador", "enviado", "visualizado"].includes(p.status) ? "text-foreground/50 hover:text-green-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={!["borrador", "enviado", "visualizado"].includes(p.status)} onClick={() => handleSend(p.id)}><Send className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["enviado", "visualizado", "aceptado"].includes(p.status) && !p.convertedToQuoteId ? "text-foreground/50 hover:text-orange-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={!["enviado", "visualizado", "aceptado"].includes(p.status) || !!p.convertedToQuoteId} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.publicUrl ? "text-foreground/50 hover:text-foreground/70" : "text-foreground/20 cursor-not-allowed"}`} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success(t("crmProposals.list.linkCopied")); }}><Copy className="w-3.5 h-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" onClick={() => setDeleteConfirm(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+    );
+  };
+
+  const dateCell = (p: ProposalRow) => (p.sentAt ? <span className="text-info">{t("crmProposals.list.sentOn", { date: format.date(p.sentAt) })}</span> : format.date(p.createdAt));
+  const convertedBadge = (p: ProposalRow, withId: boolean) =>
+    p.convertedToQuoteId ? (
+      <div className="mt-0.5 flex items-center gap-1 text-xs text-success"><CheckCircle className="h-3 w-3" aria-hidden="true" /> {withId ? t("crmProposals.list.toQuote", { id: p.convertedToQuoteId }) : t("crmProposals.list.convertedToQuote")}</div>
+    ) : null;
+
+  const loadingBlock = (
+    <div className="divide-y divide-border" role="status" aria-busy="true">
+      <span className="sr-only">{t("crmProposals.list.loading")}</span>
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-3 p-4">
+          <div className="h-3.5 w-24 animate-pulse rounded bg-muted" />
+          <div className="h-3.5 flex-1 animate-pulse rounded bg-muted" />
+          <div className="h-3.5 w-16 animate-pulse rounded bg-muted" />
         </div>
-      )}
+      ))}
+    </div>
+  );
+  // Un error de lectura NO se presenta como «sin propuestas»: se avisa y se ofrece reintentar
+  const errorBlock = <PanelError error={listQuery.error} onRetry={() => listQuery.refetch()} className="m-4" />;
+
+  // Modales comunes (listado global y listado de un lead)
+  const modals = (
+    <>
       {deleteConfirm !== null && (
         <Dialog open onOpenChange={() => setDeleteConfirm(null)}>
           <DialogContent className="w-[95vw] max-w-sm">
             <DialogHeader><DialogTitle>{t("crmProposals.list.deleteTitle")}</DialogTitle></DialogHeader>
-            <p className="text-sm text-foreground/60">{t("crmProposals.list.deleteIrreversible")}</p>
+            <p className="text-sm text-muted-foreground">{t("crmProposals.list.deleteIrreversible")}</p>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDeleteConfirm(null)}>{t("crmProposals.list.cancel")}</Button>
-              <Button variant="destructive" onClick={() => handleDelete(deleteConfirm)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : t("crmProposals.list.delete")}</Button>
+              <Button variant="destructive" onClick={() => handleDelete(deleteConfirm)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" /> : t("crmProposals.list.delete")}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -973,7 +811,232 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
       {editModal !== null && getByIdQuery.data && (
         <ProposalFormModal leadId={getByIdQuery.data.leadId} leadName={leadName ?? t("crmProposals.list.leadFallback", { id: getByIdQuery.data.leadId })} proposal={{ id: getByIdQuery.data.id, title: getByIdQuery.data.title, description: getByIdQuery.data.description, mode: getByIdQuery.data.mode, items: (getByIdQuery.data.items ?? []) as ItemLine[], discount: getByIdQuery.data.discount, validUntil: getByIdQuery.data.validUntil, conditions: getByIdQuery.data.conditions, notes: getByIdQuery.data.notes, options: getByIdQuery.data.options.map(o => ({ id: o.id, title: o.title, description: o.description, items: (o.items ?? []) as ItemLine[], discount: o.discount, isRecommended: o.isRecommended, sortOrder: o.sortOrder })) }} onClose={() => setEditModal(null)} onSaved={invalidate} />
       )}
-      {convertModal !== null && (() => { const p = rows.find((x: any) => x.id === convertModal); if (!p) return null; return <ConvertModal proposal={{ id: p.id, proposalNumber: p.proposalNumber, mode: p.mode }} onClose={() => setConvertModal(null)} onConverted={invalidate} />; })()}
+      {convertModal !== null && (() => { const p = rows.find((x) => x.id === convertModal); if (!p) return null; return <ConvertModal proposal={{ id: p.id, proposalNumber: p.proposalNumber, mode: p.mode }} onClose={() => setConvertModal(null)} onConverted={invalidate} />; })()}
+    </>
+  );
+
+  // ─── Modo global (página /admin/crm/propuestas) ───────────────────────────
+  if (!leadId) {
+    const statusOptions = (["all", "borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado"] as const).map((s) => ({
+      value: s as string,
+      label: s === "all" ? t("crmProposals.list.all") : t(`crmProposals.status.${s}`),
+    }));
+    const hasFilters = filterStatus !== "all" || search.trim() !== "";
+    const allSelected = rows.length > 0 && selected.size === rows.length;
+    return (
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+        {/* Cabecera: una acción principal reconocible */}
+        <PanelPageHeader
+          icon={<FileText />}
+          title={t("crmProposals.list.title")}
+          description={t("crmProposals.list.subtitle")}
+          actions={
+            <Button onClick={() => setLeadPickerOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmProposals.list.newProposal")}
+            </Button>
+          }
+        />
+
+        {/* Búsqueda + filtro de estado segmentado */}
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={t("crmProposals.list.searchPlaceholder")}
+              aria-label={t("crmProposals.list.searchPlaceholder")}
+              className="h-11 rounded-xl pl-10"
+            />
+          </div>
+          <SegmentedTabs label={t("crmProposals.list.filterStatus")} value={filterStatus} onChange={setFilterStatus} options={statusOptions} />
+        </div>
+
+        {/* Listado */}
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          {listQuery.isLoading ? (
+            loadingBlock
+          ) : listQuery.isError ? (
+            errorBlock
+          ) : rows.length === 0 ? (
+            <PanelEmpty
+              className="border-0"
+              icon={<FileText />}
+              title={filterStatus !== "all" ? t("crmProposals.list.emptyStatus", { status: t(`crmProposals.status.${filterStatus}`) }) : t("crmProposals.list.emptyAll")}
+            >
+              {hasFilters ? (
+                <Button size="sm" variant="outline" onClick={() => { setSearch(""); setFilterStatus("all"); }}>{t("crmProposals.list.clearFilters")}</Button>
+              ) : (
+                <Button size="sm" onClick={() => setLeadPickerOpen(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmProposals.list.newProposal")}</Button>
+              )}
+            </PanelEmpty>
+          ) : (
+            <>
+              {selected.size > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-b border-primary/20 bg-primary/10 px-4 py-2.5">
+                  <span className="shrink-0 text-xs font-medium text-primary">{t("crmProposals.list.selected", { n: selected.size })}</span>
+                  <select aria-label={t("crmProposals.list.changeStatus")} value={bulkStatus} onChange={e => { if (e.target.value) bulkUpdateStatusMutation.mutate({ ids: Array.from(selected), status: e.target.value as ProposalStatus }); }} disabled={bulkUpdateStatusMutation.isPending} className="rounded-md border border-border bg-background px-2 py-1 text-xs disabled:opacity-40">
+                    <option value="">{t("crmProposals.list.changeStatus")}</option>
+                    <option value="borrador">{t("crmProposals.status.borrador")}</option>
+                    <option value="enviado">{t("crmProposals.status.enviado")}</option>
+                    <option value="aceptado">{t("crmProposals.status.aceptado")}</option>
+                    <option value="rechazado">{t("crmProposals.status.rechazado")}</option>
+                    <option value="expirado">{t("crmProposals.status.expirado")}</option>
+                  </select>
+                  <Button type="button" size="sm" variant="outline" className="h-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={bulkDeleteMutation.isPending} onClick={async () => { if ((await confirmAction({ description: t("crmProposals.list.bulkDeleteConfirm", { n: selected.size }), destructive: true }))) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }}>
+                    <Trash2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {t("crmProposals.list.delete")}
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" className="ml-auto h-7 w-7 text-muted-foreground" aria-label={t("crmProposals.list.clearSelection")} onClick={() => setSelected(new Set())}><X className="h-4 w-4" aria-hidden="true" /></Button>
+                </div>
+              )}
+
+              {/* Escritorio: tabla */}
+              <table className="hidden w-full text-sm md:table">
+                <caption className="sr-only">{t("crmProposals.list.title")}</caption>
+                <thead>
+                  <tr className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
+                    <th scope="col" className="w-10 px-3 py-3"><input type="checkbox" aria-label={t("crmProposals.list.selectAll")} className="cursor-pointer rounded border-border" checked={allSelected} onChange={e => setSelected(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} /></th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colRef")}</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colClient")}</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colTitle")}</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colStatus")}</th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmProposals.list.colTotal")}</th>
+                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colDate")}</th>
+                    <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmProposals.list.colActions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(p => (
+                    <tr key={p.id} className={`border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40 ${selected.has(p.id) ? "bg-primary/5" : ""}`}>
+                      <td className="w-10 px-3 py-3 align-middle"><input type="checkbox" aria-label={t("crmProposals.list.selectRow", { ref: p.proposalNumber })} className="cursor-pointer rounded border-border" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} /></td>
+                      <td className="px-4 py-3 align-middle">
+                        <span className="font-mono text-sm font-medium text-primary">{p.proposalNumber}</span>
+                        <div className="mt-0.5 text-xs text-muted-foreground">{t(`crmProposals.mode.${p.mode}`)}</div>
+                      </td>
+                      <td className="px-4 py-3 align-middle">{leadCell(p)}</td>
+                      <td className="px-4 py-3 align-middle">
+                        <span className="line-clamp-1 text-sm text-foreground">{p.title}</span>
+                        {convertedBadge(p, false)}
+                      </td>
+                      <td className="px-4 py-3 align-middle"><StatusBadge status={p.status} /></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right align-middle tabular-nums"><span className="text-sm font-semibold text-foreground">{format.currency(parseFloat(p.total ?? "0"))}</span></td>
+                      <td className="px-4 py-3 align-middle text-xs text-muted-foreground">{dateCell(p)}</td>
+                      <td className="px-4 py-3 align-middle">{rowActions(p)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Móvil: una tarjeta por propuesta, sin desbordes */}
+              <ul className="divide-y divide-border md:hidden" aria-label={t("crmProposals.list.title")}>
+                {rows.map(p => (
+                  <li key={p.id} className={`space-y-2 p-4 text-sm ${selected.has(p.id) ? "bg-primary/5" : ""}`}>
+                    <div className="flex items-start gap-3">
+                      <input type="checkbox" aria-label={t("crmProposals.list.selectRow", { ref: p.proposalNumber })} className="mt-1 cursor-pointer rounded border-border" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono font-medium text-primary">{p.proposalNumber}</span>
+                          <StatusBadge status={p.status} />
+                        </div>
+                        <div className="mt-1 break-words">{leadCell(p)}</div>
+                        <div className="mt-1 break-words text-foreground">{p.title}</div>
+                        {convertedBadge(p, false)}
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">{dateCell(p)}</span>
+                          <span className="font-semibold tabular-nums text-foreground">{format.currency(parseFloat(p.total ?? "0"))}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="-mr-1">{rowActions(p)}</div>
+                  </li>
+                ))}
+              </ul>
+
+              {total > PAGE_SIZE && (
+                <div className="flex items-center justify-between border-t border-border px-4 py-3">
+                  <span className="text-sm text-muted-foreground">{t("crmProposals.list.pageOf", { page: page + 1, pages: Math.ceil(total / PAGE_SIZE), total })}</span>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => setPage(p => p - 1)} disabled={page === 0}>{t("crmProposals.list.prev")}</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total}>{t("crmProposals.list.next")}</Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {leadPickerOpen && <LeadPickerModal onClose={() => setLeadPickerOpen(false)} onPicked={(id, name) => { setLeadPickerOpen(false); setCreateModal({ open: true, leadId: id, leadName: name }); }} />}
+        {modals}
+      </div>
+    );
+  }
+
+  // ─── Modo incrustado (dentro de un lead) ──────────────────────────────────
+  const embeddedTitle = t("crmProposals.list.embeddedTitle", { suffix: leadName ? `— ${leadName}` : "" });
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-medium text-foreground">{embeddedTitle}</h3>
+        <Button size="sm" variant="outline" onClick={() => { if (leadId && leadName) setCreateModal({ open: true, leadId, leadName }); else setLeadPickerOpen(true); }}>
+          <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {t("crmProposals.list.newProposal")}
+        </Button>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        {listQuery.isLoading ? (
+          loadingBlock
+        ) : listQuery.isError ? (
+          errorBlock
+        ) : rows.length === 0 ? (
+          <PanelEmpty className="border-0" icon={<FileText />} title={t("crmProposals.list.emptyAll")} />
+        ) : (
+          <>
+            <table className="hidden w-full text-sm md:table">
+              <caption className="sr-only">{embeddedTitle}</caption>
+              <thead>
+                <tr className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
+                  <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colRefShort")}</th>
+                  <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colTitle")}</th>
+                  <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colStatus")}</th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmProposals.list.colTotal")}</th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmProposals.list.colActions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(p => (
+                  <tr key={p.id} className="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40">
+                    <td className="px-4 py-3 align-middle">
+                      <span className="font-mono text-xs font-medium text-primary">{p.proposalNumber}</span>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{t(`crmProposals.mode.${p.mode}`)}</div>
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      <span className="line-clamp-1 text-sm text-foreground">{p.title}</span>
+                      {convertedBadge(p, true)}
+                    </td>
+                    <td className="px-4 py-3 align-middle"><StatusBadge status={p.status} /></td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm font-medium tabular-nums">{format.currency(parseFloat(p.total ?? "0"))}</td>
+                    <td className="px-4 py-3 align-middle">{rowActions(p)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <ul className="divide-y divide-border md:hidden" aria-label={embeddedTitle}>
+              {rows.map(p => (
+                <li key={p.id} className="space-y-2 p-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono font-medium text-primary">{p.proposalNumber}</span>
+                    <StatusBadge status={p.status} />
+                  </div>
+                  <div className="break-words text-foreground">{p.title}</div>
+                  {convertedBadge(p, true)}
+                  <div className="text-right font-semibold tabular-nums">{format.currency(parseFloat(p.total ?? "0"))}</div>
+                  <div className="-mr-1">{rowActions(p)}</div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+      {modals}
     </div>
   );
 }
@@ -990,8 +1053,9 @@ export function ProposalLeadButton({ leadId, leadName }: { leadId: number; leadN
       <Button
         size="sm"
         variant="ghost"
-        className="text-purple-400 hover:text-purple-300 h-7 px-2 text-xs"
+        className="text-primary hover:text-primary/80 h-7 px-2 text-xs"
         title={t("crmProposals.list.newCommercial")}
+        aria-label={t("crmProposals.list.newCommercial")}
         onClick={() => setOpen(true)}
       >
         <FileText className="w-3.5 h-3.5" />

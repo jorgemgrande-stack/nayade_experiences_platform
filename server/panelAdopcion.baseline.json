@@ -262,15 +262,6 @@
     "coloresFijos": 6,
     "hexEnClases": 1
   },
-  "pages/admin/crm/CrmFunnel.tsx": {
-    "geometriaAjena": 2
-  },
-  "pages/admin/crm/CrmTags.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/CrmTasks.tsx": {
-    "geometriaAjena": 1
-  },
   "pages/admin/crm/GestoriaExportDialog.tsx": {
     "coloresFijos": 2
   },
@@ -281,12 +272,6 @@
   "pages/admin/crm/NewInvoiceDialog.tsx": {
     "coloresFijos": 4,
     "hexEnClases": 2
-  },
-  "pages/admin/crm/ProposalsManager.tsx": {
-    "coloresFijos": 31,
-    "hexEnClases": 1,
-    "textoMinusculo": 4,
-    "geometriaAjena": 3
   },
   "pages/admin/crm/ReservationTicket.tsx": {
     "coloresFijos": 2
