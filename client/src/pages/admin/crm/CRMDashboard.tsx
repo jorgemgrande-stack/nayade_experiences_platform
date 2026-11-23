@@ -5357,7 +5357,7 @@ export default function CRMDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchStr]);
   const [kpisExpanded, setKpisExpanded] = useState<boolean>(() => {
-    try { return localStorage.getItem("crm_kpis_expanded") !== "false"; } catch { return true; }
+    try { return localStorage.getItem("crm_kpis_expanded") === "true"; } catch { return false; }
   });
   const toggleKpis = () => setKpisExpanded(prev => {
     const next = !prev;
