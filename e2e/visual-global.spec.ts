@@ -104,11 +104,32 @@ const products = [
 ].map((p, i) => ({ id: i + 1, title: p[0], slug: "p" + i, categoryId: 1, category: { id: 1, name: p[1] }, categoryName: p[1], basePrice: p[2], price: p[2], isActive: p[3], isFeatured: p[4], image1: null, duration: "1 día", difficulty: "all", sortOrder: i, taxRate: 21 }));
 const inv = (i: number, n: string, t: number, st: string, ty = "factura") => ({ id: i, invoiceNumber: (ty === "abono" ? "AB-2026-" : "FAC-2026-") + String(i).padStart(4, "0"), invoiceType: ty, clientName: n, clientEmail: n.toLowerCase().replace(/[^a-z]+/g, ".") + "@ejemplo.invalid", total: t, subtotal: +(t / 1.21).toFixed(2), tax: +(t - t / 1.21).toFixed(2), status: st, paymentMethod: "transferencia", paymentMethodShown: "transferencia", createdAt: new Date(NOW - i * 2 * DAY).toISOString(), pdfUrl: null });
 Object.assign(data, {
+  "crm.quotes.list": { rows: [
+    { id: 1, quoteNumber: "PRES-2026-0031", title: "Retiro de bienestar · 5 noches", status: "enviado", total: 1890, clientId: 2, clientName: "Estudio Alba Verde SL", clientEmail: "hola@albaverde.example", createdAt: new Date(NOW - 3 * DAY).toISOString(), sentAt: new Date(NOW - 2 * DAY).toISOString(), viewedAt: null, paidAt: null },
+    { id: 2, quoteNumber: "PRES-2026-0030", title: "Taller de respiración", status: "borrador", total: 450, clientId: 1, clientName: "Marta Ruiz Olmedo", clientEmail: "marta.ruiz@ejemplo.invalid", createdAt: new Date(NOW - 5 * DAY).toISOString() },
+    { id: 3, quoteNumber: "PRES-2026-0029", title: "Escapada de otoño", status: "aceptado", total: 1290, clientId: 3, clientName: "Daniel Fischer", clientEmail: "daniel@ejemplo.invalid", createdAt: new Date(NOW - 9 * DAY).toISOString(), paidAt: new Date(NOW - 7 * DAY).toISOString() },
+  ], total: 3 },
+  "crm.reservations.list": { rows: [
+    { id: 1, reservationNumber: "RES-0012", customerName: "Estudio Alba Verde SL", customerEmail: "hola@albaverde.example", productName: "Retiro de primavera", amountTotal: 94500, amountPaid: 94500, status: "paid", channel: "ONLINE_ASISTIDO", paymentMethod: "transferencia", createdAt: new Date(NOW - 12 * DAY).toISOString(), paidAt: new Date(NOW - 11 * DAY).toISOString(), invoiceNumber: "FAC-2026-0005", invoicePdfUrl: null },
+    { id: 2, reservationNumber: "RES-0013", customerName: "Daniel Fischer", customerEmail: "daniel@ejemplo.invalid", productName: "Sesión individual", amountTotal: 9000, amountPaid: 0, status: "pending_payment", channel: "TELEFONO", createdAt: new Date(NOW - 2 * DAY).toISOString() },
+  ], total: 2 },
   "products.getAll": products,
   "products.getCategories": [{ id: 1, name: "Retiros", slug: "retiros" }],
   "products.getLocations": [],
   "crm.invoices.listAll": { items: [inv(9, "Estudio Alba Verde SL", 945, "cobrada"), inv(8, "Marta Ruiz Olmedo", 240, "emitida"), inv(7, "Daniel Fischer", 1890, "cobrada"), inv(6, "Retiros del Sur SC", 520.5, "vencida"), inv(5, "Laura Gómez Prieto", 90, "cobrada"), inv(4, "Julia Hartmann", 120, "abono", "abono")], total: 6, summary: { subtotal: 3050, grandTotal: 3690.5, tax: 640.5, abonosTotal: 120, netTotal: 3570.5 } },
   "crm.leads.counters": { total: 12, nueva: 5, enviada: 4, ganada: 2, perdida: 1, valorNueva: 3200, valorEnviada: 5400, valorGanada: 2100, valorPerdida: 400 },
+});
+
+Object.assign(data, {
+  "crm.quotes.list": { rows: [
+    { id: 1, quoteNumber: "PRES-2026-0031", title: "Retiro de bienestar · 5 noches", status: "enviado", total: 1890, clientId: 2, clientName: "Estudio Alba Verde SL", clientEmail: "hola@albaverde.example", createdAt: new Date(NOW - 3 * DAY).toISOString(), sentAt: new Date(NOW - 2 * DAY).toISOString(), viewedAt: null, paidAt: null },
+    { id: 2, quoteNumber: "PRES-2026-0030", title: "Taller de respiración", status: "borrador", total: 450, clientId: 1, clientName: "Marta Ruiz Olmedo", clientEmail: "marta.ruiz@ejemplo.invalid", createdAt: new Date(NOW - 5 * DAY).toISOString() },
+    { id: 3, quoteNumber: "PRES-2026-0029", title: "Escapada de otoño", status: "aceptado", total: 1290, clientId: 3, clientName: "Daniel Fischer", clientEmail: "daniel@ejemplo.invalid", createdAt: new Date(NOW - 9 * DAY).toISOString(), paidAt: new Date(NOW - 7 * DAY).toISOString() },
+  ], total: 3 },
+  "crm.reservations.list": { rows: [
+    { id: 1, reservationNumber: "RES-0012", customerName: "Estudio Alba Verde SL", customerEmail: "hola@albaverde.example", productName: "Retiro de primavera", amountTotal: 94500, amountPaid: 94500, status: "paid", channel: "ONLINE_ASISTIDO", paymentMethod: "transferencia", createdAt: new Date(NOW - 12 * DAY).toISOString(), paidAt: new Date(NOW - 11 * DAY).toISOString(), invoiceNumber: "FAC-2026-0005", invoicePdfUrl: null },
+    { id: 2, reservationNumber: "RES-0013", customerName: "Daniel Fischer", customerEmail: "daniel@ejemplo.invalid", productName: "Sesión individual", amountTotal: 9000, amountPaid: 0, status: "pending_payment", channel: "TELEFONO", createdAt: new Date(NOW - 2 * DAY).toISOString() },
+  ], total: 2 },
 });
 
 async function mock(page: Page) {
@@ -129,6 +150,8 @@ const SCREENS = [
   { key: "2-clientes", url: "/admin/crm/clientes" },
   { key: "3-productos", url: "/admin/productos" },
   { key: "4-facturacion", url: "/admin/crm?tab=invoices" },
+  { key: "6-presupuestos", url: "/admin/crm?tab=quotes" },
+  { key: "7-pedidos", url: "/admin/crm?tab=reservations" },
 ];
 
 for (const v of VIEWS) {
@@ -138,7 +161,7 @@ for (const v of VIEWS) {
       await mock(page);
       await page.setViewportSize({ width: v.width, height: v.height });
       await page.goto(s.url);
-      await page.waitForTimeout(1800);
+      await page.waitForTimeout(4500);
       await page.screenshot({ path: path.join(OUT, `${TAG}-${s.key}-${v.name}.png`), fullPage: true });
     });
   }
