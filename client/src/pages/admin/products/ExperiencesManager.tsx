@@ -4,7 +4,7 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { PanelError, PanelEmpty, errorMessage } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
-import { MetricCard, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { SegmentedTabs } from "@/components/admin/PanelVisual";
 import { ProductThumb } from "./ProductThumb";
 import { validateProductForm } from "@shared/formValidation";
 import { Package, Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown, CalendarDays, Languages } from "lucide-react";
@@ -171,7 +171,12 @@ export default function ExperiencesManager() {
   const [statusFilter, setStatusFilter] = useState<"all" | "published" | "unpublished" | "inactive">("all");
   // Vista tabla/tarjetas: se recuerda durante la sesión del navegador (sin tocar el servidor)
   const [layout, setLayout] = useState<"table" | "grid">(() => {
-    try { return window.sessionStorage.getItem("catalog.layout") === "grid" ? "grid" : "table"; } catch { return "table"; }
+    const narrow = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 639px)").matches;
+    try {
+      const saved = window.sessionStorage.getItem("catalog.layout");
+      if (saved === "grid" || saved === "table") return saved;
+    } catch { /* sin almacenamiento */ }
+    return narrow ? "grid" : "table";
   });
   const changeLayout = (v: "table" | "grid") => {
     setLayout(v);
@@ -515,16 +520,6 @@ export default function ExperiencesManager() {
 
       {view === "productos" && (
         <>
-          {/* Resumen: cada tarjeta es también un filtro */}
-          {!listLoading && !listIsError && (experiences?.length ?? 0) > 0 && (
-            <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <MetricCard icon={<Package />} tone="brand" label={t("productsCatalog.list.metricTotal")} value={counts.all} onClick={() => setStatusFilter("all")} active={statusFilter === "all"} />
-              <MetricCard icon={<Eye />} tone="info" label={t("productsCatalog.list.published")} value={counts.published} onClick={() => setStatusFilter("published")} active={statusFilter === "published"} />
-              <MetricCard icon={<EyeOff />} tone="warning" label={t("productsCatalog.list.notPublished")} value={counts.unpublished} onClick={() => setStatusFilter("unpublished")} active={statusFilter === "unpublished"} />
-              <MetricCard icon={<PowerOff />} tone="neutral" label={voc.licensed ? t("productsCatalog.list.soldOut") : t("productsCatalog.list.inactive")} value={counts.inactive} onClick={() => setStatusFilter("inactive")} active={statusFilter === "inactive"} />
-            </div>
-          )}
-
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
