@@ -210,6 +210,9 @@ export const experienceVariants = mysqlTable("experience_variants", {
   sortOrder: int("sortOrder").default(0).notNull(),
   /** Último día (inclusive, Europe/Madrid) en que se ofrece la variante; NULL = sin caducidad. */
   validUntil: date("validUntil", { mode: "string" }),
+  /** Participantes mínimos/máximos con los que se puede comprar la opción (p. ej. «desde 2 participantes»); NULL = sin límite. */
+  minQty: int("minQty"),
+  maxQty: int("maxQty"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

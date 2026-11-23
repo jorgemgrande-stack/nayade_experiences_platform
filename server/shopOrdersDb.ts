@@ -9,9 +9,10 @@
  *  - `sendShopOrderConfirmation` / `setOnlineOrderStage`: correos al comprador con la plantilla genérica.
  *  - `listOnlineOrders` / `getOnlineOrder`: panel.
  */
-import { and, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { clients, crmActivityLog, experiences, invoices, reservations } from "../drizzle/schema";
+import { clients, compensationVouchers, crmActivityLog, discountCodes, discountCodeUses, experiences, invoices, reservations } from "../drizzle/schema";
+import { DUPLICATE_WINDOW_MS, discountFromLog, fingerprintFromLog, type OrderDiscount } from "./shopCheckoutRules";
 import {
   allowedStageChanges,
   billingFromLog,
@@ -379,4 +380,95 @@ export async function isGenericShopOrder(rows: Array<{ channel?: string | null; 
   if (!rows.length || !rows.every((r) => r.channel === "ONLINE_DIRECTO" && !r.quoteId)) return false;
   const { getStorefront } = await import("./storefront");
   return (await getStorefront()).kind === "generic";
+}
+
+// ─── Idempotencia del checkout y descuentos (cartCheckout / pago confirmado) ─────────────────────────────────────
+
+/** Añade entradas al historial de TODAS las líneas del pedido (huella, descuento…; sin columnas nuevas). */
+export async function appendOrderLogEntries(merchantOrder: string, entries: Array<{ ts: number; actor: string; action: string; to?: string }>): Promise<void> {
+  const db = await getDb();
+  if (!db || !entries.length) return;
+  const rows = await db.select({ id: reservations.id, changesLog: reservations.changesLog }).from(reservations).where(eq(reservations.merchantOrder, merchantOrder));
+  for (const r of rows) {
+    const log = Array.isArray(r.changesLog) ? r.changesLog : [];
+    await db.update(reservations).set({ changesLog: [...log, ...entries] }).where(eq(reservations.id, r.id));
+  }
+}
+
+/**
+ * Pedido pendiente de pago equivalente (mismo comprador y misma huella) creado hace menos de la ventana: se reutiliza en
+ * lugar de crear otro. Un pedido pagado, fallido o cancelado ya no está en `pending_payment`, así que un reintento tras un
+ * fallo o una caducidad crea un pedido nuevo con normalidad.
+ */
+export async function findPendingOrderByFingerprint(email: string, fingerprint: string, now = Date.now()): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ merchantOrder: reservations.merchantOrder, changesLog: reservations.changesLog }).from(reservations)
+    .where(and(onlineShop(), eq(reservations.status, "pending_payment"), eq(reservations.customerEmail, email), gte(reservations.createdAt, now - DUPLICATE_WINDOW_MS)));
+  const hit = rows.find((r) => fingerprintFromLog(r.changesLog) === fingerprint);
+  return hit?.merchantOrder ?? null;
+}
+
+/** Pedidos pendientes recientes que ya «sostienen» un uso de este código (para códigos de usos limitados). */
+export async function countPendingDiscountHolds(discountCodeId: number, excludeMerchantOrder: string | null = null, now = Date.now()): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ merchantOrder: reservations.merchantOrder, changesLog: reservations.changesLog }).from(reservations)
+    .where(and(onlineShop(), eq(reservations.status, "pending_payment"), gte(reservations.createdAt, now - DUPLICATE_WINDOW_MS)));
+  const orders = new Set<string>();
+  for (const r of rows) {
+    if (r.merchantOrder === excludeMerchantOrder) continue;
+    if (discountFromLog(r.changesLog)?.id === discountCodeId) orders.add(r.merchantOrder);
+  }
+  return orders.size;
+}
+
+export type DiscountConsumeResult = "none" | "already" | "consumed" | "overused";
+
+/**
+ * Consume el uso del código del pedido cuando el pago se CONFIRMA. Idempotente por pedido (una sola fila de uso por
+ * reserva y código; todo en una transacción) y a prueba de pagos simultáneos: el contador solo sube si todavía quedan
+ * usos (`current_uses < max_uses`, condicional en la propia sentencia). Si dos pagos de un código de un solo uso se
+ * confirman a la vez, el segundo YA está cobrado y no se puede rechazar: se registra el uso (trazabilidad) SIN pasar
+ * del límite y se deja un aviso en el historial de la reserva para que el equipo decida (p. ej. reembolso del descuento).
+ */
+export async function consumeOrderDiscount(merchantOrder: string, paidCents: number): Promise<DiscountConsumeResult> {
+  const db = await getDb();
+  if (!db) return "none";
+  const rows = await db.select({ id: reservations.id, changesLog: reservations.changesLog }).from(reservations).where(and(eq(reservations.merchantOrder, merchantOrder), onlineShop()));
+  if (!rows.length) return "none";
+  const d: OrderDiscount | null = rows.map((r) => discountFromLog(r.changesLog)).find(Boolean) ?? null;
+  if (!d) return "none";
+  const reservationId = rows[0].id;
+  return db.transaction(async (tx) => {
+    const [dup] = await tx.select({ id: discountCodeUses.id }).from(discountCodeUses).where(and(eq(discountCodeUses.discountCodeId, d.id), eq(discountCodeUses.reservationId, reservationId))).limit(1);
+    if (dup) return "already" as const;
+    const upd = await tx.update(discountCodes).set({ currentUses: sql`current_uses + 1` })
+      .where(and(eq(discountCodes.id, d.id), or(isNull(discountCodes.maxUses), lt(discountCodes.currentUses, discountCodes.maxUses))));
+    const counted = ((upd as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0) > 0;
+    await tx.insert(discountCodeUses).values({
+      discountCodeId: d.id,
+      code: d.code,
+      discountPercent: d.percent.toFixed(2) as unknown as any,
+      discountAmount: (d.discountCents / 100).toFixed(2) as unknown as any,
+      originalAmount: (d.originalCents / 100).toFixed(2) as unknown as any,
+      finalAmount: ((Number.isFinite(paidCents) ? paidCents : d.finalCents) / 100).toFixed(2) as unknown as any,
+      channel: "online",
+      reservationId,
+      tpvSaleId: null,
+      appliedByUserId: null,
+    });
+    if (!counted) {
+      const log = Array.isArray(rows[0].changesLog) ? rows[0].changesLog : [];
+      await tx.update(reservations).set({ changesLog: [...log, { ts: Date.now(), actor: "Sistema", action: "descuento_agotado_en_pago", to: `El código ${d.code} ya había alcanzado su límite de usos cuando se confirmó este pago (pagos simultáneos). El pago es válido; revisar si procede ajustar el descuento.` }] }).where(eq(reservations.id, reservationId));
+      console.error(`[discounts] Código ${d.code} agotado al confirmar el pedido ${merchantOrder}: uso registrado sin superar el límite`);
+      return "overused" as const;
+    }
+    // Bono compensatorio: al agotar sus usos pasa a «canjeado» (como en el resto de canales)
+    const [after] = await tx.select({ origin: discountCodes.origin, voucherId: discountCodes.compensationVoucherId, currentUses: discountCodes.currentUses, maxUses: discountCodes.maxUses }).from(discountCodes).where(eq(discountCodes.id, d.id)).limit(1);
+    if (after?.origin === "voucher" && after.voucherId && after.maxUses !== null && after.currentUses >= after.maxUses) {
+      await tx.update(compensationVouchers).set({ status: "canjeado", redeemedAt: new Date() }).where(eq(compensationVouchers.id, after.voucherId));
+    }
+    return "consumed" as const;
+  });
 }
