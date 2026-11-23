@@ -19,6 +19,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { shopOrderProcedures } from "./routers/shopOrders";
 import { editionsRouter } from "./routers/editions";
+import { saleReadinessRouter } from "./routers/saleReadiness";
+import { assertCanSwitchToFixed } from "./saleReadinessDb";
 import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, showsPrice, notForSaleMessage } from "../shared/offerMode";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -1710,6 +1712,8 @@ export const appRouter = router({
         description: z.string().optional(),
         basePrice: z.string().optional(),
         offerMode: z.enum(OFFER_MODES).optional(),
+        /** El administrador ha revisado los avisos de preparación y autoriza pasar a precio fijo. */
+        confirmReadiness: z.boolean().optional(),
         requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
         isFeatured: z.boolean().optional(),
         isActive: z.boolean().optional(),
@@ -1745,7 +1749,7 @@ export const appRouter = router({
         maxUnits: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        const { id, ...data } = input;
+        const { id, confirmReadiness, ...data } = input;
         // Sync coverImageUrl with image1
         if (data.image1 !== undefined) (data as Record<string, unknown>).coverImageUrl = data.image1;
         // Coerce legacy "general_21" → "general" (DB enum migration)
@@ -1797,6 +1801,8 @@ export const appRouter = router({
           } else if (input.offerMode === "fixed" && offerModeOf(cur) !== "fixed") {
             const typed = Number(String(processedData.basePrice ?? "").replace(",", "."));
             if (!(typed > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "Para volver a venderlo con precio fijo, indica el precio." });
+            // Preparación para venta online: solo al pasar a precio fijo desde otra modalidad
+            await assertCanSwitchToFixed(id, processedData, confirmReadiness === true);
           }
           if (processedData.requestCtaLabel !== undefined) processedData.requestCtaLabel = String(processedData.requestCtaLabel).replace(/\s+/g, " ").trim() || null;
         }
@@ -1817,6 +1823,7 @@ export const appRouter = router({
 
     /** E-4: convocatorias del producto (fechas, plazas e inscripciones) */
     editions: editionsRouter,
+    saleReadiness: saleReadinessRouter,
 
     toggleActive: adminProcedure
       .input(z.object({ id: z.number(), isActive: z.boolean() }))
