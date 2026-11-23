@@ -6651,7 +6651,7 @@ export default function CRMDashboard() {
               onChange={(e) => setSearch(e.target.value)}
               aria-label={t("crmDashboard.buscar")}
               placeholder={tab === "leads" ? t("crmEmpty.search.leads", { leadsLower: voc.leadsLower }) : tab === "quotes" ? t("crmEmpty.search.quotes") : tab === "reservations" ? t("crmEmpty.search.orders", { ordersLower: voc.ordersLower }) : t("crmEmpty.search.invoices")}
-              className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40"
+              className="pl-9"
             />
           </div>
           {filterStatus !== "all" && (
@@ -6661,10 +6661,10 @@ export default function CRMDashboard() {
           {/* Filtro por canal — visible solo en el tab de reservas */}
           {tab === "reservations" && (
             <Select value={resChannelFilter} onValueChange={setResChannelFilter}>
-              <SelectTrigger className="w-full sm:w-40 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
+              <SelectTrigger className="h-9 w-full text-xs sm:w-40">
                 <SelectValue placeholder={t("crmDashboard.canal")} />
               </SelectTrigger>
-              <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+              <SelectContent>
                 <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosCanales")}</SelectItem>
                 <SelectItem value="TPV_FISICO" className="text-violet-300 text-xs">{t("crmDashboard.tpvPresencial")}</SelectItem>
                 <SelectItem value="ONLINE_DIRECTO" className="text-sky-300 text-xs">{t("crmDashboard.onlineDirecto")}</SelectItem>
@@ -6683,10 +6683,10 @@ export default function CRMDashboard() {
           {/* Filtro por origen — visible solo en el tab de leads */}
           {tab === "leads" && (
             <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" || v === "web" ? v : Number(v))}>
-              <SelectTrigger className="w-full sm:w-44 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
+              <SelectTrigger className="h-9 w-full text-xs sm:w-44">
                 <SelectValue placeholder={t("crmDashboard.origen")} />
               </SelectTrigger>
-              <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+              <SelectContent>
                 <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosOrigenes")}</SelectItem>
                 {/* Solicitudes de información o de plaza hechas desde la ficha de un producto */}
                 <SelectItem value="web" className="text-sky-300 text-xs">{t("crmDashboard.solicitudesWeb")}</SelectItem>
@@ -6712,7 +6712,7 @@ export default function CRMDashboard() {
             <Button
               size="sm"
               onClick={() => setShowNewReservationModal(true)}
-              className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white sm:ml-auto"
+              className="sm:ml-auto"
             >
               <Plus className="w-4 h-4 mr-1.5" /> {voc.newOrder}
             </Button>
@@ -6721,7 +6721,7 @@ export default function CRMDashboard() {
             <Button
               size="sm"
               onClick={() => setShowDirectQuoteModal(true)}
-              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white sm:ml-auto"
+              className="sm:ml-auto"
             >
               <Plus className="w-4 h-4 mr-1.5" /> {voc.licensed ? t("crmDashboard.nuevoPresupuesto") : t("crmDashboard.nuevoPresupuesto2")}
             </Button>
@@ -6933,7 +6933,7 @@ export default function CRMDashboard() {
           )}
 
           {tab === "quotes" && (
-            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Barra acción masiva quotes */}
             {selectedQuotes.size > 0 && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
@@ -6988,7 +6988,7 @@ export default function CRMDashboard() {
                         <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedQuotes.has(quote.id)} onChange={e => setSelectedQuotes(prev => { const s = new Set(prev); e.target.checked ? s.add(quote.id) : s.delete(quote.id); return s; })} />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm font-mono font-medium text-orange-400">{quote.quoteNumber}</div>
+                        <div className="whitespace-nowrap text-sm font-mono font-semibold text-primary">{quote.quoteNumber}</div>
                         <div className="text-[10px] text-foreground/40 mt-0.5">{format.date(quote.createdAt, {})}</div>
                       </td>
                       <td className="px-4 py-3">
@@ -7080,47 +7080,39 @@ export default function CRMDashboard() {
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-violet-300 h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title={t("crmQuotes.planFraccionadoConfirmaCuotas")}>
-                              <CalendarDays className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Convertir a reserva pendiente de cobro */}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-                            <Button
-                              size="sm" variant="ghost"
-                              className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
-                              onClick={() => {
-                                setRowPendingPayQuoteId(quote.id);
-                                setRowPendingPayDueDate("");
-                                setRowPendingPayReason("");
-                              }}
-                              title={t("crmQuotes.convertirAPendienteDe", { order: voc.order })}
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Marcar perdido */}
-                          {(quote.status === "borrador" || quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title={t("crmQuotes.marcarComoPerdido")}>
-                              <XCircle className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Descargar PDF */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
-                            onClick={() => downloadQuotePdf(quote.id, quote.quoteNumber)} title={t("crmQuotes.descargarPresupuestoEnPdf")}
-                            disabled={generatePdfMutation.isPending}>
-                            <FileDown className="w-3.5 h-3.5" />
-                          </Button>
-                          {/* Duplicar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground/70 h-7 w-7 p-0"
-                            onClick={() => duplicateQuoteMutation.mutate({ id: quote.id })} title={t("crmQuotes.duplicarPresupuesto")}>
-                            <Copy className="w-3.5 h-3.5" />
-                          </Button>
-                          {/* Eliminar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" onClick={() => setDeleteQuoteId(quote.id)} title={t("crmQuotes.eliminar2")}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                                                    <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" aria-label={`${t("crmQuotes.acciones")}: ${quote.quoteNumber}`}>
+                                <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
+                                <DropdownMenuItem onSelect={() => setSelectedQuoteId(quote.id)}>
+                                  <CalendarDays className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.planFraccionadoConfirmaCuotas")}
+                                </DropdownMenuItem>
+                              )}
+                              {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
+                                <DropdownMenuItem onSelect={() => { setRowPendingPayQuoteId(quote.id); setRowPendingPayDueDate(""); setRowPendingPayReason(""); }}>
+                                  <Clock className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.convertirAPendienteDe", { order: voc.order })}
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem disabled={generatePdfMutation.isPending} onSelect={() => downloadQuotePdf(quote.id, quote.quoteNumber)}>
+                                <FileDown className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.descargarPresupuestoEnPdf")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => duplicateQuoteMutation.mutate({ id: quote.id })}>
+                                <Copy className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.duplicarPresupuesto")}
+                              </DropdownMenuItem>
+                              {(quote.status === "borrador" || (quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido")) && (
+                                <DropdownMenuItem onSelect={() => setMarkLostQuoteId(quote.id)}>
+                                  <XCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.marcarComoPerdido")}
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteQuoteId(quote.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.eliminar2")}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </td>
                     </tr>
@@ -7155,7 +7147,7 @@ export default function CRMDashboard() {
           )}
 
           {tab === "reservations" && (
-            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Barra acción masiva reservas */}
             {selectedRes.size > 0 && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
@@ -7420,52 +7412,37 @@ export default function CRMDashboard() {
                             title={voc.editOrder}>
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
-                          {/* Reenviar al cliente */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
-                            onClick={() => resendResMutation.mutate({ id: res.id })}
-                            disabled={resendResMutation.isPending}
-                            title={t("crmReservations.reenviarConfirmacionAlCliente")}>
-                            {resendResMutation.isPending
-                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              : <Send className="w-3.5 h-3.5" />}
-                          </Button>
-                          {/* Imprimir ticket térmico */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0"
-                            onClick={() => setPrintTicketRes(res)}
-                            title={t("crmReservations.imprimirTicket80mm")}>
-                            <Printer className="w-3.5 h-3.5" />
-                          </Button>
-                          {/* Descargar PDF factura */}
-                          <Button size="sm" variant="ghost"
-                            className={`h-7 w-7 p-0 ${(res as any).invoicePdfUrl ? "text-foreground/50 hover:text-emerald-300" : "text-foreground/20 cursor-not-allowed"}`}
-                            onClick={() => (res as any).invoicePdfUrl && window.open((res as any).invoicePdfUrl, "_blank")}
-                            disabled={!(res as any).invoicePdfUrl}
-                            title={(res as any).invoicePdfUrl ? t("crmReservations.descargarFacturaPdf") : t("crmReservations.sinFacturaPdf")}>
-                            <FileDown className="w-3.5 h-3.5" />
-                          </Button>
-                          {/* Generar factura — cualquier reserva sin factura */}
-                          {!res.invoiceId && !res.invoiceNumber && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-violet-300 h-7 w-7 p-0"
-                              onClick={() => setGenInvoiceResId(res.id)}
-                              title={t("crmReservations.generarFactura")}>
-                              <FilePlus className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Anular reserva */}
-                          {res.status !== "cancelled" && (
-                            <Button size="sm" variant="ghost"
-                              className="text-foreground/50 hover:text-orange-400 h-7 w-7 p-0"
-                              onClick={() => { setCancelReservationId(res.id); setCancelReservationName(res.customerName); }}
-                              title={voc.cancelOrder}>
-                              <XCircle className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Eliminar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0"
-                            onClick={() => setDeleteResId(res.id)}
-                            title={voc.deleteOrder}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" aria-label={`${t("crmReservations.acciones")}: ${res.customerName}`}>
+                                <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem disabled={resendResMutation.isPending} onSelect={() => resendResMutation.mutate({ id: res.id })}>
+                                <Send className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmReservations.reenviarConfirmacionAlCliente")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setPrintTicketRes(res)}>
+                                <Printer className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmReservations.imprimirTicket80mm")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem disabled={!(res as any).invoicePdfUrl} onSelect={() => (res as any).invoicePdfUrl && window.open((res as any).invoicePdfUrl, "_blank")}>
+                                <FileDown className="mr-2 h-4 w-4" aria-hidden="true" />{(res as any).invoicePdfUrl ? t("crmReservations.descargarFacturaPdf") : t("crmReservations.sinFacturaPdf")}
+                              </DropdownMenuItem>
+                              {!res.invoiceId && !res.invoiceNumber && (
+                                <DropdownMenuItem onSelect={() => setGenInvoiceResId(res.id)}>
+                                  <FilePlus className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmReservations.generarFactura")}
+                                </DropdownMenuItem>
+                              )}
+                              {res.status !== "cancelled" && (
+                                <DropdownMenuItem onSelect={() => { setCancelReservationId(res.id); setCancelReservationName(res.customerName); }}>
+                                  <XCircle className="mr-2 h-4 w-4" aria-hidden="true" />{voc.cancelOrder}
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteResId(res.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />{voc.deleteOrder}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </td>
                     </tr>
@@ -7849,7 +7826,7 @@ export default function CRMDashboard() {
                   <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder={t("crmCancellations.estadoOperativo")} />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                  <SelectContent>
                     <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todosLosEstados")}</SelectItem>
                     <SelectItem value="recibida" className="text-foreground/70 text-xs">{t("crmCancellations.recibida")}</SelectItem>
                     <SelectItem value="en_revision" className="text-foreground/70 text-xs">{t("crmCancellations.enRevision")}</SelectItem>
@@ -7864,7 +7841,7 @@ export default function CRMDashboard() {
                   <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder={t("crmCancellations.resolucion")} />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                  <SelectContent>
                     <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todaResolucion")}</SelectItem>
                     <SelectItem value="sin_resolver" className="text-foreground/70 text-xs">{t("crmCancellations.sinResolver")}</SelectItem>
                     <SelectItem value="rechazada" className="text-foreground/70 text-xs">{t("crmCancellations.rechazada")}</SelectItem>
@@ -7876,7 +7853,7 @@ export default function CRMDashboard() {
                   <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder={t("crmCancellations.estadoFinanciero")} />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                  <SelectContent>
                     <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todoFinanciero")}</SelectItem>
                     <SelectItem value="sin_compensacion" className="text-foreground/70 text-xs">{t("crmCancellations.sinCompensacion")}</SelectItem>
                     <SelectItem value="pendiente_devolucion" className="text-foreground/70 text-xs">{t("crmCancellations.pendDevolucion")}</SelectItem>
@@ -7890,7 +7867,7 @@ export default function CRMDashboard() {
                   <SelectTrigger className="w-40 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder={t("crmCancellations.motivo")} />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                  <SelectContent>
                     <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todosLosMotivos")}</SelectItem>
                     <SelectItem value="meteorologicas" className="text-foreground/70 text-xs">{t("crmCancellations.meteorologicas")}</SelectItem>
                     <SelectItem value="accidente" className="text-foreground/70 text-xs">{t("crmCancellations.accidente")}</SelectItem>
