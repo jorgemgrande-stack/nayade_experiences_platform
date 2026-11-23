@@ -2683,6 +2683,8 @@ export const appRouter = router({
           bookingDate: z.string(),
           people: z.number().min(1).max(100),
           variantId: z.number().optional(),
+          /** Convocatoria elegida (obligatoria si el producto tiene fechas abiertas; la valida el servidor) */
+          editionId: z.number().int().positive().optional(),
           extras: noClientPricedExtras,
           // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
           legoPackLineIds: z.array(z.number()).optional(),
@@ -2729,6 +2731,8 @@ export const appRouter = router({
           unitCapacity?: number;
           unitsBooked?: number;
           stockVariantId?: number;
+          /** Convocatoria comprada: plazas retenidas al crear la reserva (editionPurchaseDb) */
+          editionLine?: import("./editionPurchaseDb").EditionLine;
           /** Lego Pack: no es un producto del catálogo, nunca descuenta inventario. */
           stockExcluded?: boolean;
           legoPackSnapshot?: {
@@ -2783,8 +2787,11 @@ export const appRouter = router({
           // Agotado, retirado o sin publicar: no se vende aunque siga en un carrito guardado
           if (!isPurchasable(product)) throw new TRPCError({ code: "BAD_REQUEST", message: soldOutMessage(product.title) });
           if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
-          const basePrice = parseFloat(String(product.basePrice));
-          if (!(basePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
+          const productBasePrice = parseFloat(String(product.basePrice));
+          if (!(productBasePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
+          // Producto con convocatorias: exige edición válida y abierta con plazas; su precio (si lo tiene) sustituye al base
+          const editionLine = await (await import("./editionPurchaseDb")).prepareEditionLine({ experienceId: item.productId, editionId: item.editionId, people: item.people });
+          const basePrice = editionLine ? (await import("../shared/editionPurchase")).editionBasePrice(editionLine.priceOverride, productBasePrice) : productBasePrice;
           let pricePerPerson = basePrice;
           let lineName = product.title;
           if (item.variantId) {
@@ -2810,7 +2817,7 @@ export const appRouter = router({
           // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
           assertCheckoutLinePriced(product.title, calcPricing(pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalEuros, `#${item.productId}, opción ${item.variantId ?? "-"}`);
           // Reglas de precios de la empresa (Business), antes del cupón: sin reglas, el precio de siempre
-          pricePerPerson = webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: item.people, serviceDate: item.bookingDate }).unitPrice;
+          pricePerPerson = webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: item.people, serviceDate: editionLine?.bookingDate ?? item.bookingDate }).unitPrice;
           const { totalEuros: itemBase, unitsBooked: itemUnits } = calcPricing(
             pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits
           );
@@ -2820,10 +2827,11 @@ export const appRouter = router({
           itemsWithPrices.push({
             productId: item.productId,
             productName: lineName,
-            bookingDate: item.bookingDate,
+            bookingDate: editionLine?.bookingDate ?? item.bookingDate,
             people: item.people,
             extrasJson: JSON.stringify(item.extras),
             amountTotal: itemAmountCents,
+            editionLine: editionLine ?? undefined,
             pricingType: itemPricingType,
             unitCapacity: itemUnitCap ?? undefined,
             unitsBooked: itemUnits || undefined,
@@ -2862,14 +2870,14 @@ export const appRouter = router({
         const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
         const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
         const dbForSnapshots = await getDb();
-        for (const { legoPackSnapshot, stockVariantId, stockExcluded, ...item } of itemsWithPrices) {
-          const { id: reservationId } = await createReservation({
+        for (const { legoPackSnapshot, stockVariantId, stockExcluded, editionLine, ...item } of itemsWithPrices) {
+          const reservationData = {
             ...item,
             customerName: input.customerName,
             customerEmail: input.customerEmail,
             customerPhone: input.customerPhone,
             merchantOrder,
-            notes: orderNotes(productNames, input.comments),
+            notes: [orderNotes(productNames, input.comments), editionLine?.note].filter(Boolean).join("\n"),
             pricingType: item.pricingType,
             unitCapacity: item.unitCapacity,
             unitsBooked: item.unitsBooked,
@@ -2878,7 +2886,10 @@ export const appRouter = router({
             fbc: input.fbc ?? undefined,
             clientIpAddress: cartClientIp,
             clientUserAgent: cartClientUa,
-          });
+          };
+          const reservationId = editionLine
+            ? await (await import("./editionPurchaseDb")).createEditionLine(editionLine, reservationData)
+            : (await createReservation(reservationData)).id;
           if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
           // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
           if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
