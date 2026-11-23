@@ -32,7 +32,7 @@ export function SubscriptionHero({
   const pr = planPresentation({ key: planKey ?? "", tagline: null });
   const Icon = PLAN_ICONS[pr.icon];
   return (
-    <header data-tone="violet" className="cx-on-image cx-tone-fallback relative overflow-hidden rounded-3xl border border-white/10 px-5 py-6 sm:px-8 sm:py-7">
+    <header data-tone="violet" className="cx-on-image cx-tone-fallback relative overflow-hidden rounded-xl border border-white/10 px-5 py-6 sm:px-8 sm:py-7">
       <div className="relative space-y-5">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/80">Elephant Core</p>
@@ -41,10 +41,10 @@ export function SubscriptionHero({
         </div>
 
         {model && (
-          <section aria-labelledby="sub-plan" className="sx-glass rounded-2xl p-4 sm:p-5">
+          <section aria-labelledby="sub-plan" className="sx-glass rounded-xl p-4 sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
               <div className="flex min-w-0 items-center gap-3 lg:w-[17rem] lg:shrink-0">
-                <span aria-hidden="true" data-tone={pr.tone} className="cx-tone-chip inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-lg shadow-black/30 sm:h-14 sm:w-14">
+                <span aria-hidden="true" data-tone={pr.tone} className="cx-tone-chip inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-lg shadow-black/30 sm:h-14 sm:w-14">
                   <Icon className="h-6 w-6 sm:h-7 sm:w-7" />
                 </span>
                 <div className="min-w-0">
@@ -68,7 +68,7 @@ export function SubscriptionHero({
                       const FIcon = FACT_ICONS[f.id];
                       return (
                         <div key={f.id} className="flex min-w-0 flex-wrap items-center gap-x-1.5">
-                          <FIcon className={cn("h-4 w-4 shrink-0", f.tone === "warning" ? "text-amber-300" : f.tone === "success" ? "text-emerald-300" : "text-white/70")} aria-hidden="true" />
+                          <FIcon className={cn("h-4 w-4 shrink-0", f.tone === "warning" ? "text-warning" : f.tone === "success" ? "text-success" : "text-white/70")} aria-hidden="true" />
                           <dt className="text-white/75">{px(f.label)}</dt>
                           <dd className="font-semibold text-white">{px(f.value)}</dd>
                         </div>
@@ -90,7 +90,7 @@ export function SubscriptionHero({
               <div className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-sm">
                 {model.dataNote && <p className="text-white/90">{px(model.dataNote)}</p>}
                 {model.restriction && (
-                  <p className="flex items-start gap-1.5 text-amber-200">
+                  <p className="flex items-start gap-1.5 text-warning">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     <span className="min-w-0">{px(model.restriction)}</span>
                   </p>

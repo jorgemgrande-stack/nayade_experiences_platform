@@ -44,7 +44,7 @@ export function CustomTermsSection({ terms }: { terms: CustomTerms }) {
   const m = (c: number) => money(c, v.currency);
   const changed = terms.today.netCents !== v.recurring.netCents;
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 space-y-4" aria-labelledby="sub-custom-terms" data-testid="custom-terms">
+    <section className="rounded-xl border border-border bg-card p-6 space-y-4" aria-labelledby="sub-custom-terms" data-testid="custom-terms">
       <h2 id="sub-custom-terms" className="font-semibold text-foreground flex items-center gap-2">
         <PackageCheck className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
         {v.packageName ?? t("subscription.terms.defaultTitle")}

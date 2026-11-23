@@ -104,7 +104,7 @@ export default function PostmarkSettings() {
         {s && (
           <>
             <div role="status" className={`flex items-start gap-2 rounded-xl border p-4 text-sm ${s.active ? "border-primary/40 bg-primary/5 text-foreground" : "border-border bg-muted/40 text-foreground"}`}>
-              {s.active ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />}
+              {s.active ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />}
               <div className="min-w-0 space-y-1">
                 <p className="font-medium">{s.active ? t("settingsPostmark.active", { email: s.fromEmail }) : t("settingsPostmark.inactive")}</p>
                 {s.problemText && s.configured && <p className="text-muted-foreground">{s.problemText}</p>}
@@ -155,7 +155,7 @@ export default function PostmarkSettings() {
               <dl className="grid gap-1 text-sm sm:grid-cols-[12rem_1fr]">
                 <dt className="text-muted-foreground">{t("settingsPostmark.step2.senderDomain")}</dt>
                 <dd className="break-words text-foreground">
-                  {s.sender.domain ?? "—"} {s.sender.domain && (s.sender.verified ? <span className="text-primary">{t("settingsPostmark.step2.verified")}</span> : <span className="text-amber-700 dark:text-amber-300">{t("settingsPostmark.step2.notVerified")}</span>)}
+                  {s.sender.domain ?? "—"} {s.sender.domain && (s.sender.verified ? <span className="text-primary">{t("settingsPostmark.step2.verified")}</span> : <span className="text-warning">{t("settingsPostmark.step2.notVerified")}</span>)}
                 </dd>
                 <dt className="text-muted-foreground">{t("settingsPostmark.step2.verifiedDomains")}</dt>
                 <dd className="break-words text-foreground">{s.sender.verifiedDomains.length ? s.sender.verifiedDomains.join(", ") : t("settingsPostmark.step2.none")}</dd>
@@ -171,7 +171,7 @@ export default function PostmarkSettings() {
                   <p className={verify.data.ok ? "text-foreground" : "text-destructive"}>{localizeIntegrationText(verify.data.message, locale)}</p>
                   {verify.data.serverName && <p className="text-muted-foreground">{t("settingsPostmark.step2.server", { name: verify.data.serverName, type: verify.data.deliveryType ?? "—" })}</p>}
                   {verify.data.stream.found && <p className="text-muted-foreground">{t("settingsPostmark.step2.stream", { id: verify.data.stream.id, type: verify.data.stream.type })}</p>}
-                  {verify.data.sender.problemText && <p className="text-amber-700 dark:text-amber-300">{verify.data.sender.problemText}</p>}
+                  {verify.data.sender.problemText && <p className="text-warning">{verify.data.sender.problemText}</p>}
                 </div>
               )}
             </Step>
@@ -207,7 +207,7 @@ export default function PostmarkSettings() {
                           <Copy className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </div>
-                      <p className="text-xs text-amber-700 dark:text-amber-300">{t("settingsPostmark.step3.copyNow")}</p>
+                      <p className="text-xs text-warning">{t("settingsPostmark.step3.copyNow")}</p>
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">{s.webhook.configured ? t("settingsPostmark.step3.generated") : t("settingsPostmark.step3.notGenerated")}</p>

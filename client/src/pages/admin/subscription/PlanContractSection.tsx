@@ -67,7 +67,7 @@ export function PlanContractSection({ isTrial }: { isTrial: boolean }) {
     <>
     {/* Condiciones pactadas con la empresa (solo lectura, con la presentación elegida por Big Elephant) */}
     {p.customTerms && <CustomTermsSection terms={p.customTerms} />}
-    <section className="rounded-2xl border border-border bg-card p-6 space-y-4" aria-labelledby="sub-contract">
+    <section className="rounded-xl border border-border bg-card p-6 space-y-4" aria-labelledby="sub-contract">
       <h2 id="sub-contract" className="font-semibold text-foreground">{t("subscription.contract.title")}</h2>
       {!c ? (
         <p className="text-sm text-muted-foreground">
@@ -96,7 +96,7 @@ export function PlanContractSection({ isTrial }: { isTrial: boolean }) {
           </dl>
           {c.items.length > 0 && <p className="text-xs text-muted-foreground">{t("subscription.contract.modules", { items: c.items.join(", ") })}</p>}
           {st && (
-            <div className={st.warn ? "flex gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200" : "text-sm text-foreground"}>
+            <div className={st.warn ? "flex gap-2 rounded-xl bg-warning/10 p-3 text-sm text-warning" : "text-sm text-foreground"}>
               {st.warn && <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />}
               <span>
                 {t("subscription.contract.paymentState")} <strong>{st.label}</strong>
@@ -115,7 +115,7 @@ export function PlanContractSection({ isTrial }: { isTrial: boolean }) {
                 <span className="font-medium text-foreground">{i.number ?? "—"}</span>
                 <span className="text-muted-foreground">{i.periodLabel ?? i.issueDate ?? ""}</span>
                 <span className="ml-auto text-foreground">{money(i.totalCents, i.currency)}</span>
-                <Badge variant="outline" className="text-[11px]">{i.kind === "rectification" ? t("subscription.contract.rectification") : (paymentLabels(t)[i.paymentStatus] ?? i.paymentStatus)}</Badge>
+                <Badge variant="outline" className="text-xs">{i.kind === "rectification" ? t("subscription.contract.rectification") : (paymentLabels(t)[i.paymentStatus] ?? i.paymentStatus)}</Badge>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setViewing(i.id)} aria-label={t("subscription.contract.viewInvoice", { number: i.number ?? "" })}>
                   <FileText className="w-4 h-4" aria-hidden="true" />
                 </Button>

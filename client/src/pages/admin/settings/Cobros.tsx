@@ -27,9 +27,9 @@ interface Mode {
 
 const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: string }> = {
   no_conectada: { icon: CircleDashed, className: "text-muted-foreground" },
-  pendiente: { icon: CircleDashed, className: "text-amber-600 dark:text-amber-400" },
-  verificada: { icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-400" },
-  restringida: { icon: AlertTriangle, className: "text-red-600 dark:text-red-400" },
+  pendiente: { icon: CircleDashed, className: "text-warning" },
+  verificada: { icon: CheckCircle2, className: "text-success" },
+  restringida: { icon: AlertTriangle, className: "text-danger" },
 };
 
 function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boolean; onChanged: () => void }) {
@@ -65,7 +65,7 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
   const Icon = s.icon;
 
   return (
-    <section className="bg-card border border-border/50 rounded-2xl p-5 space-y-4" aria-labelledby={`cobros-${m.mode}`}>
+    <section className="bg-card border border-border/50 rounded-xl p-5 space-y-4" aria-labelledby={`cobros-${m.mode}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id={`cobros-${m.mode}`} className="text-lg font-semibold">
@@ -108,12 +108,12 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
             </dl>
           )}
           {m.requirementsDue.length > 0 && (
-            <div role="alert" className="text-sm rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+            <div role="alert" className="text-sm rounded-xl border border-warning/40 bg-warning/10 p-3">
               {t("settingsPayments.requirementsDue", { n: m.requirementsDue.length })}
             </div>
           )}
           {m.disabledReason && (
-            <div role="alert" className="text-sm rounded-xl border border-red-500/40 bg-red-500/10 p-3">
+            <div role="alert" className="text-sm rounded-xl border border-danger/40 bg-danger/10 p-3">
               {t("settingsPayments.disabledReason", { reason: m.disabledReason })}
             </div>
           )}
@@ -217,14 +217,14 @@ export default function Cobros() {
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : status.error ? (
-          <div role="alert" className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400">
+          <div role="alert" className="flex items-start gap-2 text-sm text-danger">
             <XCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden /> {status.error.message}
           </div>
         ) : (
           status.data && (
             <>
               {!status.data.platformReady && (
-                <div role="alert" className="text-sm rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                <div role="alert" className="text-sm rounded-xl border border-warning/40 bg-warning/10 p-3">
                   {t("settingsPayments.platformNotReady", { problem: status.data.platformProblem })}
                 </div>
               )}

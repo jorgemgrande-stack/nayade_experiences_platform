@@ -56,7 +56,7 @@ function BillingPortalSection() {
   const portal = useBillingPortal();
   if (!portal.enabled) return null;
   return (
-    <section className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="sub-invoices">
+    <section className="space-y-3 rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="sub-invoices">
       <h3 id="sub-invoices" className="font-semibold text-foreground">
         {t("subscription.page.invoicesTitle")}
       </h3>
@@ -202,7 +202,7 @@ export default function SubscriptionPage() {
           {sub.isError && <PanelError error={sub.error} onRetry={() => sub.refetch()} title={t("subscription.page.loadError")} />}
 
           {data && data.licensing === "legacy" && (
-            <section className="flex gap-3 rounded-2xl border border-border bg-card p-6" aria-labelledby="sub-legacy">
+            <section className="flex gap-3 rounded-xl border border-border bg-card p-6" aria-labelledby="sub-legacy">
               <Info className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <div>
                 <h2 id="sub-legacy" className="font-semibold text-foreground">
@@ -236,7 +236,7 @@ export default function SubscriptionPage() {
                 {catalog.isLoading && <PanelLoading label={t("subscription.page.plansLoading")} />}
                 {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("subscription.page.plansLoadError")} />}
                 {catalog.isSuccess && cards.length === 0 && (
-                  <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
+                  <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
                     {t("subscription.page.comparisonUnavailable")}{" "}
                     {data.upgradeUrl ? (
                       <a href={data.upgradeUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:text-foreground">
@@ -264,7 +264,7 @@ export default function SubscriptionPage() {
               {/* Detalle organizado en pestañas */}
               <section id="detalle" aria-labelledby="sub-detail" className="scroll-mt-4 space-y-4">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span aria-hidden="true" data-tone="night" className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-lg shadow-black/20 sm:h-12 sm:w-12">
+                  <span aria-hidden="true" data-tone="night" className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-lg shadow-black/20 sm:h-12 sm:w-12">
                     <Layers className="h-6 w-6" />
                   </span>
                   <div className="min-w-0">
@@ -276,7 +276,7 @@ export default function SubscriptionPage() {
                 </div>
                 <span id="facturacion" className="block scroll-mt-4" aria-hidden="true" />
                 <Tabs value={tab} onValueChange={(v) => setTab(v as DetailTab)} className="gap-4">
-                  <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-2xl p-1">
+                  <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl p-1">
                     <TabsTrigger value="features" className="flex-none rounded-xl px-3 py-1.5">
                       {t("subscription.page.tabs.features")}
                     </TabsTrigger>
@@ -294,7 +294,7 @@ export default function SubscriptionPage() {
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="features" className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+                  <TabsContent value="features" className="rounded-xl border border-border bg-card p-5 sm:p-6">
                     <h3 className="mb-1 font-semibold text-foreground">{t("subscription.page.featuresTitle")}</h3>
                     <p className="mb-4 text-sm text-muted-foreground">{t("subscription.page.featuresText")}</p>
                     {data.capabilities.length === 0 ? (
@@ -319,7 +319,7 @@ export default function SubscriptionPage() {
                                     <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", meta.tone)} aria-hidden="true" />
                                     <span className="min-w-0 flex-1 break-words text-foreground">{cap.name}</span>
                                     {cap.status !== "active" && (
-                                      <Badge variant="outline" className="text-[11px]">
+                                      <Badge variant="outline" className="text-xs">
                                         {meta.label}
                                       </Badge>
                                     )}
@@ -336,7 +336,7 @@ export default function SubscriptionPage() {
 
                   <TabsContent value="limits" className="space-y-4">
                     {data.limits.length > 0 && (
-                      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+                      <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
                         <h3 className="mb-1 font-semibold text-foreground">{t("subscription.page.limitsTitle")}</h3>
                         <p className="mb-4 text-sm text-muted-foreground">
                           {t("subscription.page.limitsIntro", { plan: data.plan?.name ?? t("subscription.common.yourPlan") })}
@@ -387,7 +387,7 @@ export default function SubscriptionPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="modules" className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6">
+                  <TabsContent value="modules" className="space-y-3 rounded-xl border border-border bg-card p-5 sm:p-6">
                     <h3 className="font-semibold text-foreground">{t("subscription.page.modulesTitle")}</h3>
                     <OwnedModules />
                   </TabsContent>
@@ -400,7 +400,7 @@ export default function SubscriptionPage() {
                     {/* Desistimiento (particulares, dentro del plazo): distinto de cancelar la suscripción */}
                     <WithdrawalSection />
                     {!contract.data && !portal.enabled && !pc?.enabled && (
-                      <p className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
+                      <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
                         {isAdmin
                           ? trial
                             ? t("subscription.page.billingTrial")
@@ -410,7 +410,7 @@ export default function SubscriptionPage() {
                     )}
                   </TabsContent>
 
-                  <TabsContent value="data" className="space-y-3 rounded-2xl border border-border bg-card p-5 sm:p-6">
+                  <TabsContent value="data" className="space-y-3 rounded-xl border border-border bg-card p-5 sm:p-6">
                     {/* Exportación: también en solo lectura y suspendida */}
                     <h3 className="font-semibold text-foreground">{t("subscription.page.dataTitle")}</h3>
                     <p className="text-sm text-muted-foreground">

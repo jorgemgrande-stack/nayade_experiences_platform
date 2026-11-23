@@ -15,8 +15,8 @@ import {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function StatusIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
-  if (ok) return <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />;
-  if (warn) return <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />;
+  if (ok) return <CheckCircle2 className="w-4 h-4 text-success shrink-0" />;
+  if (warn) return <AlertTriangle className="w-4 h-4 text-warning shrink-0" />;
   return <Circle className="w-4 h-4 text-muted-foreground/40 shrink-0" />;
 }
 
@@ -33,7 +33,7 @@ function SectionCard({ icon: Icon, title, items, editHref }: SectionCardProps) {
   const anyOk = items.some(i => i.ok);
 
   return (
-    <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+    <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border/50">
         <div className="flex items-center gap-2">
           <Icon className="w-4 h-4 text-muted-foreground" />
@@ -42,9 +42,9 @@ function SectionCard({ icon: Icon, title, items, editHref }: SectionCardProps) {
         <div className="flex items-center gap-2">
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
             allOk
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+              ? "bg-success/10 text-success"
               : anyOk
-                ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+                ? "bg-warning/10 text-warning"
                 : "bg-muted text-muted-foreground"
           }`}>
             {allOk ? t("settingsStatus.card.configured") : anyOk ? t("settingsStatus.card.partial") : t("settingsStatus.card.pending")}
@@ -184,7 +184,7 @@ export default function ConfigStatus() {
         />
 
         {/* Active modules */}
-        {technical && <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+        {technical && <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border/50">
             <div className="flex items-center gap-2">
               <Settings2 className="w-4 h-4 text-muted-foreground" />
@@ -202,7 +202,7 @@ export default function ConfigStatus() {
                 {moduleGroups.map(group => {
                   const groupFlags = activeModules.filter(f => f.module === group);
                   return groupFlags.map(f => (
-                    <span key={f.key} className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                    <span key={f.key} className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-success/10 text-success">
                       <CheckCircle2 className="w-3 h-3" />
                       {f.name}
                     </span>
@@ -214,7 +214,7 @@ export default function ConfigStatus() {
         </div>}
 
         {/* Integrations / env vars */}
-        {technical && <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+        {technical && <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border/50">
             <div className="flex items-center gap-2">
               <Plug className="w-4 h-4 text-muted-foreground" />
@@ -232,12 +232,12 @@ export default function ConfigStatus() {
                   {envByGroup(group).map(e => (
                     <div key={e.key} className="flex items-center gap-2.5">
                       {e.isSet
-                        ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        ? <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
                         : <Circle className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />}
                       <span className="text-sm text-foreground flex-1">{e.label}</span>
                       <code className="text-xs font-mono text-muted-foreground/60">{e.key}</code>
                       {!e.isSet && (
-                        <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">{t("settingsStatus.card.pending")}</span>
+                        <span className="text-xs text-warning font-medium">{t("settingsStatus.card.pending")}</span>
                       )}
                     </div>
                   ))}

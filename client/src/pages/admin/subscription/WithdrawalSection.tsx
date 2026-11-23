@@ -64,13 +64,13 @@ export function WithdrawalSection() {
   const last = s.request;
 
   return (
-    <section id="desistimiento" className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-withdrawal">
+    <section id="desistimiento" className="rounded-xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-withdrawal">
       <h2 id="sub-withdrawal" className="font-semibold text-foreground flex items-center gap-2">
         <Undo2 className="w-4 h-4" aria-hidden="true" /> {t("subscription.withdrawal.title")}
       </h2>
 
       {receipt && (
-        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm dark:border-emerald-500/40 dark:bg-emerald-500/10" role="status">
+        <div className="rounded-xl border border-success/40 bg-success/10 p-4 text-sm" role="status">
           <p className="font-medium flex items-center gap-2">
             <FileCheck2 className="w-4 h-4" aria-hidden="true" /> {t("subscription.withdrawal.receipt", { ref: receipt.reference })}
           </p>

@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { Check, CheckCircle2, Circle, Copy, ExternalLink, Globe, Loader2, RefreshCw, ShieldCheck, Star, Unplug } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -53,12 +53,12 @@ function stepOf(stage: DomainStage): number {
 }
 
 const STAGE_TONE: Record<DomainStage, string> = {
-  pending_verification: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300",
-  pending_dns: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300",
-  pending_certificate: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-300",
-  checking: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-300",
-  active: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-300",
-  error: "bg-red-100 text-red-900 dark:bg-red-500/15 dark:text-red-300",
+  pending_verification: "bg-warning/10 text-warning",
+  pending_dns: "bg-warning/10 text-warning",
+  pending_certificate: "bg-info/10 text-info",
+  checking: "bg-info/10 text-info",
+  active: "bg-success/10 text-success",
+  error: "bg-danger/10 text-danger",
   disconnected: "bg-muted text-muted-foreground",
 };
 
@@ -107,7 +107,7 @@ function RecordsTable({ records }: { records: DomainRecordView[] }) {
             <span className="text-xs text-muted-foreground">
               {r.purpose === "ownership" ? t("settingsDomains.purpose.ownership") : r.purpose === "traffic" ? t("settingsDomains.purpose.traffic") : t("settingsDomains.purpose.certificate")}
             </span>
-            <span className={cn("ml-auto inline-flex items-center gap-1 text-xs font-medium", r.ok ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
+            <span className={cn("ml-auto inline-flex items-center gap-1 text-xs font-medium", r.ok ? "text-success" : "text-muted-foreground")}>
               {r.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
               {r.ok ? t("settingsDomains.detected") : t("settingsDomains.notDetected")}
             </span>
@@ -137,14 +137,14 @@ function Stepper({ current, done }: { current: number; done: boolean }) {
             <span
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold",
-                complete && "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500",
+                complete && "border-success/40 bg-success text-background",
                 active && "border-primary bg-primary text-primary-foreground",
                 !complete && !active && "text-muted-foreground",
               )}
             >
               {complete ? <Check className="h-4 w-4" /> : i + 1}
             </span>
-            <span className={cn("text-[11px] leading-tight sm:text-xs", active ? "font-semibold" : "text-muted-foreground")}>{t(`settingsDomains.steps.${stepKey}`)}</span>
+            <span className={cn("text-xs leading-tight sm:text-xs", active ? "font-semibold" : "text-muted-foreground")}>{t(`settingsDomains.steps.${stepKey}`)}</span>
           </li>
         );
       })}
@@ -171,7 +171,7 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
         {d.stage !== "disconnected" && <Stepper current={step} done={d.stage === "active"} />}
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className={cn("text-sm", d.stage === "error" ? "text-red-700 dark:text-red-400" : "text-muted-foreground")} role="status">
+        <p className={cn("text-sm", d.stage === "error" ? "text-danger" : "text-muted-foreground")} role="status">
           {localizeIntegrationText(d.message, locale)}
         </p>
 
@@ -199,7 +199,7 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
               <p className="text-sm text-muted-foreground">{t("settingsDomains.step3.preparing")}</p>
             )}
             {d.apex && (
-              <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+              <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
                 {t("settingsDomains.step3.apex", { domain: d.domain })}
               </p>
             )}
@@ -214,7 +214,7 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
         )}
 
         {d.stage === "active" && (
-          <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
+          <div className="space-y-2 rounded-md border border-success/40 bg-success/10 p-3 text-sm text-success">
             <p className="flex items-center gap-2 font-medium">
               <CheckCircle2 className="h-4 w-4" /> {t("settingsDomains.step5", { domain: d.domain })}
             </p>
@@ -247,7 +247,7 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
             </>
           )}
           {d.stage !== "disconnected" && (
-            <Button variant="ghost" className="text-red-700 hover:text-red-800 dark:text-red-400" onClick={onDisconnect} disabled={busy}>
+            <Button variant="ghost" className="text-danger hover:text-danger" onClick={onDisconnect} disabled={busy}>
               <Unplug className="mr-2 h-4 w-4" /> {d.stage === "active" ? t("settingsDomains.disconnect") : t("settingsDomains.cancelConnection")}
             </Button>
           )}
@@ -313,7 +313,7 @@ export default function CustomDomains() {
             <Loader2 className="h-4 w-4 animate-spin" /> {t("settingsDomains.loading")}
           </div>
         )}
-        {status.error && <p className="text-sm text-red-700 dark:text-red-400">{status.error.message}</p>}
+        {status.error && <p className="text-sm text-danger">{status.error.message}</p>}
         {status.data && !status.data.available && (
           <Card>
             <CardContent className="py-6 text-sm text-muted-foreground">{localizeIntegrationText(status.data.reason, locale)}</CardContent>
@@ -431,7 +431,7 @@ export default function CustomDomains() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("settingsDomains.confirm.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700"
+              className={buttonVariants({ variant: "destructive" })}
               onClick={() => {
                 if (confirm) disconnect.mutate({ domain: confirm });
                 setConfirm(null);

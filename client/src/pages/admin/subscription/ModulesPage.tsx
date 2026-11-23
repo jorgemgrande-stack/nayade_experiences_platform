@@ -67,9 +67,9 @@ const familyLabels = (t: Translate): Record<string, string> => ({
 });
 
 const stateMeta = (t: Translate): Record<ModuleState, { label: string; icon: typeof CheckCircle2; tone: string }> => ({
-  active: { label: t("subscription.modules.state.active"), icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200" },
-  read_only: { label: t("subscription.modules.state.readOnly"), icon: Eye, tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
-  available: { label: t("subscription.modules.state.available"), icon: Sparkles, tone: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-200" },
+  active: { label: t("subscription.modules.state.active"), icon: CheckCircle2, tone: "bg-success/10 text-success" },
+  read_only: { label: t("subscription.modules.state.readOnly"), icon: Eye, tone: "bg-warning/10 text-warning" },
+  available: { label: t("subscription.modules.state.available"), icon: Sparkles, tone: "bg-info/10 text-info" },
   on_request: { label: t("subscription.modules.state.onRequest"), icon: PackagePlus, tone: "bg-muted text-foreground" },
   in_preparation: { label: t("subscription.modules.state.inPreparation"), icon: Clock, tone: "bg-muted text-muted-foreground" },
   coming_soon: { label: t("subscription.modules.state.comingSoon"), icon: Clock, tone: "bg-muted text-muted-foreground" },
@@ -165,7 +165,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
               </Button>
             </div>
             {!valid && (
-              <p className="text-xs text-red-700 dark:text-red-400">
+              <p className="text-xs text-danger">
                 {t("subscription.modules.totalHigher", { mult: step > 1 ? t("subscription.modules.multiples", { step }) : "" })}
               </p>
             )}
@@ -173,7 +173,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
         )}
 
         {preview.isPending && <PanelLoading label={t("subscription.change.calculating")} />}
-        {preview.isError && <p className="text-sm text-red-700 dark:text-red-400">{preview.error.message}</p>}
+        {preview.isError && <p className="text-sm text-danger">{preview.error.message}</p>}
 
         {p && !result && (
           <div className="space-y-3 text-sm">
@@ -204,7 +204,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
         )}
 
         {result?.status === "applied" && (
-          <p className="text-sm text-emerald-800 dark:text-emerald-300">
+          <p className="text-sm text-success">
             {quantity ? t("subscription.modules.doneExpanded") : t("subscription.modules.doneActive", { name: module.name })}
           </p>
         )}
@@ -213,7 +213,7 @@ function PurchaseDialog({ module, current, onClose }: { module: PanelModule; cur
           <p className="text-sm text-foreground">{t("subscription.modules.paymentPending")}</p>
         )}
         {(result?.status === "failed" || result?.status === "expired") && (
-          <p className="text-sm text-red-700 dark:text-red-400">{t("subscription.modules.purchaseFailed")}</p>
+          <p className="text-sm text-danger">{t("subscription.modules.purchaseFailed")}</p>
         )}
 
         <DialogFooter>
@@ -321,12 +321,12 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
                 {t("subscription.modules.seeChange")}
               </Button>
             </div>
-            {!valid && <p className="text-xs text-red-700 dark:text-red-400">{t("subscription.modules.totalLower", { mult: step > 1 ? t("subscription.modules.multiples", { step }) : "" })}</p>}
+            {!valid && <p className="text-xs text-danger">{t("subscription.modules.totalLower", { mult: step > 1 ? t("subscription.modules.multiples", { step }) : "" })}</p>}
           </div>
         )}
 
         {preview.isPending && <PanelLoading label={t("subscription.modules.checking")} />}
-        {preview.isError && <p className="text-sm text-red-700 dark:text-red-400">{preview.error.message}</p>}
+        {preview.isError && <p className="text-sm text-danger">{preview.error.message}</p>}
 
         {p && !result && (
           <div className="space-y-3 text-sm">
@@ -352,11 +352,11 @@ function ReductionDialog({ module, current, onClose }: { module: PanelModule; cu
         )}
 
         {(result?.status === "applied" || result?.status === "processing") && (
-          <p className="text-sm text-emerald-800 dark:text-emerald-300">
+          <p className="text-sm text-success">
             {t("subscription.modules.scheduled", { when: p?.effectiveAt ? t("subscription.modules.whenDate", { date: fmtDate(p.effectiveAt) }) : t("subscription.modules.whenEnd") })}
           </p>
         )}
-        {(result?.status === "failed" || result?.status === "expired") && <p className="text-sm text-red-700 dark:text-red-400">{t("subscription.modules.scheduleFailed")}</p>}
+        {(result?.status === "failed" || result?.status === "expired") && <p className="text-sm text-danger">{t("subscription.modules.scheduleFailed")}</p>}
 
         <DialogFooter>
           {!result && (
@@ -434,7 +434,7 @@ export default function ModulesPage() {
         {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("subscription.modules.loadError")} />}
 
         {catalog.isSuccess && !data && (
-          <section className="rounded-2xl border border-border bg-card p-6 space-y-2">
+          <section className="rounded-xl border border-border bg-card p-6 space-y-2">
             <p className="text-sm text-muted-foreground">{t("subscription.modules.noCatalog")}</p>
           </section>
         )}
@@ -449,7 +449,7 @@ export default function ModulesPage() {
                 const meta = STATE_META[m.state];
                 const Icon = meta.icon;
                 return (
-                  <li key={m.key} className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
+                  <li key={m.key} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-foreground">{m.name}</h3>

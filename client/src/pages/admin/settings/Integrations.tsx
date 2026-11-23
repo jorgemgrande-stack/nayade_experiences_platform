@@ -10,10 +10,10 @@ import { fieldFormatProblem, groupIntegrations, type PanelField, type PanelInteg
 
 const STATE_STYLE: Record<PanelIntegration["state"], { icon: typeof Circle; className: string }> = {
   off: { icon: Circle, className: "text-muted-foreground" },
-  incomplete: { icon: CircleDashed, className: "text-amber-600 dark:text-amber-400" },
-  unchecked: { icon: CircleDashed, className: "text-sky-600 dark:text-sky-400" },
-  working: { icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-400" },
-  failing: { icon: AlertTriangle, className: "text-red-600 dark:text-red-400" },
+  incomplete: { icon: CircleDashed, className: "text-warning" },
+  unchecked: { icon: CircleDashed, className: "text-info" },
+  working: { icon: CheckCircle2, className: "text-success" },
+  failing: { icon: AlertTriangle, className: "text-danger" },
 };
 
 export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegration; f: PanelField; value: string | undefined; onChange: (v: string) => void; error: string | null }) {
@@ -62,7 +62,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
       ) : (
         <input
           id={id}
-          className={`w-full h-10 rounded-lg border bg-background px-3 text-sm ${error ? "border-red-500" : "border-border/60"}`}
+          className={`w-full h-10 rounded-lg border bg-background px-3 text-sm ${error ? "border-danger/40" : "border-border/60"}`}
           type={f.secret ? "password" : "text"}
           autoComplete="off"
           spellCheck={false}
@@ -79,7 +79,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
         </p>
       )}
       {error && (
-        <p id={`${id}-error`} className="text-xs text-red-600 dark:text-red-400">
+        <p id={`${id}-error`} className="text-xs text-danger">
           {L(error)}
         </p>
       )}
@@ -111,7 +111,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
   const StateIcon = style.icon;
 
   return (
-    <section aria-labelledby={`${p.id}-title`} className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+    <section aria-labelledby={`${p.id}-title`} className="bg-card border border-border/50 rounded-xl overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-2 px-5 py-3 bg-muted/30 border-b border-border/50">
         <div className="min-w-0 flex-1">
           <h3 id={`${p.id}-title`} className="text-sm font-semibold">
@@ -145,7 +145,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
           }
         }}
       >
-        {p.stateDetail && <p className={`text-xs ${p.state === "failing" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>{L(p.stateDetail)}</p>}
+        {p.stateDetail && <p className={`text-xs ${p.state === "failing" ? "text-danger" : "text-muted-foreground"}`}>{L(p.stateDetail)}</p>}
         {p.fields.map((f) => (
           <FieldInput key={f.key} p={p} f={f} value={vals[f.key]} error={errors[f.key]} onChange={(v) => setVals({ ...vals, [f.key]: v })} />
         ))}
@@ -178,7 +178,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
           {p.configured && (
             <button
               type="button"
-              className="h-10 px-4 rounded-lg text-sm text-red-600 dark:text-red-400"
+              className="h-10 px-4 rounded-lg text-sm text-danger"
               onClick={async () => {
                 if (!(await confirmAction({ description: t("settingsPayments.integrations.confirmClear", { title: L(p.title) }), destructive: true }))) return;
                 await clear.mutateAsync({ provider: p.id });
@@ -192,7 +192,7 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
           )}
         </div>
         {result && (
-          <p role="status" className={`text-sm ${result.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+          <p role="status" className={`text-sm ${result.ok ? "text-success" : "text-danger"}`}>
             {L(result.message)}
           </p>
         )}
@@ -222,15 +222,15 @@ export default function Integrations() {
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : !avail.data?.available ? (
-          <div className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-muted-foreground">
+          <div className="bg-card border border-border/50 rounded-xl p-5 text-sm text-muted-foreground">
             {t("settingsPayments.integrations.technicalTeam")}
           </div>
         ) : list.isError ? (
-          <div role="alert" className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-red-600 dark:text-red-400">
+          <div role="alert" className="bg-card border border-border/50 rounded-xl p-5 text-sm text-danger">
             {t("settingsPayments.integrations.loadError")}
           </div>
         ) : groups.length === 0 ? (
-          <div className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-muted-foreground">
+          <div className="bg-card border border-border/50 rounded-xl p-5 text-sm text-muted-foreground">
             {t("settingsPayments.integrations.none")}
           </div>
         ) : (

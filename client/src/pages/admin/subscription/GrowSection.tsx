@@ -25,7 +25,7 @@ function Access({ href, icon, title, detail, tone }: { href: string; icon: React
       <Link
         href={href}
         className={cn(
-          "cx-access flex h-full min-h-[5rem] items-center gap-3 rounded-2xl px-4 py-3 shadow-lg shadow-black/15 transition-[transform,filter] hover:brightness-110 motion-safe:hover:-translate-y-0.5 sm:min-h-[5.5rem] sm:px-5",
+          "cx-access flex h-full min-h-[5rem] items-center gap-3 rounded-xl px-4 py-3 shadow-lg shadow-black/15 transition-[transform,filter] hover:brightness-110 motion-safe:hover:-translate-y-0.5 sm:min-h-[5.5rem] sm:px-5",
           `cx-access-${tone}`,
         )}
       >
@@ -65,7 +65,7 @@ export function GrowSection() {
   return (
     <section id="ampliar" className="scroll-mt-4 space-y-6" aria-labelledby="sub-grow">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span aria-hidden="true" data-tone="turquoise" className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-lg shadow-black/20 sm:h-12 sm:w-12">
+        <span aria-hidden="true" data-tone="turquoise" className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-lg shadow-black/20 sm:h-12 sm:w-12">
           <Layers className="h-6 w-6" />
         </span>
         <div className="min-w-[12rem] flex-1">
@@ -115,7 +115,7 @@ export function GrowSection() {
           </h3>
           <ul className="grid gap-3 md:grid-cols-3">
             {recs.map(({ item, because }) => (
-              <li key={item.key} className="cx-card flex min-w-0 flex-col gap-2 rounded-2xl border border-border bg-card p-4">
+              <li key={item.key} className="cx-card flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4">
                 <StateBadge state={item.state} />
                 <p className="break-words font-semibold text-foreground">{item.name}</p>
                 {item.tagline && <p className="text-sm text-muted-foreground">{item.tagline}</p>}

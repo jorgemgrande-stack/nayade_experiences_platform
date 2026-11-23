@@ -20,12 +20,12 @@ import AdminLayout from "@/components/AdminLayout";
 const DOC_TYPES = ["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"];
 
 const DOC_TYPE_COLORS: Record<string, string> = {
-  presupuesto: "bg-blue-100 text-blue-800",
-  factura: "bg-green-100 text-green-800",
-  reserva: "bg-purple-100 text-purple-800",
-  tpv: "bg-orange-100 text-orange-800",
-  cupon: "bg-yellow-100 text-yellow-800",
-  liquidacion: "bg-red-100 text-red-800",
+  presupuesto: "bg-info/10 text-info",
+  factura: "bg-success/10 text-success",
+  reserva: "bg-primary/10 text-primary",
+  tpv: "bg-warning/10 text-warning",
+  cupon: "bg-warning/10 text-warning",
+  liquidacion: "bg-danger/10 text-danger",
   anulacion: "bg-gray-100 text-gray-800",
 };
 
@@ -100,7 +100,7 @@ export default function DocumentNumbersAdmin() {
       </div>
 
       {/* Aviso importante */}
-      <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800">
+      <div className="flex items-start gap-3 p-4 rounded-lg border border-warning/40 bg-warning/10 text-warning">
         <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
         <div className="text-sm">
           <strong>{t("documentNumbers.importantLabel")}</strong> {t("documentNumbers.important")}
@@ -225,7 +225,7 @@ export default function DocumentNumbersAdmin() {
                 maxLength={16}
               />
             </div>
-            <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+            <p className="text-xs text-warning bg-warning/10 p-2 rounded border border-warning/40">
               {t("documentNumbers.prefixNote")}
             </p>
           </div>
@@ -252,7 +252,7 @@ export default function DocumentNumbersAdmin() {
             <DialogTitle>{t("documentNumbers.resetTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="flex items-start gap-3 p-3 rounded-lg border border-red-200 bg-red-50 text-red-800">
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-danger/40 bg-danger/10 text-danger">
               <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
               <p className="text-sm">
                 <strong>{t("documentNumbers.irreversible")}</strong> {t("documentNumbers.irreversibleText")}
