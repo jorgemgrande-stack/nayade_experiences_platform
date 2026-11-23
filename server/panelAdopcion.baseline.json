@@ -244,9 +244,9 @@
     "geometriaAjena": 2
   },
   "pages/admin/crm/CRMDashboard.tsx": {
-    "coloresFijos": 648,
+    "coloresFijos": 646,
     "hexEnClases": 80,
-    "textoMinusculo": 51,
+    "textoMinusculo": 48,
     "geometriaAjena": 13
   },
   "pages/admin/crm/CancellationDetailModal.tsx": {
