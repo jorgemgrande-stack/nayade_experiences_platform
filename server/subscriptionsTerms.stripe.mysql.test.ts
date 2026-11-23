@@ -84,6 +84,7 @@ describe.skipIf(!URL_)("cobro en Stripe de condiciones personalizadas con MySQL 
     if (errors.length) throw new Error(errors.join("; "));
     for (const m of migrations) for (const s of splitStatements(m.up)) await pool.query(s);
     await pool.query("INSERT INTO crm_companies (id, name, created_at) VALUES (1, 'Acme', 1), (2, 'Otra', 1), (3, 'Tercera', 1), (4, 'Cuarta', 1)");
+    await pool.query("INSERT INTO crm_contacts (company_id, name, email, is_primary, status, created_at, updated_at) VALUES (1, 'Admin 1', 'a1@example.test', 1, 'active', 1, 1), (2, 'Admin 2', 'a2@example.test', 1, 'active', 1, 1), (3, 'Admin 3', 'a3@example.test', 1, 'active', 1, 1), (4, 'Admin 4', 'a4@example.test', 1, 'active', 1, 1)");
     const webStore = new MysqlWebStore(pool);
     const web = new WebAdminService({ store: webStore, refs: { moduleIds: ["hotel"], planIds: () => null }, now: () => clock });
     gw = new FakeStripeGateway();
