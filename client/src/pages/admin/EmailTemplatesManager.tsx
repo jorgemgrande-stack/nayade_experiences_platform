@@ -20,14 +20,14 @@ import {
 type Category = "all" | "reservas" | "presupuestos" | "anulaciones" | "tpv" | "ticketing" | "sistema";
 
 const CATEGORY_COLORS: Record<string, string> = {
-  reservas: "bg-blue-100 text-blue-800", presupuestos: "bg-purple-100 text-purple-800",
-  anulaciones: "bg-red-100 text-red-800", tpv: "bg-green-100 text-green-800",
-  ticketing: "bg-yellow-100 text-yellow-800", sistema: "bg-gray-100 text-gray-800",
+  reservas: "bg-info/10 text-info", presupuestos: "bg-primary/10 text-primary",
+  anulaciones: "bg-danger/10 text-danger", tpv: "bg-success/10 text-success",
+  ticketing: "bg-warning/10 text-warning", sistema: "bg-gray-100 text-gray-800",
   general: "bg-slate-100 text-slate-800",
 };
 const RECIPIENT_COLORS: Record<string, string> = {
-  cliente: "bg-teal-100 text-teal-800", admin: "bg-orange-100 text-orange-800",
-  ambos: "bg-indigo-100 text-indigo-800",
+  cliente: "bg-success/10 text-success", admin: "bg-warning/10 text-warning",
+  ambos: "bg-primary/10 text-primary",
 };
 
 const DEFAULT_BODY = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
@@ -199,13 +199,13 @@ export default function EmailTemplatesManager() {
                   className={`w-full text-left px-4 py-3 border-b transition-colors hover:bg-accent/50 ${selectedId === tpl.id && mode !== "create" ? "bg-accent" : ""}`}>
                   <div className="flex items-start justify-between gap-1">
                     <span className="text-sm font-medium leading-tight">{localizeTemplateText(tpl.name, locale)}</span>
-                    {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("emailTemplates.custom")}</span>}
+                    {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">{t("emailTemplates.custom")}</span>}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{localizeTemplateText(tpl.description, locale)}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[tpl.recipient] ?? "bg-gray-100 text-gray-700"}`}>{recipientLabels[tpl.recipient] ?? tpl.recipient}</span>
-                    {!(tplAny.isActive as boolean) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">{t("emailTemplates.inactive")}</span>}
+                    <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${RECIPIENT_COLORS[tpl.recipient] ?? "bg-gray-100 text-gray-700"}`}>{recipientLabels[tpl.recipient] ?? tpl.recipient}</span>
+                    {!(tplAny.isActive as boolean) && <span className="rounded-full bg-danger/10 px-1.5 py-0.5 text-xs font-medium text-danger">{t("emailTemplates.inactive")}</span>}
                   </div>
                 </button>
               );
@@ -222,16 +222,16 @@ export default function EmailTemplatesManager() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label>{t("emailTemplates.create.uniqueId")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("emailTemplates.create.uniqueId")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.idPlaceholder")} value={createForm.id} onChange={e => setCreateForm(f => ({ ...f, id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "_") }))} />
                   <p className="text-xs text-muted-foreground">{t("emailTemplates.create.idHint")}</p>
                 </div>
                 <div className="space-y-1">
-                  <Label>{t("emailTemplates.create.visibleName")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("emailTemplates.create.visibleName")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.namePlaceholder")} value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} />
                 </div>
                 <div className="space-y-1 col-span-2">
-                  <Label>{t("emailTemplates.create.subject")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("emailTemplates.create.subject")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.subjectPlaceholder")} value={createForm.subject} onChange={e => setCreateForm(f => ({ ...f, subject: e.target.value }))} />
                 </div>
                 <div className="space-y-1">
@@ -265,7 +265,7 @@ export default function EmailTemplatesManager() {
                   <Input placeholder={t("emailTemplates.create.descriptionPlaceholder")} value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))} />
                 </div>
                 <div className="space-y-1 col-span-2">
-                  <Label>{t("emailTemplates.create.bodyHtml")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("emailTemplates.create.bodyHtml")} <span className="text-danger">*</span></Label>
                   <Textarea className="font-mono text-xs min-h-[300px]" value={createForm.bodyHtml} onChange={e => setCreateForm(f => ({ ...f, bodyHtml: e.target.value }))} />
                 </div>
               </div>
@@ -352,10 +352,10 @@ export default function EmailTemplatesManager() {
                 <div className="flex items-center gap-2 min-w-0">
                   {selectedTemplate && (
                     <>
-                      <span className="text-sm font-medium truncate">{localizeTemplateText(selectedTemplate.name, locale)}</span>
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[selectedTemplate.category] ?? ""}`}>{categoryLabels[selectedTemplate.category] ?? selectedTemplate.category}</span>
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[selectedTemplate.recipient] ?? ""}`}>{recipientLabels[selectedTemplate.recipient] ?? selectedTemplate.recipient}</span>
-                      {(selectedTemplate as Record<string,unknown>).isCustom && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("emailTemplates.custom")}</span>}
+                      <span className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap">{localizeTemplateText(selectedTemplate.name, locale)}</span>
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[selectedTemplate.category] ?? ""}`}>{categoryLabels[selectedTemplate.category] ?? selectedTemplate.category}</span>
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium ${RECIPIENT_COLORS[selectedTemplate.recipient] ?? ""}`}>{recipientLabels[selectedTemplate.recipient] ?? selectedTemplate.recipient}</span>
+                      {(selectedTemplate as Record<string,unknown>).isCustom && <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">{t("emailTemplates.custom")}</span>}
                     </>
                   )}
                 </div>
@@ -376,7 +376,7 @@ export default function EmailTemplatesManager() {
                     <Pencil className="h-3 w-3 mr-1" /> {t("emailTemplates.view.edit")}
                   </Button>
                   {(selectedTemplate as Record<string,unknown>)?.isCustom ? (
-                    <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => setShowDeleteConfirm(selectedId)}>
+                    <Button size="sm" variant="outline" className="text-danger hover:text-danger" onClick={() => setShowDeleteConfirm(selectedId)}>
                       <Trash2 className="h-3 w-3 mr-1" /> {t("emailTemplates.view.delete")}
                     </Button>
                   ) : (
@@ -413,7 +413,7 @@ export default function EmailTemplatesManager() {
 
       <Dialog open={!!showDeleteConfirm} onOpenChange={() => setShowDeleteConfirm(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-red-500" /> {t("emailTemplates.deleteDialog.title")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-danger" /> {t("emailTemplates.deleteDialog.title")}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">{t("emailTemplates.deleteDialog.text")}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteConfirm(null)}>{t("emailTemplates.deleteDialog.cancel")}</Button>
@@ -426,7 +426,7 @@ export default function EmailTemplatesManager() {
 
       <Dialog open={!!showRestoreConfirm} onOpenChange={() => setShowRestoreConfirm(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><RotateCcw className="h-5 w-5 text-orange-500" /> {t("emailTemplates.restoreDialog.title")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><RotateCcw className="h-5 w-5 text-warning" /> {t("emailTemplates.restoreDialog.title")}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">{t("emailTemplates.restoreDialog.text")}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRestoreConfirm(null)}>{t("emailTemplates.restoreDialog.cancel")}</Button>

@@ -275,7 +275,7 @@ export default function Settings() {
         </div>
 
         {/* Card: sidebar + content */}
-        <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
+        <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-xl overflow-hidden">
 
           {/* Sidebar */}
           <nav aria-label={t("settingsGeneral.tabs.nav")} className="md:w-52 shrink-0 border-b md:border-b-0 md:border-r border-border/50 py-2 md:py-3 flex md:block overflow-x-auto">

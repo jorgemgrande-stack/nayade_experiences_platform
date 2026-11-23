@@ -220,7 +220,7 @@ export default function PrimerosPasos() {
             </ol>
           </nav>
 
-          <section aria-labelledby="paso-actual" className="min-w-0 rounded-2xl border border-border bg-card p-5 sm:p-6">
+          <section aria-labelledby="paso-actual" className="min-w-0 rounded-xl border border-border bg-card p-5 sm:p-6">
             <div className="mb-5 flex items-start gap-3">
               <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
                 <Icon className="h-5 w-5" aria-hidden />

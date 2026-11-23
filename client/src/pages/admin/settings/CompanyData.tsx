@@ -188,7 +188,7 @@ export default function CompanyData() {
         </p>
       )}
 
-      <section className="bg-card border border-border/50 rounded-2xl p-4 sm:p-6 space-y-4">
+      <section className="bg-card border border-border/50 rounded-xl p-4 sm:p-6 space-y-4">
         <h2 className="text-base font-semibold">{t("settingsCompany.company.title")}</h2>
         <p className="text-xs text-muted-foreground">{t("settingsCompany.company.intro")}</p>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -217,7 +217,7 @@ export default function CompanyData() {
         </div>
       </section>
 
-      <section className="bg-card border border-border/50 rounded-2xl p-4 sm:p-6 space-y-4">
+      <section className="bg-card border border-border/50 rounded-xl p-4 sm:p-6 space-y-4">
         <h2 className="text-base font-semibold">{t("settingsCompany.contact.title")}</h2>
         <p className="text-xs text-muted-foreground">{t("settingsCompany.contact.intro")}</p>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -228,7 +228,7 @@ export default function CompanyData() {
       </section>
 
       {EXTRA_KEYS.some((x) => x.key in extra) && (
-        <section className="bg-card border border-border/50 rounded-2xl p-4 sm:p-6 space-y-4">
+        <section className="bg-card border border-border/50 rounded-xl p-4 sm:p-6 space-y-4">
           <h2 className="text-base font-semibold">{t("settingsCompany.invoiceContact.title")}</h2>
           <p className="text-xs text-muted-foreground">{t("settingsCompany.invoiceContact.intro")}</p>
           <div className="grid gap-4 sm:grid-cols-2">

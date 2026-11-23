@@ -58,7 +58,7 @@ export function SubscriptionRecoveryBanner({ role }: { role: string }) {
   return (
     <section
       aria-labelledby="aviso-suscripcion"
-      className={cn("mb-6 sm:mb-8 flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:gap-4 sm:p-5", TONE_SURFACE[view.tone])}
+      className={cn("mb-6 sm:mb-8 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:gap-4 sm:p-5", TONE_SURFACE[view.tone])}
     >
       <div className="flex min-w-0 flex-1 gap-3">
         <span className={cn("mt-0.5 shrink-0", TONE_TEXT[view.tone])} aria-hidden="true">

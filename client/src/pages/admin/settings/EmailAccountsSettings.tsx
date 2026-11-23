@@ -158,8 +158,8 @@ function AccountModal({
           {/* IMAP */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Server className="w-3.5 h-3.5 text-sky-400" />
-              <h3 className="text-xs font-semibold text-sky-400 uppercase tracking-wider">{t("settingsEmailAccounts.modal.receiving")}</h3>
+              <Server className="w-3.5 h-3.5 text-info" />
+              <h3 className="text-xs font-semibold text-info uppercase tracking-wider">{t("settingsEmailAccounts.modal.receiving")}</h3>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
@@ -191,7 +191,7 @@ function AccountModal({
                 {t("settingsEmailAccounts.modal.testImap")}
               </Button>
               {imapTestResult && (
-                <span className={`text-xs flex items-center gap-1 ${imapTestResult.ok ? "text-emerald-400" : "text-red-400"}`}>
+                <span className={`text-xs flex items-center gap-1 ${imapTestResult.ok ? "text-success" : "text-danger"}`}>
                   {imapTestResult.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                   {imapTestResult.message}
                 </span>
@@ -202,8 +202,8 @@ function AccountModal({
           {/* SMTP */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Send className="w-3.5 h-3.5 text-violet-400" />
-              <h3 className="text-xs font-semibold text-violet-400 uppercase tracking-wider">{t("settingsEmailAccounts.modal.sending")}</h3>
+              <Send className="w-3.5 h-3.5 text-primary" />
+              <h3 className="text-xs font-semibold text-primary uppercase tracking-wider">{t("settingsEmailAccounts.modal.sending")}</h3>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
@@ -235,7 +235,7 @@ function AccountModal({
                 {t("settingsEmailAccounts.modal.testSmtp")}
               </Button>
               {smtpTestResult && (
-                <span className={`text-xs flex items-center gap-1 ${smtpTestResult.ok ? "text-emerald-400" : "text-red-400"}`}>
+                <span className={`text-xs flex items-center gap-1 ${smtpTestResult.ok ? "text-success" : "text-danger"}`}>
                   {smtpTestResult.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                   {smtpTestResult.message}
                 </span>
@@ -345,7 +345,7 @@ export default function EmailAccountsSettings() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Mail className="w-5 h-5 text-sky-400" /> {t("settingsEmailAccounts.title")}
+              <Mail className="w-5 h-5 text-info" /> {t("settingsEmailAccounts.title")}
             </h1>
             <p className="text-sm text-foreground/50 mt-1">
               {t("settingsEmailAccounts.intro")}
@@ -381,27 +381,27 @@ export default function EmailAccountsSettings() {
               <div key={account.id}
                 className="rounded-xl border border-border/40 bg-card p-4 flex items-center gap-4">
                 {/* Avatar */}
-                <div className="w-10 h-10 rounded-full bg-sky-500/15 flex items-center justify-center shrink-0">
-                  <Mail className="w-4 h-4 text-sky-400" />
+                <div className="w-10 h-10 rounded-full bg-info/15 flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4 text-info" />
                 </div>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium truncate">{account.name}</p>
+                    <p className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap">{account.name}</p>
                     {account.isDefault && (
-                      <span className="text-[10px] bg-sky-500/15 text-sky-400 px-1.5 py-0.5 rounded-full">
+                      <span className="text-xs bg-info/15 text-info px-1.5 py-0.5 rounded-full">
                         {t("settingsEmailAccounts.isDefaultBadge")}
                       </span>
                     )}
                     {!account.isActive && (
-                      <span className="text-[10px] bg-foreground/10 text-foreground/40 px-1.5 py-0.5 rounded-full">
+                      <span className="text-xs bg-foreground/10 text-foreground/40 px-1.5 py-0.5 rounded-full">
                         {t("settingsEmailAccounts.inactive")}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-foreground/50 truncate">{account.email}</p>
-                  <div className="flex gap-3 mt-1 text-[10px] text-foreground/30">
+                  <p className="text-xs text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{account.email}</p>
+                  <div className="flex gap-3 mt-1 text-xs text-foreground/30">
                     <span>IMAP: {account.imapHost}:{account.imapPort}</span>
                     <span>SMTP: {account.smtpHost}:{account.smtpPort}</span>
                     {account.lastSyncAt && (
@@ -409,7 +409,7 @@ export default function EmailAccountsSettings() {
                     )}
                   </div>
                   {account.lastSyncError && (
-                    <p className="text-[10px] text-red-400 mt-0.5 truncate">⚠ {account.lastSyncError}</p>
+                    <p className="text-xs text-danger mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">⚠ {account.lastSyncError}</p>
                   )}
                 </div>
 
@@ -425,7 +425,7 @@ export default function EmailAccountsSettings() {
                     onClick={() => setEditAccount(account)}>
                     <Pencil className="w-3 h-3" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 px-2 hover:text-red-400"
+                  <Button size="sm" variant="ghost" className="h-7 px-2 hover:text-danger"
                     onClick={() => setDeleteId(account.id)}>
                     <Trash2 className="w-3 h-3" />
                   </Button>

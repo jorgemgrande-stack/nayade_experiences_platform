@@ -36,12 +36,12 @@ function PriceBox({ plan }: { plan: PanelPlanInfo }) {
     plan.monthly ? { key: "m", price: plan.monthly, per: t("subscription.plans.perMonth"), label: t("subscription.plans.monthly") } : null,
     plan.yearly ? { key: "y", price: plan.yearly, per: t("subscription.plans.perYear"), label: t("subscription.plans.yearly") } : null,
   ].filter((c): c is NonNullable<typeof c> => !!c);
-  if (cells.length === 0) return <p className="sx-price rounded-2xl px-4 py-3 text-sm text-muted-foreground">{t("subscription.plans.priceOnRequest")}</p>;
+  if (cells.length === 0) return <p className="sx-price rounded-xl px-4 py-3 text-sm text-muted-foreground">{t("subscription.plans.priceOnRequest")}</p>;
   return (
-    <dl className={cn("sx-price grid rounded-2xl", cells.length === 2 ? "grid-cols-2 divide-x divide-border" : "grid-cols-1")}>
+    <dl className={cn("sx-price grid rounded-xl", cells.length === 2 ? "grid-cols-2 divide-x divide-border" : "grid-cols-1")}>
       {cells.map((c) => (
         <div key={c.key} className="min-w-0 px-3 py-3 text-center sm:px-4">
-          <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{c.label}</dt>
+          <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{c.label}</dt>
           <dd className="mt-1 flex flex-wrap items-baseline justify-center gap-x-1 text-foreground">
             <strong className="text-xl font-extrabold tracking-tight sm:text-2xl">{planMoney(c.price.amountCents, c.price.currency, tag)}</strong>
             <span className="text-xs text-muted-foreground">
@@ -80,7 +80,7 @@ function PlanCard({
     <li
       data-tone={pr.tone}
       data-current={card.isCurrent}
-      className={cn("sx-plan relative flex h-full min-w-0 flex-col rounded-3xl", growth && "sx-plan-growth")}
+      className={cn("sx-plan relative flex h-full min-w-0 flex-col rounded-xl", growth && "sx-plan-growth")}
       aria-labelledby={titleId}
     >
       {growth && (
@@ -90,7 +90,7 @@ function PlanCard({
       )}
       <div className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
         <div className="flex items-start gap-3">
-          <span aria-hidden="true" className="cx-tone-chip inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-lg shadow-black/20">
+          <span aria-hidden="true" className="cx-tone-chip inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-lg shadow-black/20">
             <Icon className="h-6 w-6" />
           </span>
           <div className="min-w-0 flex-1">
@@ -284,9 +284,9 @@ function PlanComparisonTable({ cards }: { cards: PlanCardModel[] }) {
   const th = "px-4 py-3 text-left align-top";
   const td = "px-4 py-3 align-top text-sm text-foreground";
   return (
-    <section id={COMPARISON_ID} className="cx-shadow scroll-mt-4 overflow-hidden rounded-3xl border border-border bg-card" aria-labelledby="plans-compare-title">
+    <section id={COMPARISON_ID} className="cx-shadow scroll-mt-4 overflow-hidden rounded-xl border border-border bg-card" aria-labelledby="plans-compare-title">
       <div className="flex flex-wrap items-center gap-3 border-b border-border p-5 sm:p-6">
-        <span aria-hidden="true" data-tone="night" className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
+        <span aria-hidden="true" data-tone="night" className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl">
           <Layers className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
