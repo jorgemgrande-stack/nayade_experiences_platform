@@ -10,7 +10,7 @@ import {
   MessageSquare, MoreHorizontal, Pencil, Phone, Plus, Receipt, ShoppingBag, StickyNote, Tag, Trash2, User, Wallet,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { HeroCard, MetricCard, PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
 import { StatusBadge } from "@/components/admin/PanelUi";
 import { TONE_BADGE, type Tone } from "@/lib/panelTones";
 import { toast } from "sonner";
@@ -188,7 +188,7 @@ export default function ClientDetail({ id }: { id: number }) {
 
   return (
     <AdminLayout>
-      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+      <div className="mx-auto w-full max-w-[1680px] px-4 py-5 sm:px-6">
         <nav aria-label={t("crmClientDetail.breadcrumb")} className="mb-4 text-sm">
           <Link href="/admin/crm/clientes" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("crmClientDetail.clients")}
@@ -196,13 +196,13 @@ export default function ClientDetail({ id }: { id: number }) {
         </nav>
 
         {/* Cabecera con presencia: quién es, cómo contactarle y qué puedo hacer */}
-        <HeroCard className="mb-6">
-          <header className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+        <section className="mb-5 rounded-xl border border-border bg-card shadow-sm">
+          <header className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
             <div className="flex min-w-0 items-start gap-4">
-              <PersonAvatar name={display} id={client.id} company={kind === "empresa"} size="xl" className="hidden sm:inline-flex" />
-              <PersonAvatar name={display} id={client.id} company={kind === "empresa"} size="lg" className="sm:hidden" />
+              <PersonAvatar name={display} id={client.id} company={kind === "empresa"} size="lg" className="hidden sm:inline-flex" />
+              <PersonAvatar name={display} id={client.id} company={kind === "empresa"} size="md" className="sm:hidden" />
               <div className="min-w-0">
-                <h1 className="break-words text-2xl font-bold leading-tight text-foreground">{display}</h1>
+                <h1 className="break-words text-xl font-bold leading-tight text-foreground sm:text-2xl">{display}</h1>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                   <StatusBadge tone={kind === "empresa" ? "info" : "neutral"} icon={kind === "empresa" ? <Building2 aria-hidden="true" /> : <User aria-hidden="true" />}>
                     {t(`crmForm.kind.${kind}`)}
@@ -261,31 +261,26 @@ export default function ClientDetail({ id }: { id: number }) {
               )}
             </div>
           </header>
-        </HeroCard>
+          {/* Cifras del cliente en la propia cabecera (antes, cuatro tarjetas grandes que repetían los contadores del historial) */}
+          {(canQuotes || canOrders || canInvoices) && (
+            <dl className="flex flex-wrap gap-x-8 gap-y-2 border-t border-border px-4 py-3 sm:px-5" data-client-stats>
+              {canQuotes && <div><dt className="text-xs text-muted-foreground">{t("crmClientDetail.stat.quotes")}</dt><dd className="text-lg font-semibold tabular-nums text-foreground">{data.quotes.length}</dd></div>}
+              {canOrders && <div><dt className="text-xs text-muted-foreground">{voc.orders}</dt><dd className="text-lg font-semibold tabular-nums text-foreground">{data.reservations.length}</dd></div>}
+              {canInvoices && <div><dt className="text-xs text-muted-foreground">{t("crmClientDetail.stat.invoices")}</dt><dd className="text-lg font-semibold tabular-nums text-foreground">{data.invoices.length}</dd></div>}
+              {canInvoices && <div><dt className="text-xs text-muted-foreground">{t("crmClientDetail.stat.invoiced")}</dt><dd className="text-lg font-semibold tabular-nums text-foreground">{fmtEuros(total)}</dd></div>}
+            </dl>
+          )}
+        </section>
 
         <CustomerEmailDeliveryWarning clientId={id} email={client.email} />
 
-        {/* Resumen */}
-        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {canQuotes && <MetricCard icon={<FileText />} tone="info" label={t("crmClientDetail.stat.quotes")} value={String(data.quotes.length)} />}
-          {canOrders && <MetricCard icon={<ShoppingBag />} tone="brand" label={voc.orders} value={String(data.reservations.length)} />}
-          {canInvoices && <MetricCard icon={<Receipt />} tone="warning" label={t("crmClientDetail.stat.invoices")} value={String(data.invoices.length)} />}
-          {canInvoices && <MetricCard icon={<Wallet />} tone="success" label={t("crmClientDetail.stat.invoiced")} value={fmtEuros(total)} />}
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Perfil y trabajo pendiente */}
-          <div className="min-w-0 space-y-6">
-            <Card title={t("crmClientDetail.contact")} icon={Phone}>
-              <dl className="divide-y divide-border/60">
-                {kind === "empresa" && <Row label={t("crmClientDetail.companyName")} value={client.company} />}
-                <Row label={kind === "empresa" ? t("crmClientDetail.contact") : t("crmClientDetail.name")} value={client.name} />
-                <Row label={t("crmClientDetail.email")} value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
-                <Row label={t("crmClientDetail.phone")} value={client.phone} href={client.phone ? `tel:${client.phone.replace(/\s/g, "")}` : undefined} />
-              </dl>
-            </Card>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-start">
+          {/* Perfil y trabajo pendiente (a la derecha en escritorio: el historial es lo principal) */}
+          <div className="min-w-0 space-y-5 lg:col-start-2 lg:row-start-1">
             <Card title={t("crmClientDetail.taxAddress")} icon={MapPin}>
               <dl className="divide-y divide-border/60">
+                {kind === "empresa" && <Row label={t("crmClientDetail.companyName")} value={client.company} />}
+                {kind === "empresa" && client.name && client.name !== client.company && <Row label={t("crmClientDetail.contact")} value={client.name} />}
                 <Row label={kind === "empresa" ? t("crmClientDetail.nifCompany") : t("crmClientDetail.nifPerson")} value={client.nif} />
                 <Row label={t("crmClientDetail.address")} value={address} />
                 <Row label={t("crmClientDetail.country")} value={client.country === "ES" ? t("crmClientDetail.countryES") : client.country} />
@@ -364,7 +359,7 @@ export default function ClientDetail({ id }: { id: number }) {
           </div>
 
           {/* Actividad y notas, en dos vistas */}
-          <div className="min-w-0 space-y-4 lg:col-span-2">
+          <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-1">
             <SegmentedTabs
               label={t("crmClientDetail.history")}
               value={view}

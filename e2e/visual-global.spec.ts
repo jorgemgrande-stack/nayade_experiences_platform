@@ -150,6 +150,7 @@ const VIEWS = [
 const SCREENS = [
   { key: "1-inicio", url: "/admin" },
   { key: "2-clientes", url: "/admin/crm/clientes" },
+  { key: "2b-ficha-cliente", url: "/admin/crm/clientes/1" },
   { key: "3-productos", url: "/admin/productos" },
   { key: "4-facturacion", url: "/admin/crm?tab=invoices" },
   { key: "6-presupuestos", url: "/admin/crm?tab=quotes" },
