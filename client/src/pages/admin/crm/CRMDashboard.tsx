@@ -108,7 +108,11 @@ import {
   BellOff,
   Bell,
   UserPlus,
+  MoreHorizontal,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { PersonAvatar } from "@/components/admin/PanelVisual";
+import { StatusBadge } from "@/components/admin/PanelUi";
 
 import { useI18n } from "@/i18n/I18nProvider";
 const DT_FULL: Intl.DateTimeFormatOptions = { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" };
@@ -166,14 +170,14 @@ function ConfirmDialog({ open, title, description, confirmLabel = "Eliminar", on
 
 function OpportunityBadge({ status }: { status: OpportunityStatus }) {
   const { t } = useI18n();
-  const map: Record<OpportunityStatus, { label: string; className: string }> = {
-    nueva: { label: t("crmLeads.nueva"), className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-    enviada: { label: t("crmLeads.enviada"), className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-    ganada: { label: t("crmLeads.ganada"), className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-    perdida: { label: t("crmLeads.perdida"), className: "bg-red-500/15 text-red-400 border-red-500/30" },
+  const map: Record<OpportunityStatus, { label: string; tone: "info" | "warning" | "success" | "danger" }> = {
+    nueva: { label: t("crmLeads.nueva"), tone: "info" },
+    enviada: { label: t("crmLeads.enviada"), tone: "warning" },
+    ganada: { label: t("crmLeads.ganada"), tone: "success" },
+    perdida: { label: t("crmLeads.perdida"), tone: "danger" },
   };
-  const { label, className } = map[status] ?? map.nueva;
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}>{label}</span>;
+  const { label, tone } = map[status] ?? map.nueva;
+  return <StatusBadge tone={tone}>{label}</StatusBadge>;
 }
 
 function QuoteStatusBadge({ status }: { status: QuoteStatus }) {
@@ -6755,7 +6759,7 @@ export default function CRMDashboard() {
         {/* Table */}
         <div className="px-4 sm:px-6 pb-8">
           {tab === "leads" && (
-            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             {/* Barra acción masiva leads */}
             {selectedLeads.size > 0 && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
@@ -6824,7 +6828,8 @@ export default function CRMDashboard() {
                           ) : (
                             <PriorityDot priority={lead.priority as Priority} />
                           )}
-                          <div>
+                          <PersonAvatar name={lead.name || lead.email || "?"} id={lead.id} size="md" />
+                          <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               {(lead as typeof lead & { clientId?: number }).clientId ? (
                                 <a
@@ -6837,7 +6842,7 @@ export default function CRMDashboard() {
                               )}
                               {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">{t("crmLeads.nuevo")}</span>}
                             </div>
-                            <div className="text-xs text-foreground/50">{lead.email}</div>
+                            <div className="break-all text-xs text-muted-foreground">{lead.email}</div>
                           </div>
                         </div>
                       </td>
@@ -6900,37 +6905,27 @@ export default function CRMDashboard() {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
-                          {lead.opportunityStatus === "nueva" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-emerald-400 hover:text-emerald-300 h-7 px-2 text-xs"
-                              onClick={() => markLeadContacted.mutate({ id: lead.id })}
-                              disabled={markLeadContacted.isPending}
-                              title={voc.agreeLead(t("crmEmpty.hint.contactedM", { leadsLower: voc.leadsLower }), t("crmEmpty.hint.contactedF", { leadsLower: voc.leadsLower }))}
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
                           <ProposalLeadButton leadId={lead.id} leadName={lead.name} />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-orange-400 hover:text-orange-300 h-7 px-2 text-xs"
-                            onClick={() => { setConvertLeadId(lead.id); setConvertLeadName(lead.name); }}
-                            title={t("crmLeads.crearPresupuesto2")}
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-400 hover:text-red-300 h-7 px-2 text-xs"
-                            onClick={() => setDeleteLeadId(lead.id)}
-                            title={voc.licensed ? t("crmLeads.eliminarOportunidad") : t("crmLeads.eliminarLead")}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-foreground" aria-label={`${t("crmLeads.acciones")}: ${lead.name}`}>
+                                <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {lead.opportunityStatus === "nueva" && (
+                                <DropdownMenuItem disabled={markLeadContacted.isPending} onSelect={() => markLeadContacted.mutate({ id: lead.id })}>
+                                  <Phone className="mr-2 h-4 w-4" aria-hidden="true" />{voc.agreeLead(t("crmEmpty.hint.contactedM", { leadsLower: voc.leadsLower }), t("crmEmpty.hint.contactedF", { leadsLower: voc.leadsLower }))}
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onSelect={() => { setConvertLeadId(lead.id); setConvertLeadName(lead.name); }}>
+                                <FileText className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmLeads.crearPresupuesto2")}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteLeadId(lead.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />{voc.licensed ? t("crmLeads.eliminarOportunidad") : t("crmLeads.eliminarLead")}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </td>
                     </tr>

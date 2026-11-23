@@ -39,9 +39,10 @@ const KIND_ICON: Record<ActivityKind, typeof FileText> = {
   quote: FileText, order: ShoppingBag, invoice: Receipt, payment: Wallet, email: Mail, note: StickyNote,
 };
 
-function Card({ title, icon: Icon, action, children, className = "" }: { title: string; icon: typeof FileText; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
+function Card({ title, icon: Icon, action, children, className = "", hideHeader = false }: { title: string; icon: typeof FileText; action?: React.ReactNode; children: React.ReactNode; className?: string; hideHeader?: boolean }) {
   return (
     <section className={`rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm ${className}`} aria-label={title}>
+      {hideHeader ? <h2 className="sr-only">{title}</h2> : (
       <div className="mb-4 flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true"><Icon className="h-4 w-4" /></span>
@@ -49,6 +50,7 @@ function Card({ title, icon: Icon, action, children, className = "" }: { title: 
         </h2>
         {action}
       </div>
+      )}
       {children}
     </section>
   );
@@ -210,8 +212,8 @@ export default function ClientDetail({ id }: { id: number }) {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {client.email && (
-                    <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 rounded-full bg-card/70 px-3">
-                      <a href={`mailto:${client.email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" /> <span className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap">{client.email}</span></a>
+                    <Button asChild size="sm" variant="outline" className="h-auto min-h-8 max-w-full gap-1.5 rounded-full bg-card/70 px-3 py-1">
+                      <a href={`mailto:${client.email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" /> <span className="break-all text-left">{client.email}</span></a>
                     </Button>
                   )}
                   {client.phone && (
@@ -374,7 +376,7 @@ export default function ClientDetail({ id }: { id: number }) {
             />
 
             {view === "notes" && (
-            <Card title={t("crmClientDetail.notesTitle")} icon={StickyNote}>
+            <Card title={t("crmClientDetail.notesTitle")} icon={StickyNote} hideHeader>
               {notes.data && !notes.data.available ? (
                 <p className="text-sm text-muted-foreground">{t("crmClientDetail.notesUnavailable")}</p>
               ) : (
@@ -424,7 +426,7 @@ export default function ClientDetail({ id }: { id: number }) {
             )}
 
             {view === "activity" && (
-            <Card title={t("crmClientDetail.history")} icon={FileText}>
+            <Card title={t("crmClientDetail.history")} icon={FileText} hideHeader>
               <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label={t("crmClientDetail.filterHistory")}>
                 {visibleFilters.map((f) => (
                   <button
