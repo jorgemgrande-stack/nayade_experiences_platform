@@ -35,7 +35,7 @@ export function QuickInsert({
         setQ("");
         onPick(payload);
       }}
-      className="flex flex-col gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-colors hover:border-[#5b5bf6]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]"
+      className="flex flex-col gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-colors hover:border-primary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <BlockThumb blocks={blocks} width={112} ratio={16 / 10} />
       <span className="px-0.5 text-xs font-medium leading-tight">{label}</span>

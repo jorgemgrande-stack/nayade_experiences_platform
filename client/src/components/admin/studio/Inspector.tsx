@@ -85,7 +85,7 @@ export function BlockInspector({
         <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
           <span className="text-muted-foreground">{inside.modal ? tx("Dentro de una ventana emergente") : tx("Dentro de una sección · columna {v}", { v: inside.col + 1 })}</span>
           {onSelectBlock && (
-            <button type="button" className="font-medium text-[#5b5bf6] hover:underline" onClick={() => onSelectBlock(inside.id)}>
+            <button type="button" className="font-medium text-primary hover:underline" onClick={() => onSelectBlock(inside.id)}>
               {inside.modal ? tx("Seleccionar la ventana") : tx("Seleccionar la sección")}
             </button>
           )}
@@ -100,9 +100,9 @@ export function BlockInspector({
             aria-selected={current === t}
             onClick={() => onTab(t)}
             className={cn(
-              "min-w-0 flex-auto rounded-md py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]",
+              "min-w-0 flex-auto rounded-md py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               tabs.length > 3 ? "px-1 text-[11px]" : "px-1.5 text-xs",
-              current === t ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground",
+              current === t ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground",
             )}
           >
             {tx(TAB_LABEL[t])}
@@ -211,7 +211,7 @@ function RangeField({ label, value, min, max, step, unit, zeroLabel, onChange }:
         <label htmlFor={id} className="text-sm font-medium">{label}</label>
         <span className="text-xs tabular-nums text-muted-foreground">{value === 0 && zeroLabel ? zeroLabel : `${value}${unit}`}</span>
       </div>
-      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[#5b5bf6]" />
+      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-primary" />
     </div>
   );
 }
@@ -229,7 +229,7 @@ export function Segmented({ label, value, options, onChange }: { label: string; 
             role="radio"
             aria-checked={value === o.value}
             onClick={() => onChange(o.value)}
-            className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", value === o.value ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+            className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", value === o.value ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
           >
             {tx(o.label)}
           </button>
@@ -703,7 +703,7 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
           <button
             type="button"
             onClick={() => setStyle({ minHeight: "full", contentY: "center", overlayDir: "bottom", bgMotion: "on", bgMotionAmount: 9, bgMotionSeconds: 20 })}
-            className="w-full rounded-lg border border-dashed border-[#5b5bf6]/60 px-3 py-2 text-left text-xs font-medium hover:bg-[#5b5bf6]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]"
+            className="w-full rounded-lg border border-dashed border-primary/60 px-3 py-2 text-left text-xs font-medium hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >{tx("Hero cinematográfico de pantalla completa")}<span className="mt-0.5 block font-normal text-muted-foreground">{tx("Ocupa toda la primera pantalla, con degradado inferior y acercamiento lento de la foto. Se ajusta después en los controles de abajo.")}</span>
           </button>
         )}
