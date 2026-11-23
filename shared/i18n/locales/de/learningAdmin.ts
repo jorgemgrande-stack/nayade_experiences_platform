@@ -114,6 +114,7 @@ export default {
     demo: "Demos",
     tech: "Technische Werkzeuge",
   },
+  groups: { courses: "Kursverwaltung", content: "Inhalte und Materialien", students: "Teilnehmer und Einschreibungen", tracking: "Fortschritt", settings: "Konfiguration und Werkzeuge", aria: "Bereiche der Weiterbildung", subAria: "Seiten des Bereichs" },
   createCourse: "Kurs anlegen",
   title: "Digitale Weiterbildung",
   subtitle: "Private Kurse mit namentlicher Einschreibung. Der Zugang wird nur mit bestätigter Zahlung, begründeter Freischaltung oder Demo gewährt.",

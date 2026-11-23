@@ -78,6 +78,7 @@ const data: Record<string, unknown> = {
     { kind: "lead", title: "Solicitud web", detail: "Laura Gómez Prieto", at: NOW - 30 * 3600_000, href: "/admin/crm" },
   ] },
   "crm.clients.list": { items: clients, total: clients.length },
+  "learning.admin.courses": [],
   "crm.clients.stats": { total: 7, companies: 2, individuals: 5, newThisMonth: 4 },
   "crmTags.list": [{ id: 1, name: "VIP", color: "#b99a73" }, { id: 2, name: "Retiro 2027", color: "#4f8ef7" }],
   "crmTags.forEntities": { 1: [{ id: 1, name: "VIP", color: "#b99a73" }], 2: [{ id: 2, name: "Retiro 2027", color: "#4f8ef7" }], 4: [{ id: 1, name: "VIP", color: "#b99a73" }, { id: 2, name: "Retiro 2027", color: "#4f8ef7" }] },
@@ -155,6 +156,7 @@ const SCREENS = [
   { key: "4-facturacion", url: "/admin/crm?tab=invoices" },
   { key: "6-presupuestos", url: "/admin/crm?tab=quotes" },
   { key: "7-pedidos", url: "/admin/crm?tab=reservations" },
+  { key: "8-formacion", url: "/admin/formacion?tab=cursos" },
 ];
 
 for (const v of VIEWS) {

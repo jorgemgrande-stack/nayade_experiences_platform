@@ -307,6 +307,15 @@ export default function LearningAdmin() {
   // Uso diario a la izquierda; las herramientas técnicas (pruebas y auditoría) quedan aparte, a la derecha
   const tabs: Array<[Tab, string, LucideIcon]> = [["matriculas", t("learningAdmin.tabs.enrollments"), Users], ["progreso", t("learningAdmin.tabs.progress"), BarChart3], ["editor", t("learningAdmin.tabs.editor"), PenSquare], ["cursos", t("learningAdmin.tabs.courses"), FolderOpen], ["crear", t("learningAdmin.tabs.create"), BookPlus], ["materiales", t("learningAdmin.tabs.materials"), Film], ["reglas", t("learningAdmin.tabs.rules"), ShieldCheck], ["demo", t("learningAdmin.tabs.demo"), PlayCircle]];
   const tech: [Tab, string, LucideIcon] = ["tecnica", t("learningAdmin.tabs.tech"), Wrench];
+  const allTabs = Object.fromEntries([...tabs, tech].map((x) => [x[0], x])) as Record<Tab, [Tab, string, LucideIcon]>;
+  const groups: Array<{ key: string; label: string; icon: LucideIcon; tabs: Tab[] }> = [
+    { key: "courses", label: t("learningAdmin.groups.courses"), icon: FolderOpen, tabs: ["cursos", "editor", "crear"] },
+    { key: "content", label: t("learningAdmin.groups.content"), icon: Film, tabs: ["materiales"] },
+    { key: "students", label: t("learningAdmin.groups.students"), icon: Users, tabs: ["matriculas"] },
+    { key: "tracking", label: t("learningAdmin.groups.tracking"), icon: BarChart3, tabs: ["progreso"] },
+    { key: "settings", label: t("learningAdmin.groups.settings"), icon: Wrench, tabs: ["reglas", "demo", "tecnica"] },
+  ];
+  const current = groups.find((g) => g.tabs.includes(tab));
   const tabButton = ([k, label, Icon]: [Tab, string, LucideIcon]) => (
     <button key={k} role="tab" aria-selected={tab === k} onClick={() => selectTab(k)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm ${tab === k ? "border-b-2 border-primary font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}><Icon className="h-4 w-4" aria-hidden />{label}</button>
   );
@@ -314,10 +323,29 @@ export default function LearningAdmin() {
     <AdminLayout>
       <div className="space-y-5">
         <PanelPageHeader className="mb-0" icon={<GraduationCap />} title={t("learningAdmin.title")} description={t("learningAdmin.subtitle")} actions={tab !== "crear" ? <Button onClick={() => selectTab("crear")}><BookPlus className="mr-1.5 h-4 w-4" aria-hidden />{t("learningAdmin.createCourse")}</Button> : undefined} />
-        <div role="tablist" aria-label={t("learningAdmin.title")} className="flex gap-1 overflow-x-auto border-b border-border">
-          {tabs.map(tabButton)}
-          <span className="ml-auto">{tabButton(tech)}</span>
-        </div>
+        {/* Cinco grupos funcionales; las páginas de cada grupo (si hay varias) en una segunda fila. Las rutas y el parámetro ?tab= no cambian */}
+        <nav aria-label={t("learningAdmin.groups.aria")} className="flex flex-wrap gap-1 rounded-xl border border-border bg-muted/40 p-1">
+          {groups.map((g) => {
+            const on = g.tabs.includes(tab);
+            return (
+              <button
+                key={g.key}
+                type="button"
+                aria-current={on ? "page" : undefined}
+                onClick={() => selectTab(on ? tab : g.tabs[0])}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${on ? "bg-card font-semibold text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <g.icon className="h-4 w-4" aria-hidden />
+                {g.label}
+              </button>
+            );
+          })}
+        </nav>
+        {current && current.tabs.length > 1 && (
+          <div role="tablist" aria-label={t("learningAdmin.groups.subAria")} className="-mt-2 flex gap-1 overflow-x-auto border-b border-border">
+            {current.tabs.map((k) => tabButton(allTabs[k]))}
+          </div>
+        )}
         {tab === "matriculas" && <Enrollments />}
         {tab === "cursos" && <Courses onCreate={() => selectTab("crear")} />}
         {tab === "editor" && <CourseEditor />}
