@@ -157,7 +157,11 @@ const SCREENS = [
 for (const v of VIEWS) {
   for (const s of SCREENS) {
     test(`${TAG} · ${s.key} · ${v.name}`, async ({ page }) => {
-      await page.emulateMedia({ colorScheme: "dark" });
+      await page.emulateMedia({ colorScheme: (process.env.VISUAL_SCHEME as "dark" | "light") ?? "dark" });
+      if (process.env.VISUAL_PRIMARY) {
+        const c = process.env.VISUAL_PRIMARY;
+        await page.addInitScript((col) => { const st = document.createElement("style"); st.textContent = `:root,.dark{--primary:${col};--sidebar-primary:${col};--ring:${col}}`; document.addEventListener("DOMContentLoaded", () => document.head.appendChild(st)); }, c);
+      }
       await mock(page);
       await page.setViewportSize({ width: v.width, height: v.height });
       await page.goto(s.url);
