@@ -600,7 +600,7 @@ export default function ExperiencesManager() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="break-words font-semibold leading-snug text-foreground">{exp.title}</p>
-                        <p className="truncate text-xs text-muted-foreground">{categoryNameOf(exp)}</p>
+                        <p className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{categoryNameOf(exp)}</p>
                       </div>
                       {rowMenu(exp)}
                     </div>
@@ -662,7 +662,7 @@ export default function ExperiencesManager() {
                               <ProductThumb src={thumbOf(exp)} alt={exp.title} noImageLabel={t("productsCatalog.list.noImage")} className="w-16" />
                               <div className="min-w-0">
                                 <p className="break-words text-sm font-semibold text-foreground">{exp.title}</p>
-                                <p className="truncate text-xs text-muted-foreground">{categoryNameOf(exp)}</p>
+                                <p className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{categoryNameOf(exp)}</p>
                               </div>
                               {exp.isFeatured && (
                                 <Star className="h-3.5 w-3.5 shrink-0 fill-current text-warning" aria-label={voc.catalog.featured} />
