@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { Upload, Copy, Trash2, Image, Search, Grid3X3, List, X, FolderOpen } from "lucide-react";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { useI18n } from "@/i18n/I18nProvider";
+import { PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 
 export default function MultimediaManager() {
   const tx = useStudioText();
@@ -22,7 +24,7 @@ export default function MultimediaManager() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
-  const { data: files, isLoading } = trpc.cms.getMediaFiles.useQuery();
+  const { data: files, isLoading, isError, error, refetch } = trpc.cms.getMediaFiles.useQuery();
   const deleteMutation = trpc.cms.deleteMediaFile.useMutation({
     onSuccess: () => {
       utils.cms.getMediaFiles.invalidate();
@@ -107,18 +109,11 @@ export default function MultimediaManager() {
   return (
     <AdminLayout title={tx("Multimedia")}>
       <div className="px-6 py-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6 pb-5 border-b border-border/50">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
-            <FolderOpen className="w-5 h-5 text-orange-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground leading-none">{tx("Biblioteca Multimedia")}</h1>
-            <p className="text-xs text-muted-foreground mt-1">{tx("{filteredN} archivos", { filteredN: filtered.length })}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
+      <PanelPageHeader
+        icon={<FolderOpen />}
+        title={tx("Biblioteca Multimedia")}
+        description={tx("{filteredN} archivos", { filteredN: filtered.length })}
+        actions={<>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -139,7 +134,7 @@ export default function MultimediaManager() {
           <Button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="bg-primary hover:bg-primary/90"
+            className=""
           >
             <Upload className="w-4 h-4 mr-2" />
             {uploading ? tx("Subiendo...") : tx("Subir Imagen")}
@@ -152,8 +147,8 @@ export default function MultimediaManager() {
             className="hidden"
             onChange={handleFileChange}
           />
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Drop Zone */}
       <div
@@ -175,7 +170,9 @@ export default function MultimediaManager() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
+      {isError ? (
+        <PanelError error={error} onRetry={() => void refetch()} />
+      ) : isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {[...Array(12)].map((_, i) => (
             <div key={i} className="aspect-square bg-muted animate-pulse rounded-xl" />
@@ -225,7 +222,7 @@ export default function MultimediaManager() {
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
                 <p className="text-xs truncate text-foreground">{file.originalName || file.filename}</p>
                 {file.size && (
-                  <p className="text-muted-foreground text-[10px]">{formatSize(file.size)}</p>
+                  <p className="text-muted-foreground text-xs">{formatSize(file.size)}</p>
                 )}
               </div>
             </div>

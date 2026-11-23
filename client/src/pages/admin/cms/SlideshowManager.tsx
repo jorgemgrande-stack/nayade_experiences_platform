@@ -9,6 +9,10 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useVocabulary } from "@/lib/vocabulary";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
+import { PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { confirmAction } from "@/components/admin/ConfirmHost";
+import { Button } from "@/components/ui/button";
 
 type SlideForm = {
   imageUrl: string;
@@ -49,11 +53,10 @@ export default function SlideshowManager() {
   const [form, setForm] = useState<SlideForm>(emptyForm);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [uploading, setUploading] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const utils = trpc.useUtils();
-  const { data: slides, isLoading } = trpc.cms.getSlideshowItems.useQuery();
+  const { data: slides, isLoading, isError, error, refetch } = trpc.cms.getSlideshowItems.useQuery();
 
   const createMutation = trpc.cms.createSlideshowItem.useMutation({
     onSuccess: () => { toast.success(tx("Diapositiva creada correctamente")); utils.cms.getSlideshowItems.invalidate(); closeModal(); },
@@ -71,7 +74,7 @@ export default function SlideshowManager() {
   });
 
   const deleteMutation = trpc.cms.deleteSlideshowItem.useMutation({
-    onSuccess: () => { toast.success(tx("Diapositiva eliminada")); utils.cms.getSlideshowItems.invalidate(); setConfirmDeleteId(null); },
+    onSuccess: () => { toast.success(tx("Diapositiva eliminada")); utils.cms.getSlideshowItems.invalidate(); },
     onError: () => toast.error(tx("Error al eliminar")),
   });
 
@@ -171,19 +174,16 @@ export default function SlideshowManager() {
   return (
     <AdminLayout title={tx("Carrusel de portada")}>
       <div className="px-6 py-6">
-        {/* Page header */}
-        <div className="flex items-center justify-between mb-6">
-          <div />
-          <button
-            onClick={openCreate}
-            style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 600 }}
-            className="flex items-center gap-2 px-4 py-2 text-sm"
-          >
-            <Plus className="w-4 h-4" />{" "}{tx("Nueva diapositiva")}</button>
-        </div>
+        <PanelPageHeader
+          icon={<SlidersHorizontal />}
+          title={tx("Carrusel de portada")}
+          actions={<Button onClick={openCreate}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{tx("Nueva diapositiva")}</Button>}
+        />
 
         {/* Lista */}
-        {isLoading ? (
+        {isError ? (
+          <PanelError error={error} onRetry={() => void refetch()} />
+        ) : isLoading ? (
           <div className="flex justify-center items-center h-48">
             <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
           </div>
@@ -192,11 +192,10 @@ export default function SlideshowManager() {
             <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <p className="font-semibold text-foreground mb-1">{tx("No hay diapositivas configuradas")}</p>
             <p className="text-muted-foreground text-sm mb-6">{tx("Añade la primera diapositiva al carrusel de la portada.")}</p>
-            <button onClick={openCreate} style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 600 }} className="flex items-center gap-2 px-4 py-2 text-sm mx-auto">
-              <Plus className="w-4 h-4" />{" "}{tx("Añadir la primera diapositiva")}</button>
+            <Button onClick={openCreate}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{tx("Añadir la primera diapositiva")}</Button>
           </div>
         ) : (
-          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
             {(() => {
               const sorted = localOrder.length === slides.length && localOrder.length > 0
                 ? (() => { const m = new Map(slides.map(s => [s.id, s])); return localOrder.map(id => m.get(id)).filter(Boolean) as typeof slides; })()
@@ -226,13 +225,11 @@ export default function SlideshowManager() {
                   {/* Info */}
                   <div className="flex-1 px-4 py-3 flex flex-col justify-center min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] text-muted-foreground font-mono">#{slide.sortOrder ?? 0}</span>
+                      <span className="text-xs text-muted-foreground font-mono">#{slide.sortOrder ?? 0}</span>
                       {(slide as any).badge && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">{(slide as any).badge}</span>
+                        <StatusBadge tone="brand">{(slide as any).badge}</StatusBadge>
                       )}
-                      <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${slide.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
-                        {slide.isActive ? tx("Activo") : tx("Inactivo")}
-                      </span>
+                      <StatusBadge tone={slide.isActive ? "success" : "neutral"}>{slide.isActive ? tx("Activo") : tx("Inactivo")}</StatusBadge>
                     </div>
                     <p className="font-medium text-sm text-foreground truncate">
                       {slide.title || <span className="text-muted-foreground italic">{tx("Sin título")}</span>}
@@ -252,7 +249,7 @@ export default function SlideshowManager() {
                     <button onClick={() => openEdit(slide)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title={tx("Editar")}>
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => setConfirmDeleteId(slide.id)} className="p-2 rounded-lg text-red-500/60 hover:text-red-600 hover:bg-red-50 transition-colors" title={tx("Eliminar")}>
+                    <button onClick={async () => { if (await confirmAction({ title: tx("¿Eliminar esta diapositiva?"), description: tx("Esta acción no se puede deshacer."), confirmLabel: tx("Eliminar"), destructive: true })) deleteMutation.mutate({ id: slide.id }); }} className="p-2 rounded-lg text-danger/70 hover:text-danger hover:bg-danger/10 transition-colors" title={tx("Eliminar")} aria-label={tx("Eliminar")}>
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -359,20 +356,6 @@ export default function SlideshowManager() {
         </Dialog>
 
         {/* Confirmar eliminación */}
-        {confirmDeleteId !== null && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onClick={() => setConfirmDeleteId(null)}>
-            <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-[90%] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-bold text-lg text-foreground mb-2">{tx("¿Eliminar esta diapositiva?")}</h3>
-              <p className="text-muted-foreground text-sm mb-5">{tx("Esta acción no se puede deshacer.")}</p>
-              <div className="flex gap-3 justify-end">
-                <button onClick={() => setConfirmDeleteId(null)}
-                  className="px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground text-sm font-medium transition-colors">{tx("Cancelar")}</button>
-                <button onClick={() => deleteMutation.mutate({ id: confirmDeleteId })}
-                  className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors">{tx("Eliminar")}</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </AdminLayout>
   );

@@ -30,7 +30,7 @@ function SpaceBar() {
   const limitBytes = l.limitGb != null ? l.limitGb * 1024 ** 3 : null;
   const pct = limitBytes ? Math.min(100, Math.round((l.usedBytes / limitBytes) * 100)) : 0;
   const level = spaceLevel(l.usedBytes, l.limitGb);
-  const tone = level === "exceeded" || level === "critical" ? "text-destructive" : level === "warning" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
+  const tone = level === "exceeded" || level === "critical" ? "text-destructive" : level === "warning" ? "text-warning" : "text-muted-foreground";
   return (
     <section className="rounded-xl border bg-card p-4" aria-label={t("learningManage.materials.spaceTitle")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -168,7 +168,7 @@ function MaterialCard({ m, space }: { m: Material; space: { usedBytes: number; l
             </p>
             <div className="mt-1 flex flex-wrap gap-1.5">
               {m.objectId ? <Badge variant="secondary"><CheckCircle2 className="mr-1 h-3 w-3" aria-hidden />{t("learningManage.materials.verified")}</Badge> : <Badge variant="outline"><Clock className="mr-1 h-3 w-3" aria-hidden />{t("learningManage.materials.noFile")}</Badge>}
-              {m.staged && <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300"><Clock className="mr-1 h-3 w-3" aria-hidden />{t("learningManage.materials.pendingPublish")}</Badge>}
+              {m.staged && <Badge className="bg-warning/10 text-warning"><Clock className="mr-1 h-3 w-3" aria-hidden />{t("learningManage.materials.pendingPublish")}</Badge>}
               {m.sharedWith.length > 0 && <Badge variant="outline"><Copy className="mr-1 h-3 w-3" aria-hidden />{t("learningManage.materials.sameContent", { n: m.sharedWith.length })}</Badge>}
               {m.uses.length > 1 && <Badge variant="outline">{t("learningManage.materials.usedIn", { n: m.uses.length })}</Badge>}
             </div>
@@ -183,7 +183,7 @@ function MaterialCard({ m, space }: { m: Material; space: { usedBytes: number; l
       </div>
 
       {m.staged && (
-        <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+        <div className="mt-3 rounded-lg border border-warning/50 bg-warning/10 p-3">
           <p className="text-sm font-medium">{t("learningManage.materials.stagedLine", { name: m.staged.originalName ?? t("learningManage.common.noName"), size: formatBytes(m.staged.sizeBytes), date: fmtDate(m.staged.createdAt) })}</p>
           <p className="text-xs text-muted-foreground">{t("learningManage.materials.stagedNote")}</p>
           <div className="mt-2 flex flex-wrap gap-2">

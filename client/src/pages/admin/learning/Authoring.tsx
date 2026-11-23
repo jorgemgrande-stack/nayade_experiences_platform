@@ -19,8 +19,8 @@ import { Archive, ArchiveRestore, BookPlus, Copy, FileText, Film, Layers, Link2,
 
 const KIND_ICON: Record<string, LucideIcon> = { text: Type, video: Film, audio: Music, pdf: FileText, external_link: Link2 };
 const STATUS: Record<string, { key: string; cls: string }> = {
-  draft: { key: "draft", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
-  published: { key: "published", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  draft: { key: "draft", cls: "bg-warning/10 text-warning" },
+  published: { key: "published", cls: "bg-success/10 text-success" },
   archived: { key: "archived", cls: "bg-muted text-muted-foreground" },
 };
 
