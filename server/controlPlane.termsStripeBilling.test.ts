@@ -57,6 +57,7 @@ async function build(enabled: boolean): Promise<Env> {
   const crmStore = new MemoryCrmStore();
   const crm = new CrmService({ store: crmStore });
   const company = await crm.createCompany({ name: "Hotel Ejemplo", legalName: "Hotel Ejemplo, S.L.", taxId: "B12345674", country: "ES", billingEmail: "facturas@hotel.example" }, "t");
+  await crm.createContact(company.id, { firstName: "Admin", lastName: "Hotel", email: "admin@hotel.example", isPrimary: true }, "t");
   const webStore = new MemoryWebStore();
   const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock });
   await seedElephantSource(web, webStore);

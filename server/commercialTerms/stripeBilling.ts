@@ -415,6 +415,17 @@ export class NegotiatedBillingService {
       // nadie reescribe ese valor al llegar su fecha
       const t = await this.d.termsStore.get(plan.termsId);
       if (!t || effectiveStatus(t, at ?? this.now()) !== "active") out.push("Las condiciones personalizadas no están activas (aceptadas y en vigor)");
+      // Plan Core sin plataforma todavía: el alta tras el pago necesita un contacto activo con correo (será su administrador).
+      // Sin él se cobraría algo que no puede terminar en una empresa activa: se avisa antes de abrir el pago.
+      else if (!sub.tenantId && t.lines.some((l) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan")) {
+        const company = (await this.d.crmStore.get("companies", sub.companyId)) as { tenantId?: string | null } | null;
+        if (company && !company.tenantId) {
+          const contacts = (await this.d.crmStore.list("contacts", { companyId: sub.companyId })) as Array<{ email?: string | null; status?: string | null }>;
+          if (!contacts.some((c) => c.status !== "inactive" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(c.email ?? "").trim()))) {
+            out.push("La empresa necesita un contacto activo con correo válido (será el administrador de la plataforma) antes de abrir el pago: añádelo en la ficha de la empresa");
+          }
+        }
+      }
     }
     if (this.d.orderBilled && (await this.d.orderBilled(subscriptionId))) out.push("La suscripción ya se cobra en Stripe por el circuito ordinario (pedido): no admite el cobro de condiciones personalizadas");
     if (!this.policy) out.push("Política fiscal pendiente: en modo live no se cobra hasta decidir el tratamiento fiscal (CP_STRIPE_TAX_POLICY)");

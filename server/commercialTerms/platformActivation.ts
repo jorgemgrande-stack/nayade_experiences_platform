@@ -27,7 +27,7 @@ export interface PlatformActivationDeps {
   };
   terms: {
     get(id: number): Promise<TermsRecord | null>;
-    events(f: { termsId: number }): Promise<Array<{ kind: string; createdAt: number; id: number }>>;
+    events(f: { termsId: number }): Promise<Array<{ kind: string; createdAt: number; id: number; after?: unknown }>>;
     list(f: { subscriptionId?: number; companyId?: number; status?: TermsRecord["status"][] }): Promise<TermsRecord[]>;
     log(id: number, e: Row, now: number): Promise<unknown>;
   };
@@ -93,7 +93,11 @@ export async function activatePlatformAfterPayment(d: PlatformActivationDeps, su
     const contact = contacts.find((x) => x.isPrimary) ?? contacts[0] ?? null;
     if (!contact) {
       const reason = "La empresa necesita un contacto activo con correo (será el administrador de la plataforma). Añádelo en la ficha y reintenta el alta.";
-      await note("platform_activation_failed", reason, { subscriptionId, step: "contact" }, "failed");
+      // Condición permanente hasta que alguien añada el contacto: el barrido automático no repite el mismo aviso en el historial
+      // (queda el primero). Un reintento del operador sí se registra siempre.
+      const lastPlatform = (await d.terms.events({ termsId: t.id })).filter((e) => e.kind === "platform_activated" || e.kind === "platform_activation_failed").sort((a, b) => b.createdAt - a.createdAt || b.id - a.id)[0];
+      const repeated = actor === ACTOR && lastPlatform?.kind === "platform_activation_failed" && (lastPlatform.after as { step?: string } | null)?.step === "contact";
+      if (!repeated) await note("platform_activation_failed", reason, { subscriptionId, step: "contact" }, "failed");
       return { status: "failed", reason };
     }
     const contract = t.contractId !== null ? await d.crmStore.get("contracts", t.contractId) : null;

@@ -51,6 +51,7 @@ let billingStore: MemoryTermsBillingStore;
 let caps: MemoryCapabilityStore;
 let alerts: FailureAlerts;
 let companies: Map<number, Record<string, unknown>>;
+const noContacts = new Set<number>();
 let catalogPort: ReturnType<typeof catalogFromWebStore>;
 const P: Record<string, number> = {};
 /** Llamadas al circuito ORDINARIO (pedidos y orquestador): deben quedarse a cero con las contrataciones negociadas. */
@@ -128,7 +129,7 @@ function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxP
     termsStore,
     subscriptionStore: store,
 
-    crmStore: { get: async (_t: string, id: number) => companies.get(id) ?? null, list: async () => [] } as never,
+    crmStore: { get: async (_t: string, id: number) => companies.get(id) ?? null, list: async (_e: string, f: { companyId?: number }) => (noContacts.has(f.companyId ?? -1) ? [] : [{ id: 1, companyId: f.companyId, email: "admin@example.test", status: "active", isPrimary: true }]) } as never,
     capabilities: { list: (t: string) => (capabilityCalls.push(`list:${t}`), caps.list(t)), apply: (t: string, c: never, m: never) => (capabilityCalls.push(`apply:${t}`), caps.apply(t, c, m)) },
     licences: { ensure: async (id: number) => void licenceCalls.push(id) },
     orderBilled: o.orderBilled,
@@ -379,6 +380,15 @@ describe("puesta en cobro: Checkout con las partidas negociadas, sin duplicados"
     // Con el Product creado por el propietario, sí
     gw.addProduct({ id: CUSTOM_SERVICE_PRODUCT_ID, name: "Servicio a medida" });
     expect((await w.neg.start(a.subId, A)).status).toBe("pending");
+  });
+
+  it("sin contacto activo con correo (futuro administrador) no se abre el pago de un plan Core sin plataforma", async () => {
+    const w = world();
+    const a = await agreed(1);
+    noContacts.add(1);
+    await expect(w.neg.start(a.subId, A)).rejects.toThrow(/contacto activo con correo válido/);
+    expect(sessionCreates()).toHaveLength(0);
+    noContacts.delete(1);
   });
 
   it("un producto de catálogo sin Product enlazado en Stripe no se cobra con otro", async () => {
