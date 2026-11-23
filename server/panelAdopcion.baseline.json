@@ -210,9 +210,6 @@
     "coloresFijos": 4,
     "geometriaAjena": 5
   },
-  "pages/admin/home/OperationalPanelCard.tsx": {
-    "geometriaAjena": 1
-  },
   "pages/admin/hotel/FolioDialog.tsx": {
     "coloresFijos": 4
   },

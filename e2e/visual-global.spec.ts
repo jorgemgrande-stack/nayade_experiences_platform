@@ -143,6 +143,8 @@ async function mock(page: Page) {
 
 const VIEWS = [
   { name: "escritorio", width: 1440, height: 900 },
+  { name: "ancho", width: 1920, height: 1080 },
+  { name: "tableta", width: 768, height: 1024 },
   { name: "movil", width: 390, height: 844 },
 ];
 const SCREENS = [

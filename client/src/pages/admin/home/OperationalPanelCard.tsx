@@ -57,7 +57,7 @@ export function OperationalPanelCard({ enabled }: { enabled: boolean }) {
   if (!enabled || !p?.visible) return null;
   const { webRequests: w, pendingEnrollments: pe, unpaidQuotes: uq, upcomingEditions: ue, upcomingSessions: us, pendingServices: ps } = p;
   return (
-    <section aria-labelledby="home-operations" className="min-w-0 rounded-2xl border border-border bg-card p-5">
+    <section aria-labelledby="home-operations" className="min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5">
       <h2 id="home-operations" className="font-semibold text-foreground">{t("home.ops.title")}</h2>
       <p className="text-sm text-muted-foreground mt-0.5">{t("home.ops.description")}</p>
       {p.allClear ? (
@@ -123,7 +123,7 @@ export function OperationalPanelCard({ enabled }: { enabled: boolean }) {
           )}
           {us.total > 0 && (
             <Block id="ops-sessions" title={t("home.ops.sessions")} total={us.total} icon={CalendarClock}>
-              {us.items.map((r) => (
+              {us.items.slice(0, 5).map((r) => (
                 <Row
                   key={r.sessionId}
                   href={r.href}
@@ -132,7 +132,7 @@ export function OperationalPanelCard({ enabled }: { enabled: boolean }) {
                   aside={t("home.ops.participants", { n: r.participants })}
                 />
               ))}
-              {more(us.items.length, us.total)}
+              {more(Math.min(5, us.items.length), us.total)}
             </Block>
           )}
           {ps.total > 0 && (
