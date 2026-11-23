@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,11 +50,11 @@ const STATUS_LABELS: Record<string, string> = {
   conciliado: "Conciliado",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  justified: "bg-blue-100 text-blue-800",
-  accounted: "bg-green-100 text-green-800",
-  conciliado: "bg-emerald-100 text-emerald-800",
+const STATUS_TONES: Record<string, Tone> = {
+  pending: "warning",
+  justified: "info",
+  accounted: "success",
+  conciliado: "success",
 };
 
 type ExpenseForm = {
@@ -119,7 +120,7 @@ const sameName = (a: string, b: string) => {
 /** Aviso de alta rápida duplicada con la opción de usar el registro que ya existe. */
 function DuplicateNotice({ text, onUse }: { text: string; onUse: () => void }) {
   return (
-    <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">
+    <p role="alert" className="text-xs text-warning">
       {text}{" "}
       <button type="button" className="font-medium underline" onClick={onUse}>Usar el existente</button>
     </p>
@@ -553,81 +554,76 @@ export default function ExpensesManager() {
     <AdminLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <TrendingDown className="w-6 h-6 text-red-500" />
-              Gastos
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>
-              {" · "}IVA soportado: <strong className="text-emerald-600">{totalIvaSoportado.toFixed(2)} €</strong>
-            </p>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/categorias")}>
-              Categorías
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/proveedores")}>
-              Proveedores
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/recurrentes")}>
-              Recurrentes
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => syncEmailMut.mutate()}
-              disabled={syncEmailMut.isPending}
-              className="gap-2 border-blue-500/40 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-            >
-              {syncEmailMut.isPending
-                ? <RefreshCw className="w-4 h-4 animate-spin" />
-                : <Mail className="w-4 h-4" />}
-              {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                if (await confirmAction({ description: "¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar." })) {
-                  backfillMut.mutate();
-                }
-              }}
-              disabled={backfillMut.isPending}
-              className="gap-2 border-amber-500/40 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-              title="Estima base e IVA de los gastos antiguos sin desglose fiscal"
-            >
-              {backfillMut.isPending
-                ? <RefreshCw className="w-4 h-4 animate-spin" />
-                : <Calculator className="w-4 h-4" />}
-              {backfillMut.isPending ? "Recalculando..." : "Recalcular fiscalidad"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEmailLogsOpen(true)}
-              className="text-zinc-400 hover:text-zinc-200 text-xs px-2"
-              title="Ver historial de emails procesados"
-            >
-              <Clock className="w-3.5 h-3.5 mr-1" />
-              Historial
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportToCSV}
-              className="gap-2"
-              title="Exportar a CSV los gastos filtrados (incluye columna Imputación Operativa para gestoría)"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Exportar CSV
-            </Button>
-            <Button onClick={openCreate} className="gap-2">
-              <Plus className="w-4 h-4" /> Nuevo gasto
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<TrendingDown />}
+          title="Gastos"
+          description={<>{total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>{" · "}IVA soportado: <strong className="text-success">{totalIvaSoportado.toFixed(2)} €</strong></>}
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/categorias")}>
+                Categorías
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/proveedores")}>
+                Proveedores
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/recurrentes")}>
+                Recurrentes
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncEmailMut.mutate()}
+                disabled={syncEmailMut.isPending}
+                className="gap-2 border-info/40 text-info hover:text-info hover:bg-info/10"
+              >
+                {syncEmailMut.isPending
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Mail className="w-4 h-4" />}
+                {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (await confirmAction({ description: "¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar." })) {
+                    backfillMut.mutate();
+                  }
+                }}
+                disabled={backfillMut.isPending}
+                className="gap-2 border-warning/40 text-warning hover:text-warning hover:bg-warning/10"
+                title="Estima base e IVA de los gastos antiguos sin desglose fiscal"
+              >
+                {backfillMut.isPending
+                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                  : <Calculator className="w-4 h-4" />}
+                {backfillMut.isPending ? "Recalculando..." : "Recalcular fiscalidad"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEmailLogsOpen(true)}
+                className="text-muted-foreground hover:text-foreground text-xs px-2"
+                title="Ver historial de emails procesados"
+              >
+                <Clock className="w-3.5 h-3.5 mr-1" />
+                Historial
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToCSV}
+                className="gap-2"
+                title="Exportar a CSV los gastos filtrados (incluye columna Imputación Operativa para gestoría)"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exportar CSV
+              </Button>
+              <Button onClick={openCreate} className="gap-2">
+                <Plus className="w-4 h-4" /> Nuevo gasto
+              </Button>
+            </>
+          }
+        />
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -647,7 +643,7 @@ export default function ExpensesManager() {
           <Card>
             <CardContent className="pt-4">
               <p className="text-xs text-muted-foreground">Total periodo</p>
-              <p className="text-xl font-bold text-red-600">{totalAmount.toFixed(2)} €</p>
+              <p className="text-xl font-bold text-danger">{totalAmount.toFixed(2)} €</p>
               <p className="text-xs text-muted-foreground">{filtered.length} gastos</p>
             </CardContent>
           </Card>
@@ -655,38 +651,38 @@ export default function ExpensesManager() {
 
         {/* KPI Distorsión fiscal — mes + año en curso */}
         {distortionQ.data && distortionQ.data.year_.count > 0 && (
-          <Card className="border-amber-300/50 bg-amber-50/40 dark:bg-amber-500/[0.05]">
+          <Card className="border-warning/50 bg-warning/10">
             <CardContent className="pt-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <AlertTriangle className="w-4 h-4 text-warning" />
                   <span className="text-sm font-semibold text-foreground">Distorsión fiscal</span>
-                  <span className="text-[11px] text-muted-foreground hidden md:inline">
+                  <span className="text-xs text-muted-foreground hidden md:inline">
                     Gastos marcados como "Solo fiscal" · {distortionQ.data.year}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-x-6 text-sm">
                   <div>
-                    <div className="text-[11px] text-muted-foreground">Este mes</div>
-                    <div className="font-semibold text-amber-700">
+                    <div className="text-xs text-muted-foreground">Este mes</div>
+                    <div className="font-semibold text-warning">
                       {distortionQ.data.month_.amount.toFixed(2)} €
-                      <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                      <span className="text-xs text-muted-foreground font-normal ml-1">
                         ({distortionQ.data.month_.count})
                       </span>
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-muted-foreground">Este año</div>
-                    <div className="font-semibold text-amber-700">
+                    <div className="text-xs text-muted-foreground">Este año</div>
+                    <div className="font-semibold text-warning">
                       {distortionQ.data.year_.amount.toFixed(2)} €
-                      <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                      <span className="text-xs text-muted-foreground font-normal ml-1">
                         ({distortionQ.data.year_.count})
                       </span>
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-muted-foreground">s/operativo</div>
-                    <div className="font-semibold text-amber-700">
+                    <div className="text-xs text-muted-foreground">s/operativo</div>
+                    <div className="font-semibold text-warning">
                       {distortionQ.data.pctOfOperational.toFixed(1)} %
                     </div>
                   </div>
@@ -694,7 +690,7 @@ export default function ExpensesManager() {
                 <button
                   type="button"
                   onClick={() => setFilterTreatment(filterTreatment === "tax_only" ? "all" : "tax_only")}
-                  className="text-[11px] text-amber-600 hover:text-amber-700 underline whitespace-nowrap"
+                  className="text-xs text-warning hover:text-warning underline whitespace-nowrap"
                 >
                   {filterTreatment === "tax_only" ? "Quitar filtro" : "Filtrar →"}
                 </button>
@@ -705,26 +701,26 @@ export default function ExpensesManager() {
 
         {/* Detectados por banco */}
         {(bankCandidatesQ.data?.total ?? 0) > 0 && (
-          <Card className="border-blue-500/30 bg-blue-500/5">
+          <Card className="border-info/30 bg-info/5">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2 text-blue-300">
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-info">
                   <Banknote className="w-4 h-4" />
                   Detectados por banco
-                  <span className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-blue-500/30 text-blue-200">
+                  <span className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-info/30 text-info">
                     {bankCandidatesQ.data!.total}
                   </span>
                 </CardTitle>
                 <button
                   onClick={() => setShowBankDetected(!showBankDetected)}
-                  className="text-xs text-blue-400 hover:text-blue-200 flex items-center gap-1"
+                  className="text-xs text-info hover:text-info flex items-center gap-1"
                 >
                   {showBankDetected ? "Ocultar" : "Ver movimientos"}
                   <ChevronDown className={`w-3 h-3 transition-transform ${showBankDetected ? "rotate-180" : ""}`} />
                 </button>
               </div>
               {!showBankDetected && (
-                <p className="text-xs text-zinc-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Movimientos bancarios negativos sin gasto vinculado — haz clic para revisar
                 </p>
               )}
@@ -734,25 +730,25 @@ export default function ExpensesManager() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-700/50">
-                        <th className="text-left py-2 px-2 text-xs text-zinc-400 font-medium">Fecha</th>
-                        <th className="text-right py-2 px-2 text-xs text-zinc-400 font-medium">Importe</th>
-                        <th className="text-left py-2 px-2 text-xs text-zinc-400 font-medium">Descripción banco</th>
-                        <th className="text-left py-2 px-2 text-xs text-zinc-400 font-medium">Categ. sugerida</th>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Fecha</th>
+                        <th className="text-right py-2 px-2 text-xs text-muted-foreground font-medium">Importe</th>
+                        <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Descripción banco</th>
+                        <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Categ. sugerida</th>
                         <th className="py-2 px-2"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {bankCandidatesQ.data!.data.map((m) => (
-                        <tr key={m.id} className="border-b border-zinc-800/50 hover:bg-blue-500/5">
-                          <td className="py-2 px-2 whitespace-nowrap text-zinc-300 text-xs">{m.fecha}</td>
-                          <td className="py-2 px-2 text-right font-semibold text-red-400 text-xs whitespace-nowrap">
+                        <tr key={m.id} className="border-b border-border hover:bg-info/5">
+                          <td className="py-2 px-2 whitespace-nowrap text-foreground text-xs">{m.fecha}</td>
+                          <td className="py-2 px-2 text-right font-semibold text-danger text-xs whitespace-nowrap">
                             {Math.abs(parseFloat(m.importe)).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €
                           </td>
-                          <td className="py-2 px-2 text-zinc-400 text-xs max-w-[220px] truncate" title={`${m.movimiento ?? ""} ${m.masDatos ?? ""}`.trim()}>
+                          <td className="py-2 px-2 text-muted-foreground text-xs max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap" title={`${m.movimiento ?? ""} ${m.masDatos ?? ""}`.trim()}>
                             {(m.movimiento ?? m.masDatos ?? "—").slice(0, 60)}
                           </td>
-                          <td className="py-2 px-2 text-xs text-zinc-500">
+                          <td className="py-2 px-2 text-xs text-muted-foreground">
                             {m.suggestedCategoryName ?? "—"}
                           </td>
                           <td className="py-2 px-2">
@@ -760,7 +756,7 @@ export default function ExpensesManager() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-xs h-6 px-2 border-blue-500/40 text-blue-300 hover:text-blue-100 hover:border-blue-400"
+                                className="text-xs h-6 px-2 border-info/40 text-info hover:text-info hover:border-info/40"
                                 onClick={() => openCreateFromMovement(m)}
                               >
                                 Crear gasto
@@ -768,7 +764,7 @@ export default function ExpensesManager() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="text-xs h-6 px-2 text-zinc-500 hover:text-zinc-300"
+                                className="text-xs h-6 px-2 text-muted-foreground hover:text-foreground"
                                 onClick={() => ignoreBankMut.mutate({ bankMovementId: m.id })}
                                 disabled={ignoreBankMut.isPending}
                               >
@@ -874,7 +870,7 @@ export default function ExpensesManager() {
         </div>
 
         {/* Expenses Table */}
-        <div className="border rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
@@ -900,33 +896,33 @@ export default function ExpensesManager() {
                   filtered.map((e) => (
                     <tr key={e.id} className="border-t hover:bg-muted/20">
                       <td className="p-3 whitespace-nowrap">{e.date}</td>
-                      <td className="p-3 text-xs text-muted-foreground max-w-[120px] truncate" title={getSupplierName((e as any).supplierId)}>{getSupplierName((e as any).supplierId)}</td>
+                      <td className="p-3 text-xs text-muted-foreground max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap" title={getSupplierName((e as any).supplierId)}>{getSupplierName((e as any).supplierId)}</td>
                       <td className="p-3 max-w-[220px]" title={e.concept}>
                         <div className="flex items-center gap-1.5 min-w-0">
                           {(e as any).source === "email" && (
-                            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/25">
+                            <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/25">
                               <Mail className="w-2.5 h-2.5" /> Email
                             </span>
                           )}
                           {(e as any).isOperational === false && (
                             <span
-                              className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30"
+                              className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30"
                               title="Gasto solo fiscal — no computa en P&L operativo, EBITDA ni KPIs del negocio. Sí computa en gestoría, IVA y tesorería."
                             >
                               Solo fiscal
                             </span>
                           )}
-                          <span className="truncate">{e.concept}</span>
+                          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{e.concept}</span>
                         </div>
                         {(e as any).missingAttachment && (
-                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-400">
+                          <div className="flex items-center gap-1 mt-0.5 text-xs text-warning">
                             <AlertTriangle className="w-2.5 h-2.5" /> Sin adjunto
                           </div>
                         )}
                       </td>
                       <td className="p-3 text-xs text-muted-foreground">{getCategoryName(e.categoryId)}</td>
                       <td className="p-3 text-xs">{PAYMENT_METHOD_LABELS[e.paymentMethod]}</td>
-                      <td className="p-3 text-right font-medium text-red-600">{parseFloat(e.amount).toFixed(2)} €</td>
+                      <td className="p-3 text-right font-medium text-danger">{parseFloat(e.amount).toFixed(2)} €</td>
                       <td className="p-3 text-right text-xs whitespace-nowrap">
                         {(() => {
                           const iva = ivaSoportado(e);
@@ -936,22 +932,21 @@ export default function ExpensesManager() {
                             return <span className="text-muted-foreground/50">— sin IVA</span>;
                           }
                           return (
-                            <span className="text-emerald-600 font-medium" title={`Tipo ${rate}%`}>
+                            <span className="text-success font-medium" title={`Tipo ${rate}%`}>
                               {iva.toFixed(2)} €
                             </span>
                           );
                         })()}
                       </td>
                       <td className="p-3 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${STATUS_COLORS[e.status] ?? "bg-gray-100 text-gray-800"}`}>
-                          {e.status === "conciliado" && <LinkIcon className="w-2.5 h-2.5" />}
+                        <StatusBadge tone={STATUS_TONES[e.status] ?? "neutral"} icon={e.status === "conciliado" ? <LinkIcon /> : undefined}>
                           {STATUS_LABELS[e.status] ?? e.status}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td className="p-3 text-center">
                         {e.files.length > 0 ? (
                           <button
-                            className="flex items-center justify-center gap-1 text-blue-400 hover:text-blue-300 transition-colors mx-auto"
+                            className="flex items-center justify-center gap-1 text-info hover:text-info transition-colors mx-auto"
                             onClick={() => openEdit(e)}
                             title="Ver adjuntos"
                           >
@@ -965,7 +960,7 @@ export default function ExpensesManager() {
                           <Button size="sm" variant="ghost" onClick={() => openEdit(e)}>
                             <Pencil className="w-3 h-3" />
                           </Button>
-                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(e.id)}>
+                          <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => handleDelete(e.id)}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
@@ -1162,7 +1157,7 @@ export default function ExpensesManager() {
                     </div>
                     <div className="bg-background rounded px-2 py-1.5">
                       <div className="text-foreground/50">IVA deducible</div>
-                      <div className="font-semibold text-emerald-600">{(cuota * ded / 100).toFixed(2)} €</div>
+                      <div className="font-semibold text-success">{(cuota * ded / 100).toFixed(2)} €</div>
                     </div>
                   </div>
                 );
@@ -1194,7 +1189,7 @@ export default function ExpensesManager() {
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-foreground/40">
+              <p className="text-xs text-foreground/40">
                 El importe del gasto se entiende como total con IVA incluido. La base y la cuota se calculan automáticamente.
               </p>
             </div>
@@ -1203,25 +1198,25 @@ export default function ExpensesManager() {
             <div className={`border rounded-lg p-3 transition-colors ${
               form.isOperational
                 ? "border-border bg-muted/20"
-                : "border-amber-500/40 bg-amber-500/[0.06]"
+                : "border-warning/40 bg-warning/[0.06]"
             }`}>
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={form.isOperational}
                   onChange={(e) => setForm({ ...form, isOperational: e.target.checked })}
-                  className="mt-0.5 w-4 h-4 rounded border-border accent-emerald-500 cursor-pointer"
+                  className="mt-0.5 w-4 h-4 rounded border-border accent-primary cursor-pointer"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
                     Computa en resultado operativo
                     {!form.isOperational && (
-                      <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10 text-[10px] uppercase tracking-wide px-1.5 py-0">
+                      <Badge variant="outline" className="border-warning/50 text-warning bg-warning/10 text-xs uppercase tracking-wide px-1.5 py-0">
                         Solo fiscal
                       </Badge>
                     )}
                   </div>
-                  <p className="text-[11px] text-foreground/50 mt-0.5 leading-snug">
+                  <p className="text-xs text-foreground/50 mt-0.5 leading-snug">
                     Si lo desactivas, el gasto seguirá existiendo a efectos fiscales y tributarios (gestoría, IVA,
                     Impuesto de Sociedades, tesorería y conciliación bancaria), pero no afectará a los dashboards
                     ni a la rentabilidad operativa del negocio (EBITDA, márgenes, KPIs, P&amp;L operativo).
@@ -1269,23 +1264,23 @@ export default function ExpensesManager() {
                           <img src={f.filePath} alt={f.fileName ?? ""} className="w-full h-full object-cover" />
                         </button>
                       ) : (
-                        <FileText className="w-4 h-4 shrink-0 text-blue-400" />
+                        <FileText className="w-4 h-4 shrink-0 text-info" />
                       )}
-                      <span className="text-sm flex-1 truncate text-foreground/80" title={f.fileName ?? f.filePath}>
+                      <span className="text-sm flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-foreground/80" title={f.fileName ?? f.filePath}>
                         {f.fileName ?? f.filePath.split("/").pop() ?? "Archivo"}
                       </span>
                       <a
                         href={f.filePath}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="shrink-0 p-1 rounded hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 transition-colors"
+                        className="shrink-0 p-1 rounded hover:bg-info/10 text-info hover:text-info transition-colors"
                         title="Abrir en nueva pestaña"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                       <button
                         type="button"
-                        className="shrink-0 p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
+                        className="shrink-0 p-1 rounded hover:bg-danger/10 text-muted-foreground hover:text-danger transition-colors"
                         onClick={() => handleDeleteFile(f.id)}
                         title="Eliminar adjunto"
                       >
@@ -1316,7 +1311,7 @@ export default function ExpensesManager() {
                     <div key={i} className="flex items-center justify-between text-sm bg-muted/30 rounded px-2 py-1">
                       <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{f.name}</span>
                       <button onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}>
-                        <X className="w-3 h-3 text-muted-foreground hover:text-red-500" />
+                        <X className="w-3 h-3 text-muted-foreground hover:text-danger" />
                       </button>
                     </div>
                   ))}
@@ -1343,33 +1338,33 @@ export default function ExpensesManager() {
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <Banknote className="w-4 h-4 text-blue-400" />
+                  <Banknote className="w-4 h-4 text-info" />
                   Crear gasto desde banco
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 {/* Movement summary */}
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 space-y-1">
+                <div className="bg-info/10 border border-info/20 rounded-lg p-3 space-y-1">
                   <div className="flex justify-between text-sm">
-                    <span className="text-zinc-400">Fecha:</span>
-                    <span className="text-zinc-200 font-medium">{mov.fecha}</span>
+                    <span className="text-muted-foreground">Fecha:</span>
+                    <span className="text-foreground font-medium">{mov.fecha}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-zinc-400">Importe:</span>
-                    <span className="text-red-400 font-bold">
+                    <span className="text-muted-foreground">Importe:</span>
+                    <span className="text-danger font-bold">
                       {Math.abs(parseFloat(mov.importe)).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-zinc-400">Banco:</span>
-                    <span className="text-zinc-300 text-right max-w-[240px] truncate text-xs">
+                    <span className="text-muted-foreground">Banco:</span>
+                    <span className="text-foreground text-right max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap text-xs">
                       {`${mov.movimiento ?? ""} ${mov.masDatos ?? ""}`.trim() || "—"}
                     </span>
                   </div>
                   {mov.suggestedCategoryName && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-zinc-400">Categ. sugerida:</span>
-                      <span className="text-blue-300 text-xs">{mov.suggestedCategoryName}</span>
+                      <span className="text-muted-foreground">Categ. sugerida:</span>
+                      <span className="text-info text-xs">{mov.suggestedCategoryName}</span>
                     </div>
                   )}
                 </div>
@@ -1442,7 +1437,7 @@ export default function ExpensesManager() {
                   <Button
                     onClick={handleCreateFromMovement}
                     disabled={createFromMovMut.isPending}
-                    className="bg-blue-600 hover:bg-blue-500 text-white"
+                   
                   >
                     <Banknote className="w-4 h-4 mr-2" />
                     {createFromMovMut.isPending ? "Creando..." : "Crear gasto vinculado"}
@@ -1456,60 +1451,60 @@ export default function ExpensesManager() {
 
       {/* Email ingestion logs modal */}
       <Dialog open={emailLogsOpen} onOpenChange={setEmailLogsOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-zinc-900 border-zinc-800 text-white">
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-card border-border text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Mail className="w-4 h-4 text-blue-400" />
+              <Mail className="w-4 h-4 text-info" />
               Historial de ingesta por email
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {emailLogsQ.isLoading ? (
-              <p className="text-sm text-zinc-400 text-center py-6">Cargando...</p>
+              <p className="text-sm text-muted-foreground text-center py-6">Cargando...</p>
             ) : !emailLogsQ.data?.length ? (
-              <p className="text-sm text-zinc-400 text-center py-6">No hay registros de ingesta todavía.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No hay registros de ingesta todavía.</p>
             ) : (
-              <div className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+              <div className="divide-y divide-zinc-800 rounded-lg border border-border overflow-hidden">
                 {emailLogsQ.data.map((log) => (
                   <div key={log.id} className="px-4 py-3 flex items-start gap-3">
                     <div className="shrink-0 mt-0.5">
-                      {log.status === "processed" && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                      {log.status === "duplicated" && <RefreshCw className="w-4 h-4 text-zinc-400" />}
+                      {log.status === "processed" && <CheckCircle2 className="w-4 h-4 text-success" />}
+                      {log.status === "duplicated" && <RefreshCw className="w-4 h-4 text-muted-foreground" />}
                       {(log.status === "missing_amount" || log.status === "invalid_subject") && (
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                        <AlertTriangle className="w-4 h-4 text-warning" />
                       )}
-                      {log.status === "error" && <AlertTriangle className="w-4 h-4 text-red-400" />}
+                      {log.status === "error" && <AlertTriangle className="w-4 h-4 text-danger" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium text-white truncate max-w-xs">
+                        <span className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap max-w-xs">
                           {log.subject ?? "(sin asunto)"}
                         </span>
                         {log.amountDetected && (
-                          <span className="text-xs font-semibold text-emerald-400">
+                          <span className="text-xs font-semibold text-success">
                             {parseFloat(String(log.amountDetected)).toFixed(2)} €
                           </span>
                         )}
                         {log.attachmentsCount !== null && log.attachmentsCount > 0 && (
-                          <span className="text-xs text-zinc-400">
+                          <span className="text-xs text-muted-foreground">
                             <FileText className="w-3 h-3 inline mr-0.5" />{log.attachmentsCount} adj.
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-zinc-500 mt-0.5">
+                      <div className="text-xs text-muted-foreground mt-0.5">
                         {log.sender && <span>{log.sender} · </span>}
                         {log.processedAt && <span>{new Date(log.processedAt).toLocaleString("es-ES")}</span>}
                       </div>
                       {log.errorMessage && (
-                        <div className="text-xs text-amber-300 mt-1">{log.errorMessage}</div>
+                        <div className="text-xs text-warning mt-1">{log.errorMessage}</div>
                       )}
                     </div>
                     <div className="shrink-0">
                       <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                        log.status === "processed" ? "bg-emerald-500/15 text-emerald-400" :
-                        log.status === "duplicated" ? "bg-zinc-500/15 text-zinc-400" :
-                        log.status === "error" ? "bg-red-500/15 text-red-400" :
-                        "bg-amber-500/15 text-amber-400"
+                        log.status === "processed" ? "bg-success/15 text-success" :
+                        log.status === "duplicated" ? "bg-muted/15 text-muted-foreground" :
+                        log.status === "error" ? "bg-danger/15 text-danger" :
+                        "bg-warning/15 text-warning"
                       }`}>
                         {log.status === "processed" ? "procesado" :
                          log.status === "duplicated" ? "duplicado" :
@@ -1620,7 +1615,7 @@ export default function ExpensesManager() {
           onClick={() => setLightboxUrl(null)}
         >
           <button
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            className="absolute top-4 right-4 p-2 rounded-full bg-muted/50 hover:bg-muted text-foreground transition-colors"
             onClick={() => setLightboxUrl(null)}
           >
             <X className="w-5 h-5" />
@@ -1629,7 +1624,7 @@ export default function ExpensesManager() {
             href={lightboxUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="absolute top-4 right-16 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            className="absolute top-4 right-16 p-2 rounded-full bg-muted/50 hover:bg-muted text-foreground transition-colors"
             onClick={(e) => e.stopPropagation()}
             title="Abrir original"
           >
@@ -1638,7 +1633,7 @@ export default function ExpensesManager() {
           <img
             src={lightboxUrl}
             alt="Adjunto"
-            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain"
+            className="max-w-full max-h-[90vh] rounded-lg shadow-md object-contain"
             onClick={(e) => e.stopPropagation()}
           />
         </div>

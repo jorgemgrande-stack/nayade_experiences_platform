@@ -4,6 +4,7 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Link } from "wouter";
 import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
@@ -137,21 +138,16 @@ export default function AccountingReports() {
 
   return (
     <AdminLayout title="Informes de ventas">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-            <BarChart2 className="w-5 h-5 text-primary" />
-            Informes de Contabilidad
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Análisis de ventas, fiscalidad y canales de distribución
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-foreground">
-          <RefreshCw className="w-4 h-4" /> Actualizar
-        </Button>
-      </div>
+      <PanelPageHeader
+        icon={<BarChart2 />}
+        title="Informes de Contabilidad"
+        description="Análisis de ventas, fiscalidad y canales de distribución"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-foreground">
+            <RefreshCw className="w-4 h-4" /> Actualizar
+          </Button>
+        }
+      />
 
       {/* Filtro de fechas */}
       <div className="flex items-center gap-3 mb-6 bg-card border border-border rounded-xl p-4">
@@ -199,8 +195,8 @@ export default function AccountingReports() {
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <Euro className="w-5 h-5 text-green-700 dark:text-green-400" />
+                  <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
+                    <Euro className="w-5 h-5 text-success" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Ingresos totales</p>
@@ -212,8 +208,8 @@ export default function AccountingReports() {
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <Receipt className="w-5 h-5 text-blue-700 dark:text-blue-400" />
+                  <div className="w-10 h-10 rounded-xl bg-info/10 flex items-center justify-center">
+                    <Receipt className="w-5 h-5 text-info" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Transacciones</p>
@@ -225,8 +221,8 @@ export default function AccountingReports() {
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-amber-700 dark:text-amber-400" />
+                  <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-warning" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">IVA repercutido</p>
@@ -240,8 +236,8 @@ export default function AccountingReports() {
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                    <BarChart2 className="w-5 h-5 text-purple-700 dark:text-purple-400" />
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <BarChart2 className="w-5 h-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Margen REAV</p>
@@ -407,39 +403,39 @@ export default function AccountingReports() {
 
           {/* Previsión de tesorería */}
           {cf && (
-            <Card className="mb-6 border-blue-200">
+            <Card className="mb-6 border-info/40">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-blue-500" />
+                  <Wallet className="w-4 h-4 text-info" />
                   Previsión de tesorería
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 p-3">
-                    <p className="text-xs text-blue-600 font-medium mb-1">Caja actual</p>
-                    <p className="text-xl font-bold text-blue-700">{fmtEurLocal(cf.currentBalance)}</p>
+                  <div className="rounded-lg bg-info/10 border border-info/40 p-3">
+                    <p className="text-xs text-info font-medium mb-1">Caja actual</p>
+                    <p className="text-xl font-bold text-info">{fmtEurLocal(cf.currentBalance)}</p>
                     <p className="text-xs text-muted-foreground">Último mov. bancario</p>
                   </div>
-                  <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 p-3">
-                    <p className="text-xs text-emerald-600 font-medium mb-1 flex items-center gap-1">
+                  <div className="rounded-lg bg-success/10 border border-success/40 p-3">
+                    <p className="text-xs text-success font-medium mb-1 flex items-center gap-1">
                       <ArrowUpRight className="w-3 h-3" /> Ingresos pendientes
                     </p>
-                    <p className="text-xl font-bold text-emerald-700">{fmtEurLocal(cf.pendingIncome)}</p>
+                    <p className="text-xl font-bold text-success">{fmtEurLocal(cf.pendingIncome)}</p>
                     <p className="text-xs text-muted-foreground">{cf.pendingReservationCount} {voc.ordersLower} {voc.agree("confirmados", "confirmadas")}</p>
                   </div>
-                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 p-3">
-                    <p className="text-xs text-amber-600 font-medium mb-1 flex items-center gap-1">
+                  <div className="rounded-lg bg-warning/10 border border-warning/40 p-3">
+                    <p className="text-xs text-warning font-medium mb-1 flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3" /> Gastos pendientes
                     </p>
-                    <p className="text-xl font-bold text-amber-700">{fmtEurLocal(cf.pendingExpenses)}</p>
+                    <p className="text-xl font-bold text-warning">{fmtEurLocal(cf.pendingExpenses)}</p>
                     <p className="text-xs text-muted-foreground">Sin pagar registrados</p>
                   </div>
-                  <div className={`rounded-lg border p-3 ${cf.estimatedBalance >= 0 ? "bg-teal-50 dark:bg-teal-950/30 border-teal-200" : "bg-red-50 dark:bg-red-950/30 border-red-200"}`}>
-                    <p className={`text-xs font-medium mb-1 ${cf.estimatedBalance >= 0 ? "text-teal-600" : "text-red-600"}`}>
+                  <div className={`rounded-lg border p-3 ${cf.estimatedBalance >= 0 ? "bg-success/10 border-success/40" : "bg-danger/10 border-danger/40"}`}>
+                    <p className={`text-xs font-medium mb-1 ${cf.estimatedBalance >= 0 ? "text-success" : "text-danger"}`}>
                       Caja estimada
                     </p>
-                    <p className={`text-xl font-bold ${cf.estimatedBalance >= 0 ? "text-teal-700" : "text-red-700"}`}>
+                    <p className={`text-xl font-bold ${cf.estimatedBalance >= 0 ? "text-success" : "text-danger"}`}>
                       {fmtEurLocal(cf.estimatedBalance)}
                     </p>
                     <p className="text-xs text-muted-foreground">Saldo + ingresos − gastos</p>
@@ -451,22 +447,22 @@ export default function AccountingReports() {
                   <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3 text-sm">
                     <div>
                       <p className="text-xs text-muted-foreground font-medium">Caja prevista 7 días</p>
-                      <p className={`text-lg font-bold ${cf.forecast7d >= 0 ? "text-blue-700" : "text-red-600"}`}>
+                      <p className={`text-lg font-bold ${cf.forecast7d >= 0 ? "text-info" : "text-danger"}`}>
                         {fmtEurLocal(cf.forecast7d)}
                       </p>
                       <p className="text-xs text-muted-foreground">Saldo − gastos venciendo en 7 días</p>
                     </div>
-                    {cf.forecast7d < 0 && <AlertTriangle className="w-6 h-6 text-red-500 shrink-0" />}
+                    {cf.forecast7d < 0 && <AlertTriangle className="w-6 h-6 text-danger shrink-0" />}
                   </div>
                   <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3 text-sm">
                     <div>
                       <p className="text-xs text-muted-foreground font-medium">Caja prevista 30 días</p>
-                      <p className={`text-lg font-bold ${cf.forecast30d >= 0 ? "text-blue-700" : "text-red-600"}`}>
+                      <p className={`text-lg font-bold ${cf.forecast30d >= 0 ? "text-info" : "text-danger"}`}>
                         {fmtEurLocal(cf.forecast30d)}
                       </p>
                       <p className="text-xs text-muted-foreground">Saldo + ingresos − gastos 30 días</p>
                     </div>
-                    {cf.forecast30d < 0 && <AlertTriangle className="w-6 h-6 text-red-500 shrink-0" />}
+                    {cf.forecast30d < 0 && <AlertTriangle className="w-6 h-6 text-danger shrink-0" />}
                   </div>
                 </div>
               </CardContent>
@@ -531,7 +527,7 @@ export default function AccountingReports() {
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-500" />
+                  <TrendingUp className="w-4 h-4 text-success" />
                   Top productos por ingresos
                 </CardTitle>
               </CardHeader>
@@ -543,9 +539,9 @@ export default function AccountingReports() {
                     return (
                       <div key={i} className="flex items-center gap-3 text-sm">
                         <span className="w-5 text-xs text-muted-foreground text-right">{i + 1}</span>
-                        <span className="w-44 truncate text-xs" title={r.product}>{r.product}</span>
+                        <span className="w-44 overflow-hidden text-ellipsis whitespace-nowrap text-xs" title={r.product}>{r.product}</span>
                         <div className="flex-1 bg-muted rounded-full h-3 overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
+                          <div className="h-full bg-success rounded-full" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="w-28 text-right font-semibold text-xs">{fmtEurLocal(r.amount)}</span>
                       </div>

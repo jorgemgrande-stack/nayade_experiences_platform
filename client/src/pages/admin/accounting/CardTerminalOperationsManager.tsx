@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { trpc } from "@/lib/trpc";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -26,6 +29,7 @@ import {
   Search,
   RefreshCw,
   Link,
+  MoreHorizontal,
   Unlink,
   AlertTriangle,
   Eye,
@@ -42,20 +46,20 @@ const IMAP_ALLOWED_SENDER_LABEL = "copia@ticket.comerciaglobalpay.com";
 type OpStatus = "pendiente" | "conciliado" | "incidencia" | "ignorado" | "todos";
 type OpType = "VENTA" | "DEVOLUCION" | "ANULACION" | "OTRO" | "todos";
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pendiente:         { label: "Pendiente",       color: "bg-yellow-100 text-yellow-800" },
-  conciliado:        { label: "Conciliado",       color: "bg-green-100 text-green-800" },
-  incidencia:        { label: "Incidencia",       color: "bg-red-100 text-red-800" },
-  ignorado:          { label: "Ignorado",         color: "bg-gray-100 text-gray-600" },
-  included_in_batch: { label: "En remesa",        color: "bg-blue-100 text-blue-800" },
-  settled:           { label: "Liquidado",        color: "bg-emerald-100 text-emerald-800" },
+const STATUS_LABELS: Record<string, { label: string; tone: Tone }> = {
+  pendiente:         { label: "Pendiente",       tone: "warning" },
+  conciliado:        { label: "Conciliado",       tone: "success" },
+  incidencia:        { label: "Incidencia",       tone: "danger" },
+  ignorado:          { label: "Ignorado",         tone: "neutral" },
+  included_in_batch: { label: "En remesa",        tone: "info" },
+  settled:           { label: "Liquidado",        tone: "success" },
 };
 
-const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  VENTA: { label: "Venta", color: "bg-blue-100 text-blue-800" },
-  DEVOLUCION: { label: "Devolución", color: "bg-orange-100 text-orange-800" },
-  ANULACION: { label: "Anulación", color: "bg-red-100 text-red-800" },
-  OTRO: { label: "Otro", color: "bg-gray-100 text-gray-600" },
+const TYPE_LABELS: Record<string, { label: string; tone: Tone }> = {
+  VENTA: { label: "Venta", tone: "info" },
+  DEVOLUCION: { label: "Devolución", tone: "warning" },
+  ANULACION: { label: "Anulación", tone: "danger" },
+  OTRO: { label: "Otro", tone: "neutral" },
 };
 
 function fmtCurrency(v: string | number | null | undefined): string {
@@ -238,14 +242,14 @@ export default function CardTerminalOperationsManager() {
   const resetLogsMut = trpc.emailIngestion.resetLogsForDate.useMutation({
     onSuccess: (data) => {
       utils.emailIngestion.listLogs.invalidate();
-      alert(`${data.reset} log(s) reseteado(s). Pulsa "Sincronizar correo TPV" para reprocesar.`);
+      toast.success(`${data.reset} log(s) reseteado(s). Pulsa "Sincronizar correo TPV" para reprocesar.`);
     },
   });
 
   const repairStatusMut = trpc.cardTerminalOperations.repairLinkedStatus.useMutation({
     onSuccess: (data) => {
       utils.cardTerminalOperations.list.invalidate();
-      alert(`${data.fixed} operación(es) reparada(s) → estado "Conciliado".`);
+      toast.success(`${data.fixed} operación(es) reparada(s) → estado "Conciliado".`);
     },
   });
 
@@ -286,63 +290,61 @@ export default function CardTerminalOperationsManager() {
     <AdminLayout>
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <CreditCard className="w-7 h-7 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Operaciones TPV</h1>
-            <p className="text-sm text-muted-foreground">Datafono / Terminal Físico — Comercia Global Payments</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => listQ.refetch()}>
-            <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={syncing}
-            onClick={() => {
-              setSyncing(true);
-              setSyncResult(null);
-              syncEmailMut.mutate({ retryErrors: false });
-            }}
-          >
-            <Mail className="w-4 h-4 mr-1" />
-            {syncing ? "Sincronizando..." : "Sincronizar correo TPV"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              const date = prompt("Fecha a reprocesar (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
-              if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                resetLogsMut.mutate({ date });
-              }
-            }}
-          >
-            <RefreshCw className="w-4 h-4 mr-1" /> Reprocesar fecha
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              if ((await confirmAction({ description: "¿Reparar operaciones enlazadas con estado incorrecto? Se pondrán en 'Conciliado'." }))) {
-                repairStatusMut.mutate();
-              }
-            }}
-          >
-            <RefreshCw className="w-4 h-4 mr-1" /> Reparar estados
-          </Button>
-          <Button size="sm" onClick={() => { setShowImportModal(true); setImportResult(null); }}>
-            <Upload className="w-4 h-4 mr-1" /> Importar Excel/PDF
-          </Button>
-        </div>
-      </div>
+      <PanelPageHeader
+        icon={<CreditCard />}
+        title="Operaciones TPV"
+        description="Datafono / Terminal Físico — Comercia Global Payments"
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => listQ.refetch()}>
+              <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={syncing}
+              onClick={() => {
+                setSyncing(true);
+                setSyncResult(null);
+                syncEmailMut.mutate({ retryErrors: false });
+              }}
+            >
+              <Mail className="w-4 h-4 mr-1" />
+              {syncing ? "Sincronizando..." : "Sincronizar correo TPV"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const date = prompt("Fecha a reprocesar (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
+                if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                  resetLogsMut.mutate({ date });
+                }
+              }}
+            >
+              <RefreshCw className="w-4 h-4 mr-1" /> Reprocesar fecha
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                if ((await confirmAction({ description: "¿Reparar operaciones enlazadas con estado incorrecto? Se pondrán en 'Conciliado'." }))) {
+                  repairStatusMut.mutate();
+                }
+              }}
+            >
+              <RefreshCw className="w-4 h-4 mr-1" /> Reparar estados
+            </Button>
+            <Button size="sm" onClick={() => { setShowImportModal(true); setImportResult(null); }}>
+              <Upload className="w-4 h-4 mr-1" /> Importar Excel/PDF
+            </Button>
+          </>
+        }
+      />
 
       {/* Email sync result */}
       {syncResult && (
-        <div className={`rounded-lg border p-4 text-sm ${syncResult.errors.length > 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+        <div className={`rounded-lg border p-4 text-sm ${syncResult.errors.length > 0 ? "bg-danger/10 border-danger/40" : "bg-success/10 border-success/40"}`}>
           <div className="flex items-center justify-between">
             <div className="font-medium">
               {syncResult.errors.length > 0 ? "Sincronización con errores" : "Sincronización completada"}
@@ -355,15 +357,15 @@ export default function CardTerminalOperationsManager() {
             <span>Emails revisados: <b>{syncResult.messagesChecked}</b></span>
             <span>Procesados: <b>{syncResult.messagesProcessed}</b></span>
             <span>Detectadas: <b>{syncResult.operationsDetected}</b></span>
-            <span>Nuevas: <b className="text-green-700">{syncResult.operationsInserted}</b></span>
-            <span>Vinculadas: <b className="text-blue-700">{syncResult.operationsLinked}</b></span>
+            <span>Nuevas: <b className="text-success">{syncResult.operationsInserted}</b></span>
+            <span>Vinculadas: <b className="text-info">{syncResult.operationsLinked}</b></span>
             <span>Duplicadas: <b>{syncResult.operationsDuplicate}</b></span>
             {syncResult.operationsFailed > 0 && (
-              <span>Fallidas: <b className="text-red-700">{syncResult.operationsFailed}</b></span>
+              <span>Fallidas: <b className="text-danger">{syncResult.operationsFailed}</b></span>
             )}
           </div>
           {syncResult.errors.length > 0 && (
-            <ul className="mt-2 text-red-700 list-disc list-inside">
+            <ul className="mt-2 text-danger list-disc list-inside">
               {syncResult.errors.map((e, i) => <li key={i}>{e}</li>)}
             </ul>
           )}
@@ -371,7 +373,7 @@ export default function CardTerminalOperationsManager() {
       )}
 
       {/* Email ingestion logs */}
-      <div className="border rounded-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <button
           className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 text-sm font-medium"
           onClick={() => setShowEmailLogs((v) => !v)}
@@ -427,30 +429,30 @@ export default function CardTerminalOperationsManager() {
                     {emailLogsQ.data!.map((log) => (
                       <tr key={log.id} className="border-t hover:bg-muted/20">
                         <td className="p-2 whitespace-nowrap">{fmtDatetime(log.createdAt)}</td>
-                        <td className="p-2 max-w-[200px] truncate" title={log.subject ?? ""}>{log.subject ?? "-"}</td>
+                        <td className="p-2 max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap" title={log.subject ?? ""}>{log.subject ?? "-"}</td>
                         <td className="p-2">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                            log.status === "ok" ? "bg-green-100 text-green-800"
-                            : log.status === "error" ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-600"
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                            log.status === "ok" ? "bg-success/10 text-success"
+                            : log.status === "error" ? "bg-danger/10 text-danger"
+                            : "bg-muted text-muted-foreground"
                           }`}>{log.status}</span>
                         </td>
                         <td className="p-2">
                           {log.parsingStrategy ? (
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              log.parsingStrategy === "pdf" ? "bg-orange-100 text-orange-700"
-                              : log.parsingStrategy === "excel" ? "bg-blue-100 text-blue-700"
-                              : "bg-gray-100 text-gray-600"
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                              log.parsingStrategy === "pdf" ? "bg-warning/10 text-warning"
+                              : log.parsingStrategy === "excel" ? "bg-info/10 text-info"
+                              : "bg-muted text-muted-foreground"
                             }`}>{log.parsingStrategy}</span>
                           ) : "-"}
                         </td>
                         <td className="p-2 text-right">{log.operationsDetected ?? 0}</td>
-                        <td className="p-2 text-right font-medium text-green-700">{log.operationsInserted}</td>
-                        <td className="p-2 text-right text-blue-700">{log.operationsLinked ?? 0}</td>
+                        <td className="p-2 text-right font-medium text-success">{log.operationsInserted}</td>
+                        <td className="p-2 text-right text-info">{log.operationsLinked ?? 0}</td>
                         <td className="p-2 text-right text-muted-foreground">{log.operationsDuplicate}</td>
-                        <td className="p-2 text-right text-red-600">{log.operationsFailed ?? 0}</td>
+                        <td className="p-2 text-right text-danger">{log.operationsFailed ?? 0}</td>
                         <td className="p-2 text-right text-muted-foreground">{log.retryCount ?? 0}</td>
-                        <td className="p-2 text-red-600 max-w-[180px] truncate" title={log.errorMessage ?? ""}>{log.errorMessage ?? ""}</td>
+                        <td className="p-2 text-danger max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={log.errorMessage ?? ""}>{log.errorMessage ?? ""}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -470,11 +472,11 @@ export default function CardTerminalOperationsManager() {
           </div>
           <div className="bg-card border rounded-lg p-4">
             <p className="text-xs text-muted-foreground">Total ventas</p>
-            <p className="text-2xl font-bold text-green-600">{fmtCurrency(listQ.data.totalVentas)}</p>
+            <p className="text-2xl font-bold text-success">{fmtCurrency(listQ.data.totalVentas)}</p>
           </div>
           <div className="bg-card border rounded-lg p-4">
             <p className="text-xs text-muted-foreground">Total devoluciones</p>
-            <p className="text-2xl font-bold text-orange-600">{fmtCurrency(listQ.data.totalDevoluciones)}</p>
+            <p className="text-2xl font-bold text-warning">{fmtCurrency(listQ.data.totalDevoluciones)}</p>
           </div>
           <div className="bg-card border rounded-lg p-4">
             <p className="text-xs text-muted-foreground">Neto</p>
@@ -537,7 +539,7 @@ export default function CardTerminalOperationsManager() {
       </div>
 
       {/* Table */}
-      <div className="border rounded-lg overflow-auto">
+      <div className="overflow-auto rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
@@ -568,30 +570,26 @@ export default function CardTerminalOperationsManager() {
                   <td className="p-3 font-mono text-xs">{op.operationNumber || "-"}</td>
                   <td className="p-3 text-xs text-muted-foreground">{op.terminalCode || "-"}</td>
                   <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
-                      {typeInfo.label}
-                    </span>
+                    <StatusBadge tone={typeInfo.tone}>{typeInfo.label}</StatusBadge>
                   </td>
-                  <td className={`p-3 text-right font-medium ${op.operationType === "DEVOLUCION" ? "text-orange-600" : "text-green-700"}`}>
+                  <td className={`p-3 text-right font-medium ${op.operationType === "DEVOLUCION" ? "text-warning" : "text-success"}`}>
                     {fmtCurrency(String(op.amount))}
                   </td>
                   <td className="p-3 font-mono text-xs">{op.card ? `****${op.card.slice(-4)}` : "-"}</td>
                   <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
-                      {statusInfo.label}
-                    </span>
+                    <StatusBadge tone={statusInfo.tone}>{statusInfo.label}</StatusBadge>
                   </td>
                   <td className="p-3 text-xs">
                     {op.linkedEntityType && op.linkedEntityType !== "none" ? (
                       op.linkedEntityType === "reservation" ? (
                         <a
                           href={`/admin/crm?tab=reservations&search=${encodeURIComponent((op as any).linkedReservationNumber ?? String(op.linkedEntityId))}`}
-                          className="text-sky-400 hover:text-sky-300 hover:underline font-medium"
+                          className="text-info hover:text-info hover:underline font-medium"
                         >
                           {(op as any).linkedReservationNumber ?? `#${op.linkedEntityId}`}
                         </a>
                       ) : (
-                        <span className="text-amber-400 font-medium">
+                        <span className="text-warning font-medium">
                           Presupuesto #{op.linkedEntityId}
                         </span>
                       )
@@ -610,19 +608,28 @@ export default function CardTerminalOperationsManager() {
                         </Button>
                       )}
                       {op.status === "conciliado" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-orange-600" title="Desvincular" onClick={() => { setUnlinkId(op.id); }}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-warning" title="Desvincular" onClick={() => { setUnlinkId(op.id); }}>
                           <Unlink className="w-3.5 h-3.5" />
                         </Button>
                       )}
                       {op.status !== "incidencia" && op.status !== "conciliado" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600" title="Marcar incidencia" onClick={() => setIncidentId(op.id)}>
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      {op.status === "pendiente" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Ignorar" onClick={() => updateStatusMut.mutate({ id: op.id, status: "ignorado" })}>
-                          <X className="w-3.5 h-3.5" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Más acciones" aria-label="Más acciones">
+                              <MoreHorizontal className="w-3.5 h-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem className="text-danger focus:text-danger" onClick={() => setIncidentId(op.id)}>
+                              <AlertTriangle className="mr-2 h-4 w-4" /> Marcar incidencia
+                            </DropdownMenuItem>
+                            {op.status === "pendiente" && (
+                              <DropdownMenuItem onClick={() => updateStatusMut.mutate({ id: op.id, status: "ignorado" })}>
+                                <X className="mr-2 h-4 w-4" /> Ignorar
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </div>
                   </td>
@@ -705,14 +712,14 @@ export default function CardTerminalOperationsManager() {
                 )}
               </div>
             ) : (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-2">
-                <p className="font-semibold text-green-800">Importación completada</p>
-                <p className="text-sm text-green-700">{importResult.importedRows} operaciones importadas</p>
+              <div className="bg-success/10 border border-success/40 rounded-lg p-4 space-y-2">
+                <p className="font-semibold text-success">Importación completada</p>
+                <p className="text-sm text-success">{importResult.importedRows} operaciones importadas</p>
                 {importResult.duplicatesSkipped > 0 && (
                   <p className="text-sm text-muted-foreground">{importResult.duplicatesSkipped} duplicados omitidos</p>
                 )}
                 {importResult.autoLinked > 0 && (
-                  <p className="text-sm text-blue-700">{importResult.autoLinked} auto-vinculadas a reservas/presupuestos</p>
+                  <p className="text-sm text-info">{importResult.autoLinked} auto-vinculadas a reservas/presupuestos</p>
                 )}
               </div>
             )}
@@ -748,9 +755,7 @@ export default function CardTerminalOperationsManager() {
                 <div><p className="text-xs text-muted-foreground">Nº Operación</p><p className="font-mono">{detailQ.data.operationNumber || "-"}</p></div>
                 <div><p className="text-xs text-muted-foreground">Importe</p><p className="font-bold text-lg">{fmtCurrency(String(detailQ.data.amount))}</p></div>
                 <div><p className="text-xs text-muted-foreground">Tipo</p>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_LABELS[detailQ.data.operationType]?.color}`}>
-                    {TYPE_LABELS[detailQ.data.operationType]?.label}
-                  </span>
+                  <StatusBadge tone={TYPE_LABELS[detailQ.data.operationType]?.tone ?? "neutral"}>{TYPE_LABELS[detailQ.data.operationType]?.label}</StatusBadge>
                 </div>
                 <div><p className="text-xs text-muted-foreground">Tarjeta</p><p className="font-mono">{detailQ.data.card ? `****${detailQ.data.card.slice(-4)}` : "-"}</p></div>
                 <div><p className="text-xs text-muted-foreground">Autorización</p><p className="font-mono">{detailQ.data.authorizationCode || "-"}</p></div>
@@ -760,9 +765,7 @@ export default function CardTerminalOperationsManager() {
               <hr />
               <div className="grid grid-cols-2 gap-3">
                 <div><p className="text-xs text-muted-foreground">Estado</p>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_LABELS[detailQ.data.status]?.color}`}>
-                    {STATUS_LABELS[detailQ.data.status]?.label}
-                  </span>
+                  <StatusBadge tone={STATUS_LABELS[detailQ.data.status]?.tone ?? "neutral"}>{STATUS_LABELS[detailQ.data.status]?.label}</StatusBadge>
                 </div>
                 <div><p className="text-xs text-muted-foreground">Vinculado a</p>
                   <p>{detailQ.data.linkedEntityType && detailQ.data.linkedEntityType !== "none"
@@ -777,8 +780,8 @@ export default function CardTerminalOperationsManager() {
                 )}
               </div>
               {detailQ.data.incidentReason && (
-                <div className="bg-red-50 border border-red-200 rounded p-3">
-                  <p className="text-xs text-red-600 font-medium mb-1">Motivo incidencia</p>
+                <div className="bg-danger/10 border border-danger/40 rounded p-3">
+                  <p className="text-xs text-danger font-medium mb-1">Motivo incidencia</p>
                   <p className="text-sm">{detailQ.data.incidentReason}</p>
                 </div>
               )}
@@ -792,12 +795,12 @@ export default function CardTerminalOperationsManager() {
                   </Button>
                 )}
                 {detailQ.data.status === "conciliado" && (
-                  <Button size="sm" variant="outline" className="text-orange-600" onClick={() => { setUnlinkId(detailId); setDetailId(null); }}>
+                  <Button size="sm" variant="outline" className="text-warning" onClick={() => { setUnlinkId(detailId); setDetailId(null); }}>
                     <Unlink className="w-3.5 h-3.5 mr-1" /> Desvincular
                   </Button>
                 )}
                 {detailQ.data.status !== "incidencia" && detailQ.data.status !== "conciliado" && (
-                  <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setIncidentId(detailId); setDetailId(null); }}>
+                  <Button size="sm" variant="outline" className="text-danger" onClick={() => { setIncidentId(detailId); setDetailId(null); }}>
                     <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Incidencia
                   </Button>
                 )}
@@ -874,7 +877,7 @@ export default function CardTerminalOperationsManager() {
                   ))}
                 </div>
                 {linkSelectedId && (
-                  <p className="text-xs text-green-700">
+                  <p className="text-xs text-success">
                     ✓ Seleccionada reserva #{linkSelectedId}
                   </p>
                 )}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,19 +30,19 @@ const FISCAL_STATUS_LABELS: Record<FiscalStatus, string> = {
   anulado: "Anulado",
 };
 
-const FISCAL_STATUS_COLORS: Record<FiscalStatus, string> = {
-  pendiente_documentacion: "bg-yellow-100 text-yellow-800 border border-yellow-200",
-  documentacion_completa: "bg-blue-100 text-blue-800 border border-blue-200",
-  en_revision: "bg-purple-100 text-purple-800 border border-purple-200",
-  cerrado: "bg-green-100 text-green-800 border border-green-200",
-  anulado: "bg-red-100 text-red-800 border border-red-200",
+const FISCAL_STATUS_TONES: Record<FiscalStatus, Tone> = {
+  pendiente_documentacion: "warning",
+  documentacion_completa: "info",
+  en_revision: "brand",
+  cerrado: "success",
+  anulado: "danger",
 };
 
-const OPERATIVE_STATUS_COLORS: Record<OperativeStatus, string> = {
-  abierto: "bg-emerald-100 text-emerald-800 border border-emerald-200",
-  en_proceso: "bg-orange-100 text-orange-800 border border-orange-200",
-  cerrado: "bg-slate-100 text-slate-700 border border-slate-200",
-  anulado: "bg-red-100 text-red-800 border border-red-200",
+const OPERATIVE_STATUS_TONES: Record<OperativeStatus, Tone> = {
+  abierto: "success",
+  en_proceso: "warning",
+  cerrado: "neutral",
+  anulado: "danger",
 };
 
 // ─── Semáforo visual ──────────────────────────────────────────────────────────
@@ -57,10 +58,10 @@ function getTrafficLight(fiscalStatus: string, operativeStatus: string): Traffic
 }
 
 const TRAFFIC_LIGHT_CONFIG: Record<TrafficLight, { bg: string; ring: string; label: string; pulse: boolean }> = {
-  red:    { bg: "bg-red-500",     ring: "ring-red-300",     label: "Pendiente documentación", pulse: true },
-  yellow: { bg: "bg-amber-400",   ring: "ring-amber-200",   label: "En proceso",               pulse: false },
-  green:  { bg: "bg-emerald-500", ring: "ring-emerald-300", label: "Cerrado y validado",       pulse: false },
-  grey:   { bg: "bg-slate-400",   ring: "ring-slate-200",   label: "Anulado",                  pulse: false },
+  red:    { bg: "bg-danger",     ring: "ring-danger/40",     label: "Pendiente documentación", pulse: true },
+  yellow: { bg: "bg-warning",   ring: "ring-warning/40",   label: "En proceso",               pulse: false },
+  green:  { bg: "bg-success", ring: "ring-success/40", label: "Cerrado y validado",       pulse: false },
+  grey:   { bg: "bg-muted",   ring: "ring-slate-200",   label: "Anulado",                  pulse: false },
 };
 
 function TrafficLightDot({ fiscalStatus, operativeStatus }: { fiscalStatus: string; operativeStatus: string }) {
@@ -238,38 +239,38 @@ export default function ReavManager() {
   return (
     <AdminLayout>
       {/* ── Fondo general claro, sin overflow horizontal ── */}
-      <div className="flex h-full min-h-screen bg-slate-50 overflow-x-hidden">
+      <div className="flex h-full min-h-screen flex-col overflow-x-hidden bg-muted md:flex-row">
 
         {/* ── Panel izquierdo: lista de expedientes ── */}
-        <div className="w-80 min-w-[280px] max-w-xs border-r border-slate-200 bg-white flex flex-col shrink-0">
+        <div className="flex w-full shrink-0 flex-col border-b border-border bg-card md:w-80 md:min-w-[280px] md:max-w-xs md:border-b-0 md:border-r">
           {/* Cabecera del panel */}
-          <div className="p-4 border-b border-slate-200 bg-white sticky top-0 z-10">
+          <div className="p-4 border-b border-border bg-card sticky top-0 z-10">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="font-bold text-slate-900 text-base">Expedientes REAV</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Régimen Agencias de Viaje</p>
+                <h2 className="font-bold text-foreground text-base">Expedientes REAV</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Régimen Agencias de Viaje</p>
               </div>
               <Button
                 size="sm"
                 onClick={() => setShowCreate(true)}
-                className="bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
+                className=""
               >
                 <Plus className="w-4 h-4 mr-1" /> Nuevo
               </Button>
             </div>
 
             {/* Leyenda semáforo */}
-            <div className="flex items-center gap-3 text-xs text-slate-500 mb-3 bg-slate-50 rounded-lg p-2">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3 bg-muted rounded-lg p-2">
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse ring-1 ring-red-300 shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse ring-1 ring-danger/40 shrink-0" />
                 Pendiente
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-1 ring-amber-200 shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-warning ring-1 ring-warning/40 shrink-0" />
                 En proceso
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-1 ring-emerald-300 shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-success ring-1 ring-success/40 shrink-0" />
                 Cerrado
               </span>
             </div>
@@ -277,7 +278,7 @@ export default function ReavManager() {
             {/* Filtros */}
             <div className="space-y-2">
               <Select value={filterFiscal} onValueChange={setFilterFiscal}>
-                <SelectTrigger className="h-8 text-xs bg-white">
+                <SelectTrigger className="h-8 text-xs bg-card">
                   <SelectValue placeholder="Estado fiscal..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -288,7 +289,7 @@ export default function ReavManager() {
                 </SelectContent>
               </Select>
               <Select value={filterOperative} onValueChange={setFilterOperative}>
-                <SelectTrigger className="h-8 text-xs bg-white">
+                <SelectTrigger className="h-8 text-xs bg-card">
                   <SelectValue placeholder="Estado operativo..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -305,7 +306,7 @@ export default function ReavManager() {
           {/* Lista de expedientes */}
           <div className="flex-1 overflow-y-auto">
             {!expedients?.length ? (
-              <div className="p-8 text-center text-slate-400">
+              <div className="p-8 text-center text-muted-foreground">
                 <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-40" />
                 <p className="text-sm font-medium">No hay expedientes</p>
                 <p className="text-xs mt-1">Crea el primero con el botón "Nuevo"</p>
@@ -315,9 +316,9 @@ export default function ReavManager() {
                 <button
                   key={exp.id}
                   onClick={() => setSelectedId(exp.id)}
-                  className={`w-full text-left p-3.5 border-b border-slate-100 hover:bg-orange-50/50 transition-colors ${
+                  className={`w-full text-left p-3.5 border-b border-border hover:bg-primary/5 transition-colors ${
                     selectedId === exp.id
-                      ? "bg-orange-50 border-l-[3px] border-l-orange-500"
+                      ? "bg-primary/10 border-l-[3px] border-l-primary"
                       : "border-l-[3px] border-l-transparent"
                   }`}
                 >
@@ -325,24 +326,24 @@ export default function ReavManager() {
                     <div className="flex items-start gap-2 min-w-0">
                       <TrafficLightDot fiscalStatus={exp.fiscalStatus} operativeStatus={exp.operativeStatus} />
                       <div className="min-w-0">
-                        <p className="font-mono text-xs text-slate-400 mb-0.5">{exp.expedientNumber}</p>
-                        <p className="text-sm font-semibold text-slate-800 truncate leading-tight">
+                        <p className="font-mono text-xs text-muted-foreground mb-0.5">{exp.expedientNumber}</p>
+                        <p className="text-sm font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap leading-tight">
                           {exp.serviceDescription || "Sin descripción"}
                         </p>
-                        <p className="text-xs text-slate-500 mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {exp.destination || "—"} · {exp.numberOfPax} pax
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
+                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-1" />
                   </div>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-sm font-bold text-slate-900">
+                    <span className="text-sm font-bold text-foreground">
                       {parseFloat(exp.saleAmountTotal as string ?? "0").toFixed(2)}€
                     </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${FISCAL_STATUS_COLORS[exp.fiscalStatus as FiscalStatus]}`}>
+                    <StatusBadge tone={FISCAL_STATUS_TONES[exp.fiscalStatus as FiscalStatus]}>
                       {FISCAL_STATUS_LABELS[exp.fiscalStatus as FiscalStatus]}
-                    </span>
+                    </StatusBadge>
                   </div>
                 </button>
               ))
@@ -354,12 +355,12 @@ export default function ReavManager() {
         <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
           {!selected ? (
             <div className="flex items-center justify-center h-full min-h-[400px]">
-              <div className="text-center text-slate-400 p-8">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+              <div className="text-center text-muted-foreground p-8">
+                <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center mx-auto mb-4">
                   <FileText className="w-8 h-8 opacity-40" />
                 </div>
-                <p className="text-base font-semibold text-slate-600">Selecciona un expediente</p>
-                <p className="text-sm mt-1 text-slate-400">o crea uno nuevo desde el panel izquierdo</p>
+                <p className="text-base font-semibold text-muted-foreground">Selecciona un expediente</p>
+                <p className="text-sm mt-1 text-muted-foreground">o crea uno nuevo desde el panel izquierdo</p>
               </div>
             </div>
           ) : (
@@ -384,15 +385,15 @@ export default function ReavManager() {
       <Dialog open={deleteExpedientId !== null} onOpenChange={(o) => { if (!o) { setDeleteExpedientId(null); setDeleteExpedientNumber(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-danger">
               <Trash2 className="w-5 h-5" /> Eliminar expediente
             </DialogTitle>
           </DialogHeader>
           <div className="py-2 space-y-2">
-            <p className="text-sm text-slate-600">
-              ¿Eliminar definitivamente el expediente <span className="font-mono font-bold text-slate-800">{deleteExpedientNumber}</span>?
+            <p className="text-sm text-muted-foreground">
+              ¿Eliminar definitivamente el expediente <span className="font-mono font-bold text-foreground">{deleteExpedientNumber}</span>?
             </p>
-            <ul className="text-xs text-slate-500 list-disc list-inside space-y-1">
+            <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
               <li>Se eliminarán todos los documentos y costes asociados</li>
               <li>La reserva vinculada quedará sin expediente REAV</li>
               <li>Esta acción no se puede deshacer</li>
@@ -474,14 +475,14 @@ function ExpedientDetail({
     <div className="p-6 space-y-5 max-w-4xl mx-auto w-full">
 
       {/* ── Header del expediente ── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="bg-card rounded-xl border border-border shadow-sm p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-mono text-xs text-slate-400 mb-1">{exp.expedientNumber}</p>
-            <h1 className="text-xl font-bold text-slate-900 leading-tight">
+            <p className="font-mono text-xs text-muted-foreground mb-1">{exp.expedientNumber}</p>
+            <h1 className="text-xl font-bold text-foreground leading-tight">
               {exp.serviceDescription || "Expediente REAV"}
             </h1>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {exp.destination || "Sin destino"} · {exp.numberOfPax} pax
               {exp.serviceDate ? ` · ${exp.serviceDate}` : ""}
             </p>
@@ -489,63 +490,63 @@ function ExpedientDetail({
             {exp.channel && (
               <div className="flex items-center gap-1.5 mt-2">
                 {exp.channel === "tpv" && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-info bg-info/10 border border-info/40 px-2 py-0.5 rounded-full">
                     <Store className="w-3 h-3" /> TPV Presencial
                   </span>
                 )}
                 {exp.channel === "online" && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-success bg-success/10 border border-success/40 px-2 py-0.5 rounded-full">
                     <Monitor className="w-3 h-3" /> Venta Online
                   </span>
                 )}
                 {exp.channel === "crm" && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-primary bg-primary/10 border border-primary/40 px-2 py-0.5 rounded-full">
                     <ShoppingCart className="w-3 h-3" /> CRM / Delegada
                   </span>
                 )}
                 {exp.sourceRef && (
-                  <span className="text-xs text-slate-400">Ref: {exp.sourceRef}</span>
+                  <span className="text-xs text-muted-foreground">Ref: {exp.sourceRef}</span>
                 )}
               </div>
             )}
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${FISCAL_STATUS_COLORS[exp.fiscalStatus as FiscalStatus]}`}>
+            <StatusBadge tone={FISCAL_STATUS_TONES[exp.fiscalStatus as FiscalStatus]}>
               {FISCAL_STATUS_LABELS[exp.fiscalStatus as FiscalStatus]}
-            </span>
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${OPERATIVE_STATUS_COLORS[exp.operativeStatus as OperativeStatus]}`}>
+            </StatusBadge>
+            <StatusBadge tone={OPERATIVE_STATUS_TONES[exp.operativeStatus as OperativeStatus]}>
               {exp.operativeStatus}
-            </span>
+            </StatusBadge>
           </div>
         </div>
       </div>
 
       {/* ── BLOQUE 0: Datos del Cliente ── */}
       {(exp.clientName || exp.clientEmail || exp.clientPhone || exp.clientDni || exp.clientAddress) && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide text-slate-500">
-            <User className="w-4 h-4 text-orange-500" /> Datos del Cliente
+        <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+          <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4 text-sm uppercase tracking-wide text-muted-foreground">
+            <User className="w-4 h-4 text-warning" /> Datos del Cliente
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {exp.clientName && (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                  <User className="w-4 h-4 text-slate-400" />
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Nombre</p>
-                  <p className="text-sm font-semibold text-slate-800">{exp.clientName}</p>
+                  <p className="text-xs text-muted-foreground">Nombre</p>
+                  <p className="text-sm font-semibold text-foreground">{exp.clientName}</p>
                 </div>
               </div>
             )}
             {exp.clientEmail && (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                  <Mail className="w-4 h-4 text-slate-400" />
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Email</p>
-                  <a href={`mailto:${exp.clientEmail}`} className="text-sm font-semibold text-blue-600 hover:underline">
+                  <p className="text-xs text-muted-foreground">Email</p>
+                  <a href={`mailto:${exp.clientEmail}`} className="text-sm font-semibold text-info hover:underline">
                     {exp.clientEmail}
                   </a>
                 </div>
@@ -553,12 +554,12 @@ function ExpedientDetail({
             )}
             {exp.clientPhone && (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                  <Phone className="w-4 h-4 text-slate-400" />
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <Phone className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Teléfono</p>
-                  <a href={`tel:${exp.clientPhone}`} className="text-sm font-semibold text-slate-800 hover:underline">
+                  <p className="text-xs text-muted-foreground">Teléfono</p>
+                  <a href={`tel:${exp.clientPhone}`} className="text-sm font-semibold text-foreground hover:underline">
                     {exp.clientPhone}
                   </a>
                 </div>
@@ -566,23 +567,23 @@ function ExpedientDetail({
             )}
             {exp.clientDni && (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                  <CreditCard className="w-4 h-4 text-slate-400" />
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <CreditCard className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">DNI / NIF</p>
-                  <p className="text-sm font-semibold text-slate-800">{exp.clientDni}</p>
+                  <p className="text-xs text-muted-foreground">DNI / NIF</p>
+                  <p className="text-sm font-semibold text-foreground">{exp.clientDni}</p>
                 </div>
               </div>
             )}
             {exp.clientAddress && (
               <div className="flex items-center gap-3 sm:col-span-2">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                  <MapPin className="w-4 h-4 text-slate-400" />
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <MapPin className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Dirección</p>
-                  <p className="text-sm font-semibold text-slate-800">{exp.clientAddress}</p>
+                  <p className="text-xs text-muted-foreground">Dirección</p>
+                  <p className="text-sm font-semibold text-foreground">{exp.clientAddress}</p>
                 </div>
               </div>
             )}
@@ -591,10 +592,10 @@ function ExpedientDetail({
       )}
 
       {/* ── BLOQUE 1: Información General ── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="bg-card rounded-xl border border-border shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-xs uppercase tracking-wide text-slate-500 flex items-center gap-2">
-            <Package className="w-4 h-4 text-orange-500" /> Información General
+          <h3 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+            <Package className="w-4 h-4 text-warning" /> Información General
           </h3>
           <Button
             variant="outline"
@@ -610,7 +611,7 @@ function ExpedientDetail({
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Descripción del servicio</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Descripción del servicio</label>
                 <Textarea
                   value={infoForm.serviceDescription}
                   onChange={(e) => setInfoForm(f => ({ ...f, serviceDescription: e.target.value }))}
@@ -619,7 +620,7 @@ function ExpedientDetail({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Destino</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Destino</label>
                 <Input
                   value={infoForm.destination}
                   onChange={(e) => setInfoForm(f => ({ ...f, destination: e.target.value }))}
@@ -627,7 +628,7 @@ function ExpedientDetail({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Nº de pax</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Nº de pax</label>
                 <Input
                   type="number"
                   value={infoForm.numberOfPax}
@@ -636,7 +637,7 @@ function ExpedientDetail({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Fecha inicio</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha inicio</label>
                 <Input
                   type="date"
                   value={infoForm.serviceDate}
@@ -645,7 +646,7 @@ function ExpedientDetail({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Fecha fin</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha fin</label>
                 <Input
                   type="date"
                   value={infoForm.serviceEndDate}
@@ -654,7 +655,7 @@ function ExpedientDetail({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Importe venta total (€)</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Importe venta total (€)</label>
                 <Input
                   type="number"
                   step="0.01"
@@ -664,7 +665,7 @@ function ExpedientDetail({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Coste proveedor estimado (€)</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Coste proveedor estimado (€)</label>
                 <Input
                   type="number"
                   step="0.01"
@@ -674,7 +675,7 @@ function ExpedientDetail({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Margen agencia estimado (€)</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Margen agencia estimado (€)</label>
                 <Input
                   type="number"
                   step="0.01"
@@ -684,7 +685,7 @@ function ExpedientDetail({
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Notas internas</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Notas internas</label>
                 <Textarea
                   value={infoForm.internalNotes}
                   onChange={(e) => setInfoForm(f => ({ ...f, internalNotes: e.target.value }))}
@@ -696,7 +697,7 @@ function ExpedientDetail({
             <div className="flex gap-2 pt-1">
               <Button
                 size="sm"
-                className="bg-orange-500 hover:bg-orange-600 text-white"
+                className=""
                 onClick={() => { onUpdate(infoForm); setEditInfo(false); }}
               >
                 Guardar cambios
@@ -758,10 +759,10 @@ function ExpedientDetail({
       />
 
       {/* ── BLOQUE 4: Panel Económico ── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="bg-card rounded-xl border border-border shadow-sm p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-xs uppercase tracking-wide text-slate-500 flex items-center gap-2">
-            <Euro className="w-4 h-4 text-orange-500" /> Panel Económico Interno
+          <h3 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+            <Euro className="w-4 h-4 text-warning" /> Panel Económico Interno
           </h3>
           <Button
             variant="outline"
@@ -775,31 +776,31 @@ function ExpedientDetail({
 
         {/* KPIs económicos */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <EconCard label="Venta Total" value={`${sale.toFixed(2)}€`} color="text-slate-900" bg="bg-slate-50" />
-          <EconCard label="Costes Reales" value={`${costReal.toFixed(2)}€`} color="text-red-600" bg="bg-red-50" />
+          <EconCard label="Venta Total" value={`${sale.toFixed(2)}€`} color="text-foreground" bg="bg-muted" />
+          <EconCard label="Costes Reales" value={`${costReal.toFixed(2)}€`} color="text-danger" bg="bg-danger/10" />
           <EconCard
             label="Margen Real"
             value={`${marginReal.toFixed(2)}€`}
-            color={marginReal >= 0 ? "text-green-700" : "text-red-600"}
-            bg={marginReal >= 0 ? "bg-green-50" : "bg-red-50"}
+            color={marginReal >= 0 ? "text-success" : "text-danger"}
+            bg={marginReal >= 0 ? "bg-success/10" : "bg-danger/10"}
           />
-          <EconCard label="Base Imponible REAV" value={`${taxBase.toFixed(2)}€`} color="text-blue-700" bg="bg-blue-50" />
+          <EconCard label="Base Imponible REAV" value={`${taxBase.toFixed(2)}€`} color="text-info" bg="bg-info/10" />
         </div>
 
         {/* IVA destacado */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 flex items-center justify-between">
+        <div className="bg-info/10 border border-info/40 rounded-xl p-4 mb-5 flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">IVA sobre margen (21%)</p>
-            <p className="text-2xl font-black text-blue-800">{taxAmount.toFixed(2)}€</p>
+            <p className="text-xs font-semibold text-info uppercase tracking-wide mb-1">IVA sobre margen (21%)</p>
+            <p className="text-2xl font-black text-info">{taxAmount.toFixed(2)}€</p>
           </div>
-          <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Receipt className="w-6 h-6 text-blue-500" />
+          <div className="w-12 h-12 rounded-xl bg-info/10 flex items-center justify-center">
+            <Receipt className="w-6 h-6 text-info" />
           </div>
         </div>
 
         {/* Añadir coste */}
-        <div className="border-t border-slate-100 pt-4">
-          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Añadir coste de proveedor</p>
+        <div className="border-t border-border pt-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Añadir coste de proveedor</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
             <Input
               placeholder="Descripción *"
@@ -833,18 +834,18 @@ function ExpedientDetail({
                 ))}
               </SelectContent>
             </Select>
-            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={newCost.includesVat}
                 onChange={(e) => setNewCost(c => ({ ...c, includesVat: e.target.checked }))}
-                className="accent-orange-500"
+                className="accent-primary"
               />
               IVA incluido
             </label>
             <Button
               size="sm"
-              className="bg-orange-500 hover:bg-orange-600 text-white"
+              className=""
               onClick={() => {
                 if (!newCost.description || !newCost.amount) return toast.error("Descripción e importe son obligatorios");
                 onAddCost(newCost);
@@ -860,22 +861,22 @@ function ExpedientDetail({
         {exp.costs?.length > 0 && (
           <div className="mt-4 space-y-2">
             {exp.costs.map((cost: any) => (
-              <div key={cost.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-2.5 border border-slate-100">
+              <div key={cost.id} className="flex items-center justify-between bg-muted rounded-lg px-4 py-2.5 border border-border">
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${cost.isPaid ? "bg-green-500" : "bg-yellow-400"}`} />
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${cost.isPaid ? "bg-success" : "bg-warning"}`} />
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{cost.description}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-sm font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{cost.description}</p>
+                    <p className="text-xs text-muted-foreground">
                       {cost.providerName || "—"} · {COST_CATEGORIES.find(c => c.value === cost.category)?.label}
-                      {cost.includesVat === false && <span className="ml-1 text-amber-600 font-medium">(neto s/IVA)</span>}
+                      {cost.includesVat === false && <span className="ml-1 text-warning font-medium">(neto s/IVA)</span>}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-3">
-                  <span className="text-sm font-bold text-slate-900">{parseFloat(cost.amount).toFixed(2)}€</span>
+                  <span className="text-sm font-bold text-foreground">{parseFloat(cost.amount).toFixed(2)}€</span>
                   <button
                     onClick={() => onDelCost(cost.id)}
-                    className="text-slate-300 hover:text-red-500 transition-colors"
+                    className="text-muted-foreground hover:text-danger transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -887,13 +888,13 @@ function ExpedientDetail({
       </div>
 
       {/* ── BLOQUE 5: Estado Fiscal ── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <h3 className="font-semibold text-xs uppercase tracking-wide text-slate-500 flex items-center gap-2 mb-4">
-          <CheckCircle2 className="w-4 h-4 text-orange-500" /> Estado Fiscal
+      <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+        <h3 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-2 mb-4">
+          <CheckCircle2 className="w-4 h-4 text-warning" /> Estado Fiscal
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Estado Fiscal</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Estado Fiscal</label>
             <Select value={exp.fiscalStatus} onValueChange={(v) => onUpdate({ fiscalStatus: v })}>
               <SelectTrigger className="text-sm">
                 <SelectValue />
@@ -906,7 +907,7 @@ function ExpedientDetail({
             </Select>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Estado Operativo</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Estado Operativo</label>
             <Select value={exp.operativeStatus} onValueChange={(v) => onUpdate({ operativeStatus: v })}>
               <SelectTrigger className="text-sm">
                 <SelectValue />
@@ -921,30 +922,30 @@ function ExpedientDetail({
           </div>
         </div>
         {/* Resumen fiscal informativo */}
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-slate-700 space-y-1.5">
-          <p className="font-semibold text-slate-800 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-blue-500" /> Resumen fiscal REAV
+        <div className="bg-info/10 border border-info/40 rounded-xl p-4 text-sm text-foreground space-y-1.5">
+          <p className="font-semibold text-foreground flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-info" /> Resumen fiscal REAV
           </p>
-          <p className="text-xs text-slate-600">Régimen: Agencias de Viaje (REAV) — IVA sobre margen de beneficio</p>
+          <p className="text-xs text-muted-foreground">Régimen: Agencias de Viaje (REAV) — IVA sobre margen de beneficio</p>
           <div className="grid grid-cols-2 gap-2 mt-2">
-            <div className="bg-white rounded-lg p-2.5 border border-blue-100">
-              <p className="text-xs text-slate-500">Base imponible</p>
-              <p className="text-base font-bold text-slate-900">{taxBase.toFixed(2)}€</p>
-              <p className="text-xs text-slate-400">Margen real positivo</p>
+            <div className="bg-card rounded-lg p-2.5 border border-info/40">
+              <p className="text-xs text-muted-foreground">Base imponible</p>
+              <p className="text-base font-bold text-foreground">{taxBase.toFixed(2)}€</p>
+              <p className="text-xs text-muted-foreground">Margen real positivo</p>
             </div>
-            <div className="bg-white rounded-lg p-2.5 border border-blue-100">
-              <p className="text-xs text-slate-500">IVA 21% a ingresar</p>
-              <p className="text-base font-bold text-blue-700">{taxAmount.toFixed(2)}€</p>
-              <p className="text-xs text-slate-400">No deducible en REAV</p>
+            <div className="bg-card rounded-lg p-2.5 border border-info/40">
+              <p className="text-xs text-muted-foreground">IVA 21% a ingresar</p>
+              <p className="text-base font-bold text-info">{taxAmount.toFixed(2)}€</p>
+              <p className="text-xs text-muted-foreground">No deducible en REAV</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* ── BLOQUE 6: Acciones Administrativas ── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-        <h3 className="font-semibold text-xs uppercase tracking-wide text-slate-500 flex items-center gap-2 mb-4">
-          <Lock className="w-4 h-4 text-orange-500" /> Acciones Administrativas
+      <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+        <h3 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-2 mb-4">
+          <Lock className="w-4 h-4 text-warning" /> Acciones Administrativas
         </h3>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -989,7 +990,7 @@ function ExpedientDetail({
             <Button
               variant="outline"
               size="sm"
-              className="text-sm border-red-200 text-red-600 hover:bg-red-50"
+              className="text-sm border-danger/40 text-danger hover:bg-danger/10"
               onClick={async () => {
                 if ((await confirmAction({ description: "¿Cerrar expediente? Esta acción marcará el expediente como cerrado fiscal y operativamente." }))) {
                   onUpdate({ operativeStatus: "cerrado", fiscalStatus: "cerrado" });
@@ -1003,7 +1004,7 @@ function ExpedientDetail({
             <Button
               variant="outline"
               size="sm"
-              className="text-sm border-red-300 text-red-700 hover:bg-red-50"
+              className="text-sm border-danger/40 text-danger hover:bg-danger/10"
               onClick={onDelete}
             >
               <Trash2 className="w-4 h-4 mr-1.5" /> Eliminar Expediente
@@ -1023,16 +1024,16 @@ function ExpedientDetail({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs text-slate-500 mb-0.5">{label}</p>
-      <p className="text-sm font-semibold text-slate-800">{value}</p>
+      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
+      <p className="text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }
 
 function EconCard({ label, value, color, bg }: { label: string; value: string; color: string; bg: string }) {
   return (
-    <div className={`${bg} rounded-xl p-3 text-center border border-slate-100`}>
-      <p className="text-xs text-slate-500 mb-1 leading-tight">{label}</p>
+    <div className={`${bg} rounded-xl p-3 text-center border border-border`}>
+      <p className="text-xs text-muted-foreground mb-1 leading-tight">{label}</p>
       <p className={`text-lg font-black ${color}`}>{value}</p>
     </div>
   );
@@ -1051,17 +1052,17 @@ function DocBlock({
   onDelete: (id: number) => void;
 }) {
   const icon = side === "client"
-    ? <User className="w-4 h-4 text-orange-500" />
-    : <Building2 className="w-4 h-4 text-orange-500" />;
+    ? <User className="w-4 h-4 text-warning" />
+    : <Building2 className="w-4 h-4 text-warning" />;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-      <h3 className="font-semibold text-xs uppercase tracking-wide text-slate-500 flex items-center gap-2 mb-4">
+    <div className="bg-card rounded-xl border border-border shadow-sm p-5">
+      <h3 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-2 mb-4">
         {icon} {title}
       </h3>
 
       {docs.length === 0 ? (
-        <div className="text-center py-4 text-slate-400">
+        <div className="text-center py-4 text-muted-foreground">
           <FileText className="w-8 h-8 mx-auto mb-1.5 opacity-30" />
           <p className="text-xs">Sin documentos</p>
         </div>
@@ -1070,20 +1071,20 @@ function DocBlock({
           {docs.map((doc: any) => (
             <div
               key={doc.id}
-              className="flex items-start justify-between bg-slate-50 rounded-lg px-4 py-2.5 border border-slate-100"
+              className="flex items-start justify-between bg-muted rounded-lg px-4 py-2.5 border border-border"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-semibold text-slate-800">{doc.title}</p>
+                  <p className="text-sm font-semibold text-foreground">{doc.title}</p>
                   {doc.notes?.includes("automáticamente") && (
-                    <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">Auto</span>
+                    <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded font-medium">Auto</span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {docTypes.find(d => d.value === doc.docType)?.label ?? doc.docType}
                 </p>
                 {doc.notes && (
-                  <p className="text-xs text-slate-400 mt-0.5 truncate" title={doc.notes}>{doc.notes}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap" title={doc.notes}>{doc.notes}</p>
                 )}
               </div>
               <div className="flex items-center gap-2 ml-3 shrink-0">
@@ -1092,14 +1093,14 @@ function DocBlock({
                     href={doc.fileUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                    className="text-xs text-info hover:text-info underline"
                   >
                     Ver
                   </a>
                 )}
                 <button
                   onClick={() => onDelete(doc.id)}
-                  className="text-slate-300 hover:text-red-500 transition-colors"
+                  className="text-muted-foreground hover:text-danger transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -1110,8 +1111,8 @@ function DocBlock({
       )}
 
       {/* Añadir documento */}
-      <div className="border-t border-slate-100 pt-3 mt-2">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Añadir documento</p>
+      <div className="border-t border-border pt-3 mt-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Añadir documento</p>
         <div className="flex flex-wrap gap-2">
           <Select value={newDoc.docType} onValueChange={(v) => onNewDocChange({ ...newDoc, docType: v })}>
             <SelectTrigger className="h-9 w-44 text-sm">
@@ -1137,7 +1138,7 @@ function DocBlock({
           />
           <Button
             size="sm"
-            className="bg-orange-500 hover:bg-orange-600 text-white shrink-0 h-9"
+            className=" shrink-0 h-9"
             onClick={onAdd}
           >
             <Plus className="w-4 h-4" />
@@ -1172,11 +1173,11 @@ function CreateExpedientModal({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-base font-bold text-slate-900">Nuevo Expediente REAV</DialogTitle>
+          <DialogTitle className="text-base font-bold text-foreground">Nuevo Expediente REAV</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 pt-1">
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Descripción del servicio *</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Descripción del servicio *</label>
             <Textarea
               value={form.serviceDescription}
               onChange={(e) => setForm(f => ({ ...f, serviceDescription: e.target.value }))}
@@ -1187,7 +1188,7 @@ function CreateExpedientModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-slate-600 mb-1.5 block">Destino</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Destino</label>
               <Input
                 value={form.destination}
                 onChange={(e) => setForm(f => ({ ...f, destination: e.target.value }))}
@@ -1196,7 +1197,7 @@ function CreateExpedientModal({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600 mb-1.5 block">Fecha servicio</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Fecha servicio</label>
               <Input
                 type="date"
                 value={form.serviceDate}
@@ -1205,7 +1206,7 @@ function CreateExpedientModal({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600 mb-1.5 block">Nº Pax</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Nº Pax</label>
               <Input
                 type="number"
                 value={form.numberOfPax}
@@ -1215,7 +1216,7 @@ function CreateExpedientModal({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-600 mb-1.5 block">Importe venta (€)</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Importe venta (€)</label>
               <Input
                 type="number"
                 step="0.01"
@@ -1226,7 +1227,7 @@ function CreateExpedientModal({
               />
             </div>
             <div className="col-span-2">
-              <label className="text-xs font-medium text-slate-600 mb-1.5 block">Coste proveedor estimado (€)</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Coste proveedor estimado (€)</label>
               <Input
                 type="number"
                 step="0.01"
@@ -1238,7 +1239,7 @@ function CreateExpedientModal({
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1.5 block">Notas internas</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Notas internas</label>
             <Textarea
               value={form.internalNotes}
               onChange={(e) => setForm(f => ({ ...f, internalNotes: e.target.value }))}
@@ -1247,12 +1248,12 @@ function CreateExpedientModal({
               placeholder="Observaciones internas..."
             />
           </div>
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button variant="outline" onClick={onClose} className="text-sm">
               Cancelar
             </Button>
             <Button
-              className="bg-orange-500 hover:bg-orange-600 text-white text-sm"
+              className=" text-sm"
               onClick={() => onCreate(form)}
               disabled={loading || !form.serviceDescription}
             >

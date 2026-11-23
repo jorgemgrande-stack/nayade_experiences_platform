@@ -16,6 +16,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, StatusBadge as ToneBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import type { DailyControlData } from "../../../../../server/routers/dailyControl";
@@ -55,17 +57,9 @@ const DONUT_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#0
 function SectionHeader({ icon: Icon, title, color = "blue" }: {
   icon: React.ElementType; title: string; color?: string;
 }) {
-  const gradients: Record<string, string> = {
-    blue:   "from-blue-400 to-blue-600",
-    green:  "from-emerald-400 to-emerald-600",
-    amber:  "from-amber-400 to-amber-600",
-    red:    "from-red-400 to-red-600",
-    purple: "from-purple-400 to-purple-600",
-    slate:  "from-slate-400 to-slate-600",
-  };
   return (
     <div className="flex items-center gap-2 mb-4">
-      <div className={`w-1 h-5 rounded-full bg-gradient-to-b ${gradients[color] ?? gradients.blue}`} />
+      <div className="h-5 w-1 rounded-full bg-primary" />
       <Icon className="w-4 h-4 text-muted-foreground" />
       <h3 className="font-semibold text-foreground text-sm uppercase tracking-wide">{title}</h3>
     </div>
@@ -78,74 +72,70 @@ interface KpiCardProps {
   sub?: string;
   icon: React.ElementType;
   color: string;
-  bg: string;
+  bg?: string;
   pct?: number | null;
   highlight?: boolean;
 }
-function KpiCard({ label, value, sub, icon: Icon, color, bg, pct, highlight }: KpiCardProps) {
+function toneOf(color: string): Tone {
+  if (color.includes("success")) return "success";
+  if (color.includes("warning")) return "warning";
+  if (color.includes("danger")) return "danger";
+  if (color.includes("info")) return "info";
+  if (color.includes("primary")) return "brand";
+  return "neutral";
+}
+function KpiCard({ label, value, sub, icon: Icon, color, pct, highlight }: KpiCardProps) {
   const pctUp   = pct !== null && pct !== undefined && pct > 0;
   const pctDown = pct !== null && pct !== undefined && pct < 0;
+  const pctNode = pct !== null && pct !== undefined ? (
+    <span className={cn("mr-2 inline-flex items-center gap-0.5 font-medium", pctUp ? "text-success" : pctDown ? "text-danger" : "text-muted-foreground")}>
+      {pctUp ? <ArrowUpRight className="h-3 w-3" /> : pctDown ? <ArrowDownRight className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+      {pct === 0 ? "sin cambio" : `${Math.abs(pct)}% vs ayer`}
+    </span>
+  ) : null;
   return (
-    <div className={cn(
-      "bg-card rounded-2xl border border-border/50 p-5 flex flex-col gap-3 transition-shadow hover:shadow-md",
-      highlight && "ring-2 ring-blue-500/20",
-    )}>
-      <div className="flex items-start justify-between">
-        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", bg)}>
-          <Icon className={cn("w-5 h-5", color)} />
-        </div>
-        {pct !== null && pct !== undefined && (
-          <span className={cn(
-            "text-xs font-medium flex items-center gap-0.5",
-            pctUp ? "text-emerald-600" : pctDown ? "text-red-500" : "text-muted-foreground",
-          )}>
-            {pctUp   ? <ArrowUpRight className="w-3 h-3" />
-           : pctDown ? <ArrowDownRight className="w-3 h-3" />
-           :           <Minus className="w-3 h-3" />}
-            {pct === 0 ? "sin cambio" : `${Math.abs(pct)}% vs ayer`}
-          </span>
-        )}
-      </div>
-      <div>
-        <p className="text-2xl font-bold tracking-tight text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground mt-0.5">{label}</p>
-        {sub && <p className="text-xs text-muted-foreground/70 mt-0.5">{sub}</p>}
-      </div>
-    </div>
+    <MetricCard
+      icon={<Icon />}
+      tone={toneOf(color)}
+      label={label}
+      value={value}
+      detail={<>{pctNode}{sub}</>}
+      active={highlight}
+    />
   );
 }
 
 function StatusBadge({ status, type }: { status: string; type: "reservation" | "tpv" }) {
   if (type === "tpv") {
-    const map: Record<string, [string, string]> = {
-      paid:      ["Cobrado",   "bg-emerald-100 text-emerald-700"],
-      pending:   ["Pendiente", "bg-amber-100 text-amber-700"],
-      cancelled: ["Anulado",   "bg-red-100 text-red-700"],
-      refunded:  ["Reembolso", "bg-blue-100 text-blue-700"],
+    const map: Record<string, [string, Tone]> = {
+      paid:      ["Cobrado",   "success"],
+      pending:   ["Pendiente", "warning"],
+      cancelled: ["Anulado",   "danger"],
+      refunded:  ["Reembolso", "info"],
     };
-    const [label, cls] = map[status] ?? [status, "bg-gray-100 text-gray-600"];
-    return <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", cls)}>{label}</span>;
+    const [label, tone] = map[status] ?? [status, "neutral"];
+    return <ToneBadge tone={tone}>{label}</ToneBadge>;
   }
-  const map: Record<string, [string, string]> = {
-    paid:            ["Pagado",        "bg-emerald-100 text-emerald-700"],
-    pending_payment: ["Pend. pago",    "bg-amber-100 text-amber-700"],
-    draft:           ["Borrador",      "bg-gray-100 text-gray-600"],
-    cancelled:       ["Cancelada",     "bg-red-100 text-red-700"],
-    failed:          ["Fallida",       "bg-red-100 text-red-700"],
+  const map: Record<string, [string, Tone]> = {
+    paid:            ["Pagado",        "success"],
+    pending_payment: ["Pend. pago",    "warning"],
+    draft:           ["Borrador",      "neutral"],
+    cancelled:       ["Cancelada",     "danger"],
+    failed:          ["Fallida",       "danger"],
   };
-  const [label, cls] = map[status] ?? [status, "bg-gray-100 text-gray-600"];
-  return <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", cls)}>{label}</span>;
+  const [label, tone] = map[status] ?? [status, "neutral"];
+  return <ToneBadge tone={tone}>{label}</ToneBadge>;
 }
 
 function PaymentBadge({ status }: { status: string }) {
-  const map: Record<string, [string, string]> = {
-    PAGADO:               ["Pagado",       "bg-emerald-100 text-emerald-700"],
-    PENDIENTE:            ["Pendiente",    "bg-amber-100 text-amber-700"],
-    PAGO_PARCIAL:         ["Parcial",      "bg-orange-100 text-orange-700"],
-    PENDIENTE_VALIDACION: ["Validando",    "bg-blue-100 text-blue-700"],
+  const map: Record<string, [string, Tone]> = {
+    PAGADO:               ["Pagado",       "success"],
+    PENDIENTE:            ["Pendiente",    "warning"],
+    PAGO_PARCIAL:         ["Parcial",      "warning"],
+    PENDIENTE_VALIDACION: ["Validando",    "info"],
   };
-  const [label, cls] = map[status] ?? [status, "bg-gray-100 text-gray-600"];
-  return <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", cls)}>{label}</span>;
+  const [label, tone] = map[status] ?? [status, "neutral"];
+  return <ToneBadge tone={tone}>{label}</ToneBadge>;
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -159,7 +149,7 @@ function EmptyState({ message }: { message: string }) {
 
 function SkeletonCard() {
   return (
-    <div className="bg-card rounded-2xl border border-border/50 p-5 animate-pulse">
+    <div className="bg-card rounded-xl border border-border/50 p-5 animate-pulse">
       <div className="w-10 h-10 bg-muted rounded-xl mb-3" />
       <div className="h-7 bg-muted rounded w-2/3 mb-2" />
       <div className="h-4 bg-muted rounded w-1/2" />
@@ -241,45 +231,43 @@ export default function DailyControlCenter() {
   return (
     <AdminLayout title="Centro de Control Diario">
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Centro de Control Diario</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Informe económico-operativo en tiempo real · <span className="font-medium text-foreground">{fmtDate(date)}</span>
-          </p>
-        </div>
-        {/* Date controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="icon" className="h-9 w-9"
-            onClick={() => setDate(d => offsetDate(d, -1))}>
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <Button variant="outline" size="icon" className="h-9 w-9"
-            onClick={() => setDate(d => offsetDate(d, 1))}
-            disabled={date >= today()}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2"
-            onClick={() => setDate(today())}>
-            Hoy
-          </Button>
-          <Button variant="outline" size="icon" className="h-9 w-9"
-            onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={cn("w-4 h-4", isFetching && "animate-spin")} />
-          </Button>
-          {d && (
-            <span className="text-[10px] text-muted-foreground hidden sm:block">
-              Act. {new Date(d.lastUpdatedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-        </div>
-      </div>
+      <PanelPageHeader
+        icon={<Activity />}
+        title="Centro de Control Diario"
+        description={<>Informe económico-operativo en tiempo real · <span className="font-medium text-foreground">{fmtDate(date)}</span></>}
+        actions={
+          <>
+            <Button variant="outline" size="icon" className="h-9 w-9"
+              onClick={() => setDate(d => offsetDate(d, -1))}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <Button variant="outline" size="icon" className="h-9 w-9"
+              onClick={() => setDate(d => offsetDate(d, 1))}
+              disabled={date >= today()}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2"
+              onClick={() => setDate(today())}>
+              Hoy
+            </Button>
+            <Button variant="outline" size="icon" className="h-9 w-9"
+              onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={cn("w-4 h-4", isFetching && "animate-spin")} />
+            </Button>
+            {d && (
+              <span className="text-xs text-muted-foreground hidden sm:block">
+                Act. {new Date(d.lastUpdatedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </>
+        }
+      />
 
       {/* ── KPI Cards ────────────────────────────────────────────────────── */}
       <section className="mb-8">
@@ -295,8 +283,8 @@ export default function DailyControlCenter() {
               value={fmtEur(kpis?.facturacionTotal ?? 0)}
               sub="Reservas + TPV ejecutados hoy"
               icon={Euro}
-              color="text-emerald-600"
-              bg="bg-emerald-50"
+              color="text-success"
+              bg="bg-success/10"
               pct={kpis?.pctFacturacion}
               highlight
             />
@@ -305,8 +293,8 @@ export default function DailyControlCenter() {
               value={fmtEur(kpis?.cobradoHoy ?? 0)}
               sub="TPV + reservas pagadas"
               icon={CheckCircle}
-              color="text-blue-600"
-              bg="bg-blue-50"
+              color="text-info"
+              bg="bg-info/10"
               pct={null}
             />
             <KpiCard
@@ -314,8 +302,8 @@ export default function DailyControlCenter() {
               value={fmtEur(kpis?.pendienteCobro ?? 0)}
               sub="Reservas ejecutadas sin pago completo"
               icon={Clock}
-              color={(kpis?.pendienteCobro ?? 0) > 0 ? "text-amber-600" : "text-emerald-600"}
-              bg={(kpis?.pendienteCobro ?? 0) > 0 ? "bg-amber-50" : "bg-emerald-50"}
+              color={(kpis?.pendienteCobro ?? 0) > 0 ? "text-warning" : "text-success"}
+              bg={(kpis?.pendienteCobro ?? 0) > 0 ? "bg-warning/10" : "bg-success/10"}
               pct={null}
             />
             <KpiCard
@@ -323,8 +311,8 @@ export default function DailyControlCenter() {
               value={String((kpis?.nReservasEjecutadas ?? 0) + (kpis?.nOperacionesTPV ?? 0))}
               sub={`${kpis?.nReservasEjecutadas ?? 0} reservas · ${kpis?.nOperacionesTPV ?? 0} TPV`}
               icon={ShoppingCart}
-              color="text-purple-600"
-              bg="bg-purple-50"
+              color="text-primary"
+              bg="bg-primary/10"
               pct={kpis?.pctOperaciones}
             />
             <KpiCard
@@ -332,8 +320,8 @@ export default function DailyControlCenter() {
               value={String(kpis?.nPersonasAtendidas ?? 0)}
               sub="Participantes en reservas"
               icon={Users}
-              color="text-sky-600"
-              bg="bg-sky-50"
+              color="text-info"
+              bg="bg-info/10"
               pct={kpis?.pctPersonas}
             />
             <KpiCard
@@ -341,8 +329,8 @@ export default function DailyControlCenter() {
               value={fmtEur(kpis?.ticketMedio ?? 0)}
               sub="Por operación ejecutada"
               icon={CreditCard}
-              color="text-indigo-600"
-              bg="bg-indigo-50"
+              color="text-info"
+              bg="bg-info/10"
               pct={null}
             />
             <KpiCard
@@ -350,8 +338,8 @@ export default function DailyControlCenter() {
               value={fmtEur(kpis?.importeReav ?? 0)}
               sub="Margen régimen especial (TPV)"
               icon={Shield}
-              color="text-orange-600"
-              bg="bg-orange-50"
+              color="text-warning"
+              bg="bg-warning/10"
               pct={null}
             />
             <KpiCard
@@ -359,8 +347,8 @@ export default function DailyControlCenter() {
               value={fmtEur(kpis?.importeIVA ?? 0)}
               sub="IVA normal (TPV)"
               icon={Banknote}
-              color="text-rose-600"
-              bg="bg-rose-50"
+              color="text-danger"
+              bg="bg-danger/10"
               pct={null}
             />
           </div>
@@ -374,9 +362,9 @@ export default function DailyControlCenter() {
           <div className="space-y-2">
             {d!.alerts.map((alert, i) => {
               const colors = {
-                critical: "border-red-200 bg-red-50 text-red-800",
-                warning:  "border-amber-200 bg-amber-50 text-amber-800",
-                info:     "border-blue-200 bg-blue-50 text-blue-800",
+                critical: "border-danger/40 bg-danger/10 text-danger",
+                warning:  "border-warning/40 bg-warning/10 text-warning",
+                info:     "border-info/40 bg-info/10 text-info",
               };
               const icons = {
                 critical: XCircle,
@@ -406,7 +394,7 @@ export default function DailyControlCenter() {
         <SectionHeader icon={BarChart3} title="Desglose por canal" color="purple" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Channel table */}
-          <div className="lg:col-span-2 bg-card rounded-2xl border border-border/50 overflow-hidden">
+          <div className="lg:col-span-2 bg-card rounded-xl border border-border/50 overflow-hidden">
             {!d || d.channels.length === 0 ? (
               <EmptyState message="Sin operaciones en el período seleccionado" />
             ) : (
@@ -427,15 +415,15 @@ export default function DailyControlCenter() {
                       <td className="px-4 py-2.5">
                         <span className="font-medium text-foreground">{ch.label}</span>
                         {ch.people > 0 && (
-                          <span className="text-[10px] text-muted-foreground ml-1.5">· {ch.people} pers.</span>
+                          <span className="text-xs text-muted-foreground ml-1.5">· {ch.people} pers.</span>
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right text-muted-foreground">{ch.count}</td>
                       <td className="px-4 py-2.5 text-right font-semibold text-foreground">{fmtEur(ch.total)}</td>
-                      <td className="px-4 py-2.5 text-right text-emerald-600">{fmtEur(ch.paid)}</td>
+                      <td className="px-4 py-2.5 text-right text-success">{fmtEur(ch.paid)}</td>
                       <td className="px-4 py-2.5 text-right">
                         {ch.pending > 0
-                          ? <span className="text-amber-600">{fmtEur(ch.pending)}</span>
+                          ? <span className="text-warning">{fmtEur(ch.pending)}</span>
                           : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right text-muted-foreground hidden sm:table-cell">{fmtEur(ch.ticketMedio)}</td>
@@ -447,8 +435,8 @@ export default function DailyControlCenter() {
                     <td className="px-4 py-2.5 text-sm">Total</td>
                     <td className="px-4 py-2.5 text-right text-sm">{d.channels.reduce((s, c) => s + c.count, 0)}</td>
                     <td className="px-4 py-2.5 text-right text-sm text-foreground">{fmtEur(d.channels.reduce((s, c) => s + c.total, 0))}</td>
-                    <td className="px-4 py-2.5 text-right text-sm text-emerald-600">{fmtEur(d.channels.reduce((s, c) => s + c.paid, 0))}</td>
-                    <td className="px-4 py-2.5 text-right text-sm text-amber-600">{fmtEur(d.channels.reduce((s, c) => s + c.pending, 0))}</td>
+                    <td className="px-4 py-2.5 text-right text-sm text-success">{fmtEur(d.channels.reduce((s, c) => s + c.paid, 0))}</td>
+                    <td className="px-4 py-2.5 text-right text-sm text-warning">{fmtEur(d.channels.reduce((s, c) => s + c.pending, 0))}</td>
                     <td className="px-4 py-2.5 hidden sm:table-cell" />
                   </tr>
                 </tfoot>
@@ -456,7 +444,7 @@ export default function DailyControlCenter() {
             )}
           </div>
           {/* Donut chart */}
-          <div className="bg-card rounded-2xl border border-border/50 p-5 flex flex-col">
+          <div className="bg-card rounded-xl border border-border/50 p-5 flex flex-col">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-4">Distribución ingresos</p>
             {channelChartData.length === 0 ? (
               <EmptyState message="Sin datos" />
@@ -478,7 +466,7 @@ export default function DailyControlCenter() {
                     <div key={i} className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                        <span className="text-muted-foreground truncate max-w-[140px]">{c.name}</span>
+                        <span className="text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap max-w-[140px]">{c.name}</span>
                       </div>
                       <span className="font-medium text-foreground ml-2">{fmtEur(c.value)}</span>
                     </div>
@@ -532,7 +520,7 @@ export default function DailyControlCenter() {
           </Badge>
         </div>
         {/* Table */}
-        <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+        <div className="bg-card rounded-xl border border-border/50 overflow-hidden">
           {isLoading ? (
             <div className="p-8 flex justify-center">
               <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -565,8 +553,8 @@ export default function DailyControlCenter() {
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
                           <span className={cn(
-                            "text-[9px] font-bold px-1 py-0.5 rounded uppercase",
-                            op.type === "tpv" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700",
+                            "text-xs font-bold px-1 py-0.5 rounded uppercase",
+                            op.type === "tpv" ? "bg-primary/10 text-primary" : "info",
                           )}>
                             {op.type === "tpv" ? "TPV" : "RES"}
                           </span>
@@ -575,18 +563,18 @@ export default function DailyControlCenter() {
                       </td>
                       <td className="px-3 py-2.5">
                         <p className="font-medium text-foreground text-xs">{op.customer}</p>
-                        {op.phone && <p className="text-[10px] text-muted-foreground">{op.phone}</p>}
+                        {op.phone && <p className="text-xs text-muted-foreground">{op.phone}</p>}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-muted-foreground">{op.channel}</td>
-                      <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[160px] truncate">{op.activity}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">{op.activity}</td>
                       <td className="px-3 py-2.5 text-right text-xs text-muted-foreground">
                         {op.people > 0 ? op.people : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-right font-semibold text-xs text-foreground">{fmtEur(op.totalEur)}</td>
                       <td className="px-3 py-2.5 text-right text-xs">
                         {op.pendingEur > 0
-                          ? <span className="text-amber-600 font-medium">{fmtEur(op.pendingEur)}</span>
-                          : <span className="text-emerald-600">—</span>}
+                          ? <span className="text-warning font-medium">{fmtEur(op.pendingEur)}</span>
+                          : <span className="text-success">—</span>}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1 flex-wrap">
@@ -594,7 +582,7 @@ export default function DailyControlCenter() {
                           {op.type === "reservation" && <PaymentBadge status={op.statusPayment} />}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-[10px] text-muted-foreground whitespace-nowrap">
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
                         {fmtTs(Number(op.saleDate))}
                       </td>
                       <td className="px-3 py-2.5 text-right">
@@ -608,13 +596,13 @@ export default function DailyControlCenter() {
                               customer: op.customer,
                               total: op.totalEur,
                             })}
-                            className="text-muted-foreground hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
+                            className="text-muted-foreground hover:text-danger transition-colors p-1 rounded hover:bg-danger/10"
                             title="Anular operación"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         ) : (
-                          <span className="text-muted-foreground/30 text-[10px]">—</span>
+                          <span className="text-muted-foreground/30 text-xs">—</span>
                         )}
                       </td>
                     </tr>
@@ -636,32 +624,32 @@ export default function DailyControlCenter() {
 
         {/* KPIs cash flow */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
+          <div className="bg-card rounded-xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center mb-3">
+              <TrendingUp className="w-5 h-5 text-success" />
             </div>
             <p className="text-2xl font-bold tracking-tight text-foreground">{fmtEur(cashFlow?.kpis.cobrosEur ?? 0)}</p>
             <p className="text-sm text-muted-foreground mt-0.5">Cobros del día</p>
           </div>
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
-            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center mb-3">
-              <TrendingDown className="w-5 h-5 text-red-600" />
+          <div className="bg-card rounded-xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-danger/10 flex items-center justify-center mb-3">
+              <TrendingDown className="w-5 h-5 text-danger" />
             </div>
             <p className="text-2xl font-bold tracking-tight text-foreground">{fmtEur(cashFlow?.kpis.devolucionesEur ?? 0)}</p>
             <p className="text-sm text-muted-foreground mt-0.5">Devoluciones</p>
           </div>
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mb-3">
-              <Euro className="w-5 h-5 text-blue-600" />
+          <div className="bg-card rounded-xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-info/10 flex items-center justify-center mb-3">
+              <Euro className="w-5 h-5 text-info" />
             </div>
-            <p className={cn("text-2xl font-bold tracking-tight", (cashFlow?.kpis.netoEur ?? 0) >= 0 ? "text-foreground" : "text-red-600")}>
+            <p className={cn("text-2xl font-bold tracking-tight", (cashFlow?.kpis.netoEur ?? 0) >= 0 ? "text-foreground" : "text-danger")}>
               {fmtEur(cashFlow?.kpis.netoEur ?? 0)}
             </p>
             <p className="text-sm text-muted-foreground mt-0.5">Neto del día</p>
           </div>
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center mb-3">
-              <Activity className="w-5 h-5 text-purple-600" />
+          <div className="bg-card rounded-xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
+              <Activity className="w-5 h-5 text-primary" />
             </div>
             <p className="text-2xl font-bold tracking-tight text-foreground">{cashFlow?.kpis.operacionesCount ?? 0}</p>
             <p className="text-sm text-muted-foreground mt-0.5">Transacciones</p>
@@ -693,7 +681,7 @@ export default function DailyControlCenter() {
           </Badge>
         </div>
 
-        <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+        <div className="bg-card rounded-xl border border-border/50 overflow-hidden">
           {!cashFlow || cashFlow.events.length === 0 ? (
             <EmptyState message="Sin transacciones registradas en el día seleccionado" />
           ) : (
@@ -713,37 +701,37 @@ export default function DailyControlCenter() {
                   {cashFlow.events
                     .filter(e => cashFilter === "all" || e.kind === cashFilter)
                     .map((e, i) => {
-                      const kindMap: Record<string, [string, string]> = {
-                        cobro_reserva: ["Cobro reserva",   "bg-emerald-100 text-emerald-700"],
-                        cobro_tpv:     ["Cobro TPV",       "bg-emerald-100 text-emerald-700"],
-                        devolucion:    ["Devolución",      "bg-red-100 text-red-700"],
-                        anulacion:     ["Anulación",       "bg-amber-100 text-amber-700"],
-                        factura:       ["Factura emitida", "bg-blue-100 text-blue-700"],
-                        caja_in:       ["Entrada caja",    "bg-emerald-100 text-emerald-700"],
-                        caja_out:      ["Salida caja",     "bg-red-100 text-red-700"],
+                      const kindMap: Record<string, [string, Tone]> = {
+                        cobro_reserva: ["Cobro reserva",   "success"],
+                        cobro_tpv:     ["Cobro TPV",       "success"],
+                        devolucion:    ["Devolución",      "danger"],
+                        anulacion:     ["Anulación",       "warning"],
+                        factura:       ["Factura emitida", "info"],
+                        caja_in:       ["Entrada caja",    "success"],
+                        caja_out:      ["Salida caja",     "danger"],
                       };
-                      const [kindLabel, kindCls] = kindMap[e.kind] ?? [e.kind, "bg-gray-100 text-gray-600"];
+                      const [kindLabel, kindCls] = kindMap[e.kind] ?? [e.kind, "bg-muted text-muted-foreground"];
                       const isNegative = e.amountEur < 0;
                       const isZero = e.amountEur === 0;
                       return (
                         <tr key={`${e.kind}-${i}`} className="hover:bg-muted/20 transition-colors">
-                          <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
                             {new Date(e.ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                           </td>
                           <td className="px-3 py-2.5">
-                            <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", kindCls)}>{kindLabel}</span>
+                            <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded-full", kindCls)}>{kindLabel}</span>
                           </td>
                           <td className="px-3 py-2.5">
                             <span className="font-mono text-xs text-foreground">{e.reference}</span>
                           </td>
                           <td className="px-3 py-2.5">
                             <p className="text-xs text-foreground">{e.customerName ?? "—"}</p>
-                            {e.channel && <p className="text-[10px] text-muted-foreground">{e.channel}</p>}
+                            {e.channel && <p className="text-xs text-muted-foreground">{e.channel}</p>}
                           </td>
-                          <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[160px] truncate">{e.productName ?? "—"}</td>
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">{e.productName ?? "—"}</td>
                           <td className={cn(
                             "px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap",
-                            isZero ? "text-muted-foreground" : isNegative ? "text-red-600" : "text-emerald-600",
+                            isZero ? "text-muted-foreground" : isNegative ? "text-danger" : "text-success",
                           )}>
                             {isZero ? "—" : (isNegative ? "" : "+") + fmtEur(e.amountEur)}
                           </td>
@@ -762,7 +750,7 @@ export default function DailyControlCenter() {
         <SectionHeader icon={Zap} title="Actividades consolidadas del día" color="purple" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Activity table */}
-          <div className="lg:col-span-2 bg-card rounded-2xl border border-border/50 overflow-hidden">
+          <div className="lg:col-span-2 bg-card rounded-xl border border-border/50 overflow-hidden">
             {!d || d.activities.length === 0 ? (
               <EmptyState message="Sin actividades en el día seleccionado" />
             ) : (
@@ -782,15 +770,15 @@ export default function DailyControlCenter() {
                     <tr key={i} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-2.5">
                         <p className="font-medium text-foreground text-xs">{act.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{act.source}</p>
+                        <p className="text-xs text-muted-foreground">{act.source}</p>
                       </td>
                       <td className="px-4 py-2.5 text-right text-xs text-muted-foreground">{act.count}</td>
                       <td className="px-4 py-2.5 text-right text-xs text-muted-foreground">{act.people > 0 ? act.people : "—"}</td>
                       <td className="px-4 py-2.5 text-right font-semibold text-xs text-foreground">{fmtEur(act.totalEur)}</td>
                       <td className="px-4 py-2.5 text-right text-xs">
                         {act.pendingEur > 0
-                          ? <span className="text-amber-600">{fmtEur(act.pendingEur)}</span>
-                          : <span className="text-emerald-600">—</span>}
+                          ? <span className="text-warning">{fmtEur(act.pendingEur)}</span>
+                          : <span className="text-success">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right text-xs text-muted-foreground">{fmtEur(act.avgPrice)}</td>
                     </tr>
@@ -800,7 +788,7 @@ export default function DailyControlCenter() {
             )}
           </div>
           {/* Bar chart */}
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
+          <div className="bg-card rounded-xl border border-border/50 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-4">Top actividades (€)</p>
             {activityChartData.length === 0 ? (
               <EmptyState message="Sin datos" />
@@ -826,9 +814,9 @@ export default function DailyControlCenter() {
           {/* KPI mini cards */}
           <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-4">
             {[
-              { label: "Total cobrado",      value: fmtEur(d?.cash.totalCobrado ?? 0), icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
-              { label: "Pendiente cobro",    value: fmtEur(d?.cash.pendiente ?? 0),    icon: Clock,        color: (d?.cash.pendiente ?? 0) > 0 ? "text-amber-600" : "text-emerald-600", bg: (d?.cash.pendiente ?? 0) > 0 ? "bg-amber-50" : "bg-emerald-50" },
-              { label: "Impacto anulaciones",value: fmtEur(d?.cash.anulaciones ?? 0), icon: XCircle,      color: "text-red-500",   bg: "bg-red-50" },
+              { label: "Total cobrado",      value: fmtEur(d?.cash.totalCobrado ?? 0), icon: CheckCircle, color: "text-success", bg: "bg-success/10" },
+              { label: "Pendiente cobro",    value: fmtEur(d?.cash.pendiente ?? 0),    icon: Clock,        color: (d?.cash.pendiente ?? 0) > 0 ? "text-warning" : "text-success", bg: (d?.cash.pendiente ?? 0) > 0 ? "bg-warning/10" : "bg-success/10" },
+              { label: "Impacto anulaciones",value: fmtEur(d?.cash.anulaciones ?? 0), icon: XCircle,      color: "text-danger",   bg: "bg-danger/10" },
             ].map((item, i) => (
               <div key={i} className="bg-card rounded-xl border border-border/50 p-4">
                 <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center mb-2", item.bg)}>
@@ -849,7 +837,7 @@ export default function DailyControlCenter() {
                       <span className="text-xs font-medium text-foreground">{m.label}</span>
                       <span className="text-xs text-muted-foreground">·</span>
                       <span className="text-xs font-semibold text-foreground">{fmtEur(m.amount)}</span>
-                      <span className="text-[10px] text-muted-foreground">({m.count})</span>
+                      <span className="text-xs text-muted-foreground">({m.count})</span>
                     </div>
                   ))}
                 </div>
@@ -857,7 +845,7 @@ export default function DailyControlCenter() {
             )}
           </div>
           {/* Methods donut */}
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
+          <div className="bg-card rounded-xl border border-border/50 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-4">Métodos de cobro</p>
             {methodChartData.length === 0 ? (
               <EmptyState message="Sin datos TPV" />
@@ -894,7 +882,7 @@ export default function DailyControlCenter() {
       {/* ── Fiscal summary ────────────────────────────────────────────────── */}
       <section className="mb-8">
         <SectionHeader icon={Shield} title="Resumen fiscal / contable" color="slate" />
-        <div className="bg-card rounded-2xl border border-border/50 p-5">
+        <div className="bg-card rounded-xl border border-border/50 p-5">
           {!d ? (
             <EmptyState message="Cargando datos fiscales…" />
           ) : (
@@ -910,13 +898,13 @@ export default function DailyControlCenter() {
                 <div key={i} className="bg-muted/30 rounded-xl p-3">
                   <p className="text-lg font-bold text-foreground">{item.value}</p>
                   <p className="text-xs font-medium text-muted-foreground mt-0.5">{item.label}</p>
-                  <p className="text-[10px] text-muted-foreground/70">{item.note}</p>
+                  <p className="text-xs text-muted-foreground/70">{item.note}</p>
                 </div>
               ))}
             </div>
           )}
         </div>
-        <p className="text-[10px] text-muted-foreground mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           * Los datos fiscales de reservas (base imponible, IVA) provienen únicamente del módulo TPV.
           Para el resumen fiscal completo de reservas CRM/online consultar el módulo de Informes.
         </p>
@@ -947,13 +935,13 @@ export default function DailyControlCenter() {
                 pct: d.kpis.pctPersonas,
               },
             ].map((item, i) => (
-              <div key={i} className="bg-card rounded-2xl border border-border/50 p-5">
+              <div key={i} className="bg-card rounded-xl border border-border/50 p-5">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">{item.label}</p>
                 <p className="text-2xl font-bold text-foreground">{item.today}</p>
                 {item.pct !== null && item.pct !== undefined ? (
                   <div className={cn(
                     "flex items-center gap-1 mt-1.5 text-sm font-medium",
-                    item.pct > 0 ? "text-emerald-600" : item.pct < 0 ? "text-red-500" : "text-muted-foreground",
+                    item.pct > 0 ? "text-success" : item.pct < 0 ? "text-danger" : "text-muted-foreground",
                   )}>
                     {item.pct > 0 ? <ArrowUpRight className="w-4 h-4" />
                    : item.pct < 0 ? <ArrowDownRight className="w-4 h-4" />
@@ -973,7 +961,7 @@ export default function DailyControlCenter() {
       <Dialog open={!!cancelOp} onOpenChange={(o) => !o && setCancelOp(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-danger">
               <Trash2 className="w-5 h-5" /> Anular operación
             </DialogTitle>
             <DialogDescription className="pt-2">
@@ -986,7 +974,7 @@ export default function DailyControlCenter() {
             <div className="bg-muted/40 rounded-lg p-3 text-sm space-y-1">
               <p><span className="text-muted-foreground">Referencia:</span> <span className="font-mono font-semibold">{cancelOp.ref}</span></p>
               <p><span className="text-muted-foreground">Cliente:</span> <span className="font-medium">{cancelOp.customer || "—"}</span></p>
-              <p><span className="text-muted-foreground">Importe:</span> <span className="font-semibold text-orange-600">{fmtEur(cancelOp.total)}</span></p>
+              <p><span className="text-muted-foreground">Importe:</span> <span className="font-semibold text-warning">{fmtEur(cancelOp.total)}</span></p>
               <p className="text-xs text-muted-foreground pt-1">
                 {cancelOp.type === "tpv"
                   ? "Cascade: venta TPV + reserva asociada + transacción contable."

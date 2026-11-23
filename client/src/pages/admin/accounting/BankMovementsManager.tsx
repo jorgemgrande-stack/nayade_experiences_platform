@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import FinanceSyncSetupBanner from "@/components/finance/FinanceSyncSetupBanner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -106,27 +108,27 @@ function fmtDate(d: string | Date | null | undefined): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 70) return "text-green-700 bg-green-100";
-  if (score >= 40) return "text-yellow-700 bg-yellow-100";
-  return "text-gray-600 bg-gray-100";
+  if (score >= 70) return "text-success bg-success/10";
+  if (score >= 40) return "text-warning bg-warning/10";
+  return "text-muted-foreground bg-muted";
 }
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  pendiente: { label: "Pendiente", cls: "bg-yellow-100 text-yellow-800" },
-  ignorado:  { label: "Ignorado",  cls: "bg-gray-100 text-gray-500" },
+  pendiente: { label: "Pendiente", cls: "bg-warning/10 text-warning" },
+  ignorado:  { label: "Ignorado",  cls: "bg-muted text-muted-foreground" },
 };
 
 const CONCILIATION_BADGE: Record<string, { label: string; cls: string; icon?: string }> = {
-  pendiente:   { label: "Sin conciliar", cls: "bg-orange-100 text-orange-700" },
-  conciliado:  { label: "Conciliado",    cls: "bg-green-100 text-green-700" },
+  pendiente:   { label: "Sin conciliar", cls: "bg-warning/10 text-warning" },
+  conciliado:  { label: "Conciliado",    cls: "bg-success/10 text-success" },
 };
-const EXPENSE_CONCILIATION_BADGE = { label: "Gasto vinculado", cls: "bg-emerald-100 text-emerald-700" };
-const MANUAL_CONCILIATION_BADGE  = { label: "Justificado",     cls: "bg-violet-100 text-violet-700" };
+const EXPENSE_CONCILIATION_BADGE = { label: "Gasto vinculado", cls: "bg-success/10 text-success" };
+const MANUAL_CONCILIATION_BADGE  = { label: "Justificado",     cls: "bg-primary/10 text-primary" };
 
 const IMPORT_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  ok:     { label: "OK",      cls: "bg-green-100 text-green-800" },
-  error:  { label: "Error",   cls: "bg-red-100 text-red-800" },
-  parcial:{ label: "Parcial", cls: "bg-orange-100 text-orange-800" },
+  ok:     { label: "OK",      cls: "bg-success/10 text-success" },
+  error:  { label: "Error",   cls: "bg-danger/10 text-danger" },
+  parcial:{ label: "Parcial", cls: "bg-warning/10 text-warning" },
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -348,72 +350,43 @@ export default function BankMovementsManager() {
       <div className="p-6 space-y-6">
         <FinanceSyncSetupBanner />
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Movimientos Bancarios</h1>
-            <p className="text-sm text-gray-500 mt-1">Importa, gestiona y concilia los movimientos de tu banco: Norma 43, Excel o CSV</p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {uploading ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Importando...</>
-              ) : (
-                <><Upload className="w-4 h-4 mr-2" /> Importar fichero</>
-              )}
-            </Button>
-            <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv,.txt,.n43,.aeb,.q43" className="hidden" onChange={handleFileChange} />
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<FileSpreadsheet />}
+          title="Movimientos Bancarios"
+          description="Importa, gestiona y concilia los movimientos de tu banco: Norma 43, Excel o CSV"
+          actions={
+            <>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+               
+              >
+                {uploading ? (
+                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Importando...</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" /> Importar fichero</>
+                )}
+              </Button>
+              <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv,.txt,.n43,.aeb,.q43" className="hidden" onChange={handleFileChange} />
+            </>
+          }
+        />
 
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg"><FileSpreadsheet className="w-5 h-5 text-blue-600" /></div>
-                <div>
-                  <div className="text-xs text-gray-500">Total movimientos</div>
-                  <div className="text-xl font-bold text-gray-900">{totalMovs}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg"><TrendingUp className="w-5 h-5 text-green-600" /></div>
-                <div>
-                  <div className="text-xs text-gray-500">Total ingresado</div>
-                  <div className="text-xl font-bold text-green-700">{fmtAmount(totalIngresado)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg"><TrendingDown className="w-5 h-5 text-red-600" /></div>
-                <div>
-                  <div className="text-xs text-gray-500">Total cargado</div>
-                  <div className="text-xl font-bold text-red-700">{fmtAmount(totalCargado)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard icon={<FileSpreadsheet />} tone="info" label="Total movimientos" value={totalMovs} />
+          <MetricCard icon={<TrendingUp />} tone="success" label="Total ingresado" value={fmtAmount(totalIngresado)} />
+          <MetricCard icon={<TrendingDown />} tone="danger" label="Total cargado" value={fmtAmount(totalCargado)} />
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-gray-200">
+        <div className="flex gap-1 border-b border-border">
           {(["movimientos", "importaciones"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
-                tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
+                tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {t === "movimientos" ? "Movimientos" : `Importaciones (${imports.length})`}
@@ -426,7 +399,7 @@ export default function BankMovementsManager() {
           <div className="space-y-4">
             <div className="flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar movimiento o concepto..."
                   value={search}
@@ -466,26 +439,26 @@ export default function BankMovementsManager() {
               )}
             </div>
 
-            <div className="rounded-lg border border-white/10 overflow-hidden">
+            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
               <table className="w-full text-sm">
-                <thead className="bg-white/5 border-b border-white/10">
+                <thead className="bg-muted/50 border-b border-border">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium text-white/50 w-28">Fecha</th>
-                    <th className="px-4 py-3 text-left font-medium text-white/50 w-28">F. Valor</th>
-                    <th className="px-4 py-3 text-left font-medium text-white/50">Movimiento</th>
-                    <th className="px-4 py-3 text-left font-medium text-white/50">Más datos</th>
-                    <th className="px-4 py-3 text-right font-medium text-white/50 w-32">Importe</th>
-                    <th className="px-4 py-3 text-right font-medium text-white/50 w-32">Saldo</th>
-                    <th className="px-4 py-3 text-center font-medium text-white/50 w-24">Estado</th>
-                    <th className="px-4 py-3 text-center font-medium text-white/50 w-32">Conciliación</th>
-                    <th className="px-4 py-3 text-center font-medium text-white/50 w-16"></th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">Fecha</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">F. Valor</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Movimiento</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Más datos</th>
+                    <th className="px-4 py-3 text-right font-medium text-muted-foreground w-32">Importe</th>
+                    <th className="px-4 py-3 text-right font-medium text-muted-foreground w-32">Saldo</th>
+                    <th className="px-4 py-3 text-center font-medium text-muted-foreground w-24">Estado</th>
+                    <th className="px-4 py-3 text-center font-medium text-muted-foreground w-32">Conciliación</th>
+                    <th className="px-4 py-3 text-center font-medium text-muted-foreground w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {movementsQ.isLoading ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-white/40">Cargando...</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Cargando...</td></tr>
                   ) : movements.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-white/40">No hay movimientos con los filtros seleccionados</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos con los filtros seleccionados</td></tr>
                   ) : movements.map((mv) => {
                     const amount = parseFloat(mv.importe);
                     const isPos = amount >= 0;
@@ -495,14 +468,14 @@ export default function BankMovementsManager() {
                         key={mv.id}
                         className={`border-b border-white/[0.06] hover:bg-white/[0.04] transition-colors ${mv.status === "ignorado" ? "opacity-40" : ""}`}
                       >
-                        <td className="px-4 py-3 font-mono text-xs text-white/80">{fmtDate(mv.fecha)}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-white/40">{fmtDate(mv.fechaValor)}</td>
-                        <td className="px-4 py-3 text-white/80 max-w-[180px] truncate">{mv.movimiento || "–"}</td>
-                        <td className="px-4 py-3 text-white/50 max-w-[200px] truncate text-xs">{mv.masDatos || "–"}</td>
-                        <td className={`px-4 py-3 text-right font-semibold font-mono ${isPos ? "text-green-400" : "text-red-400"}`}>
+                        <td className="px-4 py-3 font-mono text-xs text-foreground">{fmtDate(mv.fecha)}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{fmtDate(mv.fechaValor)}</td>
+                        <td className="px-4 py-3 text-foreground max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento || "–"}</td>
+                        <td className="px-4 py-3 text-muted-foreground max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap text-xs">{mv.masDatos || "–"}</td>
+                        <td className={`px-4 py-3 text-right font-semibold font-mono ${isPos ? "text-success" : "text-danger"}`}>
                           {fmtAmount(mv.importe)}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-white/40">{fmtAmount(mv.saldo)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">{fmtAmount(mv.saldo)}</td>
                         <td className="px-4 py-3 text-center">
                           <Badge className={STATUS_BADGE[mv.status].cls}>{STATUS_BADGE[mv.status].label}</Badge>
                         </td>
@@ -512,7 +485,7 @@ export default function BankMovementsManager() {
                           ) : mv.conciliationStatus === "conciliado" ? (
                             <Badge className={EXPENSE_CONCILIATION_BADGE.cls}>{EXPENSE_CONCILIATION_BADGE.label}</Badge>
                           ) : (
-                            <span className="text-xs text-gray-300">–</span>
+                            <span className="text-xs text-muted-foreground">–</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -528,7 +501,7 @@ export default function BankMovementsManager() {
             </div>
 
             {totalPages > 1 && (
-              <div className="flex items-center justify-between text-sm text-gray-600">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>{totalMovs} registros · página {page}/{totalPages}</span>
                 <div className="flex gap-1">
                   <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>
@@ -547,52 +520,52 @@ export default function BankMovementsManager() {
         {tab === "importaciones" && (
           <div className="space-y-3">
             {importsQ.isLoading ? (
-              <p className="text-gray-400 text-sm">Cargando...</p>
+              <p className="text-muted-foreground text-sm">Cargando...</p>
             ) : imports.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
+              <div className="text-center py-12 text-muted-foreground">
                 <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-40" />
                 <p>No hay importaciones todavía</p>
                 <p className="text-xs mt-1">Usa el botón "Importar fichero" para cargar el extracto de tu banco (Norma 43, Excel o CSV)</p>
               </div>
             ) : (
-              <div className="rounded-lg border border-white/10 overflow-hidden">
+              <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
                 <table className="w-full text-sm">
-                  <thead className="bg-white/5 border-b border-white/10">
+                  <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium text-white/50">Fichero</th>
-                      <th className="px-4 py-3 text-center font-medium text-white/50 w-20">Tipo</th>
-                      <th className="px-4 py-3 text-center font-medium text-white/50 w-28">Importados</th>
-                      <th className="px-4 py-3 text-center font-medium text-white/50 w-28">Duplicados</th>
-                      <th className="px-4 py-3 text-center font-medium text-white/50 w-24">Estado</th>
-                      <th className="px-4 py-3 text-left font-medium text-white/50 w-40">Fecha</th>
+                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Fichero</th>
+                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-20">Tipo</th>
+                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-28">Importados</th>
+                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-28">Duplicados</th>
+                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-24">Estado</th>
+                      <th className="px-4 py-3 text-left font-medium text-muted-foreground w-40">Fecha</th>
                       <th className="px-4 py-3 w-16"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {imports.map((imp) => (
                       <tr key={imp.id} className="border-b border-white/[0.06] hover:bg-white/[0.04]">
-                        <td className="px-4 py-3 font-medium text-white/80">
+                        <td className="px-4 py-3 font-medium text-foreground">
                           <div className="flex items-center gap-2">
-                            <FileSpreadsheet className="w-4 h-4 text-green-400" />
+                            <FileSpreadsheet className="w-4 h-4 text-success" />
                             {imp.fileName}
                           </div>
                           {imp.errorMessage && (
-                            <div className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                            <div className="text-xs text-danger mt-1 flex items-center gap-1">
                               <AlertCircle className="w-3 h-3" /> {imp.errorMessage}
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center font-mono text-xs uppercase text-white/40">{imp.fileType}</td>
-                        <td className="px-4 py-3 text-center font-semibold text-blue-400">{imp.importedRows}</td>
-                        <td className="px-4 py-3 text-center text-white/50">{imp.duplicatesSkipped}</td>
+                        <td className="px-4 py-3 text-center font-mono text-xs uppercase text-muted-foreground">{imp.fileType}</td>
+                        <td className="px-4 py-3 text-center font-semibold text-info">{imp.importedRows}</td>
+                        <td className="px-4 py-3 text-center text-muted-foreground">{imp.duplicatesSkipped}</td>
                         <td className="px-4 py-3 text-center">
                           <Badge className={IMPORT_STATUS_BADGE[imp.status].cls}>{IMPORT_STATUS_BADGE[imp.status].label}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-xs text-white/40">{new Date(imp.createdAt).toLocaleString("es-ES")}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(imp.createdAt).toLocaleString("es-ES")}</td>
                         <td className="px-4 py-3 text-center">
                           <Button
                             variant="ghost" size="sm"
-                            className="text-red-500 hover:text-red-700"
+                            className="text-danger hover:text-danger"
                             onClick={async () => {
                               if (!(await confirmAction({ description: `¿Eliminar importación "${imp.fileName}" y todos sus movimientos?`, destructive: true }))) return;
                               deleteImportMut.mutate({ id: imp.id });
@@ -635,32 +608,32 @@ export default function BankMovementsManager() {
               {/* Datos del movimiento */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">Fecha</div>
+                  <div className="text-xs text-muted-foreground mb-1">Fecha</div>
                   <div className="font-medium">{fmtDate(selectedMovement.fecha)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">Fecha valor</div>
+                  <div className="text-xs text-muted-foreground mb-1">Fecha valor</div>
                   <div className="font-medium">{fmtDate(selectedMovement.fechaValor)}</div>
                 </div>
                 <div className="col-span-2">
-                  <div className="text-xs text-gray-500 mb-1">Movimiento</div>
+                  <div className="text-xs text-muted-foreground mb-1">Movimiento</div>
                   <div className="font-medium">{selectedMovement.movimiento || "–"}</div>
                 </div>
                 {selectedMovement.masDatos && (
                   <div className="col-span-2">
-                    <div className="text-xs text-gray-500 mb-1">Más datos</div>
-                    <div className="text-gray-700 text-xs break-words">{selectedMovement.masDatos}</div>
+                    <div className="text-xs text-muted-foreground mb-1">Más datos</div>
+                    <div className="text-foreground text-xs break-words">{selectedMovement.masDatos}</div>
                   </div>
                 )}
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">Importe</div>
-                  <div className={`text-lg font-bold ${parseFloat(selectedMovement.importe) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                  <div className="text-xs text-muted-foreground mb-1">Importe</div>
+                  <div className={`text-lg font-bold ${parseFloat(selectedMovement.importe) >= 0 ? "text-success" : "text-danger"}`}>
                     {fmtAmount(selectedMovement.importe)}
                   </div>
                 </div>
                 {selectedMovement.saldo && (
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">Saldo</div>
+                    <div className="text-xs text-muted-foreground mb-1">Saldo</div>
                     <div className="font-medium">{fmtAmount(selectedMovement.saldo)}</div>
                   </div>
                 )}
@@ -672,15 +645,15 @@ export default function BankMovementsManager() {
               {isPositive && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                      <Link2 className="w-4 h-4 text-blue-500" />
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-info" />
                       Conciliación bancaria
                     </h3>
                     {isConciliated ? (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                        className="text-danger border-danger/40 hover:bg-danger/10 text-xs"
                         onClick={() => setUnlinkConfirm(true)}
                       >
                         <Link2Off className="w-3.5 h-3.5 mr-1" /> Desvincular
@@ -689,7 +662,7 @@ export default function BankMovementsManager() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50 text-xs"
+                        className="text-info border-info/40 hover:bg-info/10 text-xs"
                         onClick={() => setShowMatches(!showMatches)}
                       >
                         <Sparkles className="w-3.5 h-3.5 mr-1" />
@@ -700,11 +673,11 @@ export default function BankMovementsManager() {
 
                   {/* Vínculo confirmado */}
                   {isConciliated && confirmedLink && (
-                    <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
-                      <div className="flex items-center gap-2 text-green-800 font-medium mb-2">
+                    <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm">
+                      <div className="flex items-center gap-2 text-success font-medium mb-2">
                         <CheckCircle className="w-4 h-4" /> Conciliado con presupuesto
                       </div>
-                      <div className="grid grid-cols-2 gap-1 text-xs text-green-700">
+                      <div className="grid grid-cols-2 gap-1 text-xs text-success">
                         <span>Entidad: {confirmedLink.entityType} #{confirmedLink.entityId}</span>
                         <span>Importe: {fmtAmount(confirmedLink.amountLinked)}</span>
                         <span>Por: {confirmedLink.matchedBy ?? "–"}</span>
@@ -717,57 +690,57 @@ export default function BankMovementsManager() {
                   {!isConciliated && showMatches && (
                     <div className="space-y-2">
                       {matchesQ.isLoading ? (
-                        <div className="text-sm text-gray-400 text-center py-4">
+                        <div className="text-sm text-muted-foreground text-center py-4">
                           <RefreshCw className="w-4 h-4 animate-spin inline mr-2" />Buscando coincidencias...
                         </div>
                       ) : matches.length === 0 ? (
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center text-sm text-gray-500">
+                        <div className="rounded-lg border border-border bg-muted p-4 text-center text-sm text-muted-foreground">
                           <Info className="w-4 h-4 inline mr-1" />
                           No se encontraron presupuestos pendientes que coincidan con este ingreso.
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-muted-foreground">
                             {matches.length} presupuesto{matches.length > 1 ? "s" : ""} posible{matches.length > 1 ? "s" : ""} encontrado{matches.length > 1 ? "s" : ""}
                           </p>
                           {matches.map((m) => (
                             <div
                               key={m.quoteId}
-                              className={`rounded-lg border p-3 text-sm space-y-2 ${m.isRejected ? "opacity-50 border-gray-200 bg-gray-50" : "border-blue-100 bg-blue-50/50"}`}
+                              className={`rounded-lg border p-3 text-sm space-y-2 ${m.isRejected ? "opacity-50 border-border bg-muted" : "border-info/40 bg-info/10"}`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="space-y-0.5">
-                                  <div className="font-semibold text-gray-800">{m.quoteNumber} — {m.title}</div>
-                                  <div className="text-xs text-gray-500">
+                                  <div className="font-semibold text-foreground">{m.quoteNumber} — {m.title}</div>
+                                  <div className="text-xs text-muted-foreground">
                                     {m.clientName && <span>{m.clientName} · </span>}
                                     {m.clientEmail && <span>{m.clientEmail} · </span>}
-                                    Total: <span className="font-medium text-gray-700">{fmtAmount(m.total)}</span>
+                                    Total: <span className="font-medium text-foreground">{fmtAmount(m.total)}</span>
                                   </div>
                                   {m.sentAt && (
-                                    <div className="text-xs text-gray-400">Enviado: {fmtDate(m.sentAt)}</div>
+                                    <div className="text-xs text-muted-foreground">Enviado: {fmtDate(m.sentAt)}</div>
                                   )}
                                 </div>
                                 <div className="flex flex-col items-end gap-1 shrink-0">
                                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${scoreColor(m.confidenceScore)}`}>
                                     {m.confidenceScore}% coincidencia
                                   </span>
-                                  {m.isRejected && <span className="text-xs text-gray-400">Rechazado</span>}
+                                  {m.isRejected && <span className="text-xs text-muted-foreground">Rechazado</span>}
                                 </div>
                               </div>
 
                               {confirmingQuoteId === m.quoteId ? (
-                                <div className="rounded-md border border-orange-200 bg-orange-50 p-3 space-y-2">
-                                  <p className="text-xs text-orange-800 font-medium">
+                                <div className="rounded-md border border-warning/40 bg-warning/10 p-3 space-y-2">
+                                  <p className="text-xs text-warning font-medium">
                                     ¿Confirmar conciliación?
                                   </p>
-                                  <p className="text-xs text-orange-700">
+                                  <p className="text-xs text-warning">
                                     Este movimiento del {fmtDate(selectedMovement.fecha)} por {fmtAmount(selectedMovement.importe)} quedará vinculado
                                     al presupuesto <strong>{m.quoteNumber}</strong> y se generará la reserva y factura correspondiente.
                                   </p>
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
-                                      className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                      className=" text-xs"
                                       disabled={confirmTransferMut.isPending}
                                       onClick={() => {
                                         confirmTransferMut.mutate({
@@ -787,13 +760,13 @@ export default function BankMovementsManager() {
                                   </div>
                                 </div>
                               ) : rejectingQuoteId === m.quoteId ? (
-                                <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-2">
-                                  <p className="text-xs text-gray-700">¿Rechazar esta propuesta? No se modificará nada.</p>
+                                <div className="rounded-md border border-border bg-muted p-3 space-y-2">
+                                  <p className="text-xs text-foreground">¿Rechazar esta propuesta? No se modificará nada.</p>
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      className="text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                      className="text-xs border-danger/40 text-danger hover:bg-danger/10"
                                       disabled={rejectLinkMut.isPending}
                                       onClick={() => rejectLinkMut.mutate({ bankMovementId: selectedMovement.id, quoteId: m.quoteId })}
                                     >
@@ -808,7 +781,7 @@ export default function BankMovementsManager() {
                                 <div className="flex gap-2">
                                   <Button
                                     size="sm"
-                                    className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                    className=" text-xs"
                                     onClick={() => setConfirmingQuoteId(m.quoteId)}
                                   >
                                     <CheckCircle className="w-3 h-3 mr-1" /> Aceptar conciliación
@@ -816,7 +789,7 @@ export default function BankMovementsManager() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="text-xs text-gray-500"
+                                    className="text-xs text-muted-foreground"
                                     onClick={() => setRejectingQuoteId(m.quoteId)}
                                   >
                                     <ThumbsDown className="w-3 h-3 mr-1" /> Rechazar
@@ -833,15 +806,15 @@ export default function BankMovementsManager() {
                   {/* Historial de vínculos */}
                   {linksQ.data && (linksQ.data as unknown as BankMovementLink[]).length > 0 && (
                     <details className="text-xs">
-                      <summary className="cursor-pointer text-gray-400 hover:text-gray-600">Ver historial de vínculos ({(linksQ.data as unknown as BankMovementLink[]).length})</summary>
-                      <div className="mt-2 space-y-1 pl-2 border-l-2 border-gray-100">
+                      <summary className="cursor-pointer text-muted-foreground hover:text-muted-foreground">Ver historial de vínculos ({(linksQ.data as unknown as BankMovementLink[]).length})</summary>
+                      <div className="mt-2 space-y-1 pl-2 border-l-2 border-border">
                         {(linksQ.data as unknown as BankMovementLink[]).map(l => (
-                          <div key={l.id} className="text-gray-500">
+                          <div key={l.id} className="text-muted-foreground">
                             <span className={`inline-block px-1.5 py-0.5 rounded text-xs mr-1 ${
-                              l.status === "confirmed" ? "bg-green-100 text-green-700" :
-                              l.status === "rejected" ? "bg-red-100 text-red-600" :
-                              l.status === "unlinked" ? "bg-gray-100 text-gray-500" :
-                              "bg-blue-100 text-blue-600"
+                              l.status === "confirmed" ? "bg-success/10 text-success" :
+                              l.status === "rejected" ? "bg-danger/10 text-danger" :
+                              l.status === "unlinked" ? "bg-muted text-muted-foreground" :
+                              "bg-info/10 text-info"
                             }`}>{l.status}</span>
                             {l.entityType} #{l.entityId} · {fmtAmount(l.amountLinked)}
                             {l.matchedBy && ` · ${l.matchedBy}`}
@@ -857,26 +830,26 @@ export default function BankMovementsManager() {
               {!isConciliated && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-violet-500" />
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-primary" />
                       Conciliación manual
                     </h3>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-violet-600 border-violet-200 hover:bg-violet-50 text-xs"
+                      className="text-primary border-primary/40 hover:bg-primary/10 text-xs"
                       onClick={() => setShowManualForm(!showManualForm)}
                     >
                       {showManualForm ? "Cancelar" : "Justificar manualmente"}
                     </Button>
                   </div>
                   {showManualForm && (
-                    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-4 space-y-3">
-                      <p className="text-xs text-violet-700">
+                    <div className="rounded-lg border border-primary/40 bg-primary/10 p-4 space-y-3">
+                      <p className="text-xs text-primary">
                         Usa esto cuando el movimiento no corresponde a ninguna operación del sistema (transferencias internas, cuotas bancarias, impuestos, etc.).
                       </p>
                       <div className="space-y-1">
-                        <label className="text-xs text-gray-600 font-medium">Tipo de movimiento *</label>
+                        <label className="text-xs text-muted-foreground font-medium">Tipo de movimiento *</label>
                         <Select value={manualType} onValueChange={setManualType}>
                           <SelectTrigger className="text-sm">
                             <SelectValue />
@@ -892,7 +865,7 @@ export default function BankMovementsManager() {
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs text-gray-600 font-medium">Contraparte</label>
+                        <label className="text-xs text-muted-foreground font-medium">Contraparte</label>
                         <Input
                           className="text-sm"
                           value={manualCounterparty}
@@ -901,9 +874,9 @@ export default function BankMovementsManager() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs text-gray-600 font-medium">Justificación *</label>
+                        <label className="text-xs text-muted-foreground font-medium">Justificación *</label>
                         <textarea
-                          className="w-full text-sm border border-violet-200 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white"
+                          className="w-full text-sm border border-primary/40 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/40 bg-card"
                           rows={2}
                           value={manualNotes}
                           onChange={(e) => setManualNotes(e.target.value)}
@@ -912,7 +885,7 @@ export default function BankMovementsManager() {
                       </div>
                       <Button
                         size="sm"
-                        className="bg-violet-600 hover:bg-violet-700 text-white text-xs w-full"
+                        className=" text-xs w-full"
                         disabled={!manualNotes.trim() || manuallyConciliateMut.isPending}
                         onClick={() => {
                           if (selectedMovement) {
@@ -936,25 +909,25 @@ export default function BankMovementsManager() {
               {isConciliated && confirmedLink?.entityType === "manual" && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-violet-500" />
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-primary" />
                       Conciliación manual
                     </h3>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                      className="text-danger border-danger/40 hover:bg-danger/10 text-xs"
                       onClick={() => setUnlinkConfirm(true)}
                     >
                       <Link2Off className="w-3.5 h-3.5 mr-1" /> Desvincular
                     </Button>
                   </div>
-                  <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
-                    <div className="flex items-center gap-2 text-violet-800 font-medium mb-1">
+                  <div className="rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm">
+                    <div className="flex items-center gap-2 text-primary font-medium mb-1">
                       <CheckCircle className="w-4 h-4" /> Justificado manualmente
                     </div>
-                    <p className="text-xs text-violet-700">{confirmedLink.notes ?? "—"}</p>
-                    <div className="text-xs text-violet-500 mt-1">
+                    <p className="text-xs text-primary">{confirmedLink.notes ?? "—"}</p>
+                    <div className="text-xs text-primary mt-1">
                       Por {confirmedLink.matchedBy ?? "–"} · {confirmedLink.matchedAt ? fmtDate(confirmedLink.matchedAt) : "–"}
                     </div>
                   </div>
@@ -966,25 +939,25 @@ export default function BankMovementsManager() {
               {/* Estado y notas */}
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Estado</label>
+                  <label className="text-xs text-muted-foreground block mb-1">Estado</label>
                   <Select value={editStatus} onValueChange={(v) => setEditStatus(v as "pendiente" | "ignorado")}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="pendiente">
-                        <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-yellow-500" /> Pendiente</span>
+                        <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-warning" /> Pendiente</span>
                       </SelectItem>
                       <SelectItem value="ignorado">
-                        <span className="flex items-center gap-2"><MinusCircle className="w-4 h-4 text-gray-400" /> Ignorado</span>
+                        <span className="flex items-center gap-2"><MinusCircle className="w-4 h-4 text-muted-foreground" /> Ignorado</span>
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Notas internas</label>
+                  <label className="text-xs text-muted-foreground block mb-1">Notas internas</label>
                   <textarea
-                    className="w-full text-sm border border-gray-200 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    className="w-full text-sm border border-border rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-info/40"
                     rows={3}
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
@@ -1010,14 +983,14 @@ export default function BankMovementsManager() {
           <DialogHeader>
             <DialogTitle>Desvincular conciliación</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             Se romperá el vínculo contable entre este movimiento bancario y el presupuesto asociado.
             <strong> La reserva y la factura no se modificarán.</strong>
           </p>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setUnlinkConfirm(false)}>Cancelar</Button>
             <Button
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-danger hover:bg-danger/90 text-primary-foreground"
               disabled={unlinkMut.isPending}
               onClick={() => {
                 if (selectedMovement) unlinkMut.mutate({ bankMovementId: selectedMovement.id });

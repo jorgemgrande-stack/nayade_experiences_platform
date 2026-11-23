@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,12 +24,12 @@ const fmtEur = (v: number | string) =>
 const today = () => new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
 
 const MOVE_TYPES = [
-  { value: "income",          label: "Ingreso",               color: "bg-emerald-100 text-emerald-700" },
-  { value: "expense",         label: "Gasto",                 color: "bg-red-100 text-red-700" },
-  { value: "transfer_out",    label: "Traspaso (salida)",     color: "bg-sky-100 text-sky-700" },
-  { value: "transfer_in",     label: "Traspaso (entrada)",    color: "bg-sky-100 text-sky-700" },
-  { value: "opening_balance", label: "Saldo inicial",         color: "bg-purple-100 text-purple-700" },
-  { value: "adjustment",      label: "Ajuste",                color: "bg-gray-100 text-gray-700" },
+  { value: "income",          label: "Ingreso",               color: "bg-success/10 text-success" },
+  { value: "expense",         label: "Gasto",                 color: "bg-danger/10 text-danger" },
+  { value: "transfer_out",    label: "Traspaso (salida)",     color: "bg-info/10 text-info" },
+  { value: "transfer_in",     label: "Traspaso (entrada)",    color: "bg-info/10 text-info" },
+  { value: "opening_balance", label: "Saldo inicial",         color: "bg-primary/10 text-primary" },
+  { value: "adjustment",      label: "Ajuste",                color: "bg-muted text-foreground" },
 ] as const;
 
 type MoveType = (typeof MOVE_TYPES)[number]["value"];
@@ -40,14 +42,14 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
 };
 
 const CLOSURE_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
-  balanced:            { label: "Cuadrado",         color: "bg-emerald-100 text-emerald-700",  icon: "🟢" },
-  difference:          { label: "Descuadre",        color: "bg-red-100 text-red-700",          icon: "🔴" },
-  reviewed:            { label: "Revisado",          color: "bg-blue-100 text-blue-700",        icon: "🔍" },
-  adjusted:            { label: "Ajustado",          color: "bg-purple-100 text-purple-700",    icon: "⚖️" },
-  accepted_difference: { label: "Diferencia asumida", color: "bg-gray-100 text-gray-600",      icon: "📋" },
-  closed:              { label: "Cerrado",           color: "bg-blue-100 text-blue-700",        icon: "🔵" },
-  reconciled:          { label: "Conciliado",        color: "bg-emerald-100 text-emerald-700",  icon: "✅" },
-  open:                { label: "Abierto",           color: "bg-yellow-100 text-yellow-700",    icon: "🟡" },
+  balanced:            { label: "Cuadrado",         color: "bg-success/10 text-success",  icon: "🟢" },
+  difference:          { label: "Descuadre",        color: "bg-danger/10 text-danger",          icon: "🔴" },
+  reviewed:            { label: "Revisado",          color: "bg-info/10 text-info",        icon: "🔍" },
+  adjusted:            { label: "Ajustado",          color: "bg-primary/10 text-primary",    icon: "⚖️" },
+  accepted_difference: { label: "Diferencia asumida", color: "bg-muted text-muted-foreground",      icon: "📋" },
+  closed:              { label: "Cerrado",           color: "bg-info/10 text-info",        icon: "🔵" },
+  reconciled:          { label: "Conciliado",        color: "bg-success/10 text-success",  icon: "✅" },
+  open:                { label: "Abierto",           color: "bg-warning/10 text-warning",    icon: "🟡" },
 };
 
 const ACTION_TYPE_LABEL: Record<string, string> = {
@@ -300,7 +302,7 @@ export default function CashRegisterManager() {
   }
 
   const movTypeMeta = (type: string) =>
-    MOVE_TYPES.find(t => t.value === type) ?? { label: type, color: "bg-gray-100 text-gray-700" };
+    MOVE_TYPES.find(t => t.value === type) ?? { label: type, color: "bg-muted text-foreground" };
 
   const isIncome = (type: string) =>
     ["income", "transfer_in", "opening_balance"].includes(type);
@@ -310,33 +312,33 @@ export default function CashRegisterManager() {
       <div className="p-6 max-w-6xl mx-auto space-y-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Wallet className="w-7 h-7 text-emerald-600" />
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Caja</h1>
-              <p className="text-sm text-gray-500">Gestión de efectivo y movimientos de caja</p>
-            </div>
-          </div>
-          <Button onClick={() => { setMovForm(emptyMovForm()); setMovDialog(true); }} className="bg-emerald-600 hover:bg-emerald-700">
+        <PanelPageHeader
+          icon={<Wallet />}
+          title="Caja"
+          description="Gestión de efectivo y movimientos de caja"
+          actions={
+            <>
+          <Button onClick={() => { setMovForm(emptyMovForm()); setMovDialog(true); }}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo movimiento
           </Button>
-        </div>
+            </>
+          }
+        />
 
         {/* Panel de alertas de descuadre */}
         {(alertsQ.data?.length ?? 0) > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="bg-danger/10 border border-danger/40 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Bell className="w-4 h-4 text-red-600" />
-                <span className="font-semibold text-red-800 text-sm">
+                <Bell className="w-4 h-4 text-danger" />
+                <span className="font-semibold text-danger text-sm">
                   {alertsQ.data!.length} {alertsQ.data!.length === 1 ? "incidencia de caja sin revisar" : "incidencias de caja sin revisar"}
                 </span>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-red-600 hover:text-red-800 text-xs"
+                className="text-danger hover:text-danger text-xs"
                 onClick={() => markAllReadMut.mutate()}
                 disabled={markAllReadMut.isPending}
               >
@@ -347,8 +349,8 @@ export default function CashRegisterManager() {
               {alertsQ.data!.map(alert => (
                 <div key={alert.id} className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm border ${
                   alert.severity === "critical"
-                    ? "bg-red-100 border-red-300 text-red-800"
-                    : "bg-yellow-50 border-yellow-200 text-yellow-800"
+                    ? "bg-danger/10 border-danger/40 text-danger"
+                    : "bg-warning/10 border-warning/40 text-warning"
                 }`}>
                   <span className="flex items-center gap-2">
                     <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -364,7 +366,7 @@ export default function CashRegisterManager() {
                         Sesión #{alert.sessionId} <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
-                    <Badge className={`text-xs ${alert.severity === "critical" ? "bg-red-200 text-red-800" : "bg-yellow-100 text-yellow-700"}`}>
+                    <Badge className={`text-xs ${alert.severity === "critical" ? "bg-danger/20 text-danger" : "bg-warning/10 text-warning"}`}>
                       {alert.severity === "critical" ? "Crítica" : "Advertencia"}
                     </Badge>
                   </div>
@@ -376,41 +378,15 @@ export default function CashRegisterManager() {
 
         {/* KPI summary */}
         {summary && (
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="bg-white border rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">Saldo total</p>
-              <p className={`text-xl font-bold ${summary.totalBalance >= 0 ? "text-gray-900" : "text-red-600"}`}>
-                {fmtEur(summary.totalBalance)}
-              </p>
-              <p className="text-xs text-gray-400">{accounts.filter(a => a.isActive).length} cuentas activas</p>
-            </div>
-            <div className="bg-white border rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">Ingresos hoy</p>
-              <p className="text-xl font-bold text-emerald-600">{fmtEur(summary.todayRealIncome ?? summary.todayIncome)}</p>
-              <p className="text-xs text-gray-400">ventas y cobros</p>
-            </div>
-            <div className="bg-white border rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">Gastos hoy</p>
-              <p className="text-xl font-bold text-red-600">{fmtEur(summary.todayRealExpenses ?? summary.todayExpenses)}</p>
-              <p className="text-xs text-gray-400">solo gastos reales</p>
-            </div>
-            <div className="bg-white border rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">Traspasos hoy</p>
-              <p className="text-xl font-bold text-sky-600">{fmtEur(summary.todayTransfersOut ?? 0)}</p>
-              <p className="text-xs text-gray-400">Caja Central: {fmtEur(summary.centralBalance ?? 0)}</p>
-            </div>
-            <div className="bg-white border rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">Neto hoy</p>
-              {(() => {
-                const net = (summary.todayRealIncome ?? summary.todayIncome) - (summary.todayRealExpenses ?? summary.todayExpenses);
-                return (
-                  <p className={`text-xl font-bold ${net >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {net >= 0 ? "+" : ""}{fmtEur(net)}
-                  </p>
-                );
-              })()}
-              <p className="text-xs text-gray-400">ingresos − gastos</p>
-            </div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <MetricCard icon={<Wallet />} tone={summary.totalBalance >= 0 ? "brand" : "danger"} label="Saldo total" value={fmtEur(summary.totalBalance)} detail={`${accounts.filter(a => a.isActive).length} cuentas activas`} />
+            <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos hoy" value={fmtEur(summary.todayRealIncome ?? summary.todayIncome)} detail="ventas y cobros" />
+            <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos hoy" value={fmtEur(summary.todayRealExpenses ?? summary.todayExpenses)} detail="solo gastos reales" />
+            <MetricCard icon={<ArrowLeftRight />} tone="info" label="Traspasos hoy" value={fmtEur(summary.todayTransfersOut ?? 0)} detail={`Caja Central: ${fmtEur(summary.centralBalance ?? 0)}`} />
+            {(() => {
+              const net = (summary.todayRealIncome ?? summary.todayIncome) - (summary.todayRealExpenses ?? summary.todayExpenses);
+              return <MetricCard icon={<Banknote />} tone={net >= 0 ? "success" : "danger"} label="Neto hoy" value={`${net >= 0 ? "+" : ""}${fmtEur(net)}`} detail="ingresos − gastos" />;
+            })()}
           </div>
         )}
 
@@ -422,8 +398,8 @@ export default function CashRegisterManager() {
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
                 tab === t
-                  ? "border-emerald-600 text-emerald-700"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {t === "movimientos" ? "Movimientos"
@@ -469,23 +445,23 @@ export default function CashRegisterManager() {
             </div>
 
             {/* Movements table */}
-            <div className="bg-white border rounded-xl overflow-hidden">
+            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-muted border-b">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Fecha</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Cuenta</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Tipo</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Concepto</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Contraparte</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Importe</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Fecha</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Cuenta</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Tipo</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Concepto</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Contraparte</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Importe</th>
                     <th className="py-3 px-4" />
                   </tr>
                 </thead>
                 <tbody>
                   {movements.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
+                      <td colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
                         No hay movimientos con los filtros actuales
                       </td>
                     </tr>
@@ -495,25 +471,25 @@ export default function CashRegisterManager() {
                     const acc = accounts.find(a => a.id === mv.accountId);
                     const income = isIncome(mv.type);
                     return (
-                      <tr key={mv.id} className="border-b last:border-0 hover:bg-black/5 dark:hover:bg-white/5">
-                        <td className="py-3 px-4 text-gray-600 whitespace-nowrap">{mv.date}</td>
-                        <td className="py-3 px-4 text-gray-700">{acc?.name ?? "–"}</td>
+                      <tr key={mv.id} className="border-b last:border-0 hover:bg-muted/50 dark:hover:bg-muted/50">
+                        <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{mv.date}</td>
+                        <td className="py-3 px-4 text-foreground">{acc?.name ?? "–"}</td>
                         <td className="py-3 px-4">
                           <Badge className={`text-xs ${meta.color}`}>{meta.label}</Badge>
                         </td>
-                        <td className="py-3 px-4 text-gray-800 max-w-xs truncate">
+                        <td className="py-3 px-4 text-foreground max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
                           {mv.concept}
-                          {mv.notes && <span className="text-gray-400 ml-1 text-xs">· {mv.notes}</span>}
+                          {mv.notes && <span className="text-muted-foreground ml-1 text-xs">· {mv.notes}</span>}
                         </td>
-                        <td className="py-3 px-4 text-gray-500 text-xs">{mv.counterparty ?? "–"}</td>
-                        <td className={`py-3 px-4 text-right font-semibold ${income ? "text-emerald-600" : "text-red-600"}`}>
+                        <td className="py-3 px-4 text-muted-foreground text-xs">{mv.counterparty ?? "–"}</td>
+                        <td className={`py-3 px-4 text-right font-semibold ${income ? "text-success" : "text-danger"}`}>
                           {income ? "+" : "–"}{fmtEur(mv.amount)}
                         </td>
                         <td className="py-3 px-4 text-right">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-gray-400 hover:text-red-600"
+                            className="h-7 w-7 text-muted-foreground hover:text-danger"
                             onClick={async () => {
                               if ((await confirmAction({ description: "¿Eliminar este movimiento? El saldo se ajustará automáticamente.", destructive: true }))) {
                                 deleteMovMut.mutate({ id: mv.id });
@@ -536,39 +512,39 @@ export default function CashRegisterManager() {
         {tab === "cuentas" && (
           <div className="space-y-4">
             <div className="flex justify-end">
-              <Button onClick={() => { setEditAccId(null); setAccForm(emptyAccForm()); setAccDialog(true); }} className="bg-emerald-600 hover:bg-emerald-700">
+              <Button onClick={() => { setEditAccId(null); setAccForm(emptyAccForm()); setAccDialog(true); }}>
                 <Plus className="w-4 h-4 mr-2" /> Nueva cuenta
               </Button>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {accounts.map(acc => (
-                <div key={acc.id} className={`bg-white border rounded-xl p-5 space-y-3 ${!acc.isActive ? "opacity-60" : ""}`}>
+                <div key={acc.id} className={`bg-card border rounded-xl p-5 space-y-3 ${!acc.isActive ? "opacity-60" : ""}`}>
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-semibold text-gray-900">{acc.name}</p>
-                      <p className="text-xs text-gray-400">{ACCOUNT_TYPE_LABEL[acc.type]}</p>
+                      <p className="font-semibold text-foreground">{acc.name}</p>
+                      <p className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABEL[acc.type]}</p>
                     </div>
                     <div className="flex gap-1">
-                      {!acc.isActive && <Badge className="text-xs bg-gray-100 text-gray-500">Inactiva</Badge>}
+                      {!acc.isActive && <Badge className="text-xs bg-muted text-muted-foreground">Inactiva</Badge>}
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditAcc(acc)}>
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   </div>
-                  {acc.description && <p className="text-xs text-gray-500">{acc.description}</p>}
+                  {acc.description && <p className="text-xs text-muted-foreground">{acc.description}</p>}
                   <div className="pt-2 border-t">
-                    <p className="text-xs text-gray-400 mb-0.5">Saldo actual</p>
-                    <p className={`text-2xl font-bold ${parseFloat(acc.currentBalance) >= 0 ? "text-gray-900" : "text-red-600"}`}>
+                    <p className="text-xs text-muted-foreground mb-0.5">Saldo actual</p>
+                    <p className={`text-2xl font-bold ${parseFloat(acc.currentBalance) >= 0 ? "text-foreground" : "text-danger"}`}>
                       {fmtEur(acc.currentBalance)}
                     </p>
                   </div>
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     Saldo inicial: {fmtEur(acc.initialBalance)}
                   </div>
                 </div>
               ))}
               {accounts.length === 0 && (
-                <div className="col-span-3 text-center py-16 text-gray-400">
+                <div className="col-span-3 text-center py-16 text-muted-foreground">
                   No hay cuentas de caja configuradas. Crea una para empezar.
                 </div>
               )}
@@ -594,28 +570,28 @@ export default function CashRegisterManager() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={() => { setClosureForm(emptyClosureForm()); setClosureDialog(true); }} className="bg-emerald-600 hover:bg-emerald-700">
+              <Button onClick={() => { setClosureForm(emptyClosureForm()); setClosureDialog(true); }}>
                 <Calendar className="w-4 h-4 mr-2" /> Realizar cierre
               </Button>
             </div>
-            <div className="bg-white border rounded-xl overflow-hidden">
+            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-muted border-b">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Fecha</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Cuenta</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Origen</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Apertura</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Cierre</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Diferencia</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Estado</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Fecha</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Cuenta</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Origen</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Apertura</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Cierre</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Diferencia</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Estado</th>
                     <th className="py-3 px-4" />
                   </tr>
                 </thead>
                 <tbody>
                   {closures.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="text-center py-12 text-gray-400 text-sm">
+                      <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
                         No hay cierres registrados
                       </td>
                     </tr>
@@ -627,12 +603,12 @@ export default function CashRegisterManager() {
                     const isFromTpv = cl.sourceEntityType === "tpv_session";
                     const isActionable = ["difference", "reviewed"].includes(cl.status);
                     return (
-                      <tr key={cl.id} className={`border-b last:border-0 hover:bg-black/5 dark:hover:bg-white/5 ${cl.status === "difference" ? "bg-red-50/40 dark:bg-red-900/10" : ""}`}>
-                        <td className="py-3 px-4 text-gray-600 whitespace-nowrap">{cl.date}</td>
-                        <td className="py-3 px-4 text-gray-700">{acc?.name ?? "–"}</td>
+                      <tr key={cl.id} className={`border-b last:border-0 hover:bg-muted/50 dark:hover:bg-muted/50 ${cl.status === "difference" ? "bg-danger/10" : ""}`}>
+                        <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{cl.date}</td>
+                        <td className="py-3 px-4 text-foreground">{acc?.name ?? "–"}</td>
                         <td className="py-3 px-4">
                           {isFromTpv ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                            <span className="inline-flex items-center gap-1 text-xs text-info bg-info/10 border border-info/40 rounded px-2 py-0.5">
                               TPV
                               {cl.sourceEntityId && (
                                 <a href="/admin/tpv" className="underline opacity-60 hover:opacity-100 flex items-center gap-0.5" title="Ver sesión TPV">
@@ -641,15 +617,15 @@ export default function CashRegisterManager() {
                               )}
                             </span>
                           ) : (
-                            <span className="text-xs text-gray-400">Manual</span>
+                            <span className="text-xs text-muted-foreground">Manual</span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right text-gray-600">{fmtEur(cl.openingBalance)}</td>
-                        <td className="py-3 px-4 text-right font-semibold text-gray-900">{fmtEur(cl.closingBalance)}</td>
+                        <td className="py-3 px-4 text-right text-muted-foreground">{fmtEur(cl.openingBalance)}</td>
+                        <td className="py-3 px-4 text-right font-semibold text-foreground">{fmtEur(cl.closingBalance)}</td>
                         <td className={`py-3 px-4 text-right text-xs font-semibold ${
-                          diff === null ? "text-gray-400"
-                          : Math.abs(diff) < 0.01 ? "text-emerald-600"
-                          : diff < 0 ? "text-red-600" : "text-amber-600"
+                          diff === null ? "text-muted-foreground"
+                          : Math.abs(diff) < 0.01 ? "text-success"
+                          : diff < 0 ? "text-danger" : "text-warning"
                         }`}>
                           {diff === null ? "–"
                             : Math.abs(diff) < 0.01 ? "✓ Cuadrado"
@@ -664,7 +640,7 @@ export default function CashRegisterManager() {
                           <Button
                             variant={isActionable ? "default" : "ghost"}
                             size="sm"
-                            className={isActionable ? "h-7 text-xs bg-red-600 hover:bg-red-700 text-white" : "h-7 text-xs text-gray-400 hover:text-gray-700"}
+                            className={isActionable ? "h-7 text-xs bg-danger hover:bg-danger/90 text-primary-foreground" : "h-7 text-xs text-muted-foreground hover:text-foreground"}
                             onClick={() => setSelectedClosureId(cl.id)}
                           >
                             {isActionable ? "Resolver" : "Ver"}
@@ -682,78 +658,78 @@ export default function CashRegisterManager() {
         {/* ── TAB: SINCRONIZACIÓN ── */}
         {tab === "sincronizacion" && (
           <div className="space-y-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+            <div className="bg-info/10 border border-info/40 rounded-xl p-4 text-sm text-info">
               <p className="font-medium mb-1">¿Para qué sirve esto?</p>
-              <p className="text-blue-700">
+              <p className="text-info">
                 Detecta reservas pagadas en efectivo y gastos en efectivo que no tienen aún un movimiento
                 de caja registrado. Útil para sincronizar datos históricos antes de activar la integración automática.
               </p>
             </div>
 
             {syncCheckQ.isLoading && (
-              <div className="text-center py-10 text-gray-400 text-sm">Analizando movimientos...</div>
+              <div className="text-center py-10 text-muted-foreground text-sm">Analizando movimientos...</div>
             )}
 
             {syncCheckQ.data && (
               <>
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div className={`rounded-xl border p-4 ${syncCheckQ.data.missingReservations.length > 0 ? "border-orange-200 bg-orange-50" : "border-emerald-200 bg-emerald-50"}`}>
+                  <div className={`rounded-xl border p-4 ${syncCheckQ.data.missingReservations.length > 0 ? "border-warning/40 bg-warning/10" : "border-success/40 bg-success/10"}`}>
                     <div className="flex items-center gap-2 mb-2">
-                      <ShoppingCart className={`w-4 h-4 ${syncCheckQ.data.missingReservations.length > 0 ? "text-orange-600" : "text-emerald-600"}`} />
+                      <ShoppingCart className={`w-4 h-4 ${syncCheckQ.data.missingReservations.length > 0 ? "text-warning" : "text-success"}`} />
                       <span className="font-medium text-sm">Cobros sin movimiento</span>
                     </div>
                     {syncCheckQ.data.missingReservations.length === 0 ? (
-                      <p className="text-emerald-700 text-sm flex items-center gap-1">
+                      <p className="text-success text-sm flex items-center gap-1">
                         <CheckCircle className="w-4 h-4" /> Todo sincronizado
                       </p>
                     ) : (
                       <div className="space-y-1 max-h-48 overflow-y-auto">
                         {syncCheckQ.data.missingReservations.map(r => (
-                          <div key={r.id} className="flex justify-between text-xs text-orange-800 bg-white rounded px-2 py-1 border border-orange-100">
+                          <div key={r.id} className="flex justify-between text-xs text-warning bg-card rounded px-2 py-1 border border-warning/40">
                             <span>{r.reservationNumber} — {r.customerName}</span>
                             <span className="font-medium">{fmtEur(r.amount)}</span>
                           </div>
                         ))}
                       </div>
                     )}
-                    <p className="text-xs text-gray-500 mt-2">{syncCheckQ.data.missingReservations.length} reservas pendientes</p>
+                    <p className="text-xs text-muted-foreground mt-2">{syncCheckQ.data.missingReservations.length} reservas pendientes</p>
                   </div>
 
-                  <div className={`rounded-xl border p-4 ${syncCheckQ.data.missingExpenses.length > 0 ? "border-orange-200 bg-orange-50" : "border-emerald-200 bg-emerald-50"}`}>
+                  <div className={`rounded-xl border p-4 ${syncCheckQ.data.missingExpenses.length > 0 ? "border-warning/40 bg-warning/10" : "border-success/40 bg-success/10"}`}>
                     <div className="flex items-center gap-2 mb-2">
-                      <Receipt className={`w-4 h-4 ${syncCheckQ.data.missingExpenses.length > 0 ? "text-orange-600" : "text-emerald-600"}`} />
+                      <Receipt className={`w-4 h-4 ${syncCheckQ.data.missingExpenses.length > 0 ? "text-warning" : "text-success"}`} />
                       <span className="font-medium text-sm">Gastos sin movimiento</span>
                     </div>
                     {syncCheckQ.data.missingExpenses.length === 0 ? (
-                      <p className="text-emerald-700 text-sm flex items-center gap-1">
+                      <p className="text-success text-sm flex items-center gap-1">
                         <CheckCircle className="w-4 h-4" /> Todo sincronizado
                       </p>
                     ) : (
                       <div className="space-y-1 max-h-48 overflow-y-auto">
                         {syncCheckQ.data.missingExpenses.map(e => (
-                          <div key={e.id} className="flex justify-between text-xs text-orange-800 bg-white rounded px-2 py-1 border border-orange-100">
-                            <span className="truncate max-w-[180px]">{e.concept}</span>
+                          <div key={e.id} className="flex justify-between text-xs text-warning bg-card rounded px-2 py-1 border border-warning/40">
+                            <span className="overflow-hidden text-ellipsis whitespace-nowrap max-w-[180px]">{e.concept}</span>
                             <span className="font-medium">{fmtEur(e.amount)}</span>
                           </div>
                         ))}
                       </div>
                     )}
-                    <p className="text-xs text-gray-500 mt-2">{syncCheckQ.data.missingExpenses.length} gastos pendientes</p>
+                    <p className="text-xs text-muted-foreground mt-2">{syncCheckQ.data.missingExpenses.length} gastos pendientes</p>
                   </div>
                 </div>
 
                 {(syncCheckQ.data.missingReservations.length > 0 || syncCheckQ.data.missingExpenses.length > 0) && (
-                  <div className="flex items-center justify-between bg-white border rounded-xl p-4">
+                  <div className="flex items-center justify-between bg-card border rounded-xl p-4">
                     <div>
-                      <p className="font-medium text-gray-800 text-sm">
+                      <p className="font-medium text-foreground text-sm">
                         {syncCheckQ.data.missingReservations.length + syncCheckQ.data.missingExpenses.length} movimientos pendientes de crear
                       </p>
-                      <p className="text-xs text-gray-500">Se crearán en la cuenta de caja principal. La operación es segura e idempotente.</p>
+                      <p className="text-xs text-muted-foreground">Se crearán en la cuenta de caja principal. La operación es segura e idempotente.</p>
                     </div>
                     <Button
                       onClick={() => runSyncMut.mutate()}
                       disabled={runSyncMut.isPending}
-                      className="bg-emerald-600 hover:bg-emerald-700 ml-4"
+                      className=" ml-4"
                     >
                       <RefreshCw className={`w-4 h-4 mr-2 ${runSyncMut.isPending ? "animate-spin" : ""}`} />
                       {runSyncMut.isPending ? "Sincronizando..." : "Crear movimientos faltantes"}
@@ -762,11 +738,11 @@ export default function CashRegisterManager() {
                 )}
 
                 {syncCheckQ.data.missingReservations.length === 0 && syncCheckQ.data.missingExpenses.length === 0 && (
-                  <div className="flex items-center gap-3 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3 text-success bg-success/10 border border-success/40 rounded-xl p-4">
                     <CheckCircle className="w-5 h-5 flex-shrink-0" />
                     <div>
                       <p className="font-medium text-sm">Caja completamente sincronizada</p>
-                      <p className="text-xs text-emerald-600">Todos los cobros y gastos en efectivo tienen su movimiento de caja.</p>
+                      <p className="text-xs text-success">Todos los cobros y gastos en efectivo tienen su movimiento de caja.</p>
                     </div>
                   </div>
                 )}
@@ -797,7 +773,7 @@ export default function CashRegisterManager() {
             title: "Marcar como revisado",
             description: "Indica que has revisado el descuadre. No modifica el saldo de caja. Podrás ajustar o aceptar la diferencia después.",
             confirmLabel: "Confirmar revisión",
-            confirmClass: "bg-blue-600 hover:bg-blue-700",
+            confirmClass: "",
           },
           adjust: {
             title: "Crear ajuste de caja",
@@ -805,19 +781,19 @@ export default function CashRegisterManager() {
               ? `Se ${diff > 0 ? "añadirán" : "deducirán"} ${fmtEur(Math.abs(diff))} de la cuenta principal para cuadrar el saldo.`
               : "Sin diferencia que ajustar.",
             confirmLabel: "Crear ajuste",
-            confirmClass: "bg-purple-600 hover:bg-purple-700",
+            confirmClass: "",
           },
           accept: {
             title: "Aceptar diferencia sin ajuste",
             description: `Se documenta la diferencia de ${fmtEur(Math.abs(diff ?? 0))} sin modificar el saldo. La diferencia queda registrada en el histórico.`,
             confirmLabel: "Aceptar diferencia",
-            confirmClass: "bg-gray-600 hover:bg-gray-700",
+            confirmClass: "bg-muted hover:bg-muted",
           },
           note: {
             title: "Añadir nota",
             description: "Añade un comentario al histórico de este cierre.",
             confirmLabel: "Guardar nota",
-            confirmClass: "bg-emerald-600 hover:bg-emerald-700",
+            confirmClass: "",
           },
         };
 
@@ -835,50 +811,50 @@ export default function CashRegisterManager() {
 
                 {/* Resumen numérico */}
                 <div className="grid grid-cols-3 gap-3 mt-1">
-                  <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">Apertura</p>
-                    <p className="font-semibold text-gray-800">{fmtEur(cl.openingBalance)}</p>
+                  <div className="bg-muted rounded-lg p-3 text-center">
+                    <p className="text-xs text-muted-foreground mb-0.5">Apertura</p>
+                    <p className="font-semibold text-foreground">{fmtEur(cl.openingBalance)}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">Cierre esperado</p>
-                    <p className="font-semibold text-gray-800">{fmtEur(cl.closingBalance)}</p>
+                  <div className="bg-muted rounded-lg p-3 text-center">
+                    <p className="text-xs text-muted-foreground mb-0.5">Cierre esperado</p>
+                    <p className="font-semibold text-foreground">{fmtEur(cl.closingBalance)}</p>
                   </div>
-                  <div className={`rounded-lg p-3 text-center ${Math.abs(diff ?? 0) < 0.01 ? "bg-emerald-50" : (diff ?? 0) < 0 ? "bg-red-50" : "bg-amber-50"}`}>
-                    <p className="text-xs text-gray-500 mb-0.5">Diferencia</p>
-                    <p className={`font-bold ${Math.abs(diff ?? 0) < 0.01 ? "text-emerald-700" : (diff ?? 0) < 0 ? "text-red-700" : "text-amber-700"}`}>
+                  <div className={`rounded-lg p-3 text-center ${Math.abs(diff ?? 0) < 0.01 ? "bg-success/10" : (diff ?? 0) < 0 ? "bg-danger/10" : "bg-warning/10"}`}>
+                    <p className="text-xs text-muted-foreground mb-0.5">Diferencia</p>
+                    <p className={`font-bold ${Math.abs(diff ?? 0) < 0.01 ? "text-success" : (diff ?? 0) < 0 ? "text-danger" : "text-warning"}`}>
                       {diff !== null ? `${diff >= 0 ? "+" : ""}${fmtEur(diff)}` : "–"}
                     </p>
                   </div>
                 </div>
 
                 {cl.sourceEntityId && (
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Sesión TPV vinculada:&nbsp;
-                    <a href="/admin/tpv" className="text-blue-600 underline">#{cl.sourceEntityId}</a>
+                    <a href="/admin/tpv" className="text-info underline">#{cl.sourceEntityId}</a>
                   </p>
                 )}
 
                 {/* Acciones disponibles */}
                 {isActionable && (
-                  <div className="border rounded-xl p-4 space-y-2 bg-orange-50 border-orange-200">
-                    <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide mb-3">Acciones de resolución</p>
+                  <div className="border rounded-xl p-4 space-y-2 bg-warning/10 border-warning/40">
+                    <p className="text-xs font-semibold text-warning uppercase tracking-wide mb-3">Acciones de resolución</p>
                     <div className="flex flex-wrap gap-2">
                       {cl.status === "difference" && canSuperviseClosures && (
-                        <Button size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50" onClick={() => setActionModal("review")}>
+                        <Button size="sm" variant="outline" className="text-info border-info/40 hover:bg-info/10" onClick={() => setActionModal("review")}>
                           🔍 Marcar revisado
                         </Button>
                       )}
                       {!hasAdjustment && canManageDifferences && (
-                        <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => setActionModal("adjust")}>
+                        <Button size="sm" variant="outline" className="text-primary border-primary/40 hover:bg-primary/10" onClick={() => setActionModal("adjust")}>
                           ⚖️ Crear ajuste de caja
                         </Button>
                       )}
                       {canManageDifferences && (
-                        <Button size="sm" variant="outline" className="text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => setActionModal("accept")}>
+                        <Button size="sm" variant="outline" className="text-foreground border-border hover:bg-muted" onClick={() => setActionModal("accept")}>
                           📋 Aceptar sin ajuste
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50" onClick={() => setActionModal("note")}>
+                      <Button size="sm" variant="outline" className="text-success border-success/40 hover:bg-success/10" onClick={() => setActionModal("note")}>
                         💬 Añadir nota
                       </Button>
                     </div>
@@ -890,30 +866,30 @@ export default function CashRegisterManager() {
                   </div>
                 )}
                 {!isActionable && ["adjusted", "accepted_difference", "balanced"].includes(cl.status) && (
-                  <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 w-fit" onClick={() => setActionModal("note")}>
+                  <Button size="sm" variant="outline" className="text-success border-success/40 hover:bg-success/10 w-fit" onClick={() => setActionModal("note")}>
                     💬 Añadir nota
                   </Button>
                 )}
 
                 {/* Histórico de acciones */}
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Histórico de acciones</p>
-                  {closureActionsQ.isLoading && <p className="text-xs text-gray-400">Cargando...</p>}
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Histórico de acciones</p>
+                  {closureActionsQ.isLoading && <p className="text-xs text-muted-foreground">Cargando...</p>}
                   {(closureActionsQ.data?.length ?? 0) === 0 && !closureActionsQ.isLoading && (
-                    <p className="text-xs text-gray-400 italic">Sin acciones registradas todavía.</p>
+                    <p className="text-xs text-muted-foreground italic">Sin acciones registradas todavía.</p>
                   )}
                   <div className="space-y-2">
                     {closureActionsQ.data?.map(action => (
-                      <div key={action.id} className="flex items-start gap-3 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
+                      <div key={action.id} className="flex items-start gap-3 bg-muted rounded-lg px-3 py-2.5 border border-border">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-semibold text-gray-800">{ACTION_TYPE_LABEL[action.actionType] ?? action.actionType}</span>
+                            <span className="text-xs font-semibold text-foreground">{ACTION_TYPE_LABEL[action.actionType] ?? action.actionType}</span>
                             {action.amount && (
-                              <Badge className="text-xs bg-purple-100 text-purple-700">{fmtEur(action.amount)}</Badge>
+                              <Badge className="text-xs bg-primary/10 text-primary">{fmtEur(action.amount)}</Badge>
                             )}
                           </div>
-                          {action.notes && <p className="text-xs text-gray-600 mt-0.5">{action.notes}</p>}
-                          <p className="text-xs text-gray-400 mt-0.5">
+                          {action.notes && <p className="text-xs text-muted-foreground mt-0.5">{action.notes}</p>}
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {action.createdByName ?? "Admin"} · {action.createdAt ? new Date(action.createdAt).toLocaleString("es-ES") : ""}
                           </p>
                         </div>
@@ -931,9 +907,9 @@ export default function CashRegisterManager() {
                   <DialogHeader>
                     <DialogTitle>{ACTION_META[actionModal].title}</DialogTitle>
                   </DialogHeader>
-                  <p className="text-sm text-gray-600">{ACTION_META[actionModal].description}</p>
+                  <p className="text-sm text-muted-foreground">{ACTION_META[actionModal].description}</p>
                   <div className="space-y-2">
-                    <Label>Nota <span className="text-red-500">*</span></Label>
+                    <Label>Nota <span className="text-danger">*</span></Label>
                     <Textarea
                       placeholder="Obligatorio: explica el motivo o deja constancia de la revisión..."
                       value={actionNote}
@@ -947,7 +923,7 @@ export default function CashRegisterManager() {
                     <Button
                       onClick={handleActionSubmit}
                       disabled={!actionNote.trim() || actionPending}
-                      className={ACTION_META[actionModal].confirmClass + " text-white"}
+                      className={ACTION_META[actionModal].confirmClass + " text-foreground"}
                     >
                       {actionPending ? "Guardando..." : ACTION_META[actionModal].confirmLabel}
                     </Button>
@@ -964,7 +940,7 @@ export default function CashRegisterManager() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Banknote className="w-5 h-5 text-emerald-600" />
+              <Banknote className="w-5 h-5 text-success" />
               Nuevo movimiento de caja
             </DialogTitle>
           </DialogHeader>
@@ -1077,7 +1053,7 @@ export default function CashRegisterManager() {
               <Button
                 type="submit"
                 disabled={createMovMut.isPending || !movForm.accountId || !movForm.amount}
-                className="bg-emerald-600 hover:bg-emerald-700"
+               
               >
                 {createMovMut.isPending ? "Guardando..." : "Registrar movimiento"}
               </Button>
@@ -1142,7 +1118,7 @@ export default function CashRegisterManager() {
               <Button
                 type="submit"
                 disabled={createAccMut.isPending || updateAccMut.isPending}
-                className="bg-emerald-600 hover:bg-emerald-700"
+               
               >
                 {editAccId ? "Guardar cambios" : "Crear cuenta"}
               </Button>
@@ -1156,7 +1132,7 @@ export default function CashRegisterManager() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-blue-600" />
+              <Calendar className="w-5 h-5 text-info" />
               Realizar cierre de caja
             </DialogTitle>
           </DialogHeader>
@@ -1184,7 +1160,7 @@ export default function CashRegisterManager() {
               />
             </div>
             <div>
-              <Label>Efectivo contado (€) <span className="text-gray-400 text-xs font-normal">— opcional</span></Label>
+              <Label>Efectivo contado (€) <span className="text-muted-foreground text-xs font-normal">— opcional</span></Label>
               <Input
                 type="number"
                 step="0.01"
@@ -1193,7 +1169,7 @@ export default function CashRegisterManager() {
                 value={closureForm.countedAmount}
                 onChange={e => setClosureForm(f => ({ ...f, countedAmount: e.target.value }))}
               />
-              <p className="text-xs text-gray-400 mt-1">Si introduces el importe contado, se calculará la diferencia automáticamente.</p>
+              <p className="text-xs text-muted-foreground mt-1">Si introduces el importe contado, se calculará la diferencia automáticamente.</p>
             </div>
             <div>
               <Label>Notas</Label>
@@ -1209,7 +1185,7 @@ export default function CashRegisterManager() {
               <Button
                 type="submit"
                 disabled={createClosureMut.isPending || !closureForm.accountId}
-                className="bg-blue-600 hover:bg-blue-700"
+               
               >
                 {createClosureMut.isPending ? "Registrando..." : "Registrar cierre"}
               </Button>
