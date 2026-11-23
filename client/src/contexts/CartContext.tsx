@@ -68,6 +68,8 @@ export interface CartItem {
   legoPackLinePeople?: Record<number, number>;
   /** Nombres de las líneas (para mostrar) */
   legoPackLineNames?: Record<number, string>;
+  /** «participants»: la cantidad son participantes (actividades y retiros) y así se nombra en carrito y pago. */
+  quantityKind?: "participants";
 }
 
 interface CartContextValue {

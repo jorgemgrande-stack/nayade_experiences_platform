@@ -21,6 +21,7 @@ import {
   canChangeStage,
   ORDER_STAGE_LABELS,
   stageEmailText,
+  orderStageLabelIn,
   stageOfOrder,
   stageOfRow,
   stagePatch,
@@ -29,6 +30,10 @@ import {
   type OrderStage,
 } from "../shared/shopOrders";
 import { formatEuros } from "../shared/storefront";
+import { cartItemDate } from "../shared/publicSite";
+import { siteUiText } from "../shared/siteUiText";
+import { consentFromLog, participantsFromLog } from "../shared/checkoutExtras";
+import { resolveBuyerLocale } from "./checkoutExtrasDb";
 import { chargedInvoiceAmounts } from "./invoiceCalc";
 import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
 
@@ -175,7 +180,19 @@ export async function buyerEmailsEnabled(): Promise<boolean> {
   }
 }
 
-async function orderEmail(rows: Row[], o: { title: string; badge: string; intro: string; statusLabel?: string; withTotals: boolean }) {
+/** Fecha de la línea para el correo («lunes, 3 de agosto de 2026»), en el idioma del comprador; null si no tiene. */
+function emailLineDate(bookingDate: string | null | undefined, locale: string): string | null {
+  const bcp = locale === "de" ? "de-DE" : locale === "en" ? "en-GB" : "es-ES";
+  return cartItemDate(bookingDate, { weekday: "long", day: "numeric", month: "long", year: "numeric" }, bcp);
+}
+
+/**
+ * Datos opcionales por línea que otra pieza puede aportar sin tocar esta (p. ej. la edición y el punto de encuentro
+ * cuando el pedido quede ligado a una convocatoria): si no hay dato, el correo no enseña el campo.
+ */
+export type OrderLineEmailExtras = { edition?: string | null; meetingPoint?: string | null };
+
+async function orderEmail(rows: Row[], o: { title: string; badge: string; intro: string; statusLabel?: string; withTotals: boolean; locale?: string; extras?: Map<number, OrderLineEmailExtras> }) {
   const { buildShopOrderEmailHtml } = await import("./emailTemplates");
   const first = rows[0];
   const lineCents = rows.reduce((s, r) => s + (Number(r.amountTotal) || 0), 0);
@@ -184,10 +201,14 @@ async function orderEmail(rows: Row[], o: { title: string; badge: string; intro:
   return buildShopOrderEmailHtml({
     title: o.title,
     badge: o.badge,
+    locale: o.locale,
     customerName: first.customerName,
     orderNumber: first.merchantOrder,
     intro: o.intro,
-    lines: rows.map((r) => ({ name: r.productName, quantity: r.people ?? 1, total: eur(r.amountTotal) })),
+    lines: rows.map((r) => {
+      const x = o.extras?.get(r.id);
+      return { name: r.productName, quantity: r.people ?? 1, total: eur(r.amountTotal), date: emailLineDate(r.bookingDate, o.locale ?? "es"), edition: x?.edition ?? null, meetingPoint: x?.meetingPoint ?? null, participants: participantsFromLog(r.changesLog) };
+    }),
     total: o.withTotals ? eur(paidCents > 0 ? paidCents : lineCents) : null,
     discount: o.withTotals ? discount : null,
     invoiceNumber: first.invoiceNumber ?? null,
@@ -204,8 +225,10 @@ export async function sendShopOrderConfirmation(merchantOrder: string): Promise<
   if (!first || first.confirmationEmailSentAt || !first.customerEmail) return { sent: false };
   const { brandName } = await import("./tenantBrand");
   const { sendManagedEmail, logDirectEmail } = await import("./emailManager");
-  const html = await orderEmail(rows, { title: "Pedido confirmado", badge: "Pedido", intro: "Hemos recibido tu pago y tu pedido está confirmado. Este es el resumen:", withTotals: true });
-  const subject = `Pedido confirmado ${first.merchantOrder} · ${brandName()}`;
+  const locale = await resolveBuyerLocale(first.changesLog);
+  const ui = siteUiText(locale);
+  const html = await orderEmail(rows, { title: ui.emConfirmedTitle, badge: ui.emBadgeOrder, intro: ui.emConfirmedIntro, withTotals: true, locale });
+  const subject = `${ui.emConfirmedSubject} ${first.merchantOrder} · ${brandName()}`;
   const r = await sendManagedEmail({ templateKey: "reservation_confirm", triggerEvent: "shop_order_paid", recipientEmail: first.customerEmail, subject, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
   // Copia a la empresa (buzón de pedidos): así se entera de la venta aunque el comprador no reciba el correo
   try {
@@ -309,7 +332,9 @@ export async function getOnlineOrder(merchantOrder: string) {
     customerPhone: first.customerPhone ?? null,
     billing: rows.map((r) => billingFromLog(r.changesLog)).find(Boolean) ?? null,
     comments: buyerCommentsFromNotes(first.notes),
-    lines: rows.map((r) => ({ id: r.id, productName: r.productName, quantity: r.people ?? 1, amountCents: Number(r.amountTotal) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(r.bookingDate ?? "") ? r.bookingDate : null, stage: stageOfRow(r) })),
+    buyerLocale: await resolveBuyerLocale(first.changesLog),
+    consent: rows.map((r) => consentFromLog(r.changesLog)).find(Boolean) ?? null,
+    lines: rows.map((r) => ({ id: r.id, participants: participantsFromLog(r.changesLog), productName: r.productName, quantity: r.people ?? 1, amountCents: Number(r.amountTotal) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(r.bookingDate ?? "") ? r.bookingDate : null, stage: stageOfRow(r) })),
     lineCents,
     paidCents,
     discountCents: paidCents > 0 && paidCents < lineCents ? lineCents - paidCents : 0,
@@ -344,14 +369,16 @@ export async function setOnlineOrderStage(merchantOrder: string, to: OrderStage,
   await db.insert(crmActivityLog).values({ entityType: "reservation", entityId: rows[0].id, action: "status_updated", actorId: actor.id, actorName: actor.name ?? null, details: { from, to, merchantOrder } });
 
   let emailed = false;
-  const text = stageEmailText(to);
   const first = rows[0];
+  const locale = await resolveBuyerLocale(first.changesLog);
+  const ui = siteUiText(locale);
+  const text = stageEmailText(to, locale);
   if (text && STAGES_NOTIFIED.includes(to) && first.customerEmail) {
     try {
       const fresh = await db.select().from(reservations).where(eq(reservations.merchantOrder, merchantOrder));
       const { brandName } = await import("./tenantBrand");
       const { sendManagedEmail } = await import("./emailManager");
-      const html = await orderEmail(fresh, { title: text.title, badge: "Pedido", intro: text.paragraph, statusLabel: ORDER_STAGE_LABELS[to], withTotals: to !== "cancelled" });
+      const html = await orderEmail(fresh, { title: text.title, badge: ui.emBadgeOrder, intro: text.paragraph, statusLabel: orderStageLabelIn(to, ui), withTotals: to !== "cancelled", locale });
       const r = await sendManagedEmail({ templateKey: "reservation_confirm", triggerEvent: `shop_order_${to}`, recipientEmail: first.customerEmail, subject: `${text.subject} · ${first.merchantOrder} · ${brandName()}`, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
       emailed = !!r.sent;
     } catch (e) {
@@ -370,8 +397,10 @@ export async function sendShopOrderFailed(merchantOrder: string): Promise<{ sent
   if (!first?.customerEmail) return { sent: false };
   const { brandName } = await import("./tenantBrand");
   const { sendManagedEmail } = await import("./emailManager");
-  const html = await orderEmail(rows, { title: "Pago no completado", badge: "Pedido", intro: "No hemos podido completar el pago de tu pedido. No se te ha cobrado nada: puedes volver a intentarlo desde la tienda o escribirnos y te ayudamos.", withTotals: true });
-  const r = await sendManagedEmail({ templateKey: "reservation_failed", triggerEvent: "shop_order_payment_failed", recipientEmail: first.customerEmail, subject: `Pago no completado · ${first.merchantOrder} · ${brandName()}`, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
+  const locale = await resolveBuyerLocale(first.changesLog);
+  const ui = siteUiText(locale);
+  const html = await orderEmail(rows, { title: ui.emFailedTitle, badge: ui.emBadgeOrder, intro: ui.emFailedIntro, withTotals: true, locale });
+  const r = await sendManagedEmail({ templateKey: "reservation_failed", triggerEvent: "shop_order_payment_failed", recipientEmail: first.customerEmail, subject: `${ui.emFailedSubject} · ${first.merchantOrder} · ${brandName()}`, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
   return { sent: !!r.sent };
 }
 

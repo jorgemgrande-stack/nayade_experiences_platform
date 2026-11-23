@@ -193,7 +193,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                 <ul className="divide-y divide-border text-sm">
                   {o.lines.map((l) => (
                     <li key={l.id} className="flex items-start justify-between gap-3 py-2">
-                      <span className="min-w-0 break-words text-foreground">{l.productName}<span className="text-muted-foreground"> × {l.quantity}</span>{l.date && <span className="block text-xs text-muted-foreground">{t("shopOrders.detail.serviceDate", { date: f.date(new Date(l.date + "T00:00:00")) })}</span>}</span>
+                      <span className="min-w-0 break-words text-foreground">{l.productName}<span className="text-muted-foreground"> × {l.quantity}</span>{l.date && <span className="block text-xs text-muted-foreground">{t("shopOrders.detail.serviceDate", { date: f.date(new Date(l.date + "T00:00:00")) })}</span>}{l.participants.length > 0 && <span className="block text-xs text-muted-foreground break-words">{t("shopOrders.detail.participants", { names: l.participants.join(", ") })}</span>}</span>
                       <span className="shrink-0 tabular-nums text-foreground">{eur(l.amountCents)}</span>
                     </li>
                   ))}
@@ -219,6 +219,14 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                       {o.billing.address && <p className="break-words">{o.billing.address}</p>}
                     </div>
                   )}
+                  {o.consent && (
+                    <div className="mt-3 rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">{t("shopOrders.detail.consentTitle")}</p>
+                      <p className="break-words">{o.consent.text}</p>
+                      <p>{t("shopOrders.detail.consentLine", { date: f.date(new Date(o.consent.acceptedAt)), hash: o.consent.textHash.slice(0, 10) })}</p>
+                    </div>
+                  )}
+                  <p className="mt-3 text-xs text-muted-foreground">{t("shopOrders.detail.buyerLanguage", { lang: o.buyerLocale })}</p>
                   {o.clientId ? (
                     <Link href={`/admin/crm/clientes/${o.clientId}`} className="mt-3 inline-block font-medium text-primary hover:underline">{t("shopOrders.detail.viewCustomer")}</Link>
                   ) : (

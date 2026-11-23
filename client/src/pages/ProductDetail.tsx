@@ -32,6 +32,7 @@ import {
   FALLBACK_GENERIC_STOREFRONT,
   formatEuros,
   fromPrice,
+  isParticipantsProduct,
   MAX_QUANTITY,
   needsServiceDate,
   SHOP_PATH,
@@ -274,7 +275,7 @@ export default function ProductDetail() {
 
               {buyable && (
                 <div>
-                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">{t.quantity}</label>
+                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">{isParticipantsProduct(str(p.productType)) ? t.participants : t.quantity}</label>
                   <div className="flex items-center gap-3">
                     <button type="button" aria-label={t.removeUnit} disabled={quantity <= 1} onClick={() => setQuantity((q) => clampQuantity(q - 1))} className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40">
                       <Minus className="w-4 h-4" />

@@ -17,7 +17,9 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { usePublicSite } from "@/hooks/usePublicSite";
+import { useBuyerLocale } from "@/hooks/useBuyerLocale";
 import { cartItemDate } from "@shared/publicSite";
+import { fillUiText, siteUiText } from "@shared/siteUiText";
 import { formatEuros, variantUnitPrice } from "@shared/storefront";
 
 /** Importe en formato es-ES («1.234,50 €»). */
@@ -26,8 +28,8 @@ const eur = (n: number) => formatEuros(n) ?? "0,00 €";
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Fecha del artículo; null si no tiene (productos de la tienda sin fecha): no se muestra. */
-function formatDate(dateStr: string): string | null {
-  return cartItemDate(dateStr, { weekday: "short", day: "numeric", month: "short" });
+function formatDate(dateStr: string, locale: string): string | null {
+  return cartItemDate(dateStr, { weekday: "short", day: "numeric", month: "short" }, locale === "de" ? "de-DE" : locale === "en" ? "en-GB" : "es-ES");
 }
 
 // ─── CartItemRow ──────────────────────────────────────────────────────────────
@@ -36,11 +38,15 @@ function CartItemRow({ item }: { item: CartItem }) {
   const { removeItem, updatePeople, updateVariant } = useCart();
   const [showVariants, setShowVariants] = useState(false);
   // Cantidad en unidades en una pyme; en personas en la instalación propia
-  const { features, text } = usePublicSite();
+  const locale = useBuyerLocale();
+  const t = siteUiText(locale);
+  const { features, text } = usePublicSite(locale);
   // Tienda de una pyme: la opción (talla, color…) se elige en la ficha; aquí solo se muestra
   const generic = !features || features.licensed;
   const QtyIcon = generic ? Package : Users;
-  const date = formatDate(item.bookingDate);
+  const date = formatDate(item.bookingDate, locale);
+  const participants = item.quantityKind === "participants";
+  const noun = participants ? t.coNounParticipants : text.quantityNoun;
 
   const minPeople = item.minPersons ?? 1;
   const maxPeople = item.maxPersons ?? 20;
@@ -88,7 +94,7 @@ function CartItemRow({ item }: { item: CartItem }) {
             <button
               onClick={() => removeItem(item.cartItemId)}
               className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-              aria-label={`Eliminar ${item.productName} del carrito`}
+              aria-label={fillUiText(t.coRemoveItem, { name: item.productName })}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -117,7 +123,7 @@ function CartItemRow({ item }: { item: CartItem }) {
         <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border text-xs">
           <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
             {item.variantName && <Tag className="w-3 h-3 shrink-0 text-primary" aria-hidden="true" />}
-            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{item.variantName ?? "Precio por unidad"}</span>
+            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{item.variantName ?? t.coPricePerUnit}</span>
           </span>
           <span className="shrink-0 font-semibold text-foreground">{eur(item.pricePerPerson)}{text.perUnitShort.replace("€", "")}</span>
         </div>
@@ -130,7 +136,7 @@ function CartItemRow({ item }: { item: CartItem }) {
         >
           <span className="flex items-center gap-1.5 text-muted-foreground">
             <Tag className="w-3 h-3 text-primary" />
-            {item.variantName ?? "Modalidad / Tarifa"}
+            {item.variantName ?? t.coModality}
           </span>
           <span className="flex items-center gap-1 font-bold text-primary">
             {eur(item.pricePerPerson)}{text.perUnitShort.replace("€", "")}
@@ -151,12 +157,12 @@ function CartItemRow({ item }: { item: CartItem }) {
                   : "hover:bg-background text-muted-foreground"
               )}
             >
-              <span>Precio estándar</span>
+              <span>{t.coStandardPrice}</span>
               <span className="font-bold">{eur(item.pricePerPerson)}{text.perUnitShort.replace("€", "")}</span>
             </button>
 
             {variants.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-1">Sin otras opciones</p>
+              <p className="text-xs text-muted-foreground text-center py-1">{t.coNoOtherOptions}</p>
             )}
 
             {variants.map(v => (
@@ -190,7 +196,7 @@ function CartItemRow({ item }: { item: CartItem }) {
             onClick={() => updatePeople(item.cartItemId, Math.max(minPeople, item.people - 1))}
             disabled={item.people <= minPeople}
             className="w-7 h-7 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40 transition-colors"
-            aria-label={`Reducir ${text.quantityNoun}`}
+            aria-label={fillUiText(t.coReduce, { noun })}
           >
             <Minus className="w-3 h-3" />
           </button>
@@ -200,14 +206,14 @@ function CartItemRow({ item }: { item: CartItem }) {
             onClick={() => updatePeople(item.cartItemId, Math.min(maxPeople, item.people + 1))}
             disabled={item.people >= maxPeople}
             className="w-7 h-7 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40 transition-colors"
-            aria-label={`Aumentar ${text.quantityNoun}`}
+            aria-label={fillUiText(t.coIncrease, { noun })}
           >
             <Plus className="w-3 h-3" />
           </button>
-          <span className="text-xs text-muted-foreground">{text.quantityShort}</span>
+          <span className="text-xs text-muted-foreground">{participants ? t.coParticipantShort : text.quantityShort}</span>
           {item.pricingType === "per_unit" && item.unitCapacity && item.unitCapacity > 0 && (
             <span className="text-xs text-primary font-medium ml-1">
-              → {Math.ceil(item.people / item.unitCapacity)} unid.
+              {fillUiText(t.coUnitsArrow, { n: Math.ceil(item.people / item.unitCapacity) })}
             </span>
           )}
         </div>
@@ -250,7 +256,9 @@ export default function CartDrawer() {
   const { items, totalItems, totalEstimated, isOpen, closeCart, clearCart } = useCart();
   const [, navigate] = useLocation();
   // Textos de la empresa: genéricos en una pyme («productos o servicios», «tienda»), los de siempre en la instalación propia
-  const { features, text } = usePublicSite();
+  const locale = useBuyerLocale();
+  const t = siteUiText(locale);
+  const { features, text } = usePublicSite(locale);
 
   function browse() {
     closeCart();
@@ -283,13 +291,13 @@ export default function CartDrawer() {
         )}
         role="dialog"
         aria-modal="true"
-        aria-label="Carrito de la compra"
+        aria-label={t.coCartAria}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-gradient-to-r from-primary/5 to-accent/5">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-primary" />
-            <h2 className="font-display font-bold text-lg text-foreground">Tu carrito</h2>
+            <h2 className="font-display font-bold text-lg text-foreground">{t.coCartTitle}</h2>
             {totalItems > 0 && (
               <span className="bg-primary text-primary-foreground text-xs font-bold px-2 py-0.5 rounded-full">
                 {totalItems}
@@ -299,7 +307,7 @@ export default function CartDrawer() {
           <button
             onClick={closeCart}
             className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            aria-label="Cerrar carrito"
+            aria-label={t.coCartClose}
           >
             <X className="w-5 h-5" />
           </button>
@@ -313,7 +321,7 @@ export default function CartDrawer() {
                 <ShoppingCart className="w-9 h-9 text-muted-foreground/50" />
               </div>
               <div>
-                <p className="font-display font-semibold text-foreground text-lg">Tu carrito está vacío</p>
+                <p className="font-display font-semibold text-foreground text-lg">{t.coCartEmptyTitle}</p>
                 <p className="text-muted-foreground text-sm mt-1">
                   {text.cartEmpty}
                 </p>
@@ -333,7 +341,7 @@ export default function CartDrawer() {
                   className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1"
                 >
                   <Trash2 className="w-3 h-3" />
-                  Vaciar
+                  {t.coEmptyShort}
                 </button>
               </div>
               {items.map(item => (
@@ -348,17 +356,17 @@ export default function CartDrawer() {
           <div className="border-t border-border px-5 py-4 space-y-3 bg-background">
             {/* Desglose */}
             <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Subtotal estimado</span>
+              <span>{t.coSubtotalEstimated}</span>
               <span className="font-semibold text-foreground">
                 {eur(totalEstimated)}
               </span>
             </div>
             <div className="flex items-center justify-between font-black text-base text-foreground border-t border-border pt-2">
-              <span>Total</span>
+              <span>{t.total}</span>
               <span className="text-foreground text-lg">{eur(totalEstimated)}</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              {features?.licensed ? "IVA incluido. Los descuentos se aplican en el siguiente paso." : "* El precio final se confirma en el siguiente paso."}
+              {features?.licensed ? t.coCartNoteLicensed : t.coCartNoteLegacy}
             </p>
 
             {/* Botón principal */}
@@ -368,7 +376,7 @@ export default function CartDrawer() {
               onClick={goToCheckout}
             >
               <span className="flex items-center gap-2">
-                Finalizar compra
+                {t.coCheckoutTitle}
                 <ArrowRight className="w-4 h-4" />
               </span>
             </Button>
