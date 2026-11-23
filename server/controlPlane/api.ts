@@ -204,6 +204,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
+import { LINKED_STATES } from "../commercialTerms/billingStore";
 import { customDomainDecision, exemptTenantsFromEnv, quotaPolicyForPhase, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
@@ -2939,7 +2940,28 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
     // Origen del cobro (Stripe o simulación) desde los pedidos; sin pedidos activos, todo es simulación
     const orderStore = d.orders?.store;
-    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling, orderStore ? (sid) => subscriptionBilling(orderStore, sid) : undefined));
+    // Una suscripción cobrada en Stripe por condiciones personalizadas (sin pedido) también consta como Stripe: la ficha de empresa y la
+    // suscripción no pueden decir «simulada» cuando Stripe ya cobró. Solo lectura; `orderId` 0 = sin pedido.
+    const termsBillingStore = d.subscriptions?.termsBilling?.store;
+    const originOf =
+      orderStore || termsBillingStore
+        ? async (sid: number) => {
+            const byOrder = orderStore ? await subscriptionBilling(orderStore, sid) : ({ source: "shadow" } as const);
+            if (byOrder.source === "stripe" || !termsBillingStore) return byOrder;
+            const row = await termsBillingStore.bySubscription(sid);
+            if (!row || !row.linkedAt || !row.lastPaidInvoiceId || !LINKED_STATES.includes(row.status)) return byOrder;
+            return {
+              source: "stripe" as const,
+              mode: d.stripe?.config.mode === "live" ? ("live" as const) : ("test" as const),
+              orderId: 0,
+              orderReference: null,
+              orderState: "terms_billing" as never,
+              graceEndsAt: row.graceEndsAt,
+              lastPayment: { status: "succeeded" as const, purpose: "initial" as const, amountCents: row.checkout?.firstChargeCents ?? 0, currency: "EUR", at: row.syncedAt ?? row.linkedAt, periodStart: null },
+            };
+          }
+        : undefined;
+    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling, originOf));
     // Facturación propia: emisor de las facturas = entidad jurídica de DF-1 (server/stripe/issuer.ts, solo lectura)
     if (d.invoicing) {
       const crmStore = d.crm.store;
