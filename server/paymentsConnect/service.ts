@@ -213,9 +213,17 @@ export async function startShopCheckout(
   if (!Number.isInteger(p.amountCents) || p.amountCents < STRIPE_MIN_AMOUNT_CENTS) throw new PaymentsError("bad_amount", "El importe del pedido no es válido para pagar con tarjeta");
   if (!/^[A-Za-z0-9_-]{4,32}$/.test(p.merchantOrder)) throw new PaymentsError("bad_amount", "Pedido no válido");
   const now = (d.now ?? Date.now)();
+  // Un clic repetido sobre el mismo pedido (el carrito reutiliza el pedido pendiente) debe devolver LA MISMA sesión: Stripe
+  // solo repite la respuesta de una clave si los parámetros son idénticos, y la caducidad cambia con el reloj. Por eso la
+  // caducidad se ancla al momento en que se creó la sesión abierta, y la clave distingue los intentos (sesión anterior
+  // caducada o con otro importe → intento nuevo).
+  const mine = (await d.store.listShopCheckouts(p.merchantOrder)).filter((c) => c.mode === d.config.mode && c.accountId === account.accountId);
+  const open = mine.find((c) => c.status === "pending" && c.amountCents === p.amountCents);
+  const attempt = open ? mine.indexOf(open) : mine.length;
+  const anchorMs = open ? open.createdAt : now;
   const session = await d.gateway.createCheckoutSession({
     accountId: account.accountId,
-    idempotencyKey: `shop-${d.tenantId}-${p.merchantOrder}-${p.amountCents}`,
+    idempotencyKey: `shop-${d.tenantId}-${p.merchantOrder}-${p.amountCents}${attempt > 0 ? `-${attempt}` : ""}`,
     amountCents: p.amountCents,
     currency: "eur",
     description: p.description,
@@ -223,7 +231,7 @@ export async function startShopCheckout(
     successUrl: p.successUrl,
     cancelUrl: p.cancelUrl,
     // Mínimo de Stripe: 30 minutos. Pasado ese tiempo la sesión caduca y el pedido lo cancela la limpieza de siempre
-    expiresAtSeconds: Math.floor(now / 1000) + 31 * 60,
+    expiresAtSeconds: Math.floor(anchorMs / 1000) + 31 * 60,
     metadata: { tenant_id: d.tenantId, merchant_order: p.merchantOrder },
   });
   if (!(await d.store.getCheckout(session.id))) {

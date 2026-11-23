@@ -70,7 +70,7 @@ const bad = (message: string) => new TRPCError({ code: "BAD_REQUEST", message })
  * Lanza BAD_REQUEST con un texto para la persona si falta elegir fecha, no hay fechas abiertas, la edición es ajena,
  * está cerrada/empezada/completa o no quedan plazas suficientes.
  */
-export async function prepareEditionLine(input: { experienceId: number; editionId?: number; people: number; now?: number }): Promise<EditionLine | null> {
+export async function prepareEditionLine(input: { experienceId: number; editionId?: number; people: number; now?: number; ignoreSeats?: boolean }): Promise<EditionLine | null> {
   const now = input.now ?? Date.now();
   const editions = await loadProductEditions(input.experienceId);
   const requirement = editionRequirement(editions, now);
@@ -83,7 +83,10 @@ export async function prepareEditionLine(input: { experienceId: number; editionI
   // Una retención caducada no debe hacer pasar por completa una edición con plazas
   if (editions.some((e) => e.id === input.editionId)) await settleEditionSeats(input.editionId, now).catch(() => undefined);
   const fresh = (await loadProductEditions(input.experienceId)).find((e) => e.id === input.editionId) ?? null;
-  const verdict = editionSaleVerdict(fresh, input.experienceId, input.people, now);
+  // `ignoreSeats`: solo fecha, estado y precio (el carrito lo usa para calcular la huella ANTES de saber si el pedido ya
+  // existe: un clic repetido sobre un pedido que ya retiene las últimas plazas no debe fallar por «completa»). Las plazas
+  // se comprueban después, solo si hay que crear el pedido, y la retención atómica es la garantía final.
+  const verdict = editionSaleVerdict(input.ignoreSeats && fresh ? { ...fresh, capacity: null, reserved: 0 } : fresh, input.experienceId, input.people, now);
   if (!verdict.ok) throw bad(verdict.message);
   const e = fresh!;
   return {

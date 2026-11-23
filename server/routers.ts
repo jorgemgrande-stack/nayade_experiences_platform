@@ -2822,7 +2822,7 @@ export const appRouter = router({
           const productBaseCents = eurosToCents(String(product.basePrice ?? "0"));
           if (!Number.isFinite(productBaseCents) || productBaseCents < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido` });
           // Producto con convocatorias: exige edición válida y abierta con plazas; su precio (si lo tiene) sustituye al base
-          const editionLine = await (await import("./editionPurchaseDb")).prepareEditionLine({ experienceId: item.productId, editionId: item.editionId, people: item.people });
+          const editionLine = await (await import("./editionPurchaseDb")).prepareEditionLine({ experienceId: item.productId, editionId: item.editionId, people: item.people, ignoreSeats: true });
           const baseCents = editionLine ? eurosToCents(String((await import("../shared/editionPurchase")).editionBasePrice(editionLine.priceOverride, productBaseCents / 100))) : productBaseCents;
           let lineName = product.title;
           // La opción elegida debe existir y ser de ESTE producto (las caducadas no se listan); nunca cae al precio base
@@ -2909,6 +2909,10 @@ export const appRouter = router({
         if (existingOrder) {
           merchantOrder = existingOrder;
         } else {
+          // Pedido nuevo: ahora sí se comprueban las plazas de cada convocatoria (el pedido reutilizado ya las retiene)
+          for (const it of itemsWithPrices) {
+            if (it.editionLine) await (await import("./editionPurchaseDb")).prepareEditionLine({ experienceId: it.productId, editionId: it.editionLine.editionId, people: it.people });
+          }
           // Código de usos limitados: los pagos en curso «sostienen» un uso durante la ventana, para que dos pagos
           // simultáneos no agoten el código a la vez (la confirmación del pago lo vuelve a garantizar de forma atómica)
           if (discountRow && discountRow.maxUses !== null) {

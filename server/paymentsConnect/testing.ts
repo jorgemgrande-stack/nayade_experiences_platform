@@ -71,6 +71,9 @@ export class MemoryPaymentStore implements PaymentStore {
   async listQuoteCheckouts(quoteId: number) {
     return Array.from(this.checkouts.values()).filter((c) => c.kind === "quote" && c.quoteId === quoteId).sort((a, b) => a.createdAt - b.createdAt);
   }
+  async listShopCheckouts(merchantOrder: string) {
+    return Array.from(this.checkouts.values()).filter((c) => c.kind === "shop_order" && c.merchantOrder === merchantOrder).sort((a, b) => a.createdAt - b.createdAt);
+  }
   async markCheckoutPaid(id: string, pi: string | null, now: number) {
     const c = this.checkouts.get(id);
     // Como el SQL: un cobro real también se aplica sobre una sesión que localmente figuraba cerrada o fallida
