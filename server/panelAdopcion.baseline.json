@@ -2,18 +2,8 @@
   "components/admin/ConfirmHost.tsx": {
     "dialogosNativos": 1
   },
-  "components/admin/CustomRolesPanel.tsx": {
-    "coloresFijos": 6
-  },
   "components/admin/MaintenanceModeControl.tsx": {
     "coloresFijos": 1
-  },
-  "components/admin/SubscriptionRecoveryBanner.tsx": {
-    "geometriaAjena": 1
-  },
-  "components/admin/UsersManager.tsx": {
-    "coloresFijos": 59,
-    "textoMinusculo": 21
   },
   "components/admin/crm/CrmParts.tsx": {
     "coloresFijos": 5
@@ -61,20 +51,8 @@
     "coloresFijos": 1,
     "geometriaAjena": 1
   },
-  "pages/admin/DocumentNumbersAdmin.tsx": {
-    "coloresFijos": 9
-  },
-  "pages/admin/EmailTemplatesManager.tsx": {
-    "coloresFijos": 15,
-    "textoMinusculo": 7
-  },
   "pages/admin/MiCuenta.tsx": {
     "coloresFijos": 2
-  },
-  "pages/admin/PdfTemplatesManager.tsx": {
-    "coloresFijos": 8,
-    "textoMinusculo": 4,
-    "geometriaAjena": 2
   },
   "pages/admin/ReviewsManager.tsx": {
     "coloresFijos": 25,
@@ -412,10 +390,6 @@
   "pages/admin/netReports/ReportParts.tsx": {
     "textoMinusculo": 1
   },
-  "pages/admin/onboarding/OnboardingWizard.tsx": {
-    "coloresFijos": 9,
-    "geometriaAjena": 1
-  },
   "pages/admin/operations/BookingsList.tsx": {
     "coloresFijos": 10
   },
@@ -472,46 +446,6 @@
     "coloresFijos": 45,
     "geometriaAjena": 14
   },
-  "pages/admin/settings/AdvancedSettings.tsx": {
-    "coloresFijos": 9,
-    "geometriaAjena": 2
-  },
-  "pages/admin/settings/Cobros.tsx": {
-    "coloresFijos": 7,
-    "geometriaAjena": 1
-  },
-  "pages/admin/settings/CompanyData.tsx": {
-    "geometriaAjena": 3
-  },
-  "pages/admin/settings/ConfigPanel.tsx": {
-    "coloresFijos": 17,
-    "geometriaAjena": 6
-  },
-  "pages/admin/settings/ConfigStatus.tsx": {
-    "coloresFijos": 7,
-    "geometriaAjena": 3
-  },
-  "pages/admin/settings/CustomDomains.tsx": {
-    "coloresFijos": 14,
-    "textoMinusculo": 1
-  },
-  "pages/admin/settings/EmailAccountsSettings.tsx": {
-    "coloresFijos": 12,
-    "textoMinusculo": 4
-  },
-  "pages/admin/settings/Integrations.tsx": {
-    "coloresFijos": 10,
-    "geometriaAjena": 4
-  },
-  "pages/admin/settings/PostmarkSettings.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/settings/Settings.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/setup/PrimerosPasos.tsx": {
-    "geometriaAjena": 1
-  },
   "pages/admin/socialTokenNet/SocialTokenNetHome.tsx": {
     "coloresFijos": 1,
     "geometriaAjena": 2
@@ -524,56 +458,6 @@
     "hexEnClases": 5,
     "textoMinusculo": 3,
     "geometriaAjena": 2
-  },
-  "pages/admin/subscription/ConversionSection.tsx": {
-    "geometriaAjena": 9
-  },
-  "pages/admin/subscription/CustomTermsSection.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/subscription/DataExportPage.tsx": {
-    "coloresFijos": 8,
-    "geometriaAjena": 5
-  },
-  "pages/admin/subscription/GrowSection.tsx": {
-    "geometriaAjena": 3
-  },
-  "pages/admin/subscription/ModulesPage.tsx": {
-    "coloresFijos": 11,
-    "geometriaAjena": 2
-  },
-  "pages/admin/subscription/PlanComparison.tsx": {
-    "textoMinusculo": 1,
-    "geometriaAjena": 6
-  },
-  "pages/admin/subscription/PlanContractSection.tsx": {
-    "coloresFijos": 1,
-    "textoMinusculo": 1,
-    "geometriaAjena": 1
-  },
-  "pages/admin/subscription/PlanRequests.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/subscription/SelfServiceSection.tsx": {
-    "coloresFijos": 3,
-    "textoMinusculo": 1,
-    "geometriaAjena": 2
-  },
-  "pages/admin/subscription/SubscriptionHero.tsx": {
-    "coloresFijos": 2,
-    "geometriaAjena": 3
-  },
-  "pages/admin/subscription/SubscriptionPage.tsx": {
-    "textoMinusculo": 1,
-    "geometriaAjena": 10
-  },
-  "pages/admin/subscription/UsagePage.tsx": {
-    "coloresFijos": 3,
-    "geometriaAjena": 3
-  },
-  "pages/admin/subscription/WithdrawalSection.tsx": {
-    "coloresFijos": 1,
-    "geometriaAjena": 1
   },
   "pages/admin/suppliers/SettlementsManager.tsx": {
     "coloresFijos": 32
