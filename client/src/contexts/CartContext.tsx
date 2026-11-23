@@ -36,6 +36,10 @@ export interface CartItem {
   maxPersons?: number;
   /** ID de variante seleccionada (opcional) */
   variantId?: number;
+  /** Convocatoria elegida (productos con fechas): la valida y la ocupa el servidor al pagar */
+  editionId?: number;
+  /** Etiqueta de la convocatoria (para mostrar) */
+  editionLabel?: string;
   /** Nombre de la variante (para mostrar) */
   variantName?: string;
   /** Extras seleccionados */

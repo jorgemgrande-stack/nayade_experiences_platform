@@ -2699,6 +2699,8 @@ export const appRouter = router({
           bookingDate: z.string(),
           people: z.number().int().min(1).max(100),
           variantId: z.number().int().positive().optional(),
+          /** Convocatoria elegida (obligatoria si el producto tiene fechas abiertas; la valida el servidor) */
+          editionId: z.number().int().positive().optional(),
           extras: noClientPricedExtras,
           // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
           legoPackLineIds: z.array(z.number().int().positive()).optional(),
@@ -2745,6 +2747,8 @@ export const appRouter = router({
           unitCapacity?: number;
           unitsBooked?: number;
           stockVariantId?: number;
+          /** Convocatoria comprada: plazas retenidas al crear la reserva (editionPurchaseDb) */
+          editionLine?: import("./editionPurchaseDb").EditionLine;
           /** Lego Pack: no es un producto del catálogo, nunca descuenta inventario. */
           stockExcluded?: boolean;
           legoPackSnapshot?: {
@@ -2798,8 +2802,11 @@ export const appRouter = router({
           // Agotado, retirado o sin publicar: no se vende aunque siga en un carrito guardado
           if (!isPurchasable(product)) throw new TRPCError({ code: "BAD_REQUEST", message: soldOutMessage(product.title) });
           // Importes en céntimos enteros. El precio base puede ser 0 si el precio vive en las opciones de pago (Basic/Premium…)
-          const baseCents = eurosToCents(String(product.basePrice ?? "0"));
-          if (!Number.isFinite(baseCents) || baseCents < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido` });
+          const productBaseCents = eurosToCents(String(product.basePrice ?? "0"));
+          if (!Number.isFinite(productBaseCents) || productBaseCents < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido` });
+          // Producto con convocatorias: exige edición válida y abierta con plazas; su precio (si lo tiene) sustituye al base
+          const editionLine = await (await import("./editionPurchaseDb")).prepareEditionLine({ experienceId: item.productId, editionId: item.editionId, people: item.people });
+          const baseCents = editionLine ? eurosToCents(String((await import("../shared/editionPurchase")).editionBasePrice(editionLine.priceOverride, productBaseCents / 100))) : productBaseCents;
           let lineName = product.title;
           // La opción elegida debe existir y ser de ESTE producto (las caducadas no se listan); nunca cae al precio base
           const variants = await getVariants(item.productId);
@@ -2825,17 +2832,18 @@ export const appRouter = router({
           // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
           assertCheckoutLinePriced(product.title, lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalCents / 100, `#${item.productId}, opción ${item.variantId ?? "-"}`);
           // Reglas de precios de la empresa (Business), antes del cupón: sin reglas, el precio de siempre
-          unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: item.bookingDate }).unitPrice);
+          unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: editionLine?.bookingDate ?? item.bookingDate }).unitPrice);
           const { totalCents: itemBaseCents, unitsBooked: itemUnits } = lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits);
           const itemAmountCents = itemBaseCents + extrasCents;
           totalAmountCents += itemAmountCents;
           itemsWithPrices.push({
             productId: item.productId,
             productName: lineName,
-            bookingDate: item.bookingDate,
+            bookingDate: editionLine?.bookingDate ?? item.bookingDate,
             people: item.people,
             extrasJson: JSON.stringify(item.extras),
             amountTotal: itemAmountCents,
+            editionLine: editionLine ?? undefined,
             pricingType: itemPricingType,
             unitCapacity: itemUnitCap ?? undefined,
             unitsBooked: itemUnits || undefined,
@@ -2901,14 +2909,14 @@ export const appRouter = router({
           const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
           const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
           const dbForSnapshots = await getDb();
-          for (const { legoPackSnapshot, stockVariantId, stockExcluded, ...item } of itemsWithPrices) {
-            const { id: reservationId } = await createReservation({
+          for (const { legoPackSnapshot, stockVariantId, stockExcluded, editionLine, ...item } of itemsWithPrices) {
+            const reservationData = {
               ...item,
               customerName: input.customerName,
               customerEmail: input.customerEmail,
               customerPhone: input.customerPhone,
               merchantOrder,
-              notes: orderNotes(productNames, input.comments),
+              notes: [orderNotes(productNames, input.comments), editionLine?.note].filter(Boolean).join("\n"),
               pricingType: item.pricingType,
               unitCapacity: item.unitCapacity,
               unitsBooked: item.unitsBooked,
@@ -2917,7 +2925,10 @@ export const appRouter = router({
               fbc: input.fbc ?? undefined,
               clientIpAddress: cartClientIp,
               clientUserAgent: cartClientUa,
-            });
+            };
+            const reservationId = editionLine
+              ? await (await import("./editionPurchaseDb")).createEditionLine(editionLine, reservationData)
+              : (await createReservation(reservationData)).id;
             if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
             // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
             if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);

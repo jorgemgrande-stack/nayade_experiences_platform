@@ -144,6 +144,7 @@ export default function Checkout() {
           bookingDate: i.bookingDate,
           people: i.people,
           variantId: i.variantId,
+          editionId: i.editionId,
           extras: i.extras,
           legoPackLineIds: i.legoPackLineIds,
           legoPackLinePeople: i.legoPackLinePeople,
