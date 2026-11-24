@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading } from "@/components/admin/PanelStates";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -99,7 +101,7 @@ function HistoryDialog({ room, onClose }: { room: any; onClose: () => void }) {
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Historial de la habitación {room.code}</DialogTitle></DialogHeader>
         {q.isLoading ? (
-          <p className="text-sm text-muted-foreground py-4">Cargando…</p>
+          <PanelLoading />
         ) : !(q.data ?? []).length ? (
           <p className="text-sm text-muted-foreground py-4">Sin cambios de estado todavía. Cada cambio (manual, check-in, check-out) quedará aquí.</p>
         ) : (
@@ -149,21 +151,19 @@ export default function HotelRooms() {
   return (
     <AdminLayout title="Habitaciones">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><BedDouble className="h-6 w-6 shrink-0" /> Habitaciones</h1>
-            <p className="text-muted-foreground text-sm">Cada habitación física de tus tipologías, con su estado operativo. Es la base del planning, la asignación y la recepción.</p>
-          </div>
+        <PanelPageHeader icon={<BedDouble />} title="Habitaciones" description={"Cada habitación física de tus tipologías, con su estado operativo. Es la base del planning, la asignación y la recepción."}
+          actions={<>
           <div className="flex gap-2">
             <Button variant="outline" size="icon" onClick={refresh} aria-label="Actualizar"><RefreshCw className="h-4 w-4" /></Button>
             <Button onClick={() => setEdit(null)} disabled={!roomTypes.length || isPmsNotInstalled(roomsQ.error)}><Plus className="h-4 w-4 mr-1" /> Nueva habitación</Button>
           </div>
-        </div>
+          </>}
+        />
 
         {isPmsNotInstalled(roomsQ.error) ? (
           <PmsNotInstalled />
         ) : typesQ.isLoading || roomsQ.isLoading ? (
-          <div className="text-center py-12 text-muted-foreground"><RefreshCw className="h-5 w-5 animate-spin inline mr-2" /> Cargando…</div>
+          <PanelLoading />
         ) : !roomTypes.length ? (
           <Card><CardContent className="p-0"><EmptyStep title="Crea primero una tipología" text="Las habitaciones físicas pertenecen a una tipología (doble, suite…). Créala en el PMS con su precio y número de unidades." href="/admin/hotel" action="Ir a tipologías" /></CardContent></Card>
         ) : !rooms.length ? (
@@ -176,7 +176,7 @@ export default function HotelRooms() {
         ) : (
           <>
             {mismatched.length > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
                 El número de habitaciones activas no coincide con las unidades a la venta en: {mismatched.map((t: any) => `${t.name} (${rooms.filter((r: any) => r.roomTypeId === t.id && r.isActive).length} de ${t.totalUnits})`).join(", ")}. La venta sigue usando las unidades de la tipología.
               </div>
             )}

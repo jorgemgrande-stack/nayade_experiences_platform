@@ -2,6 +2,9 @@ import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -120,7 +123,8 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
           <DialogTitle>{editTreatment ? "Editar tratamiento" : "Nuevo tratamiento"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Datos básicos</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>Nombre *</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: slugify(e.target.value) }))} placeholder="Masaje relajante" />
@@ -138,7 +142,8 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             <Label>Descripción completa</Label>
             <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={4} />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Duración, aforo y precio</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <Label>Precio (€/persona) *</Label>
               <Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="55" />
@@ -163,14 +168,15 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Imagen</h3>
           <div>
             <Label>Imagen de portada</Label>
             <ImageUploader value={form.coverImageUrl} onChange={url => setForm(f => ({ ...f, coverImageUrl: url }))} />
           </div>
           {/* Descuento promocional */}
-          <div className="border rounded-lg p-4 space-y-3 bg-amber-50 dark:bg-amber-950/20">
-            <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-400">Descuento promocional</h4>
-            <div className="grid grid-cols-3 gap-3">
+          <div className="border rounded-lg p-4 space-y-3 bg-warning/10">
+            <h4 className="font-semibold text-sm text-warning">Descuento promocional</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <Label>Descuento (%)</Label>
                 <Input type="number" min={0} max={100} step={0.01} value={form.discountPercent}
@@ -189,9 +195,9 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             </div>
           </div>
           {/* Régimen fiscal */}
-          <div className="border rounded-lg p-4 space-y-3 bg-blue-50 dark:bg-blue-950/20">
-            <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-400">Régimen fiscal</h4>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="border rounded-lg p-4 space-y-3 bg-info/10">
+            <h4 className="font-semibold text-sm text-info">Régimen fiscal</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label>Régimen</Label>
                 <Select value={form.fiscalRegime} onValueChange={v => setForm(f => ({ ...f, fiscalRegime: v }))}>
@@ -227,9 +233,9 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             </div>
           </div>
           {/* Proveedor y liquidaciones */}
-          <div className="border rounded-lg p-4 space-y-3 bg-violet-50 dark:bg-violet-950/20">
-            <h4 className="font-semibold text-sm text-violet-700 dark:text-violet-400">Proveedor y liquidaciones</h4>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="border rounded-lg p-4 space-y-3 bg-primary/10">
+            <h4 className="font-semibold text-sm text-primary">Proveedor y liquidaciones</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="col-span-2">
                 <Label>Proveedor</Label>
                 <SupplierSelect value={form.supplierId} onChange={v => setForm(f => ({ ...f, supplierId: v }))} />
@@ -280,10 +286,11 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.isPresentialSale} onCheckedChange={v => setForm(f => ({ ...f, isPresentialSale: v }))} />
-              <Label className="text-violet-700 font-medium">Vendible en TPV</Label>
+              <Label className="text-primary font-medium">Vendible en TPV</Label>
             </div>
           </div>
         </div>
+        {(!form.name || !form.price) && <p className="text-xs text-danger" role="alert">Para guardar, completa el nombre y el precio (campos con *).</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleSubmit} disabled={isLoading || !form.name || !form.price}>
@@ -328,9 +335,9 @@ function CategoriesTab() {
         </Card>
       )}
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+        <PanelLoading />
       ) : (categories ?? []).length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No hay categorías.</div>
+        <PanelEmpty icon={<Sparkles />} title="No hay categorías" description="Las categorías agrupan los tratamientos en la web." />
       ) : (
         <div className="space-y-2">
           {(categories ?? []).map((c: any) => (
@@ -340,7 +347,7 @@ function CategoriesTab() {
                   <div className="font-medium">{c.name}</div>
                   <div className="text-sm text-muted-foreground">/{c.slug}</div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: c.id })} className="text-red-500 hover:text-red-700">
+                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: c.id })} className="text-danger hover:text-danger/80">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </CardContent>
@@ -403,7 +410,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
               generateMut.mutate({ treatmentId: selectedTreatment ?? (treatments[0]?.id ?? 0), startDate: fd, endDate: endD });
             }}
             disabled={!generateDate || generateMut.isPending}
-            className="bg-emerald-600 hover:bg-emerald-500"
+           
           >
             <Zap className="h-4 w-4 mr-1" />
             {generateMut.isPending ? "Generando..." : "Generar slots"}
@@ -476,11 +483,9 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
       )}
 
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+        <PanelLoading />
       ) : (templates ?? []).length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <p>No hay plantillas. Crea una para empezar a generar slots automáticamente.</p>
-        </div>
+        <PanelEmpty icon={<Clock />} title="No hay plantillas de horario" description="Crea una para empezar a generar slots automáticamente." />
       ) : (
         <div className="space-y-2">
           {(templates ?? []).map((t: any) => {
@@ -494,7 +499,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
                       {DOW[t.dayOfWeek]} · {t.startTime} – {t.endTime} · {t.slotIntervalMinutes > 0 ? `Cada ${t.slotIntervalMinutes} min` : "Slot único"} · Máx. {t.capacity} reserva{t.capacity !== 1 ? "s" : ""}
                     </div>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: t.id })} className="text-red-500 hover:text-red-700">
+                  <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: t.id })} className="text-danger hover:text-danger/80">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </CardContent>
@@ -570,9 +575,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
               {DAYS.map(d => <div key={d} className="text-center text-xs text-muted-foreground font-medium py-1">{d}</div>)}
             </div>
             {isLoading ? (
-              <div className="flex items-center justify-center py-12 text-muted-foreground">
-                <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Cargando...
-              </div>
+              <PanelLoading />
             ) : (
               <div className="grid grid-cols-7 gap-1">
                 {Array(firstDow).fill(null).map((_, i) => <div key={`b${i}`} />)}
@@ -591,7 +594,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
                         isSelected
                           ? "bg-primary text-primary-foreground border-primary"
                           : hasSlots
-                            ? "bg-teal-50 border-teal-200 dark:bg-teal-900/20 dark:border-teal-700"
+                            ? "bg-success/10 border-success/40"
                             : "bg-muted/30 border-muted"
                       }`}
                     >
@@ -632,7 +635,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
                             {booked}/{cap} reservas
                           </div>
                         </div>
-                        <Badge className={blocked ? "bg-slate-500" : full ? "bg-red-500" : "bg-emerald-500"}>
+                        <Badge className={blocked ? "bg-muted text-muted-foreground" : full ? "border border-danger/40 bg-danger/15 text-danger" : "border border-success/40 bg-success/15 text-success"}>
                           {blocked ? "Bloqueado" : full ? "Lleno" : "Libre"}
                         </Badge>
                       </div>
@@ -654,7 +657,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function SpaManager() {
-  const { data: treatments, isLoading } = trpc.spa.adminGetTreatments.useQuery();
+  const { data: treatments, isLoading, error: treatmentsError, refetch: refetchTreatments } = trpc.spa.adminGetTreatments.useQuery();
   const { data: categories } = trpc.spa.adminGetCategories.useQuery();
   const [showForm, setShowForm] = useState(false);
   const [editTreatment, setEditTreatment] = useState<any>(null);
@@ -672,18 +675,29 @@ export default function SpaManager() {
   return (
     <AdminLayout title="SPA">
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">SPA</h1>
-          <p className="text-muted-foreground text-sm">Gestiona tratamientos, horarios y disponibilidad</p>
+      <PanelPageHeader
+        icon={<Sparkles />}
+        title="SPA"
+        description="Gestiona tratamientos, horarios y disponibilidad"
+        actions={
+          <Button onClick={() => { setEditTreatment(null); setShowForm(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> Nuevo tratamiento
+          </Button>
+        }
+        className="mb-0"
+      />
+
+      {!isLoading && !treatmentsError && (treatments ?? []).length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard icon={<Sparkles />} label="Tratamientos" value={(treatments ?? []).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Eye />} tone="success" label="Activos" value={(treatments ?? []).filter((t: any) => t.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<EyeOff />} tone="neutral" label="Inactivos" value={(treatments ?? []).filter((t: any) => !t.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Star />} tone="warning" label="Destacados" value={(treatments ?? []).filter((t: any) => t.isFeatured).length} className="bg-gradient-to-br from-primary/5 to-card" />
         </div>
-        <Button onClick={() => { setEditTreatment(null); setShowForm(true); }}>
-          <Plus className="h-4 w-4 mr-2" /> Nuevo tratamiento
-        </Button>
-      </div>
+      )}
 
       <Tabs defaultValue="treatments">
-        <TabsList>
+        <TabsList className="h-auto max-w-full flex-wrap justify-start">
           <TabsTrigger value="treatments">Tratamientos</TabsTrigger>
           <TabsTrigger value="categories">Categorías</TabsTrigger>
           <TabsTrigger value="schedule">Plantillas de horario</TabsTrigger>
@@ -693,12 +707,13 @@ export default function SpaManager() {
         {/* ── Treatments ── */}
         <TabsContent value="treatments" className="mt-4">
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Cargando...</div>
+            <PanelLoading />
+          ) : treatmentsError ? (
+            <PanelError error={treatmentsError} onRetry={() => void refetchTreatments()} />
           ) : (treatments ?? []).length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>No hay tratamientos. Crea el primero.</p>
-            </div>
+            <PanelEmpty icon={<Sparkles />} title="Aún no hay tratamientos" description="Crea el primer tratamiento con su duración, aforo y precio para poder generar horarios y reservas.">
+              <Button onClick={() => { setEditTreatment(null); setShowForm(true); }}><Plus className="h-4 w-4 mr-2" /> Nuevo tratamiento</Button>
+            </PanelEmpty>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {(treatments ?? []).map((t: any) => (
@@ -712,11 +727,11 @@ export default function SpaManager() {
                       </div>
                     )}
                     {t.isFeatured && (
-                      <Badge className="absolute top-2 left-2 bg-amber-500 text-white text-xs">
+                      <Badge className="absolute top-2 left-2 border border-warning/40 bg-warning/15 text-warning text-xs">
                         <Star className="h-3 w-3 mr-1" /> Destacado
                       </Badge>
                     )}
-                    <Badge className={`absolute top-2 right-2 text-xs ${t.isActive ? "bg-emerald-500" : "bg-slate-400"}`}>
+                    <Badge className={`absolute top-2 right-2 text-xs ${t.isActive ? "border border-success/40 bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
                       {t.isActive ? "Activo" : "Inactivo"}
                     </Badge>
                   </div>
@@ -739,7 +754,7 @@ export default function SpaManager() {
                       </Button>
                       <Button
                         size="sm" variant="outline"
-                        className="text-red-500 hover:text-red-700 ml-auto"
+                        className="text-danger hover:text-danger/80 ml-auto"
                         onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${t.name}"?`, destructive: true }))) deleteMut.mutate({ id: t.id }); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -760,7 +775,7 @@ export default function SpaManager() {
         {/* ── Schedule Templates ── */}
         <TabsContent value="schedule" className="mt-4">
           {(treatments ?? []).length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">Primero crea al menos un tratamiento.</div>
+            <PanelEmpty icon={<Sparkles />} title="Primero crea un tratamiento" description="Los horarios y los slots se generan sobre tus tratamientos." />
           ) : (
             <ScheduleTemplatesTab treatments={treatments ?? []} />
           )}
@@ -769,7 +784,7 @@ export default function SpaManager() {
         {/* ── Slots Calendar ── */}
         <TabsContent value="slots" className="mt-4">
           {(treatments ?? []).length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">Primero crea al menos un tratamiento.</div>
+            <PanelEmpty icon={<Sparkles />} title="Primero crea un tratamiento" description="Los horarios y los slots se generan sobre tus tratamientos." />
           ) : (
             <SlotsCalendar treatments={treatments ?? []} />
           )}

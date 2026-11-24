@@ -224,44 +224,6 @@
     "coloresFijos": 4,
     "geometriaAjena": 5
   },
-  "pages/admin/hotel/FolioDialog.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/hotel/GuestsDialog.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/hotel/HotelHousekeeping.tsx": {
-    "coloresFijos": 4,
-    "textoMinusculo": 1
-  },
-  "pages/admin/hotel/HotelIcal.tsx": {
-    "coloresFijos": 5
-  },
-  "pages/admin/hotel/HotelManager.tsx": {
-    "coloresFijos": 19
-  },
-  "pages/admin/hotel/HotelPlanning.tsx": {
-    "coloresFijos": 8,
-    "textoMinusculo": 5
-  },
-  "pages/admin/hotel/HotelReception.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/hotel/HotelReports.tsx": {
-    "textoMinusculo": 1
-  },
-  "pages/admin/hotel/HotelReservations.tsx": {
-    "coloresFijos": 6
-  },
-  "pages/admin/hotel/HotelRooms.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/hotel/OnlineCheckin.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/hotel/pmsShared.tsx": {
-    "coloresFijos": 6
-  },
   "pages/admin/marketing/CuponesManager.tsx": {
     "textoMinusculo": 1
   },
@@ -306,18 +268,6 @@
   },
   "pages/admin/restaurantNet/SalasMesas.tsx": {
     "geometriaAjena": 1
-  },
-  "pages/admin/restaurants/GlobalCalendar.tsx": {
-    "coloresFijos": 16,
-    "textoMinusculo": 2,
-    "geometriaAjena": 2
-  },
-  "pages/admin/restaurants/RestaurantsManager.tsx": {
-    "coloresFijos": 45,
-    "geometriaAjena": 14
-  },
-  "pages/admin/spa/SpaManager.tsx": {
-    "coloresFijos": 15
   },
   "pages/admin/studio/StudioPage.tsx": {
     "coloresFijos": 8,
