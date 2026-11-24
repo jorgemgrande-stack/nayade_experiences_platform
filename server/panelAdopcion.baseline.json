@@ -422,7 +422,7 @@
     "dialogosNativos": 1
   },
   "pages/admin/tpv/TpvScreen.tsx": {
-    "textoMinusculo": 8,
+    "textoMinusculo": 1,
     "geometriaAjena": 2
   },
   "pages/admin/travel/travelShared.tsx": {
