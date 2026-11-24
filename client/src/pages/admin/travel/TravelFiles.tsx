@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -192,8 +194,8 @@ function FileDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const submitOp = trpc.travel.submitOperation.useMutation({ onSuccess: (r) => { toast.success(r.note); refresh(); }, onError });
   const voucher = trpc.travel.voucher.useMutation({ onSuccess: (r) => downloadBase64Pdf(r.fileName, r.base64), onError });
   const d = q.data;
-  if (q.isLoading) return <div className="text-center py-12 text-muted-foreground"><RefreshCw className="h-5 w-5 animate-spin inline mr-2" /> Cargando…</div>;
-  if (q.error) return isTravelNotInstalled(q.error) ? <TravelNotInstalled /> : <Card><CardContent className="p-6 text-sm text-destructive">{q.error.message}</CardContent></Card>;
+  if (q.isLoading) return <PanelLoading label="Cargando el expediente…" />;
+  if (q.error) return isTravelNotInstalled(q.error) ? <TravelNotInstalled /> : <PanelError error={q.error} onRetry={() => q.refetch()} />;
   if (!d) return null;
   const f = d.file;
   const editable = !d.editBlocker;
@@ -321,13 +323,13 @@ export default function TravelFiles() {
           <FileDetail id={selected} onBack={() => setSelected(null)} />
         ) : (
           <>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="text-2xl font-bold flex items-center gap-2"><Briefcase className="h-6 w-6 shrink-0" /> Expedientes de viaje</h1>
-                <p className="text-muted-foreground text-sm">Paquetes y viajes con servicios de varios proveedores: margen, presupuesto, reserva y bonos.</p>
-              </div>
-              <Button onClick={() => setCreating(true)} disabled={isTravelNotInstalled(q.error)}><Plus className="h-4 w-4 mr-1" /> Nuevo expediente</Button>
-            </div>
+            <PanelPageHeader
+              className="mb-1"
+              icon={<Briefcase />}
+              title="Expedientes de viaje"
+              description="Paquetes y viajes con servicios de varios proveedores: margen, presupuesto, reserva y bonos."
+              actions={<Button onClick={() => setCreating(true)} disabled={isTravelNotInstalled(q.error)}><Plus className="h-4 w-4 mr-1" /> Nuevo expediente</Button>}
+            />
             <div className="flex flex-wrap gap-2">
               <Input className="w-64" placeholder="Buscar por cliente, viaje o número" value={search} onChange={(e) => setSearch(e.target.value)} />
               <Select value={status} onValueChange={setStatus}>
@@ -341,7 +343,7 @@ export default function TravelFiles() {
             {isTravelNotInstalled(q.error) ? <TravelNotInstalled /> : (
               <Card>
                 <CardContent className="p-0">
-                  {q.isLoading ? <p className="p-6 text-sm text-muted-foreground">Cargando…</p> : list.length === 0 ? (
+                  {q.isLoading ? <PanelLoading label="Cargando expedientes…" /> : q.error ? <div className="p-4"><PanelError error={q.error} onRetry={() => q.refetch()} /></div> : list.length === 0 ? (
                     <TravelEmpty title="Crea tu primer expediente" text="Un expediente reúne el viaje de un cliente: sus servicios, el presupuesto y la reserva.">
                       <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Nuevo expediente</Button>
                     </TravelEmpty>

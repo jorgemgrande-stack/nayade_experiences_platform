@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,12 +36,12 @@ export default function TravelMargins() {
   return (
     <AdminLayout title="Márgenes comerciales">
       <div className="space-y-5 max-w-full">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Coins className="h-6 w-6 shrink-0" /> Márgenes</h1>
-          <p className="text-muted-foreground text-sm">
-            Recargo sobre el coste neto (PVP = neto × (1 + recargo)) y comisión por defecto cuando el proveedor fija el PVP. Se aplica la regla más concreta: proveedor, después sede y después global; sin reglas, 20 % de recargo.
-          </p>
-        </div>
+        <PanelPageHeader
+          className="mb-1"
+          icon={<Coins />}
+          title="Márgenes"
+          description="Recargo sobre el coste neto (PVP = neto × (1 + recargo)) y comisión por defecto cuando el proveedor fija el PVP. Se aplica la regla más concreta: proveedor, después sede y después global; sin reglas, 20 % de recargo."
+        />
         {isTravelNotInstalled(q.error) ? <TravelNotInstalled /> : (
           <>
             <Card>

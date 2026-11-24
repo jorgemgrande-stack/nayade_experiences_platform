@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,7 +42,7 @@ function OperationDialog({ id, onClose }: { id: number; onClose: () => void }) {
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Operación con el proveedor</DialogTitle></DialogHeader>
-        {!op ? <p className="text-sm text-muted-foreground py-4">Cargando…</p> : (
+        {!op ? <PanelLoading /> : (
           <div className="space-y-4 py-1">
             <div className="text-sm space-y-1">
               <div className="font-medium">{op.serviceTitle} <span className="text-muted-foreground font-normal">· {KIND_LABEL[op.serviceKind ?? ""] ?? op.serviceKind}</span></div>
@@ -96,17 +98,19 @@ export default function TravelOperations() {
   return (
     <AdminLayout title="Operaciones con proveedores">
       <div className="space-y-5 max-w-full">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><ClipboardList className="h-6 w-6 shrink-0" /> Operaciones</h1>
-          <p className="text-muted-foreground text-sm">Cada servicio reservado se gestiona con su proveedor: envío, confirmación, alternativas y localizador. La gestión es manual (correo o teléfono) y aquí queda registrada.</p>
-        </div>
+        <PanelPageHeader
+          className="mb-1"
+          icon={<ClipboardList />}
+          title="Operaciones"
+          description="Cada servicio reservado se gestiona con su proveedor: envío, confirmación, alternativas y localizador. La gestión es manual (correo o teléfono) y aquí queda registrada."
+        />
         <Tabs value={bucket} onValueChange={(v) => setBucket(v as typeof bucket)}>
           <TabsList className="flex-wrap h-auto">{BUCKETS.map((b) => <TabsTrigger key={b.value} value={b.value}>{b.label}</TabsTrigger>)}</TabsList>
         </Tabs>
         {isTravelNotInstalled(q.error) ? <TravelNotInstalled /> : (
           <Card>
             <CardContent className="p-0">
-              {q.isLoading ? <p className="p-6 text-sm text-muted-foreground">Cargando…</p> : list.length === 0 ? (
+              {q.isLoading ? <PanelLoading label="Cargando operaciones…" /> : q.error ? <div className="p-4"><PanelError error={q.error} onRetry={() => q.refetch()} /></div> : list.length === 0 ? (
                 <TravelEmpty title="Nada en esta bandeja" text="Las operaciones nacen al convertir un expediente en reserva: una por cada servicio de proveedor." />
               ) : (
                 <div className="overflow-x-auto">
