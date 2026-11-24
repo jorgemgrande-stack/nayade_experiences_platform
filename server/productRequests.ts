@@ -250,6 +250,8 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
         ? t.waitlisted
         : edition
         ? t.seatRequestReceived
+        : startDay
+        ? fillUiText(t.requestDatePending, { date: formatIsoDayShort(startDay), n: seats })
         : t.requestReceived,
     };
   });
