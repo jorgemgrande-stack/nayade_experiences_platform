@@ -42,12 +42,29 @@ const EMPTY_FORM: AccountForm = {
 
 // ─── Field row helper ─────────────────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs text-foreground/60">{label}</Label>
       {children}
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
+  );
+}
+
+// Sección del formulario: título, descripción breve y los campos (tarjeta local de esta pantalla)
+function FormSection({ icon, title, description, tone = "text-foreground", children }: { icon?: React.ReactNode; title: string; description?: string; tone?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-4">
+      <header className="space-y-0.5">
+        <div className="flex items-center gap-2">
+          {icon}
+          <h3 className={`text-xs font-semibold uppercase tracking-wider ${tone}`}>{title}</h3>
+        </div>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      </header>
+      {children}
+    </section>
   );
 }
 
@@ -85,6 +102,11 @@ function AccountModal({
   const [smtpTestResult, setSmtpTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [testingImap, setTestingImap] = useState(false);
   const [testingSmtp, setTestingSmtp] = useState(false);
+  // Aviso visible en los campos obligatorios que el botón de guardar exige (se muestra al salir del campo vacío)
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const touch = (k: string) => () => setTouched(p => ({ ...p, [k]: true }));
+  const missing = (k: "name" | "imapHost" | "smtpHost") => (touched[k] && !form[k].trim() ? t("settingsEmailAccounts.modal.required") : undefined);
+  const canSubmit = !!form.name && !!form.imapHost && !!form.smtpHost;
 
   const f = (k: keyof AccountForm) => (v: any) => setForm(p => ({ ...p, [k]: v }));
 
@@ -140,11 +162,13 @@ function AccountModal({
           <DialogTitle>{editId ? t("settingsEmailAccounts.modal.editTitle") : t("settingsEmailAccounts.modal.newTitle")}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="space-y-4 py-2">
+          <p className="text-xs text-muted-foreground">{t("settingsEmailAccounts.modal.requiredNote")}</p>
           {/* General */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={t("settingsEmailAccounts.modal.accountName")}>
-              <Input value={form.name} onChange={e => f("name")(e.target.value)} className="h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.accountNamePh")} />
+          <FormSection icon={<Mail className="w-3.5 h-3.5 text-muted-foreground" />} title={t("settingsEmailAccounts.modal.account")} description={t("settingsEmailAccounts.modal.accountDesc")}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label={t("settingsEmailAccounts.modal.accountName")} error={missing("name")}>
+              <Input value={form.name} onChange={e => f("name")(e.target.value)} onBlur={touch("name")} aria-invalid={!!missing("name")} className="h-9 sm:h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.accountNamePh")} />
             </Field>
             <Field label={t("settingsEmailAccounts.modal.accountEmail")}>
               <Input value={form.email} onChange={e => f("email")(e.target.value)} className="h-8 text-xs" placeholder="info@empresa.es" />
@@ -153,20 +177,17 @@ function AccountModal({
               <Input value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.fromNamePh")} />
             </Field>
             <Field label={t("settingsEmailAccounts.modal.fromEmail")}>
-              <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-8 text-xs" placeholder="info@tuempresa.es" />
+              <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-9 sm:h-8 text-xs" placeholder="info@tuempresa.es" />
             </Field>
           </div>
+          </FormSection>
 
           {/* IMAP */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Server className="w-3.5 h-3.5 text-info" />
-              <h3 className="text-xs font-semibold text-info uppercase tracking-wider">{t("settingsEmailAccounts.modal.receiving")}</h3>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <Field label={t("settingsEmailAccounts.modal.imapServer")}>
-                  <Input value={form.imapHost} onChange={e => f("imapHost")(e.target.value)} className="h-8 text-xs font-mono" placeholder="imap.empresa.es" />
+          <FormSection icon={<Server className="w-3.5 h-3.5 text-info" />} tone="text-info" title={t("settingsEmailAccounts.modal.receiving")} description={t("settingsEmailAccounts.modal.receivingDesc")}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <Field label={t("settingsEmailAccounts.modal.imapServer")} error={missing("imapHost")}>
+                  <Input value={form.imapHost} onChange={e => f("imapHost")(e.target.value)} onBlur={touch("imapHost")} aria-invalid={!!missing("imapHost")} className="h-9 sm:h-8 text-xs font-mono" placeholder="imap.empresa.es" />
                 </Field>
               </div>
               <Field label={t("settingsEmailAccounts.modal.port")}>
@@ -175,7 +196,7 @@ function AccountModal({
               <Field label={t("settingsEmailAccounts.modal.imapUser")}>
                 <Input value={form.imapUser} onChange={e => f("imapUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label={t("settingsEmailAccounts.modal.imapPassword")}>
                   <PasswordInput value={form.imapPassword} onChange={f("imapPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
                 </Field>
@@ -199,18 +220,14 @@ function AccountModal({
                 </span>
               )}
             </div>
-          </div>
+          </FormSection>
 
           {/* SMTP */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Send className="w-3.5 h-3.5 text-primary" />
-              <h3 className="text-xs font-semibold text-primary uppercase tracking-wider">{t("settingsEmailAccounts.modal.sending")}</h3>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <Field label={t("settingsEmailAccounts.modal.smtpServer")}>
-                  <Input value={form.smtpHost} onChange={e => f("smtpHost")(e.target.value)} className="h-8 text-xs font-mono" placeholder="smtp.empresa.es" />
+          <FormSection icon={<Send className="w-3.5 h-3.5 text-primary" />} tone="text-primary" title={t("settingsEmailAccounts.modal.sending")} description={t("settingsEmailAccounts.modal.sendingDesc")}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <Field label={t("settingsEmailAccounts.modal.smtpServer")} error={missing("smtpHost")}>
+                  <Input value={form.smtpHost} onChange={e => f("smtpHost")(e.target.value)} onBlur={touch("smtpHost")} aria-invalid={!!missing("smtpHost")} className="h-9 sm:h-8 text-xs font-mono" placeholder="smtp.empresa.es" />
                 </Field>
               </div>
               <Field label={t("settingsEmailAccounts.modal.port")}>
@@ -219,7 +236,7 @@ function AccountModal({
               <Field label={t("settingsEmailAccounts.modal.smtpUser")}>
                 <Input value={form.smtpUser} onChange={e => f("smtpUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
               </Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label={t("settingsEmailAccounts.modal.smtpPassword")}>
                   <PasswordInput value={form.smtpPassword} onChange={f("smtpPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
                 </Field>
@@ -243,7 +260,7 @@ function AccountModal({
                 </span>
               )}
             </div>
-          </div>
+          </FormSection>
 
           {/* Advanced */}
           <button type="button" onClick={() => setShowAdvanced(s => !s)}
@@ -252,7 +269,7 @@ function AccountModal({
             {t("settingsEmailAccounts.modal.advanced")}
           </button>
           {showAdvanced && (
-            <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <Field label={t("settingsEmailAccounts.modal.folderInbox")}>
                 <Input value={form.folderInbox} onChange={e => f("folderInbox")(e.target.value)} className="h-8 text-xs font-mono" />
               </Field>
@@ -285,9 +302,10 @@ function AccountModal({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>{t("settingsEmailAccounts.modal.cancel")}</Button>
-          <Button size="sm" onClick={handleSubmit} disabled={isPending || !form.name || !form.imapHost || !form.smtpHost}
+        <DialogFooter className="sticky -bottom-6 z-10 -mx-6 -mb-6 flex-row flex-wrap items-center justify-end gap-2 border-t border-border/50 bg-background px-6 py-3">
+          {!canSubmit && <p role="status" className="w-full text-xs text-muted-foreground sm:mr-auto sm:w-auto">{t("settingsEmailAccounts.modal.needed")}</p>}
+          <Button variant="ghost" size="sm" onClick={onClose}>{t("settingsEmailAccounts.modal.cancel")}</Button>
+          <Button size="sm" onClick={handleSubmit} disabled={isPending || !canSubmit}
             className="gap-1">
             {isPending && <RefreshCw className="w-3 h-3 animate-spin" />}
             {editId ? t("settingsEmailAccounts.modal.saveChanges") : t("settingsEmailAccounts.modal.createAccount")}
