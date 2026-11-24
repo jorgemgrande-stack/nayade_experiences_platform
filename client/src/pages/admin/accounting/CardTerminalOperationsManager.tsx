@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelEmpty } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
@@ -556,10 +557,10 @@ export default function CardTerminalOperationsManager() {
           </thead>
           <tbody className="divide-y">
             {listQ.isLoading && (
-              <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Cargando...</td></tr>
+              <tr><td colSpan={9}><PanelLoading className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
             )}
             {!listQ.isLoading && ops.length === 0 && (
-              <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No hay operaciones</td></tr>
+              <tr><td colSpan={9} className="p-2"><PanelEmpty title="No hay operaciones" className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
             )}
             {ops.map((op) => {
               const statusInfo = STATUS_LABELS[op.status] ?? STATUS_LABELS.pendiente;

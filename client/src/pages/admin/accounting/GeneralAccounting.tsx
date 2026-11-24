@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BookOpen, CheckCircle2, Download, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -772,15 +773,15 @@ export default function GeneralAccounting() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div>
+          <p className="mb-2 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> Extra
           </p>
-          <h1 className="text-2xl font-bold text-foreground">Contabilidad general</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            Contabilidad de doble partida sin introducir las facturas dos veces: facturas, abonos, tickets, cobros, gastos, pagos y cierres de caja se contabilizan solos con el plan general contable de pymes. Para presentar impuestos, usa Impuestos y gestoría.
-          </p>
-        </header>
+          <PanelPageHeader
+            title="Contabilidad general"
+            description="Contabilidad de doble partida sin introducir las facturas dos veces: facturas, abonos, tickets, cobros, gastos, pagos y cierres de caja se contabilizan solos con el plan general contable de pymes. Para presentar impuestos, usa Impuestos y gestoría."
+          />
+        </div>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="resumen">Resumen</TabsTrigger>

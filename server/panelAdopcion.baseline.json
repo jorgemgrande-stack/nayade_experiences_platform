@@ -65,8 +65,8 @@
     "coloresFijos": 1
   },
   "pages/admin/accounting/FinanceSyncSetup.tsx": {
-    "coloresFijos": 8,
-    "geometriaAjena": 5
+    "coloresFijos": 7,
+    "geometriaAjena": 4
   },
   "pages/admin/accounting/RecurringExpensesManager.tsx": {
     "coloresFijos": 6,
