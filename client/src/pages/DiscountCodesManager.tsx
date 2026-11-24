@@ -187,7 +187,6 @@ export default function DiscountCodesManager() {
     <AdminLayout title={t("discounts.title")}>
       <div className="p-6 space-y-6">
         <PanelPageHeader
-          className="mb-0"
           icon={<Tag />}
           title={t("discounts.title")}
           description={voc.licensed ? t("discounts.descriptionLicensed") : t("discounts.description")}

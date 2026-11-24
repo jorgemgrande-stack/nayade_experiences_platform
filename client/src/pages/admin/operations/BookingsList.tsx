@@ -94,7 +94,7 @@ export default function BookingsList() {
         <PanelEmpty icon={<CalendarDays />} title={t("opsBookings.emptyTitle")} description={t("opsBookings.emptyText")} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-x-auto">
-          <table className="w-full min-w-[760px]">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.number")}</th>
@@ -119,20 +119,20 @@ export default function BookingsList() {
                 return (
                   <tr key={b.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-5 py-3.5">
-                      <p className="font-mono text-sm font-medium text-foreground">{b.bookingNumber}</p>
+                      <p className="whitespace-nowrap font-mono text-sm font-medium text-foreground">{b.bookingNumber}</p>
                     </td>
                     <td className="px-5 py-3.5">
                       <p className="text-sm font-medium text-foreground">{b.clientName}</p>
                       <p className="text-xs text-muted-foreground">{b.clientEmail}</p>
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-1.5 text-sm text-foreground">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap text-sm text-foreground">
                         <CalendarDays className="w-3.5 h-3.5 text-primary" />
                         {f.date(b.scheduledDate, { day: "2-digit", month: "short", year: "numeric" })}
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-1.5 text-sm text-foreground">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap text-sm text-foreground">
                         <Users className="w-3.5 h-3.5 text-muted-foreground" />
                         {b.numberOfPersons}
                       </div>

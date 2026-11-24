@@ -140,7 +140,7 @@ export default function MiCuenta() {
   return (
     <AdminLayout title={t("help.account.title")}>
       <div className="max-w-3xl space-y-6">
-        <PanelPageHeader icon={<ShieldCheck />} title={t("help.account.title")} description={t("help.account.subtitle")} className="mb-0" />
+        <PanelPageHeader icon={<ShieldCheck />} title={t("help.account.title")} description={t("help.account.subtitle")} />
         <EmailSection />
         <DevicesSection />
       </div>

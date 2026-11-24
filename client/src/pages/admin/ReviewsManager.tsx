@@ -174,7 +174,6 @@ export default function ReviewsManager() {
     <AdminLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
         <PanelPageHeader
-          className="mb-0"
           icon={<MessageSquare />}
           title={t("reviewsAdmin.title")}
           description={t("reviewsAdmin.subtitle")}
