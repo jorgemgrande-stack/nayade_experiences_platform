@@ -124,6 +124,11 @@ export interface ProductLike {
 }
 
 /** La ficha genérica pide fecha solo a un servicio y solo si la empresa vende servicios con fecha. */
+/** La cantidad se nombra «participantes» (en vez de «cantidad») en los productos que son una actividad o un retiro. */
+export function isParticipantsProduct(productType: string | null | undefined): boolean {
+  return productType === "actividad";
+}
+
 export function needsServiceDate(product: ProductLike, storefront: Storefront): boolean {
   if (storefront.kind === "sector") return true;
   return storefront.datedServices && product.productType === "actividad";
@@ -166,6 +171,7 @@ export interface GenericCartLine {
   estimatedTotal: number;
   extras: never[];
   pricingType: "per_person";
+  quantityKind?: "participants";
 }
 
 /**
@@ -200,6 +206,8 @@ export function buildGenericCartLine(input: GenericCartInput, variants: VariantL
       estimatedTotal: roundCents(unit * qty),
       extras: [],
       pricingType: "per_person",
+      // Actividades y retiros: la cantidad son participantes
+      ...(isParticipantsProduct(input.product.productType) ? { quantityKind: "participants" as const } : {}),
     },
   };
 }

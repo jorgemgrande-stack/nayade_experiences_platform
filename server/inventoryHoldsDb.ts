@@ -135,6 +135,42 @@ export async function holdSpaSlotAndCreateReservation(
 }
 
 /**
+ * Compra de tienda ligada a una convocatoria: retiene `seats` plazas de la edición (UPDATE condicionado sobre
+ * `product_editions.reserved`, la misma cuenta que usan las inscripciones confirmadas) y crea la reserva pendiente de
+ * pago, en una única transacción. Antes libera las retenciones caducadas o de reservas muertas de esa edición. Si no
+ * caben (o la edición ya no está abierta / ya empezó) no crea nada y devuelve las plazas que quedan.
+ */
+export async function holdEditionSeatsAndCreateReservation(
+  edition: { editionId: number; experienceId: number; seats: number },
+  data: ReservationData,
+  now = Date.now(),
+): Promise<HoldResult> {
+  const reservationNumber = data.reservationNumber ?? await generateReservationNumber();
+  return inTx(async (tx) => {
+    await settleEditionHolds(tx, edition.editionId, now);
+    const ok = await affected(tx, sql`
+      UPDATE product_editions SET reserved = reserved + ${edition.seats}, updated_at = ${now}
+      WHERE id = ${edition.editionId} AND experience_id = ${edition.experienceId} AND status = 'open' AND starts_at > ${now}
+        AND (capacity IS NULL OR reserved + ${edition.seats} <= capacity)`);
+    if (ok !== 1) {
+      const [e] = await rows<{ capacity: number | null; reserved: number }>(tx, sql`SELECT capacity, reserved FROM product_editions WHERE id = ${edition.editionId}`);
+      return { ok: false, available: e && e.capacity != null ? Math.max(0, Number(e.capacity) - Number(e.reserved)) : 0 };
+    }
+    const reservation = await createReservation({ ...data, reservationNumber }, tx);
+    await tx.execute(sql`
+      UPDATE reservations SET inventory_kind = 'edition_seat', inventory_ref_id = ${edition.editionId}, inventory_units = ${edition.seats},
+        hold_status = 'retenida', hold_expires_at = ${now + HOLD_TTL_MS}, hold_release_reason = NULL
+      WHERE id = ${reservation.id}`);
+    return { ok: true, reservation };
+  });
+}
+
+/** Libera las retenciones de una edición que ya no deben ocuparla (fuera de una transacción de retención). */
+export async function settleEditionSeats(editionId: number, now = Date.now()): Promise<void> {
+  await inTx((tx) => settleEditionHolds(tx, editionId, now));
+}
+
+/**
  * Retiene `units` habitaciones del tipo en cada noche de [checkIn, checkOut) y crea la reserva pendiente,
  * en una única transacción serializada por el tipo de habitación.
  */
@@ -342,6 +378,8 @@ async function releaseLocked(tx: Exec, r: HoldRow, reason: ReleaseReason, now: n
   if (n !== 1) return false;
   if (r.inventory_kind === "spa_slot") {
     await tx.execute(sql`UPDATE spa_slots SET bookedCount = GREATEST(bookedCount - ${Number(r.inventory_units ?? 0)}, 0) WHERE id = ${r.inventory_ref_id}`);
+  } else if (r.inventory_kind === "edition_seat") {
+    await tx.execute(sql`UPDATE product_editions SET reserved = GREATEST(reserved - ${Number(r.inventory_units ?? 0)}, 0), updated_at = ${now} WHERE id = ${r.inventory_ref_id}`);
   }
   return true;
 }
@@ -379,6 +417,17 @@ export async function confirmInventoryHold(reservationId: number, now = Date.now
       if (r.hold_status === "retenida") return markHold(tx, r.id, "confirmada", now).then(() => "confirmada" as const);
       const got = await affected(tx, sql`
         UPDATE spa_slots SET bookedCount = bookedCount + ${units} WHERE id = ${r.inventory_ref_id} AND bookedCount + ${units} <= capacity`);
+      const outcome = got === 1 ? "confirmada" : "conflicto";
+      await markHold(tx, r.id, outcome, now);
+      return outcome;
+    }
+
+    if (r.inventory_kind === "edition_seat") {
+      // Retenida: las plazas ya están sumadas en product_editions.reserved
+      if (r.hold_status === "retenida") return markHold(tx, r.id, "confirmada", now).then(() => "confirmada" as const);
+      const got = await affected(tx, sql`
+        UPDATE product_editions SET reserved = reserved + ${units}, updated_at = ${now}
+        WHERE id = ${r.inventory_ref_id} AND status <> 'cancelled' AND (capacity IS NULL OR reserved + ${units} <= capacity)`);
       const outcome = got === 1 ? "confirmada" : "conflicto";
       await markHold(tx, r.id, outcome, now);
       return outcome;
@@ -423,6 +472,18 @@ async function settleSpaSlotHolds(tx: Exec, slotId: number, now: number) {
   const list = await rows<HoldRow>(tx, sql`
     SELECT ${HOLD_COLUMNS} FROM reservations
     WHERE inventory_kind = 'spa_slot' AND inventory_ref_id = ${slotId} AND hold_status IN ('retenida', 'confirmada')
+    FOR UPDATE`);
+  for (const r of list) {
+    const action = decideHoldAction(holdState(r), now);
+    if (action.type === "liberar") await releaseLocked(tx, r, action.reason, now);
+  }
+}
+
+/** Libera las retenciones de una edición que ya no deben ocuparla (dentro de la transacción de retención). */
+async function settleEditionHolds(tx: Exec, editionId: number, now: number) {
+  const list = await rows<HoldRow>(tx, sql`
+    SELECT ${HOLD_COLUMNS} FROM reservations
+    WHERE inventory_kind = 'edition_seat' AND inventory_ref_id = ${editionId} AND hold_status IN ('retenida', 'confirmada')
     FOR UPDATE`);
   for (const r of list) {
     const action = decideHoldAction(holdState(r), now);

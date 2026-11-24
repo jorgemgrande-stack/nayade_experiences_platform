@@ -6,6 +6,7 @@
 import { and, eq, isNull, like } from "drizzle-orm";
 import { invoices, quotes, leads, reservations } from "../../drizzle/schema";
 import { getDb, logActivity } from "../db";
+import { alertAdmin, INCIDENT_LABEL } from "./incidents";
 import type { QuoteInfo, QuotePort } from "./service";
 
 export const STRIPE_SYSTEM_ACTOR = "Sistema (Stripe)";
@@ -30,6 +31,11 @@ export function realQuotePort(): QuotePort {
         currency: q.currency || "EUR",
       };
       return info;
+    },
+    async noteIncident(quoteId, i) {
+      // Solo constancia y aviso: el presupuesto, su factura y sus reservas no se tocan (decisión fiscal de la administración)
+      await logActivity("quote", quoteId, `stripe_${i.kind}`, null, STRIPE_SYSTEM_ACTOR, { label: INCIDENT_LABEL[i.kind], ...i });
+      await alertAdmin(`presupuesto ${quoteId}`, i);
     },
     async markPaid(quoteId, reference) {
       // Un presupuesto que ya estaba pagado (en efectivo, por transferencia, por Redsys o por otra sesión de Stripe) NO se

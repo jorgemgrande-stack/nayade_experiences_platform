@@ -1295,11 +1295,15 @@ export async function createVariant(data: {
   isRequired?: boolean;
   sortOrder?: number;
   validUntil?: string | null;
+  minQty?: number | null;
+  maxQty?: number | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(experienceVariants).values({
     validUntil: data.validUntil ?? null,
+    minQty: data.minQty ?? null,
+    maxQty: data.maxQty ?? null,
     experienceId: data.experienceId,
     name: data.name,
     description: data.description ?? null,
@@ -1322,6 +1326,8 @@ export async function updateVariant(
     isRequired: boolean;
     sortOrder: number;
     validUntil: string | null;
+    minQty: number | null;
+    maxQty: number | null;
   }>
 ) {
   const db = await getDb();

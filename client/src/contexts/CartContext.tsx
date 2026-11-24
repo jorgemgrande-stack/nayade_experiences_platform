@@ -36,6 +36,10 @@ export interface CartItem {
   maxPersons?: number;
   /** ID de variante seleccionada (opcional) */
   variantId?: number;
+  /** Convocatoria elegida (productos con fechas): la valida y la ocupa el servidor al pagar */
+  editionId?: number;
+  /** Etiqueta de la convocatoria (para mostrar) */
+  editionLabel?: string;
   /** Nombre de la variante (para mostrar) */
   variantName?: string;
   /** Extras seleccionados */
@@ -64,6 +68,8 @@ export interface CartItem {
   legoPackLinePeople?: Record<number, number>;
   /** Nombres de las líneas (para mostrar) */
   legoPackLineNames?: Record<number, string>;
+  /** «participants»: la cantidad son participantes (actividades y retiros) y así se nombra en carrito y pago. */
+  quantityKind?: "participants";
 }
 
 interface CartContextValue {

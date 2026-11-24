@@ -175,10 +175,12 @@ describe("textos de la tienda sin vocabulario sectorial", () => {
     }
     // La página de pago correcto de la tienda: el bloque genérico no habla de reservas ni de personas
     const ok = read("client/src/pages/ReservaOk.tsx");
-    const generic = ok.slice(ok.indexOf("if (generic && !isQuotePayment)"), ok.indexOf("¡{isQuotePayment"));
-    expect(generic).toContain("¡Pedido confirmado!");
-    expect(generic).toContain("Número de pedido");
-    expect(generic).not.toMatch(/Reserva confirmada|Personas|Actividad/);
+    const generic = ok.slice(ok.indexOf("if (generic && !isQuotePayment)"), ok.indexOf("{isQuotePayment ? t.coOkQuoteTitle"));
+    // Los textos salen del diccionario de la web (shared/siteUiText.ts), en el idioma de quien compra
+    expect(generic).toContain("{t.coOkConfirmedTitle}");
+    expect(generic).toContain("{t.coOkOrderNumberLabel}");
+    expect(generic).not.toMatch(/coOkBookingTitle|coOkPeople|coOkActivity|Reserva confirmada|Personas|Actividad/);
+    expect(read("shared/siteUiText.ts")).toContain('coOkConfirmedTitle: "¡Pedido confirmado!"');
   });
 
   it("el carrito y el pago usan el formato es-ES y los colores de la marca", () => {

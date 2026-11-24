@@ -72,6 +72,30 @@ Puntos a decidir/conocer:
 - Repetición: el mismo evento, o el mismo pago con otro `event.id`, no duplica factura, reserva ni transacción (comprobado).
   Si falla aplicar el pago, el evento queda «failed» y Stripe lo reintenta; se aplica una sola vez.
 
+### Caducidad, reembolsos y disputas
+
+El Core **solo reacciona** a estos avisos: nunca ejecuta reembolsos ni llama a Stripe, y **no emite abonos, rectificativas ni
+facturas** (es una decisión fiscal de la administración; el circuito de anulaciones y las series de devoluciones siguen siendo
+el camino). Cada evento se aplica una sola vez (`event.id`) y solo si `event.account` es la cuenta vinculada de la empresa; el
+cobro se localiza por su `payment_intent` entre las sesiones que creó esa empresa.
+
+| Evento | Pedido de la tienda | Presupuesto |
+|---|---|---|
+| `checkout.session.expired` | Sesión «caducada»; las líneas pendientes pasan a «cancelada», las plazas de spa/hotel se liberan **al instante** y se registra la venta perdida (el stock de artículos solo se descuenta al pagar, nada que devolver) | Sesión «caducada» |
+| `charge.refunded` total | Marca en el historial de cada línea + registro de actividad + **aviso a la administración**; **matrícula LMS revocada** (estado, con motivo y rastro; no se borra). Reservas, factura y stock **no se tocan** | Registro de actividad + aviso; nada más |
+| `charge.refunded` parcial | Igual, **sin tocar la matrícula** (el alumno conserva lo pagado) | Igual |
+| `charge.dispute.created` | Marca + aviso; matrícula **suspendida** (reversible) | Marca + aviso |
+| `charge.dispute.closed` ganada | Marca + aviso; reabre solo las matrículas suspendidas por esta vía (motivo «Stripe: …»), nunca una suspensión manual | Marca + aviso |
+| `charge.dispute.closed` perdida | Marca + aviso; matrícula **revocada** | Marca + aviso |
+
+- Resultado del evento (`payment_events.outcome`): `refunded`, `partial_refund`, `dispute_open`, `dispute_won`,
+  `dispute_lost`. Un cobro que no es de esta empresa queda `isolated`; uno sin sesión conocida, `ignored`.
+- Si revocar o suspender la matrícula falla, el evento queda `failed` y Stripe lo reintenta (el acceso no queda abierto en
+  silencio); la marca y el aviso no se duplican en el reintento.
+- No hay un estado «reembolsado» propio en el pedido (el modelo de estados del Core no lo tiene y añadirlo exige migración y
+  decisión fiscal): la constancia está en el historial del pedido (`stripe_refund_full`, `stripe_refund_partial`,
+  `stripe_dispute_*`), en la actividad de la reserva/presupuesto y en el aviso a la administración.
+
 ## 4. Puesta en marcha en la plataforma (Big Elephant, una vez)
 
 1. **Cuenta de plataforma Connect dedicada** (nueva, solo piloto; no la de las suscripciones): crearla en Stripe, activar
@@ -79,8 +103,11 @@ Puntos a decidir/conocer:
    Connect (cuentas y enlaces de cuenta), Checkout Sessions en cuentas conectadas y lectura de eventos.
 2. **Destino de webhook «cuentas conectadas»** (no el de la cuenta de la plataforma):
    - URL: `https://<APP_ENTRY_HOST>/api/stripe/connect/webhook` (host de entrada de empresas).
-   - Eventos: `account.updated`, `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-     `checkout.session.async_payment_failed`, `checkout.session.expired`.
+   - Eventos: `account.updated`, `account.application.deauthorized`, `checkout.session.completed`,
+     `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`,
+     `charge.refunded`, `charge.dispute.created`, `charge.dispute.closed`.
+     (Si el destino ya existe, **añadir** `charge.refunded`, `charge.dispute.created` y `charge.dispute.closed`; sin ellos
+     los reembolsos y las disputas no llegan al Core.)
    - Copiar su secreto `whsec_…`.
 3. **Variables del servicio Core** (nunca en Git ni en registros): `CONNECT_STRIPE_MODE=test`,
    `CONNECT_STRIPE_API_KEY=rk_test_…`, `CONNECT_STRIPE_WEBHOOK_SECRET=whsec_…`. Sin `CONNECT_STRIPE_MODE` la función
@@ -257,3 +284,9 @@ autorizada y su cuenta real está verificada con el interruptor encendido; en cu
 
 **Reversión inmediata:** vaciar `CONNECT_STRIPE_LIVE_TENANTS` (o quitar las variables) apaga el modo Real sin tocar datos; el interruptor de la
 empresa también se puede apagar desde Ajustes. Los `.down.sql` no cambian: no hay migración nueva.
+
+## Modo Prueba y público en production
+
+En production, una empresa **autorizada para el modo Real** (`CONNECT_STRIPE_LIVE_TENANTS`) cuyo cobro real aún no está listo (cuenta real
+sin verificar o interruptor «Real» apagado) **no ofrece Stripe al público**: no cae a Prueba. El pago de pruebas solo se ofrece en
+entornos que no son production, o en empresas no autorizadas para Real. Decisión en `chooseActiveConfig` (`activeConfig.ts`).

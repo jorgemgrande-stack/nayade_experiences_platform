@@ -9,9 +9,10 @@
  *  - `sendShopOrderConfirmation` / `setOnlineOrderStage`: correos al comprador con la plantilla genérica.
  *  - `listOnlineOrders` / `getOnlineOrder`: panel.
  */
-import { and, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { clients, crmActivityLog, experiences, invoices, reservations } from "../drizzle/schema";
+import { clients, compensationVouchers, crmActivityLog, discountCodes, discountCodeUses, experiences, invoices, reservations } from "../drizzle/schema";
+import { DUPLICATE_WINDOW_MS, discountFromLog, fingerprintFromLog, type OrderDiscount } from "./shopCheckoutRules";
 import {
   allowedStageChanges,
   billingFromLog,
@@ -20,6 +21,7 @@ import {
   canChangeStage,
   ORDER_STAGE_LABELS,
   stageEmailText,
+  orderStageLabelIn,
   stageOfOrder,
   stageOfRow,
   stagePatch,
@@ -28,6 +30,10 @@ import {
   type OrderStage,
 } from "../shared/shopOrders";
 import { formatEuros } from "../shared/storefront";
+import { cartItemDate } from "../shared/publicSite";
+import { siteUiText } from "../shared/siteUiText";
+import { consentFromLog, participantsFromLog } from "../shared/checkoutExtras";
+import { resolveBuyerLocale } from "./checkoutExtrasDb";
 import { chargedInvoiceAmounts } from "./invoiceCalc";
 import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
 
@@ -174,7 +180,19 @@ export async function buyerEmailsEnabled(): Promise<boolean> {
   }
 }
 
-async function orderEmail(rows: Row[], o: { title: string; badge: string; intro: string; statusLabel?: string; withTotals: boolean }) {
+/** Fecha de la línea para el correo («lunes, 3 de agosto de 2026»), en el idioma del comprador; null si no tiene. */
+function emailLineDate(bookingDate: string | null | undefined, locale: string): string | null {
+  const bcp = locale === "de" ? "de-DE" : locale === "en" ? "en-GB" : "es-ES";
+  return cartItemDate(bookingDate, { weekday: "long", day: "numeric", month: "long", year: "numeric" }, bcp);
+}
+
+/**
+ * Datos opcionales por línea que otra pieza puede aportar sin tocar esta (p. ej. la edición y el punto de encuentro
+ * cuando el pedido quede ligado a una convocatoria): si no hay dato, el correo no enseña el campo.
+ */
+export type OrderLineEmailExtras = { edition?: string | null; meetingPoint?: string | null };
+
+async function orderEmail(rows: Row[], o: { title: string; badge: string; intro: string; statusLabel?: string; withTotals: boolean; locale?: string; extras?: Map<number, OrderLineEmailExtras> }) {
   const { buildShopOrderEmailHtml } = await import("./emailTemplates");
   const first = rows[0];
   const lineCents = rows.reduce((s, r) => s + (Number(r.amountTotal) || 0), 0);
@@ -183,10 +201,14 @@ async function orderEmail(rows: Row[], o: { title: string; badge: string; intro:
   return buildShopOrderEmailHtml({
     title: o.title,
     badge: o.badge,
+    locale: o.locale,
     customerName: first.customerName,
     orderNumber: first.merchantOrder,
     intro: o.intro,
-    lines: rows.map((r) => ({ name: r.productName, quantity: r.people ?? 1, total: eur(r.amountTotal) })),
+    lines: rows.map((r) => {
+      const x = o.extras?.get(r.id);
+      return { name: r.productName, quantity: r.people ?? 1, total: eur(r.amountTotal), date: emailLineDate(r.bookingDate, o.locale ?? "es"), edition: x?.edition ?? null, meetingPoint: x?.meetingPoint ?? null, participants: participantsFromLog(r.changesLog) };
+    }),
     total: o.withTotals ? eur(paidCents > 0 ? paidCents : lineCents) : null,
     discount: o.withTotals ? discount : null,
     invoiceNumber: first.invoiceNumber ?? null,
@@ -203,8 +225,10 @@ export async function sendShopOrderConfirmation(merchantOrder: string): Promise<
   if (!first || first.confirmationEmailSentAt || !first.customerEmail) return { sent: false };
   const { brandName } = await import("./tenantBrand");
   const { sendManagedEmail, logDirectEmail } = await import("./emailManager");
-  const html = await orderEmail(rows, { title: "Pedido confirmado", badge: "Pedido", intro: "Hemos recibido tu pago y tu pedido está confirmado. Este es el resumen:", withTotals: true });
-  const subject = `Pedido confirmado ${first.merchantOrder} · ${brandName()}`;
+  const locale = await resolveBuyerLocale(first.changesLog);
+  const ui = siteUiText(locale);
+  const html = await orderEmail(rows, { title: ui.emConfirmedTitle, badge: ui.emBadgeOrder, intro: ui.emConfirmedIntro, withTotals: true, locale });
+  const subject = `${ui.emConfirmedSubject} ${first.merchantOrder} · ${brandName()}`;
   const r = await sendManagedEmail({ templateKey: "reservation_confirm", triggerEvent: "shop_order_paid", recipientEmail: first.customerEmail, subject, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
   // Copia a la empresa (buzón de pedidos): así se entera de la venta aunque el comprador no reciba el correo
   try {
@@ -308,7 +332,9 @@ export async function getOnlineOrder(merchantOrder: string) {
     customerPhone: first.customerPhone ?? null,
     billing: rows.map((r) => billingFromLog(r.changesLog)).find(Boolean) ?? null,
     comments: buyerCommentsFromNotes(first.notes),
-    lines: rows.map((r) => ({ id: r.id, productName: r.productName, quantity: r.people ?? 1, amountCents: Number(r.amountTotal) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(r.bookingDate ?? "") ? r.bookingDate : null, stage: stageOfRow(r) })),
+    buyerLocale: await resolveBuyerLocale(first.changesLog),
+    consent: rows.map((r) => consentFromLog(r.changesLog)).find(Boolean) ?? null,
+    lines: rows.map((r) => ({ id: r.id, participants: participantsFromLog(r.changesLog), productName: r.productName, quantity: r.people ?? 1, amountCents: Number(r.amountTotal) || 0, date: /^\d{4}-\d{2}-\d{2}$/.test(r.bookingDate ?? "") ? r.bookingDate : null, stage: stageOfRow(r) })),
     lineCents,
     paidCents,
     discountCents: paidCents > 0 && paidCents < lineCents ? lineCents - paidCents : 0,
@@ -343,14 +369,16 @@ export async function setOnlineOrderStage(merchantOrder: string, to: OrderStage,
   await db.insert(crmActivityLog).values({ entityType: "reservation", entityId: rows[0].id, action: "status_updated", actorId: actor.id, actorName: actor.name ?? null, details: { from, to, merchantOrder } });
 
   let emailed = false;
-  const text = stageEmailText(to);
   const first = rows[0];
+  const locale = await resolveBuyerLocale(first.changesLog);
+  const ui = siteUiText(locale);
+  const text = stageEmailText(to, locale);
   if (text && STAGES_NOTIFIED.includes(to) && first.customerEmail) {
     try {
       const fresh = await db.select().from(reservations).where(eq(reservations.merchantOrder, merchantOrder));
       const { brandName } = await import("./tenantBrand");
       const { sendManagedEmail } = await import("./emailManager");
-      const html = await orderEmail(fresh, { title: text.title, badge: "Pedido", intro: text.paragraph, statusLabel: ORDER_STAGE_LABELS[to], withTotals: to !== "cancelled" });
+      const html = await orderEmail(fresh, { title: text.title, badge: ui.emBadgeOrder, intro: text.paragraph, statusLabel: orderStageLabelIn(to, ui), withTotals: to !== "cancelled", locale });
       const r = await sendManagedEmail({ templateKey: "reservation_confirm", triggerEvent: `shop_order_${to}`, recipientEmail: first.customerEmail, subject: `${text.subject} · ${first.merchantOrder} · ${brandName()}`, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
       emailed = !!r.sent;
     } catch (e) {
@@ -369,8 +397,10 @@ export async function sendShopOrderFailed(merchantOrder: string): Promise<{ sent
   if (!first?.customerEmail) return { sent: false };
   const { brandName } = await import("./tenantBrand");
   const { sendManagedEmail } = await import("./emailManager");
-  const html = await orderEmail(rows, { title: "Pago no completado", badge: "Pedido", intro: "No hemos podido completar el pago de tu pedido. No se te ha cobrado nada: puedes volver a intentarlo desde la tienda o escribirnos y te ayudamos.", withTotals: true });
-  const r = await sendManagedEmail({ templateKey: "reservation_failed", triggerEvent: "shop_order_payment_failed", recipientEmail: first.customerEmail, subject: `Pago no completado · ${first.merchantOrder} · ${brandName()}`, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
+  const locale = await resolveBuyerLocale(first.changesLog);
+  const ui = siteUiText(locale);
+  const html = await orderEmail(rows, { title: ui.emFailedTitle, badge: ui.emBadgeOrder, intro: ui.emFailedIntro, withTotals: true, locale });
+  const r = await sendManagedEmail({ templateKey: "reservation_failed", triggerEvent: "shop_order_payment_failed", recipientEmail: first.customerEmail, subject: `${ui.emFailedSubject} · ${first.merchantOrder} · ${brandName()}`, html, relatedEntityType: "reservation", relatedEntityId: first.id, reservationId: first.id, isAutomatic: true });
   return { sent: !!r.sent };
 }
 
@@ -379,4 +409,95 @@ export async function isGenericShopOrder(rows: Array<{ channel?: string | null; 
   if (!rows.length || !rows.every((r) => r.channel === "ONLINE_DIRECTO" && !r.quoteId)) return false;
   const { getStorefront } = await import("./storefront");
   return (await getStorefront()).kind === "generic";
+}
+
+// ─── Idempotencia del checkout y descuentos (cartCheckout / pago confirmado) ─────────────────────────────────────
+
+/** Añade entradas al historial de TODAS las líneas del pedido (huella, descuento…; sin columnas nuevas). */
+export async function appendOrderLogEntries(merchantOrder: string, entries: Array<{ ts: number; actor: string; action: string; to?: string }>): Promise<void> {
+  const db = await getDb();
+  if (!db || !entries.length) return;
+  const rows = await db.select({ id: reservations.id, changesLog: reservations.changesLog }).from(reservations).where(eq(reservations.merchantOrder, merchantOrder));
+  for (const r of rows) {
+    const log = Array.isArray(r.changesLog) ? r.changesLog : [];
+    await db.update(reservations).set({ changesLog: [...log, ...entries] }).where(eq(reservations.id, r.id));
+  }
+}
+
+/**
+ * Pedido pendiente de pago equivalente (mismo comprador y misma huella) creado hace menos de la ventana: se reutiliza en
+ * lugar de crear otro. Un pedido pagado, fallido o cancelado ya no está en `pending_payment`, así que un reintento tras un
+ * fallo o una caducidad crea un pedido nuevo con normalidad.
+ */
+export async function findPendingOrderByFingerprint(email: string, fingerprint: string, now = Date.now()): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ merchantOrder: reservations.merchantOrder, changesLog: reservations.changesLog }).from(reservations)
+    .where(and(onlineShop(), eq(reservations.status, "pending_payment"), eq(reservations.customerEmail, email), gte(reservations.createdAt, now - DUPLICATE_WINDOW_MS)));
+  const hit = rows.find((r) => fingerprintFromLog(r.changesLog) === fingerprint);
+  return hit?.merchantOrder ?? null;
+}
+
+/** Pedidos pendientes recientes que ya «sostienen» un uso de este código (para códigos de usos limitados). */
+export async function countPendingDiscountHolds(discountCodeId: number, excludeMerchantOrder: string | null = null, now = Date.now()): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ merchantOrder: reservations.merchantOrder, changesLog: reservations.changesLog }).from(reservations)
+    .where(and(onlineShop(), eq(reservations.status, "pending_payment"), gte(reservations.createdAt, now - DUPLICATE_WINDOW_MS)));
+  const orders = new Set<string>();
+  for (const r of rows) {
+    if (r.merchantOrder === excludeMerchantOrder) continue;
+    if (discountFromLog(r.changesLog)?.id === discountCodeId) orders.add(r.merchantOrder);
+  }
+  return orders.size;
+}
+
+export type DiscountConsumeResult = "none" | "already" | "consumed" | "overused";
+
+/**
+ * Consume el uso del código del pedido cuando el pago se CONFIRMA. Idempotente por pedido (una sola fila de uso por
+ * reserva y código; todo en una transacción) y a prueba de pagos simultáneos: el contador solo sube si todavía quedan
+ * usos (`current_uses < max_uses`, condicional en la propia sentencia). Si dos pagos de un código de un solo uso se
+ * confirman a la vez, el segundo YA está cobrado y no se puede rechazar: se registra el uso (trazabilidad) SIN pasar
+ * del límite y se deja un aviso en el historial de la reserva para que el equipo decida (p. ej. reembolso del descuento).
+ */
+export async function consumeOrderDiscount(merchantOrder: string, paidCents: number): Promise<DiscountConsumeResult> {
+  const db = await getDb();
+  if (!db) return "none";
+  const rows = await db.select({ id: reservations.id, changesLog: reservations.changesLog }).from(reservations).where(and(eq(reservations.merchantOrder, merchantOrder), onlineShop()));
+  if (!rows.length) return "none";
+  const d: OrderDiscount | null = rows.map((r) => discountFromLog(r.changesLog)).find(Boolean) ?? null;
+  if (!d) return "none";
+  const reservationId = rows[0].id;
+  return db.transaction(async (tx) => {
+    const [dup] = await tx.select({ id: discountCodeUses.id }).from(discountCodeUses).where(and(eq(discountCodeUses.discountCodeId, d.id), eq(discountCodeUses.reservationId, reservationId))).limit(1);
+    if (dup) return "already" as const;
+    const upd = await tx.update(discountCodes).set({ currentUses: sql`current_uses + 1` })
+      .where(and(eq(discountCodes.id, d.id), or(isNull(discountCodes.maxUses), lt(discountCodes.currentUses, discountCodes.maxUses))));
+    const counted = ((upd as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0) > 0;
+    await tx.insert(discountCodeUses).values({
+      discountCodeId: d.id,
+      code: d.code,
+      discountPercent: d.percent.toFixed(2) as unknown as any,
+      discountAmount: (d.discountCents / 100).toFixed(2) as unknown as any,
+      originalAmount: (d.originalCents / 100).toFixed(2) as unknown as any,
+      finalAmount: ((Number.isFinite(paidCents) ? paidCents : d.finalCents) / 100).toFixed(2) as unknown as any,
+      channel: "online",
+      reservationId,
+      tpvSaleId: null,
+      appliedByUserId: null,
+    });
+    if (!counted) {
+      const log = Array.isArray(rows[0].changesLog) ? rows[0].changesLog : [];
+      await tx.update(reservations).set({ changesLog: [...log, { ts: Date.now(), actor: "Sistema", action: "descuento_agotado_en_pago", to: `El código ${d.code} ya había alcanzado su límite de usos cuando se confirmó este pago (pagos simultáneos). El pago es válido; revisar si procede ajustar el descuento.` }] }).where(eq(reservations.id, reservationId));
+      console.error(`[discounts] Código ${d.code} agotado al confirmar el pedido ${merchantOrder}: uso registrado sin superar el límite`);
+      return "overused" as const;
+    }
+    // Bono compensatorio: al agotar sus usos pasa a «canjeado» (como en el resto de canales)
+    const [after] = await tx.select({ origin: discountCodes.origin, voucherId: discountCodes.compensationVoucherId, currentUses: discountCodes.currentUses, maxUses: discountCodes.maxUses }).from(discountCodes).where(eq(discountCodes.id, d.id)).limit(1);
+    if (after?.origin === "voucher" && after.voucherId && after.maxUses !== null && after.currentUses >= after.maxUses) {
+      await tx.update(compensationVouchers).set({ status: "canjeado", redeemedAt: new Date() }).where(eq(compensationVouchers.id, after.voucherId));
+    }
+    return "consumed" as const;
+  });
 }

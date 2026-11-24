@@ -38,12 +38,37 @@ export interface QuotePort {
   byToken(token: string): Promise<QuoteInfo | null>;
   /** Marca el presupuesto como pagado con la lógica de siempre (factura, reserva, inscripción…). Idempotente. */
   markPaid(quoteId: number, reference: string): Promise<void | { alreadyPaid: true }>;
+  /** Devolución o disputa de un cobro de presupuesto: deja constancia en su ficha y avisa a la administración. NO emite documentos fiscales. */
+  noteIncident(quoteId: number, incident: PaymentIncident): Promise<void>;
+}
+
+/**
+ * Hecho posterior al cobro que Stripe comunica (reembolso o disputa). El Core NUNCA ejecuta reembolsos: solo reacciona.
+ * No genera abonos ni rectificativas (decisión fiscal de la administración): marca, protege el acceso y avisa.
+ */
+export type PaymentIncidentKind = "refund_full" | "refund_partial" | "dispute_opened" | "dispute_won" | "dispute_lost";
+export interface PaymentIncident {
+  kind: PaymentIncidentKind;
+  /** Evento de Stripe que lo comunica (idempotencia de las marcas). */
+  eventId: string;
+  sessionId: string;
+  paymentIntent: string | null;
+  chargedCents: number;
+  /** Total reembolsado hasta ahora (solo en reembolsos). */
+  refundedCents: number | null;
+  currency: string;
+  /** Motivo de la disputa según Stripe (solo en disputas). */
+  reason: string | null;
 }
 
 /** Pedidos de la tienda web: aplica el resultado de un pago con EL MISMO tratamiento que Redsys (reservas, factura, stock…). */
 export interface ShopPort {
   applyPaid(merchantOrder: string, p: { amountCents: number; sessionId: string; paymentIntent: string | null }): Promise<void>;
   applyFailed(merchantOrder: string, p: { sessionId: string }): Promise<void>;
+  /** La sesión de pago caducó sin cobrar: se cancelan las líneas aún pendientes y se liberan sus plazas de inmediato. */
+  applyExpired(merchantOrder: string, p: { sessionId: string }): Promise<void>;
+  /** Reembolso o disputa de un pedido pagado: marca el pedido, protege el acceso (matrícula) y avisa. Sin documentos fiscales. */
+  applyIncident(merchantOrder: string, incident: PaymentIncident): Promise<void>;
 }
 
 export interface PaymentsDeps {
@@ -188,9 +213,17 @@ export async function startShopCheckout(
   if (!Number.isInteger(p.amountCents) || p.amountCents < STRIPE_MIN_AMOUNT_CENTS) throw new PaymentsError("bad_amount", "El importe del pedido no es válido para pagar con tarjeta");
   if (!/^[A-Za-z0-9_-]{4,32}$/.test(p.merchantOrder)) throw new PaymentsError("bad_amount", "Pedido no válido");
   const now = (d.now ?? Date.now)();
+  // Un clic repetido sobre el mismo pedido (el carrito reutiliza el pedido pendiente) debe devolver LA MISMA sesión: Stripe
+  // solo repite la respuesta de una clave si los parámetros son idénticos, y la caducidad cambia con el reloj. Por eso la
+  // caducidad se ancla al momento en que se creó la sesión abierta, y la clave distingue los intentos (sesión anterior
+  // caducada o con otro importe → intento nuevo).
+  const mine = (await d.store.listShopCheckouts(p.merchantOrder)).filter((c) => c.mode === d.config.mode && c.accountId === account.accountId);
+  const open = mine.find((c) => c.status === "pending" && c.amountCents === p.amountCents);
+  const attempt = open ? mine.indexOf(open) : mine.length;
+  const anchorMs = open ? open.createdAt : now;
   const session = await d.gateway.createCheckoutSession({
     accountId: account.accountId,
-    idempotencyKey: `shop-${d.tenantId}-${p.merchantOrder}-${p.amountCents}`,
+    idempotencyKey: `shop-${d.tenantId}-${p.merchantOrder}-${p.amountCents}${attempt > 0 ? `-${attempt}` : ""}`,
     amountCents: p.amountCents,
     currency: "eur",
     description: p.description,
@@ -198,7 +231,7 @@ export async function startShopCheckout(
     successUrl: p.successUrl,
     cancelUrl: p.cancelUrl,
     // Mínimo de Stripe: 30 minutos. Pasado ese tiempo la sesión caduca y el pedido lo cancela la limpieza de siempre
-    expiresAtSeconds: Math.floor(now / 1000) + 31 * 60,
+    expiresAtSeconds: Math.floor(anchorMs / 1000) + 31 * 60,
     metadata: { tenant_id: d.tenantId, merchant_order: p.merchantOrder },
   });
   if (!(await d.store.getCheckout(session.id))) {
@@ -221,7 +254,7 @@ export interface ConnectEvent {
 }
 
 /** «duplicate_payment»: se cobró una sesión de un presupuesto que YA estaba pagado. No se factura de nuevo: queda para reembolso manual. */
-export type EventOutcome = "applied" | "duplicate" | "ignored" | "isolated" | "mode_mismatch" | "failed" | "amount_mismatch" | "duplicate_payment";
+export type EventOutcome = "applied" | "duplicate" | "ignored" | "isolated" | "mode_mismatch" | "failed" | "amount_mismatch" | "duplicate_payment" | "refunded" | "partial_refund" | "dispute_open" | "dispute_won" | "dispute_lost";
 
 /** Empresa a la que el emisor dice que pertenece el evento (metadato que pusimos nosotros). Se contrasta luego con su base. */
 export function claimedTenantId(ev: ConnectEvent): string | null {
@@ -230,7 +263,7 @@ export function claimedTenantId(ev: ConnectEvent): string | null {
   return typeof t === "string" && /^[a-z0-9][a-z0-9_-]{0,62}$/.test(t) ? t : null;
 }
 
-const HANDLED = new Set(["account.updated", "account.application.deauthorized", "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired", "checkout.session.async_payment_failed"]);
+const HANDLED = new Set(["account.updated", "account.application.deauthorized", "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.expired", "checkout.session.async_payment_failed", "charge.refunded", "charge.dispute.created", "charge.dispute.closed"]);
 
 export function factsFromEventAccount(o: Record<string, any>): StripeAccountFacts {
   const r = o.requirements ?? {};
@@ -296,12 +329,15 @@ async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promi
     await applyFacts(d, factsFromEventAccount(o), "Stripe");
     return "applied";
   }
+  if (ev.type === "charge.refunded" || ev.type === "charge.dispute.created" || ev.type === "charge.dispute.closed") return applyPostPayment(d, ev);
   const sessionId = typeof o.id === "string" ? o.id : "";
   const checkout = sessionId ? await d.store.getCheckout(sessionId) : null;
   // Sesión que no creó esta empresa (o de otra cuenta): sin efecto
   if (!checkout || checkout.accountId !== ev.account) return "isolated";
   if (ev.type === "checkout.session.expired") {
     await d.store.setCheckoutStatus(sessionId, "expired");
+    // Pedido de la tienda: sus líneas pendientes se cancelan y las plazas se liberan YA (sin esperar a la limpieza periódica)
+    if (checkout.kind === "shop_order" && checkout.merchantOrder && checkout.status !== "paid") await d.shop.applyExpired(checkout.merchantOrder, { sessionId });
     return "applied";
   }
   if (ev.type === "checkout.session.async_payment_failed") {
@@ -335,4 +371,56 @@ async function applyEvent(d: PaymentsDeps, ev: ConnectEvent, now: number): Promi
     throw e;
   }
   return "applied";
+}
+
+/**
+ * Reembolsos y disputas (charge.refunded, charge.dispute.created / closed). El cobro se localiza por su payment_intent entre
+ * las sesiones que creó ESTA empresa en ESTA cuenta; lo ajeno queda aislado o ignorado. Nunca se llama a Stripe ni se emite
+ * un documento fiscal: el pedido queda marcado y la administración recibe el aviso para decidir (abono, rectificativa…).
+ */
+async function applyPostPayment(d: PaymentsDeps, ev: ConnectEvent): Promise<EventOutcome> {
+  const o = ev.data.object;
+  // Un reembolso trae el cobro (charge) y una disputa trae su cobro en `charge`; ambos llevan el payment_intent
+  const pi = typeof o.payment_intent === "string" ? o.payment_intent : null;
+  if (!pi) return "ignored";
+  const checkout = await d.store.getCheckoutByPaymentIntent(pi);
+  if (!checkout) return "ignored";
+  if (checkout.accountId !== ev.account) return "isolated";
+  const currency = String(o.currency ?? checkout.currency).toLowerCase();
+  let kind: PaymentIncidentKind;
+  let outcome: EventOutcome;
+  let refundedCents: number | null = null;
+  let reason: string | null = null;
+  if (ev.type === "charge.refunded") {
+    const refunded = Number(o.amount_refunded);
+    if (!Number.isFinite(refunded) || refunded <= 0) return "ignored";
+    refundedCents = Math.round(refunded);
+    // Total: Stripe lo marca (refunded) o la suma devuelta alcanza lo cobrado
+    const full = o.refunded === true || refundedCents >= checkout.amountCents;
+    kind = full ? "refund_full" : "refund_partial";
+    outcome = full ? "refunded" : "partial_refund";
+  } else {
+    reason = typeof o.reason === "string" ? o.reason : null;
+    if (ev.type === "charge.dispute.created") {
+      kind = "dispute_opened";
+      outcome = "dispute_open";
+    } else if (o.status === "lost") {
+      kind = "dispute_lost";
+      outcome = "dispute_lost";
+    } else if (o.status === "won" || o.status === "warning_closed") {
+      kind = "dispute_won";
+      outcome = "dispute_won";
+    } else {
+      // Otro cierre (p. ej. cargo devuelto por el emisor): sin resolución conocida, no se toca nada
+      return "ignored";
+    }
+  }
+  const incident: PaymentIncident = { kind, eventId: ev.id, sessionId: checkout.sessionId, paymentIntent: pi, chargedCents: checkout.amountCents, refundedCents, currency, reason };
+  if (checkout.kind === "shop_order") {
+    if (!checkout.merchantOrder) return "ignored";
+    await d.shop.applyIncident(checkout.merchantOrder, incident);
+  } else if (checkout.quoteId != null) {
+    await d.quotes.noteIncident(checkout.quoteId, incident);
+  }
+  return outcome;
 }

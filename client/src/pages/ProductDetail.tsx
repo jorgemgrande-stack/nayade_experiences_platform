@@ -20,7 +20,9 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { isPurchasable } from "@shared/shopOrders";
 import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
-import { ProductEditionsSection } from "@/components/site/Editions";
+import { ProductEditionsSection, type PublicEditionItem } from "@/components/site/Editions";
+import { editionLocalDate } from "@shared/editionPurchase";
+import { formatEditionDates } from "@shared/editions";
 import { offerModeOf, requestCtaLabel, showsPrice } from "@shared/offerMode";
 import { fillUiText, offerBadgeText, siteUiText, untranslatedNotice } from "@shared/siteUiText";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
@@ -30,6 +32,7 @@ import {
   FALLBACK_GENERIC_STOREFRONT,
   formatEuros,
   fromPrice,
+  isParticipantsProduct,
   MAX_QUANTITY,
   needsServiceDate,
   SHOP_PATH,
@@ -68,10 +71,16 @@ export default function ProductDetail() {
   // se usa si es una opción real de este producto (abajo)
   const [variantId, setVariantId] = useState<number | undefined>(() => initialOption(typeof window === "undefined" ? "" : window.location.search));
   const [date, setDate] = useState("");
+  const [editionId, setEditionId] = useState<number | undefined>(undefined);
   const [requestOpen, setRequestOpen] = useState(false);
 
   const { data: product, isLoading } = trpc.public.getExperienceBySlug.useQuery({ slug: slug ?? "", ...localeArg }, { enabled: !!slug, retry: false });
   const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery({ experienceId: product?.id ?? 0, ...localeArg }, { enabled: !!product?.id });
+  // Convocatorias del producto: si las tiene, la compra exige elegir una fecha abierta (el servidor lo vuelve a validar)
+  const { data: editionsData } = trpc.public.getExperiences.useQuery({ limit: 12, offset: 0, editions: { experienceId: product?.id ?? 0 } }, { enabled: !!product?.id, staleTime: 60_000, retry: false });
+  const editions = ((editionsData ?? []) as unknown as PublicEditionItem[]).filter((e) => e.experienceId === product?.id);
+  const openEditions = editions.filter((e) => e.state === "open");
+  const pickedEdition = openEditions.find((e) => e.id === editionId);
   // Idioma de la ficha (solo en la ruta localizada): `contentLang` es el idioma real del contenido mostrado
   const i18n = product && "i18n" in product ? product.i18n : undefined;
   const contentLang = i18n ? (i18n.translated ? i18n.locale : i18n.contentLocale) : undefined;
@@ -141,17 +150,24 @@ export default function ProductDetail() {
 
   // Publicado pero no a la venta: se enseña como agotado y no se puede añadir (el pago también lo rechaza)
   const soldOut = buyable && !isPurchasable(product);
+  const needsEdition = buyable && editions.length > 0;
 
   const add = () => {
     if (soldOut) return;
-    const r = buildGenericCartLine({ product: { ...product, coverImageUrl: str(p.coverImageUrl), image1: str(p.image1) }, variant, quantity, date, storefront: shop }, variants);
+    if (needsEdition && !pickedEdition) {
+      toast.info(t.chooseDateBeforeCart);
+      return;
+    }
+    const r = buildGenericCartLine({ product: { ...product, coverImageUrl: str(p.coverImageUrl), image1: str(p.image1) }, variant, quantity, date: pickedEdition ? editionLocalDate(pickedEdition.startsAt, pickedEdition.timezone) : date, storefront: shop }, variants);
     if (!r.ok) {
       if (r.reason === "variant_required") toast.info(t.chooseOptionBeforeCart);
       else if (r.reason === "date_required") toast.info(t.chooseDateBeforeCart);
       else toast.info(t.noOnlinePrice);
       return;
     }
-    addItem(r.line);
+    // Con convocatoria: la fecha y el precio son los de la edición (el servidor los recalcula)
+    const unitEd = pickedEdition && pickedEdition.price != null && !variant ? pickedEdition.price : null;
+    addItem(pickedEdition ? { ...r.line, bookingDate: editionLocalDate(pickedEdition.startsAt, pickedEdition.timezone), editionId: pickedEdition.id, editionLabel: pickedEdition.label, ...(unitEd != null ? { pricePerPerson: unitEd, estimatedTotal: Math.round(unitEd * r.line.people * 100) / 100 } : {}) } : r.line);
     openCart();
   };
 
@@ -259,7 +275,7 @@ export default function ProductDetail() {
 
               {buyable && (
                 <div>
-                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">{t.quantity}</label>
+                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">{isParticipantsProduct(str(p.productType)) ? t.participants : t.quantity}</label>
                   <div className="flex items-center gap-3">
                     <button type="button" aria-label={t.removeUnit} disabled={quantity <= 1} onClick={() => setQuantity((q) => clampQuantity(q - 1))} className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40">
                       <Minus className="w-4 h-4" />
@@ -281,7 +297,23 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              {buyable && dated && (
+              {needsEdition && (
+                <div data-testid="elegir-convocatoria">
+                  <label htmlFor="convocatoria" className="text-sm font-medium text-foreground mb-2 block">{t.serviceDate}</label>
+                  {openEditions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay fechas abiertas ahora mismo. Solicita información para la próxima convocatoria.</p>
+                  ) : (
+                    <select id="convocatoria" value={editionId ?? ""} onChange={(e) => setEditionId(e.target.value ? Number(e.target.value) : undefined)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background">
+                      <option value="">{t.chooseDateBeforeCart}</option>
+                      {openEditions.map((e) => (
+                        <option key={e.id} value={e.id}>{e.label} · {formatEditionDates(e.startsAt, e.endsAt, e.timezone)}{e.seatsLeft != null ? ` · ${e.seatsLeft}` : ""}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {buyable && dated && !needsEdition && (
                 <div>
                   <label htmlFor="fecha" className="text-sm font-medium text-foreground mb-2 block">{t.serviceDate}</label>
                   <input id="fecha" type="date" value={date} min={todayIso()} onChange={(e) => setDate(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" />
@@ -302,7 +334,7 @@ export default function ProductDetail() {
                       <p className="text-sm text-muted-foreground">{t.soldOutHelp}</p>
                     </>
                   ) : (
-                    <Button onClick={add} className="w-full h-12 text-base font-semibold">
+                    <Button onClick={add} disabled={needsEdition && openEditions.length === 0} className="w-full h-12 text-base font-semibold">
                       <ShoppingCart className="mr-2 w-4 h-4" /> {t.addToCart}
                     </Button>
                   )}

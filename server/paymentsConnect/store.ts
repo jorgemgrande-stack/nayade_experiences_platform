@@ -29,6 +29,8 @@ export interface PaymentAccountRow {
   lastEventId: string | null;
   lastEventType: string | null;
   lastEventAt: number | null;
+  /** Última vez que se escribió el estado de la cuenta (alta, relectura en Stripe, aviso o interruptor). */
+  updatedAt?: number | null;
 }
 
 export interface CheckoutRow {
@@ -74,8 +76,12 @@ export interface PaymentStore {
   reclaimFailedEvent(eventId: string): Promise<boolean>;
   insertCheckout(c: Omit<CheckoutRow, "status" | "paidAt" | "paymentIntentId">): Promise<void>;
   getCheckout(sessionId: string): Promise<CheckoutRow | null>;
+  /** Sesión cobrada con ese payment_intent (reembolsos y disputas llegan por el cobro, no por la sesión). */
+  getCheckoutByPaymentIntent(paymentIntentId: string): Promise<CheckoutRow | null>;
   /** Todas las sesiones de pago creadas para un presupuesto (cualquier estado), de la más antigua a la más reciente. */
   listQuoteCheckouts(quoteId: number): Promise<CheckoutRow[]>;
+  /** Todas las sesiones de pago creadas para un pedido de la tienda (cualquier estado), de la más antigua a la más reciente. */
+  listShopCheckouts(merchantOrder: string): Promise<CheckoutRow[]>;
   /** pending → paid de forma atómica. `true` solo para la llamada que hace el cambio. */
   markCheckoutPaid(sessionId: string, paymentIntentId: string | null, now: number): Promise<boolean>;
   /** Vuelve a «pending» una sesión marcada «paid» cuyo efecto no llegó a aplicarse (para que el reintento de Stripe actúe). */
@@ -110,6 +116,7 @@ function toAccount(r: Row): PaymentAccountRow {
     lastEventId: r.last_event_id ?? null,
     lastEventType: r.last_event_type ?? null,
     lastEventAt: numOrNull(r.last_event_at),
+    updatedAt: numOrNull(r.updated_at),
   };
 }
 
@@ -238,9 +245,27 @@ export function mysqlPaymentStore(): PaymentStore {
         throw e;
       }
     },
+    async getCheckoutByPaymentIntent(paymentIntentId) {
+      try {
+        const r = await rows(sql`SELECT * FROM payment_checkouts WHERE payment_intent_id=${paymentIntentId} AND status='paid' LIMIT 1`);
+        return r[0] ? toCheckout(r[0]) : null;
+      } catch (e) {
+        if (e instanceof PaymentsSchemaMissing) return null;
+        throw e;
+      }
+    },
     async listQuoteCheckouts(quoteId) {
       try {
         const r = await rows(sql`SELECT * FROM payment_checkouts WHERE quote_id=${quoteId} AND kind='quote' ORDER BY created_at, session_id`);
+        return r.map(toCheckout);
+      } catch (e) {
+        if (e instanceof PaymentsSchemaMissing) return [];
+        throw e;
+      }
+    },
+    async listShopCheckouts(merchantOrder) {
+      try {
+        const r = await rows(sql`SELECT * FROM payment_checkouts WHERE merchant_order=${merchantOrder} AND kind='shop_order' ORDER BY created_at, session_id`);
         return r.map(toCheckout);
       } catch (e) {
         if (e instanceof PaymentsSchemaMissing) return [];

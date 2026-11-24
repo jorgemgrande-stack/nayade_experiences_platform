@@ -28,6 +28,15 @@ vi.mock("./db", async (importOriginal) => {
   };
 });
 
+// Idempotencia del checkout (consultas SQL del pedido): fuera de este test
+vi.mock("./shopOrdersDb", async (importOriginal) => ({
+  ...(await importOriginal<any>()),
+  recordCheckoutDetails: async () => {},
+  appendOrderLogEntries: async () => {},
+  findPendingOrderByFingerprint: async () => null,
+  countPendingDiscountHolds: async () => 0,
+}));
+
 vi.mock("./redsys", async (importOriginal) => {
   const actual: any = await importOriginal();
   return {

@@ -24,6 +24,21 @@ import { sendEmail } from "./mailer";
 import { buildNoticeHtml } from "./emailTemplates";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { companyName } from "./tenantBrand";
+import { siteUiText, fillUiText } from "../shared/siteUiText";
+import { resolveBuyerLocale } from "./checkoutExtrasDb";
+
+/** Idioma del pedido (el de la web en que compró); sin él, el principal de la empresa. */
+async function orderLocale(merchantOrder: string): Promise<string> {
+  try {
+    const d = await getDb();
+    if (!d) return resolveBuyerLocale(null);
+    const [rows] = (await d.execute(sql`SELECT changes_log FROM reservations WHERE merchant_order = ${merchantOrder} ORDER BY id LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    const raw = rows?.[0]?.changes_log;
+    return resolveBuyerLocale(typeof raw === "string" ? JSON.parse(raw) : raw);
+  } catch {
+    return resolveBuyerLocale(null);
+  }
+}
 
 export type FlowResult =
   | { status: "skipped"; reason: "not_found" | "not_confirmed" | "no_rule" | "payment_not_confirmed" | "no_schema" }
@@ -32,21 +47,24 @@ export type FlowResult =
 const activationPath = (token: string) => `/mi-formacion/activar?token=${encodeURIComponent(token)}`;
 
 /** Envía la invitación de acceso al aula (solo se llama por decisión expresa o con el ajuste activado). */
-export async function sendLearningInvitation(invite: { userId: number; name: string; email: string; token: string }, courseTitle?: string): Promise<boolean> {
+export async function sendLearningInvitation(invite: { userId: number; name: string; email: string; token: string }, courseTitle?: string, locale?: string): Promise<boolean> {
   const base = publicBaseUrl();
   const company = companyName();
+  const lang = locale ?? (await resolveBuyerLocale(null));
+  const ui = siteUiText(lang);
   return sendEmail({
     to: invite.email,
-    subject: courseTitle ? `Acceso a tu curso «${courseTitle}»` : "Acceso a tu formación",
+    subject: courseTitle ? fillUiText(ui.emLearnInviteSubjectCourse, { course: courseTitle }) : ui.emLearnInviteSubject,
     category: "user_invite",
     idempotencyKey: `learning-invite:${invite.userId}:${invite.token.slice(0, 12)}`,
     html: buildNoticeHtml({
-      badge: "Formación",
-      title: courseTitle ? `Ya puedes acceder a «${courseTitle}»` : "Ya puedes acceder a tu formación",
+      badge: ui.emLearnBadge,
+      locale: lang,
+      title: courseTitle ? fillUiText(ui.emLearnInviteTitleCourse, { course: courseTitle }) : ui.emLearnInviteTitle,
       greetingName: invite.name,
-      paragraphs: [`${company} te ha dado acceso a su formación digital. Crea tu contraseña para entrar en tu aula privada.`],
-      cta: { label: "Crear mi contraseña y entrar", url: `${base}${activationPath(invite.token)}` },
-      note: "El enlace es personal, caduca en 7 días y solo puede usarse una vez. Si no esperabas esta invitación, ignora este mensaje.",
+      paragraphs: [fillUiText(ui.emLearnInviteText, { company })],
+      cta: { label: ui.emLearnInviteCta, url: `${base}${activationPath(invite.token)}` },
+      note: ui.emLearnInviteNote,
     }),
   }).catch(() => false);
 }
@@ -112,18 +130,21 @@ const readOrderLines = async (merchantOrder: string) => {
 export async function sendLearningAccessNotice(to: { userId: number; name: string; email: string }, merchantOrder: string): Promise<boolean> {
   const base = publicBaseUrl();
   const company = companyName();
+  const lang = await orderLocale(merchantOrder);
+  const ui = siteUiText(lang);
   return sendEmail({
     to: to.email,
-    subject: "Ya tienes acceso a tu formación",
+    subject: ui.emLearnAccessSubject,
     category: "user_invite",
     idempotencyKey: `learning-access:${to.userId}:${merchantOrder}`,
     html: buildNoticeHtml({
-      badge: "Formación",
-      title: "Ya puedes acceder a tu formación",
+      badge: ui.emLearnBadge,
+      locale: lang,
+      title: ui.emLearnInviteTitle,
       greetingName: to.name,
-      paragraphs: [`Hemos confirmado tu pago y ${company} ha activado el acceso a los contenidos que has contratado.`],
-      cta: { label: "Entrar en mi aula", url: `${base}/mi-formacion` },
-      note: "Entra con tu cuenta habitual. Si no reconoces esta compra, responde a este correo.",
+      paragraphs: [fillUiText(ui.emLearnAccessText, { company })],
+      cta: { label: ui.emLearnAccessCta, url: `${base}/mi-formacion` },
+      note: ui.emLearnAccessNote,
     }),
   }).catch(() => false);
 }
@@ -191,7 +212,7 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     if (created > 0 && earlier == null) {
       const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
       if (!auto) notified = "pending";
-      else if (acc.invite) notified = (await sendLearningInvitation(acc.invite)) ? "invitation" : "pending";
+      else if (acc.invite) notified = (await sendLearningInvitation(acc.invite, undefined, await orderLocale(merchantOrder))) ? "invitation" : "pending";
       else notified = (await sendLearningAccessNotice({ userId: acc.userId, name: String(first.customer_name || email), email }, merchantOrder)) ? "access" : "pending";
     }
     return { status: "granted", created, existing: matched.length - pending.length, userId: acc.userId, notified, failed };
@@ -234,4 +255,54 @@ export async function pendingLearningOrders(limit = 200): Promise<Array<{ mercha
     .filter((l) => matchRules(rules, Number(l.product_id), l.variant_id == null ? null : Number(l.variant_id)).length > 0)
     .slice(0, limit)
     .map((l) => ({ merchantOrder: String(l.merchant_order), reservationId: Number(l.id), productId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id), email: l.customer_email ? String(l.customer_email) : null, paidAt: l.paid_at == null ? null : Number(l.paid_at) }));
+}
+
+/**
+ * Reembolso o disputa de un pedido de tienda: protege el acceso del alumno SIN borrar nada (la matrícula y su historial
+ * quedan; solo cambia su estado, con motivo y rastro).
+ *  - «revoke»: reembolso total o disputa perdida (el cobro ya no existe).
+ *  - «suspend»: disputa abierta (reversible mientras se resuelve).
+ *  - «reactivate»: disputa ganada; solo reabre las suspendidas por esta misma vía (motivo «Stripe: …»), nunca una suspensión manual.
+ * Idempotente (repetirlo no cambia nada). Sin el esquema del LMS no hace nada. Un fallo real SÍ se propaga: el evento de
+ * Stripe queda «failed» y se reintenta, para que el acceso no quede abierto en silencio.
+ */
+export async function changeLearningAccessForOrder(merchantOrder: string, action: "revoke" | "suspend" | "reactivate", reason: string): Promise<{ changed: number }> {
+  try {
+    const d = await getDb();
+    if (!d) return { changed: 0 };
+    const [list] = (await d.execute(sql`SELECT e.id AS id, e.status AS status FROM learning_enrollments e
+      JOIN reservations r ON r.id = e.order_id WHERE e.source = 'payment' AND r.merchant_order = ${merchantOrder}`)) as unknown as [Array<Record<string, any>>];
+    const { revokeEnrollment, suspendEnrollment, reactivateEnrollment } = await import("./learningDb");
+    // Sin usuario que actúe: lo ejecuta el sistema por aviso firmado de la pasarela
+    const actor = null as unknown as number;
+    let changed = 0;
+    for (const e of list) {
+      const id = Number(e.id);
+      const status = String(e.status);
+      if (action === "revoke" && status !== "revoked") {
+        await revokeEnrollment(id, reason, actor);
+        changed++;
+      } else if (action === "suspend" && status === "active") {
+        await suspendEnrollment(id, reason, actor);
+        changed++;
+      } else if (action === "reactivate" && status === "suspended") {
+        const [ev] = (await d.execute(sql`SELECT detail FROM learning_access_events WHERE enrollment_id = ${id} AND type = 'suspended' ORDER BY id DESC LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+        let why = "";
+        try {
+          const raw = ev?.[0]?.detail;
+          why = String((typeof raw === "string" ? JSON.parse(raw) : raw)?.reason ?? "");
+        } catch {
+          why = "";
+        }
+        if (why.startsWith("Stripe:")) {
+          await reactivateEnrollment(id, reason, actor);
+          changed++;
+        }
+      }
+    }
+    return { changed };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { changed: 0 };
+    throw e;
+  }
 }
