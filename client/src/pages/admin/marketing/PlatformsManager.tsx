@@ -7,7 +7,10 @@ import { confirmAction } from "@/components/admin/ConfirmHost";
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { Link } from "wouter";
+import { PanelPageHeader, PanelDataList, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,10 +84,10 @@ const FREQ_OPTIONS = [
   { value: "trimestral", label: "Trimestral" },
 ];
 
-const SETTLEMENT_STATUS_CONFIG = {
-  pendiente: { label: "Pendiente", color: "text-warning bg-warning/15 border-warning/30", icon: Clock },
-  emitida:   { label: "Emitida",   color: "text-info bg-info/15 border-info/30",   icon: Zap },
-  pagada:    { label: "Pagada",    color: "text-success bg-success/15 border-success/30", icon: CheckCircle },
+const SETTLEMENT_STATUS_CONFIG: Record<string, { label: string; tone: Tone; icon: typeof Clock }> = {
+  pendiente: { label: "Pendiente", tone: "warning", icon: Clock },
+  emitida:   { label: "Emitida",   tone: "info",    icon: Zap },
+  pagada:    { label: "Pagada",    tone: "success", icon: CheckCircle },
 };
 
 function formatDate(d: Date | string | null | undefined): string {
@@ -261,78 +264,70 @@ function PlatformCard({ platform, onEdit, onToggle, onDelete, onSelect, isSelect
   onSelect: (p: Platform) => void;
   isSelected: boolean;
 }) {
+  const iconBtn = "h-9 w-9";
   return (
     <div
-      className={`rounded-xl border transition-all cursor-pointer ${
+      className={`rounded-xl border shadow-sm transition-all ${
         isSelected
-          ? "border-primary/50 bg-primary/10"
-          : "border-border/50 bg-muted/40 hover:border-border hover:bg-muted"
+          ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30"
+          : "border-border bg-card hover:border-primary/40"
       }`}
-      onClick={() => onSelect(platform)}
     >
-      <div className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
+      <div className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <button
+            type="button"
+            aria-pressed={isSelected}
+            onClick={() => onSelect(platform)}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {platform.logoUrl ? (
-              <img src={platform.logoUrl} alt={platform.name} className="w-10 h-10 rounded-lg object-cover bg-muted" />
+              <img src={platform.logoUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-muted object-cover" />
             ) : (
-              <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-sm font-bold text-primary" aria-hidden="true">
                 {platform.name.charAt(0).toUpperCase()}
-              </div>
+              </span>
             )}
-            <div>
-              <p className="text-foreground font-semibold">{platform.name}</p>
-              <p className="text-muted-foreground text-xs">
+            <span className="min-w-0">
+              <span className="block break-words font-semibold text-foreground">{platform.name}</span>
+              <span className="block text-xs text-muted-foreground">
                 {FREQ_OPTIONS.find(f => f.value === platform.settlementFrequency)?.label ?? platform.settlementFrequency}
                 {platform.commissionPct ? ` · ${platform.commissionPct}% comisión` : ""}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggle(platform.id, !platform.active); }}
-              className={`p-1.5 rounded-lg transition-colors ${platform.active ? "text-success hover:bg-success/20" : "text-muted-foreground hover:bg-muted"}`}
-            >
-              {platform.active ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(platform); }}
-              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(platform.id); }}
-              className="p-1.5 rounded-lg hover:bg-danger/20 text-danger/50 hover:text-danger transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+              </span>
+            </span>
+          </button>
+          <div className="flex shrink-0 items-center">
+            <Button type="button" variant="ghost" size="icon" className={`${iconBtn} ${platform.active ? "text-success" : "text-muted-foreground"}`}
+              aria-label={platform.active ? `Desactivar ${platform.name}` : `Activar ${platform.name}`} title={platform.active ? "Desactivar" : "Activar"}
+              onClick={() => onToggle(platform.id, !platform.active)}>
+              {platform.active ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className={iconBtn} aria-label={`Editar ${platform.name}`} title="Editar" onClick={() => onEdit(platform)}>
+              <Edit2 className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className={`${iconBtn} text-danger hover:text-danger`} aria-label={`Eliminar ${platform.name}`} title="Eliminar" onClick={() => onDelete(platform.id)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-        <div className="mt-3 flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
-            platform.active
-              ? "bg-success/15 text-success border-success/30"
-              : "bg-muted text-muted-foreground border-border"
-          }`}>
-            {platform.active ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={platform.active ? "success" : "neutral"} icon={platform.active ? <CheckCircle /> : <Clock />}>
             {platform.active ? "Activa" : "Inactiva"}
-          </span>
+          </StatusBadge>
           {platform.externalUrl && (
             <a
               href={platform.externalUrl}
               target="_blank"
               rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-info hover:text-info border border-info/20 bg-info/10"
+              className="inline-flex items-center gap-1 rounded-full border border-info/40 bg-info/10 px-2 py-0.5 text-xs font-medium text-info hover:underline"
             >
-              <Globe className="w-3 h-3" /> Web
+              <Globe className="h-3 w-3" /> Web
             </a>
           )}
         </div>
         {isSelected && (
-          <div className="mt-2 flex items-center gap-1 text-primary text-xs">
-            <ChevronRight className="w-3 h-3" /> Seleccionada — ver productos y liquidaciones
+          <div className="flex items-center gap-1 text-xs text-primary">
+            <ChevronRight className="h-3 w-3" /> Seleccionada: productos y liquidaciones a la derecha
           </div>
         )}
       </div>
@@ -523,10 +518,181 @@ export default function PlatformsManager() {
     pendienteNet: settlements.filter(s => s.status !== "pagada").reduce((sum, s) => sum + parseFloat(s.netTotal ?? "0"), 0),
   };
 
+  // ── COLUMNAS DE LAS TABLAS (tabla desde 768 px, tarjetas en móvil) ────────────
+  type ProductStat = { total: number; canjeados: number; pendientes: number; incidencias: number; anulados: number; pvpTotal: number; netoTotal: number; customerNames?: string[] };
+  const statOf = (id: number) => (productStats as Record<number, ProductStat>)[id];
+  const rowBtn = "h-9 w-9";
+  const productColumns: PanelColumn<PlatformProduct>[] = [
+    {
+      key: "producto",
+      header: "Producto",
+      cell: (p) => (
+        <div className="min-w-0">
+          <p className="break-words text-sm font-medium text-foreground">{p.externalProductName ?? p.experienceTitle ?? "—"}</p>
+          {p.experienceTitle && p.externalProductName && <p className="text-xs font-normal text-muted-foreground">→ {p.experienceTitle}</p>}
+          {p.externalLink && (
+            <a href={p.externalLink} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex items-center gap-1 text-xs font-normal text-info hover:underline">
+              <ExternalLink className="h-3 w-3" /> Ver en plataforma
+            </a>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "precios",
+      header: "PVP / Neto",
+      cell: (p) => (
+        <div className="space-y-0.5 text-sm md:text-left">
+          {p.pvpPrice ? <p className="font-semibold text-foreground">{parseFloat(p.pvpPrice).toFixed(2)} €</p> : <p className="text-xs text-muted-foreground">Sin PVP</p>}
+          {p.netPrice && <p className="text-xs font-medium text-success">Neto {parseFloat(p.netPrice).toFixed(2)} €</p>}
+        </div>
+      ),
+    },
+    {
+      key: "caduca",
+      header: "Caduca",
+      cell: (p) => {
+        const expired = isExpired(p.expiresAt);
+        const expiring = isExpiringSoon(p.expiresAt);
+        if (!p.expiresAt) return <span className="text-xs text-muted-foreground">Sin caducidad</span>;
+        return (
+          <StatusBadge tone={expired ? "danger" : expiring ? "warning" : "neutral"} icon={expired ? <AlertCircle /> : expiring ? <Clock /> : <CalendarDays />}>
+            {formatDate(p.expiresAt)}
+          </StatusBadge>
+        );
+      },
+    },
+    { key: "estado", header: "Estado", cell: (p) => <StatusBadge tone={p.active ? "success" : "neutral"}>{p.active ? "Activo" : "Inactivo"}</StatusBadge> },
+    {
+      key: "cupones",
+      header: "Cupones",
+      cell: (p) => {
+        const st = statOf(p.id);
+        return (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs md:justify-start">
+            <span className="text-info" title="Cupones recibidos"><strong>{st?.total ?? 0}</strong> recib.</span>
+            <span className="text-success" title="Cupones canjeados"><strong>{st?.canjeados ?? 0}</strong> canj.</span>
+            <span className="text-warning" title="Cupones aparcados / pendientes"><strong>{st?.pendientes ?? 0}</strong> apar.</span>
+            <span className="text-danger" title="Cupones con incidencia"><strong>{st?.incidencias ?? 0}</strong> inc.</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "importes",
+      header: "PVP gen. / Neto obt.",
+      cell: (p) => {
+        const st = statOf(p.id);
+        return st ? (
+          <div className="space-y-0.5 text-xs">
+            <p className="font-semibold text-primary" title="PVP generado (suma de precios PVP de cupones no incidencia)">{st.pvpTotal.toFixed(2)} €</p>
+            <p className="font-semibold text-success" title="Precio neto obtenido (suma de neto de cupones canjeados)">{st.netoTotal.toFixed(2)} €</p>
+          </div>
+        ) : <span className="text-xs text-muted-foreground">—</span>;
+      },
+    },
+    {
+      key: "clientes",
+      header: "Clientes",
+      cell: (p) => {
+        const st = statOf(p.id);
+        return st?.customerNames && st.customerNames.length > 0 ? (
+          <div className="flex max-w-[190px] flex-wrap gap-1 md:justify-start">
+            {st.customerNames.slice(0, 3).map((name, i) => (
+              <span key={i} className="inline-flex max-w-[90px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded border border-border bg-muted/50 px-1.5 py-0.5 text-xs font-normal text-foreground" title={name}>{name}</span>
+            ))}
+            {st.customerNames.length > 3 && <span className="inline-flex items-center rounded border border-border bg-muted/50 px-1.5 py-0.5 text-xs font-normal text-muted-foreground">+{st.customerNames.length - 3}</span>}
+          </div>
+        ) : <span className="text-xs text-muted-foreground">—</span>;
+      },
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cell: (p) => (
+        <div className="flex items-center justify-end gap-0.5">
+          <Button type="button" variant="ghost" size="icon" className={rowBtn} aria-label="Editar producto" title="Editar" onClick={() => openEditProduct(p)}><Edit2 className="h-4 w-4" /></Button>
+          <Button type="button" variant="ghost" size="icon" className={`${rowBtn} text-danger hover:text-danger`} aria-label="Eliminar producto" title="Eliminar"
+            onClick={async () => { if ((await confirmAction({ description: "¿Eliminar este producto?", destructive: true }))) deleteProduct.mutate({ id: p.id }); }}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+  const settlementColumns: PanelColumn<Settlement>[] = [
+    {
+      key: "periodo",
+      header: "Periodo",
+      cell: (s) => (
+        <div>
+          <p className="text-sm font-medium text-foreground">{s.periodLabel}</p>
+          {(s.periodFrom || s.periodTo) && <p className="text-xs font-normal text-muted-foreground">{formatDate(s.periodFrom)} — {formatDate(s.periodTo)}</p>}
+          {s.invoiceRef && <p className="text-xs font-normal text-primary">Ref: {s.invoiceRef}</p>}
+        </div>
+      ),
+    },
+    {
+      key: "cupones",
+      header: "Cupones",
+      cell: (s) => (
+        <button type="button" onClick={() => setDetailSettlement(s)} className="font-medium text-foreground underline decoration-dotted underline-offset-2 hover:text-primary" aria-label={`Ver los ${s.totalCoupons} cupones de ${s.periodLabel}`}>
+          {s.totalCoupons}
+        </button>
+      ),
+    },
+    { key: "pvp", header: "PVP total", cell: (s) => <span className="font-medium text-foreground">{parseFloat(s.totalAmount).toFixed(2)} €</span> },
+    { key: "neto", header: "Neto", cell: (s) => <span className="font-semibold text-success">{parseFloat(s.netTotal ?? "0").toFixed(2)} €</span> },
+    {
+      key: "estado",
+      header: "Estado",
+      cell: (s) => {
+        const cfg = SETTLEMENT_STATUS_CONFIG[s.status] ?? SETTLEMENT_STATUS_CONFIG.pendiente;
+        const Icon = cfg.icon;
+        return <StatusBadge tone={cfg.tone} icon={<Icon />}>{cfg.label}</StatusBadge>;
+      },
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cell: (s) => (
+        <div className="flex flex-wrap items-center justify-end gap-0.5">
+          {/* Botón de avance directo de estado */}
+          {s.status !== "pagada" && (
+            <Button type="button" size="sm" variant="outline" disabled={advanceSettlementStatus.isPending}
+              className={s.status === "pendiente" ? "border-info/40 text-info hover:text-info" : "border-success/40 text-success hover:text-success"}
+              title={s.status === "pendiente" ? "Marcar como Emitida" : "Marcar como Pagada"}
+              onClick={() => advanceSettlementStatus.mutate({ id: s.id })}>
+              {s.status === "pendiente" ? "→ Emitida" : "→ Pagada"}
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="icon" className={rowBtn} aria-label="Ver detalle de operaciones" title="Ver detalle de operaciones" onClick={() => setDetailSettlement(s)}><Eye className="h-4 w-4" /></Button>
+          <Button type="button" variant="ghost" size="icon" className={rowBtn} aria-label="Editar liquidación" title="Editar" onClick={() => openEditSettlement(s)}><Edit2 className="h-4 w-4" /></Button>
+          <Button type="button" variant="ghost" size="icon" className={`${rowBtn} text-danger hover:text-danger`} aria-label="Eliminar liquidación" title="Eliminar"
+            onClick={async () => { if ((await confirmAction({ description: "¿Eliminar esta liquidación?", destructive: true }))) deleteSettlement.mutate({ id: s.id }); }}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  /** En pantallas estrechas el detalle va debajo de la lista: al elegir una plataforma se lleva a la vista. */
+  const selectPlatform = (p: Platform) => {
+    setSelectedPlatform(p);
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+      window.setTimeout(() => document.getElementById("plataforma-detalle")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    }
+  };
+  const activeProducts = products.filter((p) => p.active).length;
+  const activePlatforms = platforms.filter((p) => p.active).length;
+
   return (
     <AdminLayout>
       <div className="min-h-screen bg-background text-foreground">
-        <div className="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
+        <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6">
 
           {/* ── HEADER ─────────────────────────────────────────────────────── */}
           <PanelPageHeader
@@ -535,38 +701,42 @@ export default function PlatformsManager() {
             title="Plataformas de Cupones"
             description="Configura proveedores, productos y liquidaciones"
             actions={<>
-              <Button variant="outline" size="sm" onClick={() => window.location.href = "/admin/marketing/cupones"}>
-                <ArrowLeft className="w-4 h-4 mr-1" /> Cupones
+              <Button asChild variant="outline" size="sm">
+                <Link href="/admin/marketing/cupones"><ArrowLeft className="mr-1 h-4 w-4" /> Cupones</Link>
               </Button>
-              <Button variant="outline" size="sm"
-                onClick={() => utils.ticketing.listPlatforms.invalidate()}>
-                <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+              <Button variant="outline" size="sm" onClick={() => utils.ticketing.listPlatforms.invalidate()}>
+                <RefreshCw className="mr-1 h-4 w-4" /> Actualizar
               </Button>
               <Button size="sm" onClick={openCreatePlatform}>
-                <Plus className="w-4 h-4 mr-1" /> Nueva plataforma
+                <Plus className="mr-1 h-4 w-4" /> Nueva plataforma
               </Button>
             </>}
           />
 
+          {/* ── RESUMEN ──────────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <MetricCard tone="brand" icon={<Settings />} label="Plataformas" value={platforms.length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone="success" icon={<CheckCircle />} label="Activas" value={activePlatforms} detail={`${platforms.length - activePlatforms} inactivas`} className="bg-gradient-to-br from-success/10 to-card" />
+            <MetricCard tone="info" icon={<Package />} label="Productos activos" value={selectedPlatform ? activeProducts : "—"} detail={selectedPlatform ? selectedPlatform.name : "Elige una plataforma"} className="bg-gradient-to-br from-info/10 to-card" />
+            <MetricCard tone="warning" icon={<Banknote />} label="Neto por liquidar" value={selectedPlatform ? `${settlementStats.pendienteNet.toFixed(2)} €` : "—"} detail={selectedPlatform ? `${settlementStats.pendiente + settlementStats.emitida} liquidaciones sin pagar` : "Elige una plataforma"} className="bg-gradient-to-br from-warning/10 to-card" />
+          </div>
+
           {/* ── LAYOUT ───────────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
             {/* Lista de plataformas */}
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wider">
+              <h2 className="text-sm font-semibold text-foreground">
                 Plataformas ({platforms.length})
               </h2>
               {platformsQuery.isPending ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="rounded-xl border border-border/50 p-4 animate-pulse">
-                    <div className="h-4 bg-muted/50 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-muted/50 rounded w-1/2" />
-                  </div>
-                ))
+                <PanelLoading />
+              ) : platformsQuery.error ? (
+                <PanelError error={platformsQuery.error} onRetry={() => void platformsQuery.refetch()} title="No se han podido cargar las plataformas" />
               ) : platforms.length === 0 ? (
-                <div className="rounded-xl border border-border/50 p-8 text-center text-muted-foreground text-sm">
-                  No hay plataformas. Crea la primera.
-                </div>
+                <PanelEmpty icon={<Settings />} title="Aún no hay plataformas" description="Da de alta Groupon, Smartbox u otra para gestionar sus productos y liquidaciones.">
+                  <Button size="sm" onClick={openCreatePlatform}><Plus className="mr-1 h-4 w-4" /> Nueva plataforma</Button>
+                </PanelEmpty>
               ) : platforms.map((p) => (
                 <PlatformCard
                   key={p.id}
@@ -578,328 +748,104 @@ export default function PlatformsManager() {
                       deletePlatform.mutate({ id });
                     }
                   }}
-                  onSelect={setSelectedPlatform}
+                  onSelect={selectPlatform}
                   isSelected={selectedPlatform?.id === p.id}
                 />
               ))}
             </div>
 
             {/* Panel de detalle */}
-            <div className="lg:col-span-2">
+            <div id="plataforma-detalle" className="min-w-0 scroll-mt-20 lg:col-span-2">
               {!selectedPlatform ? (
-                <div className="rounded-xl border border-border/50 p-12 text-center text-muted-foreground">
-                  <Settings className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                  <p>Selecciona una plataforma para ver sus productos y liquidaciones</p>
-                </div>
+                <PanelEmpty icon={<Settings />} title="Selecciona una plataforma" description="Verás sus productos con precios y caducidad, y sus liquidaciones." />
               ) : (
                 <div className="space-y-4">
                   {/* Cabecera plataforma seleccionada */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       {selectedPlatform.logoUrl ? (
-                        <img src={selectedPlatform.logoUrl} alt={selectedPlatform.name} className="w-8 h-8 rounded-lg object-cover" />
+                        <img src={selectedPlatform.logoUrl} alt="" className="h-9 w-9 rounded-lg object-cover" />
                       ) : (
-                        <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-sm font-bold text-primary" aria-hidden="true">
                           {selectedPlatform.name.charAt(0)}
-                        </div>
+                        </span>
                       )}
-                      <h2 className="text-lg font-semibold text-foreground">{selectedPlatform.name}</h2>
+                      <h2 className="min-w-0 break-words text-lg font-semibold text-foreground">{selectedPlatform.name}</h2>
                     </div>
-                    <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
-                      {(["productos", "liquidaciones"] as const).map((s) => (
-                        <button key={s} onClick={() => setActiveSection(s)}
-                          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                            activeSection === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary-foreground"
-                          }`}>
-                          {s === "productos"
-                            ? <><Package className="w-3.5 h-3.5 inline mr-1" />Productos</>
-                            : <><Banknote className="w-3.5 h-3.5 inline mr-1" />Liquidaciones</>}
-                        </button>
-                      ))}
-                    </div>
+                    <SegmentedTabs<"productos" | "liquidaciones">
+                      label="Sección de la plataforma"
+                      value={activeSection}
+                      onChange={setActiveSection}
+                      options={[
+                        { value: "productos", label: "Productos", count: products.length },
+                        { value: "liquidaciones", label: "Liquidaciones", count: settlements.length },
+                      ]}
+                    />
                   </div>
 
                   {/* ── PRODUCTOS ──────────────────────────────────────────── */}
                   {activeSection === "productos" && (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm text-muted-foreground">
                           Productos de <span className="text-foreground">{selectedPlatform.name}</span>
-                          {" "}— {products.filter(p => p.active).length} activos
+                          {" "}— {activeProducts} activos
                         </p>
-                        <Button size="sm" variant="outline" onClick={openCreateProduct}
-                          className="border-border bg-muted/50 text-foreground/70 hover:bg-muted h-8">
-                          <Plus className="w-3.5 h-3.5 mr-1" /> Añadir producto
+                        <Button size="sm" variant="outline" onClick={openCreateProduct}>
+                          <Plus className="mr-1 h-3.5 w-3.5" /> Añadir producto
                         </Button>
                       </div>
-                      <div className="rounded-xl border border-border/50 overflow-x-auto">
-                        {products.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground text-sm">
-                            <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                            No hay productos configurados para esta plataforma.
-                          </div>
-                        ) : (
-                          <table className="w-full min-w-[1100px] text-sm">
-                            <thead>
-                              <tr className="border-b border-border/50 bg-muted/40">
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Producto</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">PVP</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Precio neto</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Caduca</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Estado</th>
-                                <th className="text-center px-3 py-3 text-info/60 font-medium text-xs" title="Cupones recibidos">Recibidos</th>
-                                <th className="text-center px-3 py-3 text-success/60 font-medium text-xs" title="Cupones canjeados">Canjeados</th>
-                                <th className="text-center px-3 py-3 text-warning/60 font-medium text-xs" title="Cupones aparcados / pendientes">Aparcados</th>
-                                <th className="text-center px-3 py-3 text-danger/60 font-medium text-xs" title="Cupones con incidencia">Anulados</th>
-                                <th className="text-right px-3 py-3 text-primary/60 font-medium text-xs" title="PVP generado (suma de precios PVP de cupones no incidencia)">PVP gen.</th>
-                                <th className="text-right px-3 py-3 text-success/60 font-medium text-xs" title="Precio neto obtenido (suma de neto de cupones canjeados)">Neto obt.</th>
-                                <th className="text-left px-3 py-3 text-muted-foreground font-medium text-xs" title="Clientes con cupón de este producto">Clientes</th>
-                                <th className="px-4 py-3" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {products.map((p) => {
-                                const expired = isExpired(p.expiresAt);
-                                const expiring = isExpiringSoon(p.expiresAt);
-                                const st = (productStats as Record<number, { total: number; canjeados: number; pendientes: number; incidencias: number; anulados: number; pvpTotal: number; netoTotal: number; customerNames?: string[] }>)[p.id];
-                                return (
-                                  <tr key={p.id} className="border-b border-border/50 hover:bg-muted/50">
-                                    <td className="px-4 py-3">
-                                      <p className="text-foreground font-medium text-sm">
-                                        {p.externalProductName ?? p.experienceTitle ?? "—"}
-                                      </p>
-                                      {p.experienceTitle && p.externalProductName && (
-                                        <p className="text-muted-foreground text-xs">→ {p.experienceTitle}</p>
-                                      )}
-                                      {p.externalLink && (
-                                        <a href={p.externalLink} target="_blank" rel="noreferrer"
-                                          className="inline-flex items-center gap-1 text-info hover:text-info text-xs mt-0.5">
-                                          <ExternalLink className="w-3 h-3" /> Ver en plataforma
-                                        </a>
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      {p.pvpPrice ? (
-                                        <span className="text-foreground font-semibold">{parseFloat(p.pvpPrice).toFixed(2)} €</span>
-                                      ) : <span className="text-muted-foreground text-xs">—</span>}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      {p.netPrice ? (
-                                        <span className="text-success font-semibold">{parseFloat(p.netPrice).toFixed(2)} €</span>
-                                      ) : <span className="text-muted-foreground text-xs">—</span>}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      {p.expiresAt ? (
-                                        <span className={`text-xs font-medium flex items-center gap-1 ${
-                                          expired ? "text-danger" : expiring ? "text-warning" : "text-foreground/60"
-                                        }`}>
-                                          {expired && <AlertCircle className="w-3 h-3" />}
-                                          {expiring && !expired && <Clock className="w-3 h-3" />}
-                                          {expired && !expiring && <CalendarDays className="w-3 h-3" />}
-                                          {formatDate(p.expiresAt)}
-                                        </span>
-                                      ) : <span className="text-muted-foreground text-xs">Sin caducidad</span>}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
-                                        p.active
-                                          ? "bg-success/15 text-success border-success/30"
-                                          : "bg-muted text-muted-foreground border-border"
-                                      }`}>
-                                        {p.active ? "Activo" : "Inactivo"}
-                                      </span>
-                                    </td>
-                                    {/* Columnas estadísticas */}
-                                    <td className="px-3 py-3 text-center">
-                                      <span className="text-info font-semibold text-sm">{st?.total ?? 0}</span>
-                                    </td>
-                                    <td className="px-3 py-3 text-center">
-                                      <span className="text-success font-semibold text-sm">{st?.canjeados ?? 0}</span>
-                                    </td>
-                                    <td className="px-3 py-3 text-center">
-                                      <span className="text-warning font-semibold text-sm">{st?.pendientes ?? 0}</span>
-                                    </td>
-                                    <td className="px-3 py-3 text-center">
-                                      <span className="text-danger font-semibold text-sm">{st?.incidencias ?? 0}</span>
-                                    </td>
-                                    <td className="px-3 py-3 text-right">
-                                      <span className="text-primary font-semibold text-sm">{st ? st.pvpTotal.toFixed(2) + " €" : "—"}</span>
-                                    </td>
-                                    <td className="px-3 py-3 text-right">
-                                      <span className="text-success font-semibold text-sm">{st ? st.netoTotal.toFixed(2) + " €" : "—"}</span>
-                                    </td>
-                                    <td className="px-3 py-3">
-                                      {st?.customerNames && st.customerNames.length > 0 ? (
-                                        <div className="flex flex-wrap gap-1 max-w-[180px]">
-                                          {st.customerNames.slice(0, 3).map((name, i) => (
-                                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/50 border border-border text-foreground/70 text-[10px] overflow-hidden text-ellipsis whitespace-nowrap max-w-[85px]" title={name}>
-                                              {name}
-                                            </span>
-                                          ))}
-                                          {st.customerNames.length > 3 && (
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/50 border border-border text-muted-foreground text-[10px]">
-                                              +{st.customerNames.length - 3}
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <span className="text-foreground/20 text-xs">—</span>
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <div className="flex items-center justify-end gap-1">
-                                        <button onClick={() => openEditProduct(p)}
-                                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                                          <Edit2 className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button onClick={async () => {
-                                          if ((await confirmAction({ description: "¿Eliminar este producto?", destructive: true }))) deleteProduct.mutate({ id: p.id });
-                                        }} className="p-1.5 rounded-lg hover:bg-danger/20 text-danger/50 hover:text-danger transition-colors">
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        )}
-                      </div>
+                      {productsQuery.isPending ? (
+                        <PanelLoading />
+                      ) : productsQuery.error ? (
+                        <PanelError error={productsQuery.error} onRetry={() => void productsQuery.refetch()} title="No se han podido cargar los productos" />
+                      ) : products.length === 0 ? (
+                        <PanelEmpty icon={<Package />} title="Sin productos configurados" description="Añade los productos que vende esta plataforma con su PVP, precio neto y caducidad.">
+                          <Button size="sm" onClick={openCreateProduct}><Plus className="mr-1 h-4 w-4" /> Añadir producto</Button>
+                        </PanelEmpty>
+                      ) : (
+                        <PanelDataList rows={products} columns={productColumns} rowKey={(p) => p.id} caption={`Productos de ${selectedPlatform.name}`} />
+                      )}
                     </div>
                   )}
 
                   {/* ── LIQUIDACIONES ──────────────────────────────────────── */}
                   {activeSection === "liquidaciones" && (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm text-muted-foreground">Liquidaciones de <span className="text-foreground">{selectedPlatform.name}</span></p>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => {
+                          <Button size="sm" variant="outline" className="border-primary/40 text-primary hover:text-primary" onClick={() => {
                             setGenerateForm({ periodLabel: "", periodFrom: "", periodTo: "", notes: "" });
                             setGenerateModalOpen(true);
-                          }}
-                            className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 h-8">
-                            <Zap className="w-3.5 h-3.5 mr-1" /> Generar automática
+                          }}>
+                            <Zap className="mr-1 h-3.5 w-3.5" /> Generar automática
                           </Button>
-                          <Button size="sm" variant="outline" onClick={openCreateSettlement}
-                            className="border-border bg-muted/50 text-foreground/70 hover:bg-muted h-8">
-                            <Plus className="w-3.5 h-3.5 mr-1" /> Manual
+                          <Button size="sm" variant="outline" onClick={openCreateSettlement}>
+                            <Plus className="mr-1 h-3.5 w-3.5" /> Manual
                           </Button>
                         </div>
                       </div>
 
                       {/* Stats de liquidaciones */}
                       {settlements.length > 0 && (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
-                            <p className="text-xs text-muted-foreground">Total</p>
-                            <p className="text-xl font-bold text-foreground">{settlementStats.total}</p>
-                          </div>
-                          <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
-                            <p className="text-xs text-warning/70">Pendientes</p>
-                            <p className="text-xl font-bold text-warning">{settlementStats.pendiente}</p>
-                          </div>
-                          <div className="rounded-lg border border-info/20 bg-info/5 p-3">
-                            <p className="text-xs text-info/70">Emitidas</p>
-                            <p className="text-xl font-bold text-info">{settlementStats.emitida}</p>
-                          </div>
-                          <div className="rounded-lg border border-success/20 bg-success/5 p-3">
-                            <p className="text-xs text-success/70">Neto pendiente</p>
-                            <p className="text-xl font-bold text-success">{settlementStats.pendienteNet.toFixed(2)} €</p>
-                          </div>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          <MetricCard compact tone="neutral" icon={<FileText />} label="Total" value={settlementStats.total} />
+                          <MetricCard compact tone="warning" icon={<Clock />} label="Pendientes" value={settlementStats.pendiente} />
+                          <MetricCard compact tone="info" icon={<Zap />} label="Emitidas" value={settlementStats.emitida} />
+                          <MetricCard compact tone="success" icon={<Banknote />} label="Neto pendiente" value={`${settlementStats.pendienteNet.toFixed(2)} €`} />
                         </div>
                       )}
 
-                      <div className="rounded-xl border border-border/50 overflow-hidden">
-                        {settlements.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground text-sm">
-                            <Banknote className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                            No hay liquidaciones registradas para esta plataforma.
-                          </div>
-                        ) : (
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b border-border/50 bg-muted/40">
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Periodo</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Cupones</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">PVP total</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Neto</th>
-                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Estado</th>
-                                <th className="px-4 py-3" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {settlements.map((s) => {
-                                const cfg = SETTLEMENT_STATUS_CONFIG[s.status] ?? SETTLEMENT_STATUS_CONFIG.pendiente;
-                                const Icon = cfg.icon;
-                                return (
-                                  <tr key={s.id} className="border-b border-border/50 hover:bg-muted/50">
-                                    <td className="px-4 py-3">
-                                      <p className="text-foreground font-medium">{s.periodLabel}</p>
-                                      {(s.periodFrom || s.periodTo) && (
-                                        <p className="text-muted-foreground text-xs">{formatDate(s.periodFrom)} — {formatDate(s.periodTo)}</p>
-                                      )}
-                                      {s.invoiceRef && (
-                                        <p className="text-primary text-xs">Ref: {s.invoiceRef}</p>
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <button
-                                        onClick={() => setDetailSettlement(s)}
-                                        className="text-foreground hover:text-primary font-medium underline decoration-dotted underline-offset-2"
-                                      >
-                                        {s.totalCoupons}
-                                      </button>
-                                    </td>
-                                    <td className="px-4 py-3 text-foreground font-medium">{parseFloat(s.totalAmount).toFixed(2)} €</td>
-                                    <td className="px-4 py-3 text-success font-semibold">{parseFloat(s.netTotal ?? "0").toFixed(2)} €</td>
-                                    <td className="px-4 py-3">
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
-                                        <Icon className="w-3 h-3" /> {cfg.label}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <div className="flex items-center justify-end gap-1">
-                                        {/* Botón de avance directo de estado */}
-                                        {s.status !== "pagada" && (
-                                          <button
-                                            onClick={() => advanceSettlementStatus.mutate({ id: s.id })}
-                                            disabled={advanceSettlementStatus.isPending}
-                                            title={s.status === "pendiente" ? "Marcar como Emitida" : "Marcar como Pagada"}
-                                            className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
-                                              s.status === "pendiente"
-                                                ? "bg-info/20 hover:bg-info/35 text-info border border-info/30"
-                                                : "bg-success/20 hover:bg-success/35 text-success border border-success/30"
-                                            }`}
-                                          >
-                                            {s.status === "pendiente" ? "→ Emitida" : "→ Pagada"}
-                                          </button>
-                                        )}
-                                        <button
-                                          onClick={() => setDetailSettlement(s)}
-                                          title="Ver detalle de operaciones"
-                                          className="p-1.5 rounded-lg hover:bg-primary/20 text-primary/50 hover:text-primary transition-colors">
-                                          <Eye className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button onClick={() => openEditSettlement(s)}
-                                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                                          <Edit2 className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button onClick={async () => {
-                                          if ((await confirmAction({ description: "¿Eliminar esta liquidación?", destructive: true }))) deleteSettlement.mutate({ id: s.id });
-                                        }} className="p-1.5 rounded-lg hover:bg-danger/20 text-danger/50 hover:text-danger transition-colors">
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        )}
-                      </div>
+                      {settlementsQuery.isPending ? (
+                        <PanelLoading />
+                      ) : settlementsQuery.error ? (
+                        <PanelError error={settlementsQuery.error} onRetry={() => void settlementsQuery.refetch()} title="No se han podido cargar las liquidaciones" />
+                      ) : settlements.length === 0 ? (
+                        <PanelEmpty icon={<Banknote />} title="Sin liquidaciones" description="Genera una liquidación automática del periodo o créala a mano para esta plataforma." />
+                      ) : (
+                        <PanelDataList rows={settlements} columns={settlementColumns} rowKey={(s) => s.id} caption={`Liquidaciones de ${selectedPlatform.name}`} />
+                      )}
                     </div>
                   )}
                 </div>
@@ -920,8 +866,8 @@ export default function PlatformsManager() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-foreground/70 text-xs">Nombre *</Label>
-              <Input
+              <Label htmlFor="plat-campo-1" className="text-foreground/70 text-xs">Nombre *</Label>
+              <Input id="plat-campo-1"
                 value={platformForm.name}
                 onChange={(e) => setPlatformForm(f => ({ ...f, name: e.target.value, slug: editingPlatform ? f.slug : slugify(e.target.value) }))}
                 placeholder="Ej: Groupon"
@@ -929,8 +875,8 @@ export default function PlatformsManager() {
               />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Slug (identificador único) *</Label>
-              <Input
+              <Label htmlFor="plat-campo-2" className="text-foreground/70 text-xs">Slug (identificador único) *</Label>
+              <Input id="plat-campo-2"
                 value={platformForm.slug}
                 onChange={(e) => setPlatformForm(f => ({ ...f, slug: slugify(e.target.value) }))}
                 placeholder="groupon"
@@ -938,31 +884,31 @@ export default function PlatformsManager() {
               />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL del logo</Label>
-              <Input value={platformForm.logoUrl} onChange={(e) => setPlatformForm(f => ({ ...f, logoUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-3" className="text-foreground/70 text-xs">URL del logo</Label>
+              <Input id="plat-campo-3" value={platformForm.logoUrl} onChange={(e) => setPlatformForm(f => ({ ...f, logoUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL del proveedor</Label>
-              <Input value={platformForm.externalUrl} onChange={(e) => setPlatformForm(f => ({ ...f, externalUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-4" className="text-foreground/70 text-xs">URL del proveedor</Label>
+              <Input id="plat-campo-4" value={platformForm.externalUrl} onChange={(e) => setPlatformForm(f => ({ ...f, externalUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Frecuencia liquidación</Label>
+                <Label htmlFor="plat-campo-25" className="text-foreground/70 text-xs">Frecuencia liquidación</Label>
                 <Select value={platformForm.settlementFrequency} onValueChange={(v) => setPlatformForm(f => ({ ...f, settlementFrequency: v as "quincenal" | "mensual" | "trimestral" }))}>
-                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="plat-campo-25" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     {FREQ_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Comisión (%)</Label>
-                <Input type="number" min={0} max={100} step={0.01} value={platformForm.commissionPct} onChange={(e) => setPlatformForm(f => ({ ...f, commissionPct: e.target.value }))} placeholder="20.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-5" className="text-foreground/70 text-xs">Comisión (%)</Label>
+                <Input id="plat-campo-5" type="number" min={0} max={100} step={0.01} value={platformForm.commissionPct} onChange={(e) => setPlatformForm(f => ({ ...f, commissionPct: e.target.value }))} placeholder="20.00" className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas</Label>
-              <Textarea value={platformForm.notes} onChange={(e) => setPlatformForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="plat-campo-6" className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea id="plat-campo-6" value={platformForm.notes} onChange={(e) => setPlatformForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setPlatformForm(f => ({ ...f, active: !f.active }))}>
@@ -997,28 +943,28 @@ export default function PlatformsManager() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-foreground/70 text-xs">Nombre del producto en la plataforma *</Label>
-              <Input value={productForm.externalProductName} onChange={(e) => setProductForm(f => ({ ...f, externalProductName: e.target.value }))} placeholder="Ej: Forfait día completo adulto" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-7" className="text-foreground/70 text-xs">Nombre del producto en la plataforma *</Label>
+              <Input id="plat-campo-7" value={productForm.externalProductName} onChange={(e) => setProductForm(f => ({ ...f, externalProductName: e.target.value }))} placeholder="Ej: Forfait día completo adulto" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL del producto en la plataforma</Label>
-              <Input value={productForm.externalLink} onChange={(e) => setProductForm(f => ({ ...f, externalLink: e.target.value }))} placeholder="https://www.groupon.es/deals/..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-8" className="text-foreground/70 text-xs">URL del producto en la plataforma</Label>
+              <Input id="plat-campo-8" value={productForm.externalLink} onChange={(e) => setProductForm(f => ({ ...f, externalLink: e.target.value }))} placeholder="https://www.groupon.es/deals/..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs flex items-center gap-1"><Euro className="w-3 h-3" /> Precio PVP (€)</Label>
-                <Input type="number" min={0} step={0.01} value={productForm.pvpPrice} onChange={(e) => setProductForm(f => ({ ...f, pvpPrice: e.target.value }))} placeholder="45.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-9" className="text-foreground/70 text-xs flex items-center gap-1"><Euro className="w-3 h-3" /> Precio PVP (€)</Label>
+                <Input id="plat-campo-9" type="number" min={0} step={0.01} value={productForm.pvpPrice} onChange={(e) => setProductForm(f => ({ ...f, pvpPrice: e.target.value }))} placeholder="45.00" className="bg-muted/50 border-border text-foreground mt-1" />
                 <p className="text-muted-foreground text-xs mt-1">Precio de venta al público</p>
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs flex items-center gap-1 text-success/80"><Euro className="w-3 h-3" /> Precio neto (€)</Label>
-                <Input type="number" min={0} step={0.01} value={productForm.netPrice} onChange={(e) => setProductForm(f => ({ ...f, netPrice: e.target.value }))} placeholder="36.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-10" className="text-foreground/70 text-xs flex items-center gap-1 text-success/80"><Euro className="w-3 h-3" /> Precio neto (€)</Label>
+                <Input id="plat-campo-10" type="number" min={0} step={0.01} value={productForm.netPrice} onChange={(e) => setProductForm(f => ({ ...f, netPrice: e.target.value }))} placeholder="36.00" className="bg-muted/50 border-border text-foreground mt-1" />
                 <p className="text-muted-foreground text-xs mt-1">Lo que nos paga el proveedor</p>
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Fecha de caducidad del producto</Label>
-              <Input type="date" value={productForm.expiresAt} onChange={(e) => setProductForm(f => ({ ...f, expiresAt: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-11" className="text-foreground/70 text-xs flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Fecha de caducidad del producto</Label>
+              <Input id="plat-campo-11" type="date" value={productForm.expiresAt} onChange={(e) => setProductForm(f => ({ ...f, expiresAt: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               <p className="text-muted-foreground text-xs mt-1">Dejar vacío si no tiene caducidad</p>
             </div>
             <div className="flex items-center gap-3">
@@ -1063,37 +1009,37 @@ export default function PlatformsManager() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
-              <Input value={settlementForm.periodLabel} onChange={(e) => setSettlementForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-12" className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
+              <Input id="plat-campo-12" value={settlementForm.periodLabel} onChange={(e) => setSettlementForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Desde</Label>
-                <Input type="date" value={settlementForm.periodFrom} onChange={(e) => setSettlementForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-13" className="text-foreground/70 text-xs">Desde</Label>
+                <Input id="plat-campo-13" type="date" value={settlementForm.periodFrom} onChange={(e) => setSettlementForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Hasta</Label>
-                <Input type="date" value={settlementForm.periodTo} onChange={(e) => setSettlementForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-foreground/70 text-xs">Nº cupones</Label>
-                <Input type="number" min={0} value={settlementForm.totalCoupons} onChange={(e) => setSettlementForm(f => ({ ...f, totalCoupons: parseInt(e.target.value) || 0 }))} className="bg-muted/50 border-border text-foreground mt-1" />
-              </div>
-              <div>
-                <Label className="text-foreground/70 text-xs">Importe PVP (€)</Label>
-                <Input type="number" min={0} step={0.01} value={settlementForm.totalAmount} onChange={(e) => setSettlementForm(f => ({ ...f, totalAmount: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-14" className="text-foreground/70 text-xs">Hasta</Label>
+                <Input id="plat-campo-14" type="date" value={settlementForm.periodTo} onChange={(e) => setSettlementForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
-            <div>
-              <Label className="text-foreground/70 text-xs text-success/80">Importe neto a cobrar (€)</Label>
-              <Input type="number" min={0} step={0.01} value={settlementForm.netTotal} onChange={(e) => setSettlementForm(f => ({ ...f, netTotal: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="plat-campo-15" className="text-foreground/70 text-xs">Nº cupones</Label>
+                <Input id="plat-campo-15" type="number" min={0} value={settlementForm.totalCoupons} onChange={(e) => setSettlementForm(f => ({ ...f, totalCoupons: parseInt(e.target.value) || 0 }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="plat-campo-16" className="text-foreground/70 text-xs">Importe PVP (€)</Label>
+                <Input id="plat-campo-16" type="number" min={0} step={0.01} value={settlementForm.totalAmount} onChange={(e) => setSettlementForm(f => ({ ...f, totalAmount: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Estado</Label>
+              <Label htmlFor="plat-campo-17" className="text-foreground/70 text-xs text-success/80">Importe neto a cobrar (€)</Label>
+              <Input id="plat-campo-17" type="number" min={0} step={0.01} value={settlementForm.netTotal} onChange={(e) => setSettlementForm(f => ({ ...f, netTotal: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+            </div>
+            <div>
+              <Label htmlFor="plat-campo-26" className="text-foreground/70 text-xs">Estado</Label>
               <Select value={settlementForm.status} onValueChange={(v) => setSettlementForm(f => ({ ...f, status: v as "pendiente" | "emitida" | "pagada" }))}>
-                <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="plat-campo-26" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="pendiente">Pendiente de cobro</SelectItem>
                   <SelectItem value="emitida">Emitida (factura enviada)</SelectItem>
@@ -1102,16 +1048,16 @@ export default function PlatformsManager() {
               </Select>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Referencia factura</Label>
-              <Input value={settlementForm.invoiceRef} onChange={(e) => setSettlementForm(f => ({ ...f, invoiceRef: e.target.value }))} placeholder="FAC-2026-001" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-18" className="text-foreground/70 text-xs">Referencia factura</Label>
+              <Input id="plat-campo-18" value={settlementForm.invoiceRef} onChange={(e) => setSettlementForm(f => ({ ...f, invoiceRef: e.target.value }))} placeholder="FAC-2026-001" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL justificante</Label>
-              <Input value={settlementForm.justificantUrl} onChange={(e) => setSettlementForm(f => ({ ...f, justificantUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-19" className="text-foreground/70 text-xs">URL justificante</Label>
+              <Input id="plat-campo-19" value={settlementForm.justificantUrl} onChange={(e) => setSettlementForm(f => ({ ...f, justificantUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas</Label>
-              <Textarea value={settlementForm.notes} onChange={(e) => setSettlementForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="plat-campo-20" className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea id="plat-campo-20" value={settlementForm.notes} onChange={(e) => setSettlementForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
@@ -1146,22 +1092,22 @@ export default function PlatformsManager() {
               Agrupa automáticamente todos los cupones <strong>canjeados</strong> de <strong>{selectedPlatform?.name}</strong> en el periodo seleccionado que aún no tengan liquidación asignada.
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
-              <Input value={generateForm.periodLabel} onChange={(e) => setGenerateForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-21" className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
+              <Input id="plat-campo-21" value={generateForm.periodLabel} onChange={(e) => setGenerateForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Desde *</Label>
-                <Input type="date" value={generateForm.periodFrom} onChange={(e) => setGenerateForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-22" className="text-foreground/70 text-xs">Desde *</Label>
+                <Input id="plat-campo-22" type="date" value={generateForm.periodFrom} onChange={(e) => setGenerateForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Hasta *</Label>
-                <Input type="date" value={generateForm.periodTo} onChange={(e) => setGenerateForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-23" className="text-foreground/70 text-xs">Hasta *</Label>
+                <Input id="plat-campo-23" type="date" value={generateForm.periodTo} onChange={(e) => setGenerateForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas</Label>
-              <Textarea value={generateForm.notes} onChange={(e) => setGenerateForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="plat-campo-24" className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea id="plat-campo-24" value={generateForm.notes} onChange={(e) => setGenerateForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
@@ -1190,29 +1136,25 @@ export default function PlatformsManager() {
           <div className="space-y-4">
             {/* Summary cards */}
             {detailSettlement && (
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground">Cupones</p>
-                  <p className="text-2xl font-bold text-foreground">{detailSettlement.totalCoupons}</p>
+                  <p className="break-words text-xl font-bold sm:text-2xl text-foreground">{detailSettlement.totalCoupons}</p>
                 </div>
                 <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground">PVP Total</p>
-                  <p className="text-2xl font-bold text-foreground">{parseFloat(detailSettlement.totalAmount).toFixed(2)} €</p>
+                  <p className="break-words text-xl font-bold sm:text-2xl text-foreground">{parseFloat(detailSettlement.totalAmount).toFixed(2)} €</p>
                 </div>
                 <div className="rounded-lg border border-success/20 bg-success/5 p-3">
                   <p className="text-xs text-success/70">Neto Total</p>
-                  <p className="text-2xl font-bold text-success">{parseFloat(detailSettlement.netTotal ?? "0").toFixed(2)} €</p>
+                  <p className="break-words text-xl font-bold sm:text-2xl text-success">{parseFloat(detailSettlement.netTotal ?? "0").toFixed(2)} €</p>
                 </div>
                 <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground mb-1.5">Estado</p>
                   {(() => {
                     const cfg = SETTLEMENT_STATUS_CONFIG[detailSettlement.status] ?? SETTLEMENT_STATUS_CONFIG.pendiente;
                     const Icon = cfg.icon;
-                    return (
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
-                        <Icon className="w-3 h-3" /> {cfg.label}
-                      </span>
-                    );
+                    return <StatusBadge tone={cfg.tone} icon={<Icon />}>{cfg.label}</StatusBadge>;
                   })()}
                   {detailSettlement.invoiceRef && (
                     <p className="text-primary text-xs mt-1">Ref: {detailSettlement.invoiceRef}</p>

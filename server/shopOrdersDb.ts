@@ -129,6 +129,8 @@ export async function finalizePaidShopOrder(merchantOrder: string, paymentMethod
   // LMS: con el pago confirmado, las reglas de catálogo matriculan en lo contratado. Idempotente y nunca lanza: se ejecuta
   // también en las pasadas de recuperación (reintento del cobro, aviso repetido), así un fallo parcial se repara solo.
   await (await import("./learningFlow")).grantLearningFromOrder(merchantOrder);
+  // Ampliaciones de acceso por módulo compradas desde el aula (idempotente y sin lanzar)
+  await (await import("./learningExtensions")).applyExtensionsForOrder(merchantOrder);
   const existing = rows.find((r) => r.invoiceId);
   if (existing) return { clientId, invoiceId: existing.invoiceId, invoiceNumber: existing.invoiceNumber, created: false };
 
