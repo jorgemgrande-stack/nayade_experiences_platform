@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, CircleDashed, Loader2, Lock, ShieldCheck, XCircle } from "lucide-react";
@@ -206,21 +208,12 @@ export default function Cobros() {
   return (
     <AdminLayout>
       <div className="max-w-3xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">{t("settingsPayments.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("settingsPayments.intro")}
-          </p>
-        </div>
+        <PanelPageHeader title={t("settingsPayments.title")} description={t("settingsPayments.intro")} />
 
         {status.isLoading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
+          <PanelLoading />
         ) : status.error ? (
-          <div role="alert" className="flex items-start gap-2 text-sm text-danger">
-            <XCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden /> {status.error.message}
-          </div>
+          <PanelError error={status.error} onRetry={() => void status.refetch()} />
         ) : (
           status.data && (
             <>

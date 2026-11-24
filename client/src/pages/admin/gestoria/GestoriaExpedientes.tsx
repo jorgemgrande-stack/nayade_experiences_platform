@@ -6,6 +6,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,12 +50,7 @@ export default function GestoriaExpedientes() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-3xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <FolderArchive className="w-6 h-6 text-primary" /> Expedientes para Gestoría
-          </h1>
-          <p className="text-sm text-muted-foreground">Genera y comparte los expedientes fiscales del ejercicio</p>
-        </div>
+        <PanelPageHeader icon={<FolderArchive />} title="Expedientes para Gestoría" description="Genera y comparte los expedientes fiscales del ejercicio" />
 
         {/* Generar expediente */}
         <div className="bg-card border border-border rounded-lg p-4 space-y-3">
@@ -83,7 +80,7 @@ export default function GestoriaExpedientes() {
         <div className="bg-card border border-border rounded-lg p-4">
           <h2 className="text-sm font-semibold text-foreground mb-2">Expedientes generados</h2>
           {dossiers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aún no se ha generado ningún expediente.</p>
+            <PanelEmpty icon={<FolderArchive className="w-5 h-5" />} title="Aún no se ha generado ningún expediente" description="Elige el ejercicio y pulsa «Generar ZIP»." className="border-0" />
           ) : (
             <div className="space-y-1.5">
               {dossiers.map((d) => (

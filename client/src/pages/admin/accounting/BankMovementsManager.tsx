@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelEmpty } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import FinanceSyncSetupBanner from "@/components/finance/FinanceSyncSetupBanner";
@@ -456,9 +457,9 @@ export default function BankMovementsManager() {
                 </thead>
                 <tbody>
                   {movementsQ.isLoading ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Cargando...</td></tr>
+                    <tr><td colSpan={9}><PanelLoading className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
                   ) : movements.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos con los filtros seleccionados</td></tr>
+                    <tr><td colSpan={9} className="p-2"><PanelEmpty title="No hay movimientos con los filtros seleccionados" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                   ) : movements.map((mv) => {
                     const amount = parseFloat(mv.importe);
                     const isPos = amount >= 0;
@@ -520,13 +521,13 @@ export default function BankMovementsManager() {
         {tab === "importaciones" && (
           <div className="space-y-3">
             {importsQ.isLoading ? (
-              <p className="text-muted-foreground text-sm">Cargando...</p>
+              <PanelLoading />
             ) : imports.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                <p>No hay importaciones todavía</p>
-                <p className="text-xs mt-1">Usa el botón "Importar fichero" para cargar el extracto de tu banco (Norma 43, Excel o CSV)</p>
-              </div>
+              <PanelEmpty
+                icon={<FileSpreadsheet className="w-5 h-5" />}
+                title="No hay importaciones todavía"
+                description='Usa el botón "Importar fichero" para cargar el extracto de tu banco (Norma 43, Excel o CSV)'
+              />
             ) : (
               <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
                 <table className="w-full text-sm">

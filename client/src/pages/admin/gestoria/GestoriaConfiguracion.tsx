@@ -6,6 +6,7 @@
  */
 import { useState, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,14 +60,7 @@ export default function GestoriaConfiguracion() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-2xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Settings2 className="w-6 h-6 text-primary" /> Configuración Fiscal
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Parámetros del módulo Gestoría e Impuestos
-          </p>
-        </div>
+        <PanelPageHeader icon={<Settings2 />} title="Configuración Fiscal" description="Parámetros del módulo Gestoría e Impuestos" />
 
         {/* Empresa */}
         <div className="bg-card border border-border rounded-lg p-4 space-y-3">

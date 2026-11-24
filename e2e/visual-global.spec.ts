@@ -20,7 +20,7 @@ const CAPS = [
   "shop-catalog", "shop-variants", "shop-store", "shop-checkout", "shop-orders", "shop-coupons",
   "cms-editor", "cms-domain", "cms-pages-forms", "cms-blog", "cms-seo",
   "bill-invoices", "bill-series", "bill-taxes", "bill-payments", "bill-cash", "bill-reports",
-  "admin-panel", "admin-users", "comms-email", "comms-whatsapp-links", "auto-basic",
+  "admin-panel", "admin-users", "tax-filings", "comms-email", "comms-whatsapp-links", "auto-basic",
 ];
 const overview = {
   mode: "multi", licensing: "capabilities", plan: { key: "essential", name: "Essential" }, state: "trial",
@@ -104,6 +104,18 @@ const data: Record<string, unknown> = {
 };
 
 
+// Economía y Administración (feat/ux2-economia-admin): datos ficticios mínimos para que las pantallas rendericen
+const usr = (i: number, n: string, role: string, active = true) => ({ id: i, name: n, email: n.toLowerCase().replace(/[^a-z]+/g, ".") + "@ejemplo.invalid", role, isActive: active, createdAt: new Date(NOW - i * 20 * DAY).toISOString(), lastSignedIn: new Date(NOW - i * DAY).toISOString(), loginMethod: "email", openId: "o" + i });
+Object.assign(data, {
+  "admin.getUsers": [usr(1, "Jorge Grande", "admin"), usr(2, "Marta Ruiz", "agent"), usr(3, "Daniel Fischer", "user"), usr(4, "Laura Gómez", "agent", false)],
+  "admin.getRbacStatus": { available: false },
+  "gestoria.obligations.list": [
+    { id: 1, model: "303", name: "IVA 1T", period: "1T", dueDate: new Date(NOW + 5 * DAY).toISOString(), status: "pendiente" },
+    { id: 2, model: "111", name: "Retenciones 1T", period: "1T", dueDate: new Date(NOW - 3 * DAY).toISOString(), status: "pagado" },
+  ],
+  "gestoria.dossiers.list": [], "gestoria.access.list": [],
+});
+
 const products = [
   ["Retiro de bienestar · 5 noches", "Retiros", 189000, true, true], ["Taller de respiración consciente", "Talleres", 4500, true, false],
   ["Sesión individual de coaching", "Sesiones", 9000, true, false], ["Escapada de otoño en Berchtesgaden", "Viajes", 129000, false, false],
@@ -153,6 +165,7 @@ const VIEWS = [
   { name: "ancho", width: 1920, height: 1080 },
   { name: "tableta", width: 768, height: 1024 },
   { name: "movil", width: 390, height: 844 },
+  { name: "portatil", width: 1280, height: 800 },
 ];
 const SCREENS = [
   { key: "1-inicio", url: "/admin" },
@@ -164,10 +177,28 @@ const SCREENS = [
   { key: "7-pedidos", url: "/admin/crm?tab=reservations" },
   { key: "8-formacion", url: "/admin/formacion?tab=cursos" },
   { key: "8-suscripcion", url: "/admin/suscripcion" },
+  { key: "e1-gestoria-iva", url: "/admin/gestoria/iva" },
+  { key: "e2-gestoria-expedientes", url: "/admin/gestoria/expedientes" },
+  { key: "e3-gestoria-calendario", url: "/admin/gestoria/calendario" },
+  { key: "e4-usuarios", url: "/admin/usuarios" },
+  { key: "e5-numeracion", url: "/admin/numeracion" },
+  { key: "e6-marca", url: "/admin/configuracion/marca" },
+  { key: "e7-integraciones", url: "/admin/configuracion/integraciones" },
+  { key: "e8-cobros", url: "/admin/configuracion/cobros" },
+  { key: "e9-gastos", url: "/admin/contabilidad/gastos" },
+  { key: "e10-movimientos-bancarios", url: "/admin/contabilidad/movimientos-bancarios" },
+  { key: "e11-finance-sync", url: "/admin/contabilidad/finance-sync" },
+  { key: "e12-sedes", url: "/admin/configuracion/sedes" },
+  { key: "e13-correo", url: "/admin/configuracion/email" },
 ];
+// Filtros opcionales: VISUAL_ONLY=regex de claves, VISUAL_VIEWS=nombres separados por coma
+const ONLY = process.env.VISUAL_ONLY ? new RegExp(process.env.VISUAL_ONLY) : null;
+const ONLY_VIEWS = process.env.VISUAL_VIEWS ? process.env.VISUAL_VIEWS.split(",") : null;
 
 for (const v of VIEWS) {
+  if (ONLY_VIEWS && !ONLY_VIEWS.includes(v.name)) continue;
   for (const s of SCREENS) {
+    if (ONLY && !ONLY.test(s.key)) continue;
     test(`${TAG} · ${s.key} · ${v.name}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: (process.env.VISUAL_SCHEME as "dark" | "light") ?? "dark" });
       if (process.env.VISUAL_PRIMARY) {

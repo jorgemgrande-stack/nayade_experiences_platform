@@ -7,6 +7,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -45,26 +47,27 @@ export default function GestoriaLaboral() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Users className="w-6 h-6 text-primary" /> Obligaciones Laborales
-            </h1>
-            <p className="text-sm text-muted-foreground">Modelos 111 y 190 · retenciones IRPF</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
-              <RefreshCw className={`w-4 h-4 ${recalcMut.isPending ? "animate-spin" : ""}`} />
-              Recalcular ejercicio
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<Users />}
+          title="Obligaciones Laborales"
+          description="Modelos 111 y 190 · retenciones IRPF"
+          actions={
+            <>
+            <div className="flex items-center gap-2">
+              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
+                <RefreshCw className={`w-4 h-4 ${recalcMut.isPending ? "animate-spin" : ""}`} />
+                Recalcular ejercicio
+              </Button>
+            </div>
+            </>
+          }
+        />
 
         {/* Pestañas */}
         <div className="flex gap-1 border-b border-border">
@@ -87,7 +90,7 @@ export default function GestoriaLaboral() {
 
         {/* Trimestre */}
         {!isAnnual && (
-          q111.isLoading ? <Spinner /> : q111.data ? (
+          q111.isLoading ? <Spinner /> : q111.isError ? <PanelError error={q111.error} onRetry={() => q111.refetch()} /> : q111.data ? (
             <div className="space-y-4">
               <div className="bg-card border border-border rounded-lg p-4">
                 <h2 className="text-sm font-semibold text-foreground mb-2">Retenciones de rendimientos del trabajo</h2>
@@ -109,7 +112,7 @@ export default function GestoriaLaboral() {
 
         {/* Anual */}
         {isAnnual && (
-          q190.isLoading ? <Spinner /> : q190.data ? (
+          q190.isLoading ? <Spinner /> : q190.isError ? <PanelError error={q190.error} onRetry={() => q190.refetch()} /> : q190.data ? (
             <div className="space-y-4">
               <div className="bg-card border border-border rounded-lg p-4">
                 <h2 className="text-sm font-semibold text-foreground mb-2">Resumen anual de retenciones {year}</h2>
@@ -168,5 +171,5 @@ function RowKV({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
 }
 
 function Spinner() {
-  return <div className="py-12 text-center"><RefreshCw className="w-5 h-5 animate-spin mx-auto text-muted-foreground" /></div>;
+  return <PanelLoading />;
 }
