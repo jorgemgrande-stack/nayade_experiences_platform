@@ -185,6 +185,65 @@ export function evaluateAny(list: EnrollmentView[], moduleId: number, now: numbe
   return last;
 }
 
+// ─── Catálogo de ampliaciones y aviso por módulo en el aula ────────────────────────────────────────────────────────
+
+/** Ajuste de la empresa con el catálogo de ampliaciones: `{"experienceId": N, "variants": {"30": idVariante, "60": idVariante}}`. */
+export const EXTENSION_CATALOG_SETTING = "learning_extension_catalog";
+
+/** Marca del pedido (en el historial de la línea) que lo identifica como ampliación de un módulo. */
+export const EXTENSION_LOG_ACTION = "learning_extension";
+
+/**
+ * Lee el ajuste del catálogo de ampliaciones. Sin ajuste, con JSON roto o con días que no sean 30/60 no devuelve nada: sin
+ * configuración válida no se ofrece ninguna ampliación. El precio NO está aquí: lo fija el servidor desde la variante.
+ */
+export function parseExtensionConfig(raw: string | null | undefined): { experienceId: number; variants: Array<{ days: 30 | 60; variantId: number }> } | null {
+  if (!raw || !raw.trim()) return null;
+  let v: any;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const experienceId = Number(v?.experienceId);
+  if (!Number.isInteger(experienceId) || experienceId <= 0 || !v?.variants || typeof v.variants !== "object") return null;
+  const variants: Array<{ days: 30 | 60; variantId: number }> = [];
+  for (const days of MODULE_EXTENSION_DAYS) {
+    const id = Number(v.variants[String(days)]);
+    if (Number.isInteger(id) && id > 0) variants.push({ days, variantId: id });
+  }
+  return variants.length ? { experienceId, variants } : null;
+}
+
+/** Días restantes (por exceso) para avisar de que el acceso a un módulo está a punto de acabar. */
+export const EXPIRY_WARNING_DAYS = 7;
+
+export interface ModuleAccessInput {
+  state: "open" | "locked" | "closed" | "not_included";
+  unlocksAt: number | null;
+  endsAt: number | null;
+}
+
+export type ModuleAccessNotice =
+  | { kind: "locked"; date: number }
+  | { kind: "until"; date: number; daysLeft: number; soon: boolean }
+  | { kind: "closed"; date: number | null }
+  | { kind: "none" };
+
+/**
+ * Qué se le cuenta al alumno de cada módulo: «se desbloquea el …» (aún cerrado, sin contenido), «acceso hasta …» (abierto con
+ * caducidad, con aviso suave si faltan 7 días o menos), «acceso finalizado el …» (caducado) o nada (sin caducidad o no incluido).
+ */
+export function moduleAccessNotice(m: ModuleAccessInput, now: number): ModuleAccessNotice {
+  if (m.state === "locked" && m.unlocksAt != null) return { kind: "locked", date: m.unlocksAt };
+  if (m.state === "closed") return { kind: "closed", date: m.endsAt };
+  if (m.state === "open" && m.endsAt != null) {
+    const daysLeft = Math.max(0, Math.ceil((m.endsAt - now) / DAY_MS));
+    return { kind: "until", date: m.endsAt, daysLeft, soon: daysLeft <= EXPIRY_WARNING_DAYS };
+  }
+  return { kind: "none" };
+}
+
 /** Estado derivado para mostrar: una matrícula «active» fuera de ventana se enseña como caducada o futura. */
 export function effectiveStatus(e: Pick<EnrollmentView, "status" | "startsAt" | "endsAt">, now: number): EnrollmentStatus | "scheduled" {
   if (e.status !== "active") return e.status;

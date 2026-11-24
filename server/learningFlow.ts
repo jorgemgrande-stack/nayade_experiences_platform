@@ -266,7 +266,7 @@ export async function pendingLearningOrders(limit = 200): Promise<Array<{ mercha
  * Idempotente (repetirlo no cambia nada). Sin el esquema del LMS no hace nada. Un fallo real SÍ se propaga: el evento de
  * Stripe queda «failed» y se reintenta, para que el acceso no quede abierto en silencio.
  */
-export async function changeLearningAccessForOrder(merchantOrder: string, action: "revoke" | "suspend" | "reactivate", reason: string): Promise<{ changed: number }> {
+export async function changeLearningAccessForOrder(merchantOrder: string, action: "revoke" | "suspend" | "reactivate", reason: string): Promise<{ changed: number; extensionsFlagged?: number }> {
   try {
     const d = await getDb();
     if (!d) return { changed: 0 };
@@ -300,7 +300,17 @@ export async function changeLearningAccessForOrder(merchantOrder: string, action
         }
       }
     }
-    return { changed };
+    // Ampliación de módulo ya aplicada de un pedido reembolsado: solo se REGISTRA y se avisa (no se retira acceso ni se tocan facturas)
+    let extensionsFlagged = 0;
+    if (action === "revoke") {
+      // Solo constancia y aviso: un fallo aquí NO debe dejar sin revocar las matrículas del pedido ni reintentar el evento de la pasarela
+      try {
+        extensionsFlagged = await (await import("./learningExtensions")).flagExtensionRefund(merchantOrder, reason);
+      } catch (e) {
+        console.error(JSON.stringify({ ctx: "Learning", event: "extension_refund_flag_failed", merchantOrder, error: e instanceof Error ? e.name : "error" }));
+      }
+    }
+    return { changed, extensionsFlagged };
   } catch (e) {
     if (isMissingLearningSchema(e)) return { changed: 0 };
     throw e;
