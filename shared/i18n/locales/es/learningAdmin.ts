@@ -112,6 +112,7 @@ export default {
     demo: "Demostraciones",
     tech: "Herramientas técnicas",
   },
+  groups: { courses: "Gestión de cursos", content: "Contenidos y materiales", students: "Alumnos y matrículas", tracking: "Seguimiento", settings: "Configuración y herramientas", aria: "Secciones de Formación", subAria: "Páginas de la sección" },
   createCourse: "Crear curso",
   title: "Formación digital",
   subtitle: "Cursos privados con matrícula nominativa. El acceso solo se concede con pago confirmado, concesión con motivo o demostración.",

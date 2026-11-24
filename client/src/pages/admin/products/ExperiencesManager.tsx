@@ -616,7 +616,7 @@ export default function ExperiencesManager() {
                   <caption className="sr-only">{isNewCompany ? t("productsCatalog.list.captionP") : t("productsCatalog.list.captionE")}</caption>
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      <th scope="col" className="w-16 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colOrder")}</th>
+                      <th scope="col" className="w-24 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colOrder")}</th>
                       <th scope="col" className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{tn("noun")}</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colPrice")}</th>
                       {showDifficulty && <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colDifficulty")}</th>}
@@ -629,8 +629,8 @@ export default function ExperiencesManager() {
                       const full = sortedExperiences.findIndex((e) => e.id === exp.id);
                       return (
                         <tr key={exp.id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
-                          <td className="px-3 py-4">
-                            <div className="flex flex-col items-center gap-0.5" title={filtersActive ? t("productsCatalog.list.reorderBlocked") : undefined}>
+                          <td className="px-2 py-2">
+                            <div className="flex items-center justify-center gap-0.5" title={filtersActive ? t("productsCatalog.list.reorderBlocked") : undefined}>
                               <button
                                 type="button"
                                 onClick={() => moveItem(full, "up")}
@@ -654,7 +654,7 @@ export default function ExperiencesManager() {
                               </button>
                             </div>
                           </td>
-                          <td className="px-5 py-3">
+                          <td className="px-4 py-2">
                             <div className="flex items-center gap-3">
                               <ProductThumb src={thumbOf(exp)} alt={exp.title} noImageLabel={t("productsCatalog.list.noImage")} className="w-16" />
                               <div className="min-w-0">
@@ -666,7 +666,7 @@ export default function ExperiencesManager() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4">{priceOf(exp)}</td>
+                          <td className="px-4 py-2">{priceOf(exp)}</td>
                           {showDifficulty && (
                             <td className="px-4 py-4">
                               {exp.difficulty && (
@@ -676,8 +676,8 @@ export default function ExperiencesManager() {
                               )}
                             </td>
                           )}
-                          <td className="px-4 py-4"><div className="flex flex-col items-start gap-1">{statusBadges(exp)}</div></td>
-                          <td className="px-5 py-4"><div className="flex items-center justify-end gap-1">{rowMenu(exp)}</div></td>
+                          <td className="px-4 py-2"><div className="flex flex-wrap items-center gap-1">{statusBadges(exp)}</div></td>
+                          <td className="px-4 py-2"><div className="flex items-center justify-end gap-1">{rowMenu(exp)}</div></td>
                         </tr>
                       );
                     })}

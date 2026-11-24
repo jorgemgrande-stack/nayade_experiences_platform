@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
@@ -460,11 +461,7 @@ export default function CashRegisterManager() {
                 </thead>
                 <tbody>
                   {movements.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
-                        No hay movimientos con los filtros actuales
-                      </td>
-                    </tr>
+                    <tr><td colSpan={7} className="p-2"><PanelEmpty title="No hay movimientos con los filtros actuales" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                   )}
                   {movements.map(mv => {
                     const meta = movTypeMeta(mv.type);
@@ -544,9 +541,7 @@ export default function CashRegisterManager() {
                 </div>
               ))}
               {accounts.length === 0 && (
-                <div className="col-span-3 text-center py-16 text-muted-foreground">
-                  No hay cuentas de caja configuradas. Crea una para empezar.
-                </div>
+                <PanelEmpty className="col-span-3" title="No hay cuentas de caja configuradas" description="Crea una para empezar." />
               )}
             </div>
           </div>
@@ -590,11 +585,7 @@ export default function CashRegisterManager() {
                 </thead>
                 <tbody>
                   {closures.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
-                        No hay cierres registrados
-                      </td>
-                    </tr>
+                    <tr><td colSpan={8} className="p-2"><PanelEmpty title="No hay cierres registrados" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                   )}
                   {closures.map(cl => {
                     const acc = accounts.find(a => a.id === cl.accountId);

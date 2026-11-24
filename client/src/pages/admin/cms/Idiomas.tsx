@@ -18,6 +18,7 @@ import { localeAutonym } from "@/hooks/useSiteLocale";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { PanelError } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 
 export default function Idiomas() {
   const tx = useStudioText();
@@ -39,6 +40,7 @@ export default function Idiomas() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-8 p-4 md:p-6">
+        <CmsSectionNav />
         <PanelPageHeader
           className="mb-0"
           icon={<Languages />}

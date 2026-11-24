@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelEmpty } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -871,9 +872,9 @@ export default function ExpensesManager() {
               </thead>
               <tbody>
                 {expensesQ.isLoading ? (
-                  <tr><td colSpan={10} className="text-center p-8 text-muted-foreground">Cargando...</td></tr>
+                  <tr><td colSpan={10}><PanelLoading className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center p-8 text-muted-foreground">No hay gastos con los filtros actuales</td></tr>
+                  <tr><td colSpan={10} className="p-2"><PanelEmpty title="No hay gastos con los filtros actuales" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                 ) : (
                   filtered.map((e) => (
                     <tr key={e.id} className="border-t hover:bg-muted/20">

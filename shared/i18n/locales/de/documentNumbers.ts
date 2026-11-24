@@ -59,4 +59,5 @@ export default {
   colBy: "Erzeugt von",
   colDate: "Datum",
   noLogs: "Keine Einträge im Verlauf",
+  noCounters: "Noch keine Nummernkreise vorhanden",
 } satisfies Mirror<typeof es>;

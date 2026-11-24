@@ -8,6 +8,8 @@ import { Link } from "wouter";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, ChevronRight, Circle, CircleDashed, Loader2, Lock, MailCheck, Rocket } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { fieldFormatProblem, type PanelIntegration } from "@shared/integrationsPanel";
 import { BANK_STATEMENT_FORMATS, type FinanceSyncStep, type FinanceSyncStepStatus } from "@shared/financeSyncSetup";
@@ -210,25 +212,16 @@ export default function FinanceSyncSetup() {
   return (
     <AdminLayout>
       <div className="max-w-3xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Rocket className="w-6 h-6 text-primary" aria-hidden="true" />
-            Puesta en marcha de Finance Sync
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Conecta tu banco y tu datáfono en unos minutos, sin esperar al equipo de implantación. Cada paso se marca solo en
-            cuanto la plataforma ve los datos.
-          </p>
-        </div>
+        <PanelPageHeader
+          icon={<Rocket />}
+          title="Puesta en marcha de Finance Sync"
+          description="Conecta tu banco y tu datáfono en unos minutos, sin esperar al equipo de implantación. Cada paso se marca solo en cuanto la plataforma ve los datos."
+        />
 
         {q.isLoading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
+          <PanelLoading />
         ) : q.isError || !d ? (
-          <div role="alert" className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-red-600 dark:text-red-400">
-            No se pudo cargar la puesta en marcha. Recarga la página para intentarlo de nuevo.
-          </div>
+          <PanelError error={q.error} title="No se pudo cargar la puesta en marcha" onRetry={() => void q.refetch()} />
         ) : (
           <>
             <div

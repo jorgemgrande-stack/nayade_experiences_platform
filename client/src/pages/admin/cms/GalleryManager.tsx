@@ -45,6 +45,7 @@ import {
 import { toastError } from "@/lib/errorMessage";
 import { PanelError } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 // ── Categorías predefinidas ────────────────────────────────────────────────────
@@ -182,6 +183,7 @@ export default function GalleryManager() {
     <AdminLayout>
     <div className="space-y-6">
       {/* Header */}
+      <CmsSectionNav />
       <PanelPageHeader
         className="mb-0"
         icon={<ImagePlus />}

@@ -12,6 +12,7 @@ import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { useI18n } from "@/i18n/I18nProvider";
 import { PanelError } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 
 export default function MultimediaManager() {
   const tx = useStudioText();
@@ -109,6 +110,7 @@ export default function MultimediaManager() {
   return (
     <AdminLayout title={tx("Multimedia")}>
       <div className="px-6 py-6">
+      <CmsSectionNav />
       <PanelPageHeader
         icon={<FolderOpen />}
         title={tx("Biblioteca Multimedia")}
