@@ -217,6 +217,11 @@ export const experienceVariants = mysqlTable("experience_variants", {
   /** Participantes mínimos/máximos con los que se puede comprar la opción (p. ej. «desde 2 participantes»); NULL = sin límite. */
   minQty: int("minQty"),
   maxQty: int("maxQty"),
+  /**
+   * Suplemento opcional (0091): si está informado, la fila NO es una opción del programa sino un suplemento que la persona
+   * marca aparte. Las filas con el mismo grupo son los tramos (minQty/maxQty) de un mismo suplemento. NULL = opción normal.
+   */
+  supplementGroup: varchar("supplementGroup", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

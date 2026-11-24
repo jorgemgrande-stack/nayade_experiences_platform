@@ -7075,7 +7075,7 @@ export const crmRouter = router({
           isRequired: experienceVariants.isRequired,
           sortOrder: experienceVariants.sortOrder,
         }).from(experienceVariants)
-          .where(inArray(experienceVariants.experienceId, expIds))
+          .where(and(inArray(experienceVariants.experienceId, expIds), isNull(experienceVariants.supplementGroup)))
           .orderBy(experienceVariants.sortOrder);
         for (const v of varRows) {
           if (!variantsByExpId[v.experienceId]) variantsByExpId[v.experienceId] = [];

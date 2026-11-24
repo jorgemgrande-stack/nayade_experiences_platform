@@ -26,6 +26,7 @@ import { writeEnrollmentVariant, writeLeadRequestExtras } from "./leadWebRequest
 import { normalizeCurrency } from "../shared/leadWebRequest";
 import { formatIsoDayShort, plannedEndDay, requestedStartProblem, todayIso } from "../shared/requestDates";
 import { productPeopleProblem, variantQuantityProblem } from "./shopCheckoutRules";
+import { resolveSupplements, supplementLineText, SupplementError } from "./supplements";
 
 export const PRODUCT_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -72,6 +73,11 @@ export interface ProductRequestInput {
   page?: string;
   /** Opción/modalidad elegida en la ficha (se valida contra las variantes vigentes del producto) */
   variantId?: number;
+  /**
+   * Suplementos opcionales MARCADOS (ids de variante-suplemento). Sin ids no hay suplemento. Solo se anotan en la solicitud
+   * (importe calculado aquí, por participantes y tramo): no hay cobro ni se suman al precio del programa.
+   */
+  supplementIds?: number[];
   /** Idioma de la web que veía la persona (código corto, p. ej. «de») */
   lang?: string;
   /** Fecha de inicio deseada (YYYY-MM-DD) en un producto sin convocatoria: es una petición, no una reserva */
@@ -170,8 +176,21 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
     : `Solicitud de información sobre «${product.title}» (${offerModeOf(product) === "coming_soon" ? "próximamente" : offerModeOf(product) === "on_request" ? "bajo petición" : offerModeOf(product) === "priced_request" ? "precio visible, solo por solicitud" : "precio fijo"}).`;
   // Lo que la persona vio: precio publicado y modalidad elegida (los importes salen siempre de la BD, no del navegador)
   const baseNum = Number(product.basePrice ?? 0);
-  const variantRows = (showsPrice(product) || startDay) && input.variantId ? await getVariantsByExperience(product.id) : [];
-  const chosen = variantRows.find((v) => v.id === input.variantId);
+  const suppIds = Array.from(new Set((input.supplementIds ?? []).filter((n) => Number.isInteger(n) && n > 0))).slice(0, 5);
+  const variantRows = ((showsPrice(product) || startDay) && input.variantId) || suppIds.length ? await getVariantsByExperience(product.id, { includeSupplements: true }) : [];
+  // Un suplemento nunca es la modalidad del programa
+  const chosen = variantRows.find((v) => v.id === input.variantId && !v.supplementGroup);
+  let suppLines: ReturnType<typeof resolveSupplements> = [];
+  if (suppIds.length) {
+    const noSupp = "Los suplementos opcionales no están disponibles para este producto.";
+    if (!showsPrice(product)) throw new ProductRequestError("BAD_REQUEST", noSupp, { supplements: noSupp });
+    try {
+      suppLines = resolveSupplements(suppIds, variantRows as any, seats);
+    } catch (e) {
+      if (e instanceof SupplementError) throw new ProductRequestError("BAD_REQUEST", e.message, { supplements: e.message });
+      throw e;
+    }
+  }
   if (startDay) {
     // Con fecha pedida se valida también la opción y el número de participantes (los mismos límites que el pago online)
     if (input.variantId && !chosen) throw new ProductRequestError("BAD_REQUEST", t.productGone);
@@ -182,10 +201,13 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
   const priceLine = chosen && showsPrice(product)
     ? `Modalidad elegida: ${chosen.name} · precio publicado: ${eur(chosenPrice)}`
     : showsPrice(product) && baseNum > 0 ? `Precio publicado (producto): ${eur(baseNum)}` : "";
+  const suppLine = suppLines.length
+    ? `Suplementos opcionales elegidos (NO incluidos en el precio del programa; sin cobro hasta que la empresa lo confirme) · Participantes: ${seats} · ${suppLines.map(supplementLineText).join(" · ")}`
+    : "";
   const dateLine = startDay
     ? `Fecha de inicio deseada: ${formatIsoDayShort(startDay)}${endDay ? ` · fin previsto: ${formatIsoDayShort(endDay)} (según la duración del producto: ${product.durationDays} días)` : ""} · Participantes: ${seats}${chosen ? ` · Opción: ${chosen.name}` : ""}. Es una petición: NO es una reserva ni garantiza disponibilidad; la empresa debe aceptarla o proponer otras fechas antes de cualquier pago.`
     : "";
-  const body = [header, dateLine, priceLine, lang && `Idioma de la web: ${lang}`, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
+  const body = [header, dateLine, priceLine, suppLine, lang && `Idioma de la web: ${lang}`, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
 
   return keyedLock(`${ctx.tenantId}:solicitud:${email}:${product.id}:${edition?.edition.id ?? 0}`, async () => {
     // Repetido: la misma persona y la misma convocatoria (o el mismo producto hace un momento) → se anota, no se duplica
@@ -213,7 +235,7 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       message: body.slice(0, 8000),
       experienceId: product.id,
       selectedProduct: product.title.slice(0, 256),
-      numberOfPersons: edition || startDay ? seats : undefined,
+      numberOfPersons: edition || startDay || suppLines.length ? seats : undefined,
       preferredDate: edition ? new Date(edition.edition.startsAt).toISOString() : startDay ? `${startDay}T00:00:00.000Z` : undefined,
       source: edition ? "web_solicitud_plaza" : "web_solicitud_producto",
       leadSourceCode: "HOME_FORM",

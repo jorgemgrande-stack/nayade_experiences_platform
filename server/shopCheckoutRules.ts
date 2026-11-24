@@ -147,7 +147,7 @@ export function fingerprintFromLog(log: unknown): string | null {
  */
 export function checkoutFingerprint(p: {
   email: string;
-  items: Array<{ productId: number; bookingDate: string; people: number; variantId?: number | null; legoPackLineIds?: number[] | null; editionId?: number | null; participants?: string[] | null }>;
+  items: Array<{ productId: number; bookingDate: string; people: number; variantId?: number | null; legoPackLineIds?: number[] | null; editionId?: number | null; participants?: string[] | null; supplementIds?: number[] | null }>;
   finalCents: number;
   discountCodeId?: number | null;
   comments?: string | null;
@@ -155,7 +155,7 @@ export function checkoutFingerprint(p: {
 }): string {
   const lines = p.items
     // La convocatoria elegida y los nombres de los participantes también distinguen el pedido (otra fecha = otras plazas)
-    .map((i) => [i.productId, i.bookingDate, i.people, i.variantId ?? 0, [...(i.legoPackLineIds ?? [])].sort((a, b) => a - b), i.editionId ?? 0, (i.participants ?? []).map((n) => n.trim()).filter(Boolean)])
+    .map((i) => [i.productId, i.bookingDate, i.people, i.variantId ?? 0, [...(i.legoPackLineIds ?? [])].sort((a, b) => a - b), i.editionId ?? 0, (i.participants ?? []).map((n) => n.trim()).filter(Boolean), ...(i.supplementIds?.length ? [Array.from(new Set(i.supplementIds)).sort((a, b) => a - b)] : [])])
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const payload = JSON.stringify({ e: p.email.trim().toLowerCase(), l: lines, a: p.finalCents, d: p.discountCodeId ?? 0, c: (p.comments ?? "").trim(), b: p.billing ?? null });
   return createHash("sha256").update(payload).digest("hex").slice(0, 40);
