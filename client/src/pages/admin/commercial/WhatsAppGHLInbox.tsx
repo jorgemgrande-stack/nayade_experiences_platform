@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { serviceFieldProps, serviceSecretProps } from "@/lib/credentialFields";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { toast } from "sonner";
@@ -471,6 +472,7 @@ export default function WhatsAppGHLInbox() {
                   <Label className="text-xs text-foreground/60">Private Integration Token</Label>
                   <Input
                     type="password"
+                    {...serviceSecretProps("ghl-inbox-token")}
                     value={credToken}
                     onChange={e => setCredToken(e.target.value)}
                     placeholder={inboxCreds?.tokenMasked || "pit-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}
@@ -480,6 +482,7 @@ export default function WhatsAppGHLInbox() {
                 <div>
                   <Label className="text-xs text-foreground/60">Location ID</Label>
                   <Input
+                    {...serviceFieldProps("ghl-inbox-location")}
                     value={credLocation}
                     onChange={e => setCredLocation(e.target.value)}
                     placeholder={inboxCreds?.locationId || "dhvershHYyPZo3wHP3kN"}
@@ -489,6 +492,8 @@ export default function WhatsAppGHLInbox() {
                 <div>
                   <Label className="text-xs text-foreground/60">Webhook Secret</Label>
                   <Input
+                    type="password"
+                    {...serviceSecretProps("ghl-inbox-webhook-secreto")}
                     value={credSecret}
                     onChange={e => setCredSecret(e.target.value)}
                     placeholder={inboxCreds?.webhookSecret ? "Se mantiene el actual" : "Vacío: se genera uno aleatorio"}
