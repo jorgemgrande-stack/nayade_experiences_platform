@@ -79,6 +79,8 @@ function paymentsOf(i: BillingCenterInput): BillingCenterPayment[] {
   for (const v of i.stripeInvoices) {
     if (v.status === "void" || v.status === "draft") continue;
     const free = (v.totalCents ?? v.amountPaidCents) === 0;
+    // Una factura de 0 € (prueba gratuita) no es un cobro ni un intento de cobro: solo consta en «Facturas»
+    if (free && v.status === "paid" && !v.coverageLost) continue;
     const status: BillingCenterPayment["status"] = v.coverageLost ? "refunded" : v.status === "paid" ? (free ? "free" : "paid") : v.status === "uncollectible" || (v.status === "open" && pastDue) ? "failed" : "pending";
     out.push({
       id: `stripe:${v.stripeInvoiceId}`,
@@ -185,7 +187,7 @@ export function deriveBillingCenter(i: BillingCenterInput): TenantBillingCenter 
     nextCharge,
     lastPayment: lastReal && lastReal.status === "paid" ? { at: lastReal.at, amountCents: lastReal.amountCents, currency: lastReal.currency, invoiceNumber: lastReal.invoiceNumber } : null,
     // Periodo de facturación de Stripe (en prueba, hasta el fin de la prueba); sin Stripe, el de la suscripción
-    billingPeriod: row ? { start: i.sub?.currentPeriodStart ?? null, end: row.currentPeriodEnd } : i.order?.period ? { start: i.order.period.start, end: i.order.period.end } : null,
+    billingPeriod: row ? (trialing ? null : { start: lastReal ? (i.stripeInvoices.find((v) => `stripe:${v.stripeInvoiceId}` === lastReal.id)?.periodStart ?? null) : null, end: row.currentPeriodEnd }) : i.order?.period ? { start: i.order.period.start, end: i.order.period.end } : null,
     // Con acuerdo aceptado, el método solo cuenta como autorizado si el cobro se enlazó por webhook verificado de Stripe
     paymentMethod: { state: contracting ? (contracting.paymentMethodAuthorized ? "authorized" : "missing") : row ? "authorized" : i.order?.billing.provider === "stripe" ? "authorized" : stage === "contract_pending_payment" ? "missing" : "unknown" },
     payments,
