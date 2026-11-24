@@ -65,5 +65,6 @@ export default {
     confirmClear: "Die Daten von „{title}“ entfernen? Die Integration wird deaktiviert.",
     clearedToast: "{title}: deaktiviert",
     clear: "Daten entfernen",
+    noChanges: "Keine ausstehenden Änderungen",
   },
 } satisfies Mirror<typeof es>;

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import CompanyData from "./CompanyData";
 import SearchIndexingToggle from "./SearchIndexingToggle";
+import { SettingsSection } from "./SettingsSection";
 import { useI18n } from "@/i18n/I18nProvider";
 
 // ─── Sidebar tab definitions ──────────────────────────────────────────────────
@@ -295,6 +296,7 @@ export default function Settings() {
             {activeTab === "business" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.business.intro")}</p>
+                <SettingsSection title={t("settingsGeneral.sections.identity")} description={t("settingsGeneral.sections.identityDesc")}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={isNewCompany ? t("settingsGeneral.business.nameNew") : t("settingsGeneral.business.nameOld")} col2>
                     <Input value={business.businessName} onChange={e => setBusiness(p => ({ ...p, businessName: e.target.value }))} autoComplete="organization" />
@@ -305,6 +307,10 @@ export default function Settings() {
                   <Field label={t("settingsGeneral.business.email")} error={businessErrors.businessEmail}>
                     <Input type="email" value={business.businessEmail} onChange={e => setBusiness(p => ({ ...p, businessEmail: e.target.value }))} placeholder="hola@tuempresa.com" autoComplete="email" />
                   </Field>
+                </div>
+                </SettingsSection>
+                <SettingsSection title={t("settingsGeneral.sections.presence")} description={t("settingsGeneral.sections.presenceDesc")}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={t("settingsGeneral.business.address")} col2>
                     <Input value={business.businessAddress} onChange={e => setBusiness(p => ({ ...p, businessAddress: e.target.value }))} autoComplete="street-address" />
                   </Field>
@@ -315,6 +321,7 @@ export default function Settings() {
                     <Textarea value={business.businessDescription} onChange={e => setBusiness(p => ({ ...p, businessDescription: e.target.value }))} rows={3} className="resize-none" />
                   </Field>
                 </div>
+                </SettingsSection>
                 {blockedNotice(businessValid)}
                 <AutoSaveStatus saving={updateMutation.isPending} />
                 <SearchIndexingToggle />
@@ -325,6 +332,7 @@ export default function Settings() {
             {activeTab === "schedule" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.schedule.intro")}</p>
+                <SettingsSection title={t("settingsGeneral.sections.high")} description={t("settingsGeneral.sections.highDesc")}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={t("settingsGeneral.schedule.highOpen")}>
                     <Input type="time" value={schedule.scheduleHighOpen} onChange={e => setSchedule(p => ({ ...p, scheduleHighOpen: e.target.value }))} />
@@ -332,6 +340,10 @@ export default function Settings() {
                   <Field label={t("settingsGeneral.schedule.highClose")}>
                     <Input type="time" value={schedule.scheduleHighClose} onChange={e => setSchedule(p => ({ ...p, scheduleHighClose: e.target.value }))} />
                   </Field>
+                </div>
+                </SettingsSection>
+                <SettingsSection title={t("settingsGeneral.sections.low")} description={t("settingsGeneral.sections.lowDesc")}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={t("settingsGeneral.schedule.lowOpen")}>
                     <Input type="time" value={schedule.scheduleLowOpen} onChange={e => setSchedule(p => ({ ...p, scheduleLowOpen: e.target.value }))} />
                   </Field>
@@ -344,6 +356,7 @@ export default function Settings() {
                     </Field>
                   </div>
                 </div>
+                </SettingsSection>
                 <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
@@ -352,6 +365,7 @@ export default function Settings() {
             {activeTab === "payments" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.payments.intro.a")}<strong>{t("settingsGeneral.payments.intro.b")}</strong>{t("settingsGeneral.payments.intro.c")}</p>
+                <SettingsSection title={t("settingsGeneral.sections.money")} description={t("settingsGeneral.sections.moneyDesc")}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={t("settingsGeneral.payments.currency")}>
                     <Input value={payments.paymentCurrency} onChange={e => setPayments(p => ({ ...p, paymentCurrency: e.target.value }))} placeholder="EUR" />
@@ -362,6 +376,7 @@ export default function Settings() {
                     </Field>
                   )}
                 </div>
+                </SettingsSection>
                 <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
@@ -375,6 +390,7 @@ export default function Settings() {
                     {t("settingsGeneral.legal.notice.a")}<strong>{t("settingsGeneral.legal.notice.b")}</strong>{t("settingsGeneral.legal.notice.c")}
                   </p>
                 </div>
+                <SettingsSection title={t("settingsGeneral.sections.fiscalId")} description={t("settingsGeneral.sections.fiscalIdDesc")}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={t("settingsGeneral.legal.name")} col2 error={legalErrors.legalCompanyName}>
                     <Input value={legalCompany.legalCompanyName} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))} placeholder={t("settingsGeneral.legal.namePlaceholder")} autoComplete="organization" />
@@ -385,6 +401,10 @@ export default function Settings() {
                   <Field label={t("settingsGeneral.legal.phone")} error={legalErrors.legalCompanyPhone}>
                     <Input type="tel" value={legalCompany.legalCompanyPhone} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyPhone: e.target.value }))} placeholder="+34 900 000 000" autoComplete="tel" />
                   </Field>
+                </div>
+                </SettingsSection>
+                <SettingsSection title={t("settingsGeneral.sections.fiscalAddress")} description={t("settingsGeneral.sections.fiscalAddressDesc")}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={t("settingsGeneral.legal.address")} col2>
                     <Input value={legalCompany.legalCompanyAddress} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))} placeholder={t("settingsGeneral.legal.addressPlaceholder")} autoComplete="street-address" />
                   </Field>
@@ -397,6 +417,10 @@ export default function Settings() {
                   <Field label={t("settingsGeneral.legal.province")} col2>
                     <Input value={legalCompany.legalCompanyProvince} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyProvince: e.target.value }))} placeholder="Madrid" autoComplete="address-level1" />
                   </Field>
+                </div>
+                </SettingsSection>
+                <SettingsSection title={t("settingsGeneral.sections.fiscalContact")} description={t("settingsGeneral.sections.fiscalContactDesc")}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={t("settingsGeneral.legal.email")} col2 error={legalErrors.legalCompanyEmail}>
                     <Input type="email" value={legalCompany.legalCompanyEmail} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyEmail: e.target.value }))} placeholder="administracion@tuempresa.com" autoComplete="email" />
                   </Field>
@@ -404,6 +428,7 @@ export default function Settings() {
                     <Input value={legalCompany.legalCompanyIban} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))} placeholder="ES00 0000 0000 0000 0000 0000" spellCheck={false} />
                   </Field>
                 </div>
+                </SettingsSection>
                 {blockedNotice(legalValid)}
                 <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
@@ -413,6 +438,7 @@ export default function Settings() {
             {activeTab === "notifications" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">{t("settingsGeneral.notifications.intro")}</p>
+                <SettingsSection title={t("settingsGeneral.sections.alerts")} description={t("settingsGeneral.sections.alertsDesc")}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label={isNewCompany ? t("settingsGeneral.notifications.bookingNew") : t("settingsGeneral.notifications.bookingOld")} col2 error={notifErrors.notifEmailBooking}>
                     <Input type="email" value={notifications.notifEmailBooking} onChange={e => setNotifications(p => ({ ...p, notifEmailBooking: e.target.value }))} />
@@ -423,6 +449,7 @@ export default function Settings() {
                     </Field>
                   )}
                 </div>
+                </SettingsSection>
                 {blockedNotice(notifValid)}
                 <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
                   <Phone className="w-4 h-4 text-muted-foreground shrink-0" />

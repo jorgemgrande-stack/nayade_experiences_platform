@@ -144,6 +144,30 @@ Object.assign(data, {
   ], total: 2 },
 });
 
+// Formularios de Configuración (feat/ux3-economia-formularios): datos ficticios para Correo, Cobros, Integraciones, Dominios y Sedes
+const acc = (i: number, n: string, def: boolean, err: string | null = null) => ({ id: i, name: n, email: `info${i}@ejemplo.invalid`, imapHost: "imap.ejemplo.invalid", imapPort: 993, imapSecure: true, imapUser: `info${i}@ejemplo.invalid`, smtpHost: "smtp.ejemplo.invalid", smtpPort: 587, smtpSecure: false, smtpUser: `info${i}@ejemplo.invalid`, fromName: n, fromEmail: `info${i}@ejemplo.invalid`, isDefault: def, isActive: true, syncEnabled: true, syncIntervalMinutes: 5, folderInbox: "INBOX", folderSent: "Sent", folderArchive: "Archive", folderTrash: "Trash", maxEmailsPerSync: 50, lastSyncAt: NOW - 3600_000, lastSyncError: err });
+const modeOf = (mode: "test" | "live", status: string, hint: string | null) => ({ mode, label: mode === "test" ? "Modo de prueba" : "Modo real", connectable: true, status, statusLabel: status === "verificada" ? "Verificada" : "No conectada", accountHint: hint, chargesEnabled: !!hint, payoutsEnabled: !!hint, requirementsDue: [], disabledReason: null, onlineEnabled: false, connectedAt: hint ? NOW - 9 * DAY : null, verifiedAt: null, lastEventAt: null, lastEventType: null, checkedAt: NOW - DAY });
+const integ = (id: string, group: string, title: string, state: string, stateLabel: string, fields: unknown[]) => ({ id, group, title, summary: "Conexión con el servicio de ejemplo.", configured: state !== "off", state, stateLabel, stateDetail: state === "failing" ? "La última comprobación falló: credenciales rechazadas." : null, canTest: true, fields });
+const fld = (id: string, label: string, secret = false, required = false) => ({ key: id, label, help: secret ? "Se guarda cifrada y no se vuelve a mostrar." : null, secret, required, control: secret ? "secret" : "text", options: [], pattern: null, formatMessage: null, example: null, set: true, display: secret ? "••••••••" : "ejemplo.invalid" });
+Object.assign(data, {
+  "emailAccounts.list": [acc(1, "Administración", true), acc(2, "Reservas", false, "Autenticación rechazada por el servidor"), acc(3, "Soporte", false)],
+  "cobros.status": { platformReady: true, platformProblem: null, modes: [modeOf("test", "verificada", "cuenta ejemplo"), modeOf("live", "no_conectada", null)] },
+  "integrations.available": { available: true },
+  "integrations.list": [
+    integ("correo-saliente", "email", "Correo saliente", "working", "Funciona", [fld("host", "Servidor", false, true), fld("acceso", "Credencial de acceso", true, true)]),
+    integ("mensajeria", "mensajeria", "Mensajería", "failing", "Con errores", [fld("sender", "Remitente"), fld("acceso", "Credencial de acceso", true)]),
+    integ("pagos-extra", "pagos", "Pasarela adicional", "off", "Sin configurar", [fld("merchant", "Comercio", false, true)]),
+  ],
+  "domains.status": { available: true, overview: { fallback: "casa-ejemplo.ejemplo.invalid", primary: "casa-ejemplo.ejemplo.invalid", automatic: true, allowance: { allowed: true, reason: null, max: 3, used: 1 }, domains: [
+    { domain: "www.casaejemplo.invalid", stage: "pending_dns", primary: false, apex: false, zone: "casaejemplo.invalid", certificate: "pending", https: null, message: "Falta crear el registro CNAME en tu proveedor de dominio.", createdAt: new Date(NOW - DAY).toISOString(), activatedAt: null, lastCheckedAt: new Date(NOW - 3600_000).toISOString(), records: [
+      { type: "CNAME", name: "www", fqdn: "www.casaejemplo.invalid", value: "destino.ejemplo.invalid", purpose: "traffic", ok: false },
+    ] },
+  ] } },
+  "sites.list": { sites: [
+    { siteId: "s1", name: "Sede central", status: "active", isPrimary: true, virtual: false, address: "Calle del Mar 12, Cádiz", phone: "+34 956 000 111", email: "central@ejemplo.invalid", createdAt: NOW - 90 * DAY },
+    { siteId: "s2", name: "Sede Sevilla", status: "active", isPrimary: false, virtual: false, address: null, phone: null, email: null, createdAt: NOW - 30 * DAY },
+    { siteId: "s3", name: "Sede antigua", status: "archived", isPrimary: false, virtual: false, address: null, phone: null, email: null, createdAt: NOW - 200 * DAY },
+  ], primarySiteId: "s1", limit: 3, used: 2, canAdd: true, canManage: true, managed: true, multiSite: true },
 // Centro de suscripción (feat/centro-suscripcion-ui): escenarios simulados de `subscription.billingCenter`
 const eur = "EUR";
 const baseCenter = {
@@ -276,6 +300,9 @@ const SCREENS: { id: string; url: string; over?: Record<string, unknown>; click?
   { id: "e11-finance-sync", url: "/admin/contabilidad/finance-sync" },
   { id: "e12-sedes", url: "/admin/configuracion/sedes" },
   { id: "e13-correo", url: "/admin/configuracion/email" },
+  { id: "e14-dominios", url: "/admin/configuracion/dominios" },
+  { id: "e15-ajustes", url: "/admin/configuracion/sitio" },
+  { id: "e16-correo-nueva", url: "/admin/configuracion/email", click: /Nueva cuenta/ },
   ...Object.keys(centers).map((k) => ({ id: k, url: "/admin/suscripcion", over: centerOver(k) })),
   { id: "c1-paginas", url: "/admin/cms/paginas" },
   { id: "c2-blog", url: "/admin/cms/blog" },
@@ -307,6 +334,10 @@ for (const v of VIEWS) {
       await page.goto(s.url);
       if (s.url.startsWith("/admin/studio")) await page.locator("header").first().waitFor({ timeout: 40_000 }).catch(() => undefined);
       await page.waitForTimeout(4500);
+      if ("click" in s && s.click) {
+        await page.getByRole("button", { name: s.click }).first().click();
+        await page.waitForTimeout(800);
+      }
       await page.screenshot({ path: path.join(OUT, `${TAG}-${s.id}-${v.name}.png`), fullPage: true });
     });
   }

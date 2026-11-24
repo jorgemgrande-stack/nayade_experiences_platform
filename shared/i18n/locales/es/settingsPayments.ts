@@ -63,5 +63,6 @@ export default {
     confirmClear: "¿Quitar los datos de «{title}»? Quedará desactivada.",
     clearedToast: "{title}: desactivada",
     clear: "Quitar datos",
+    noChanges: "Sin cambios pendientes",
   },
 };
