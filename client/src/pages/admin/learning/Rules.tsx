@@ -91,7 +91,7 @@ function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () =
             <label className="block">{t("learningManage.rules.duration")}<Input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} placeholder={t("learningManage.rules.durationPlaceholder")} /></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />{t("learningManage.rules.activeLabel")}</label>
             {!active && <p className="text-xs text-muted-foreground">{t("learningManage.rules.inactiveNote")}</p>}
-            {blocked && <p role="alert" data-testid="rule-needs-duration" className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">{t("learningManage.rules.needsDurationWarning", { n: missing.length })}</p>}
+            {blocked && <p role="alert" data-testid="rule-needs-duration" className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">{t("learningManage.rules.needsDurationWarning", { n: missing.length })}</p>}
             <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("learningManage.rules.cancel")}</Button><Button disabled={!valid || save.isPending} onClick={submit}>{t("learningManage.rules.save")}</Button></div>
           </div>
         )}
