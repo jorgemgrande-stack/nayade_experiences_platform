@@ -27,7 +27,7 @@ const overview = {
   trial: { endsAt: NOW + 6 * DAY, daysLeft: 6 },
   capabilities: CAPS.map((id) => ({ id, name: id, tier: "essential", group: id.split("-")[0], writable: true })),
   visible: CAPS, readOnly: [],
-  limits: [{ metric: "users", label: "Usuarios", included: 3, used: 1 }],
+  limits: [{ metric: "users", label: "Usuarios", included: 3, used: 1 }, { metric: "contacts", label: "Contactos", included: 500, used: 430 }, { metric: "storage_gb", label: "Almacenamiento (GB)", included: 5, used: 6 }, { metric: "sites", label: "Sedes", included: null, used: null }],
   upgradeUrl: "https://elephant.example/planes",
 };
 const steps = ["welcome", "company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms", "finish"];
@@ -57,6 +57,12 @@ const data: Record<string, unknown> = {
   "auth.me": { id: 1, openId: "o", name: "Jorge Grande", email: "jorge@empresa.example", role: "admin" },
   "subscription.overview": overview,
   "subscription.conversionStatus": { enabled: false },
+  "subscription.catalog": { plans: [
+    { key: "essential", name: "Essential", commercialStatus: "available", inherits: null, tagline: "Para empezar", description: null, forWho: "Autónomos y equipos pequeños", highlight: false, benefits: ["Clientes y presupuestos", "Facturación"], limits: [{ label: "Usuarios", value: "3", metric: "users" }], monthly: { amountCents: 2900, currency: "EUR", taxIncluded: false }, yearly: { amountCents: 29000, currency: "EUR", taxIncluded: false }, assisted: false, offerLabel: null },
+    { key: "business", name: "Business", commercialStatus: "available", inherits: "essential", tagline: "Para crecer", description: null, forWho: "Empresas en crecimiento", highlight: true, benefits: ["Todo Essential", "Web y tienda"], limits: [{ label: "Usuarios", value: "10", metric: "users" }], monthly: { amountCents: 7900, currency: "EUR", taxIncluded: false }, yearly: null, assisted: true, offerLabel: null },
+    { key: "enterprise", name: "Enterprise", commercialStatus: "on_request", inherits: "business", tagline: "A medida", description: null, forWho: "Grandes equipos", highlight: false, benefits: ["Todo Business"], limits: [], monthly: null, yearly: null, assisted: true, offerLabel: null },
+  ] },
+  "subscription.planRequests": [],
   "config.getPublicSettings": { brand_name: "Casa Ejemplo", panel_install_mode: "multi" },
   "config.listFeatureFlags": [],
   "modules.active": { modules: [], navigation: [] },
@@ -155,6 +161,7 @@ const SCREENS = [
   { key: "4-facturacion", url: "/admin/crm?tab=invoices" },
   { key: "6-presupuestos", url: "/admin/crm?tab=quotes" },
   { key: "7-pedidos", url: "/admin/crm?tab=reservations" },
+  { key: "8-suscripcion", url: "/admin/suscripcion" },
 ];
 
 for (const v of VIEWS) {
