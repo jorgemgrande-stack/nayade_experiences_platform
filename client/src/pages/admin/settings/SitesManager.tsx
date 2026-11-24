@@ -3,12 +3,12 @@
  * contacto, desactivar y reactivar. Las sedes viven en el registro del plano de control (sites.*); el límite lo aplica
  * él. Essential ve su única sede (la principal), puede editar sus datos y no puede añadir otras.
  */
-import { useState } from "react";
-import { Building2, MapPin, Pencil, Plus, RotateCcw, Archive, Phone, Mail } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Building2, MapPin, Pencil, Plus, RotateCcw, Archive, Phone, Mail, Star, Layers, ArchiveX, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelDataList, PanelPageHeader, StatusBadge, type PanelColumn } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,11 +18,40 @@ import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { FormField, describedBy } from "@/components/admin/crm/CrmParts";
 import { toastError } from "@/lib/errorMessage";
 import { validateSiteForm, type PanelSite, type SiteFormInput } from "@shared/sites";
+import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
 
 type Form = { name: string; address: string; phone: string; email: string };
 const emptyForm: Form = { name: "", address: "", phone: "", email: "" };
 const toForm = (s: PanelSite): Form => ({ name: s.name, address: s.address ?? "", phone: s.phone ?? "", email: s.email ?? "" });
+
+/** Sección del formulario de sede: título con icono y sus campos. */
+function FormSection({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+  return (
+    <fieldset className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
+      <legend className="flex items-center gap-1.5 px-1 text-sm font-semibold text-foreground">
+        <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
+        {title}
+      </legend>
+      {children}
+    </fieldset>
+  );
+}
+
+/** Tarjeta destacada del resumen superior. */
+function SummaryCard({ icon: Icon, label, value, detail, children }: { icon: LucideIcon; label: string; value: ReactNode; detail?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="space-y-2 rounded-xl border border-border bg-card p-4 shadow-md">
+      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        <span className="rounded-lg bg-primary/10 p-1.5 text-primary" aria-hidden="true"><Icon className="h-4 w-4" /></span>
+        {label}
+      </div>
+      <p className="break-words text-2xl font-bold leading-tight text-foreground">{value}</p>
+      {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+      {children}
+    </div>
+  );
+}
 
 function SiteEditor({ site, onClose }: { site: PanelSite | null; onClose: () => void }) {
   const { t } = useI18n();
@@ -70,13 +99,21 @@ function SiteEditor({ site, onClose }: { site: PanelSite | null; onClose: () => 
           <DialogDescription>{site?.isPrimary ? t("settingsSites.editor.primaryDesc") : t("settingsSites.editor.otherDesc")}</DialogDescription>
         </DialogHeader>
         <form noValidate className="space-y-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-          {field("name", t("settingsSites.editor.name"), { required: true, max: 160, placeholder: t("settingsSites.editor.namePlaceholder") })}
-          {field("address", t("settingsSites.editor.address"), { max: 300, placeholder: t("settingsSites.editor.addressPlaceholder"), auto: "street-address" })}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {field("phone", t("settingsSites.editor.phone"), { max: 40, type: "tel", auto: "tel" })}
-            {field("email", t("settingsSites.editor.email"), { max: 200, type: "email", auto: "email" })}
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+            <FormSection icon={Building2} title={t("settingsSites.editor.sectionData")}>
+              {field("name", t("settingsSites.editor.name"), { required: true, max: 160, placeholder: t("settingsSites.editor.namePlaceholder") })}
+            </FormSection>
+            <FormSection icon={MapPin} title={t("settingsSites.editor.sectionAddress")}>
+              {field("address", t("settingsSites.editor.address"), { max: 300, placeholder: t("settingsSites.editor.addressPlaceholder"), auto: "street-address" })}
+            </FormSection>
+            <FormSection icon={Phone} title={t("settingsSites.editor.sectionContact")}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {field("phone", t("settingsSites.editor.phone"), { max: 40, type: "tel", auto: "tel" })}
+                {field("email", t("settingsSites.editor.email"), { max: 200, type: "email", auto: "email" })}
+              </div>
+            </FormSection>
           </div>
-          <DialogFooter>
+          <DialogFooter className="border-t border-border pt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>{t("settingsSites.editor.cancel")}</Button>
             <Button type="submit" disabled={pending}>{pending ? t("settingsSites.editor.saving") : site ? t("settingsSites.editor.save") : t("settingsSites.editor.add")}</Button>
           </DialogFooter>
@@ -106,6 +143,63 @@ export default function SitesManager() {
   const archived = d?.sites.filter((s) => s.status === "archived") ?? [];
   const limitText = d ? (d.limit === null ? t("settingsSites.limitUnlimited", { used: d.used }) : t("settingsSites.limitOf", { used: d.used, limit: d.limit })) : "";
 
+  const columns = (d: NonNullable<typeof q.data>): PanelColumn<PanelSite>[] => [
+    {
+      key: "site",
+      header: t("settingsSites.col.site"),
+      cell: (x) => (
+        <div className={cn("flex flex-wrap items-center gap-2", x.status === "archived" && "text-muted-foreground")}>
+          <span className="font-semibold">{x.name}</span>
+          {x.isPrimary && <StatusBadge tone="brand" icon={<Star />}>{t("settingsSites.primary")}</StatusBadge>}
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: t("settingsSites.col.status"),
+      cell: (x) => (x.status === "active" ? <StatusBadge tone="success">{t("settingsSites.status.active")}</StatusBadge> : <StatusBadge tone="neutral">{t("settingsSites.status.archived")}</StatusBadge>),
+    },
+    {
+      key: "contact",
+      header: t("settingsSites.col.contact"),
+      cell: (x) =>
+        x.address || x.phone || x.email ? (
+          <dl className="space-y-1 text-sm text-muted-foreground">
+            {x.address && <div className="flex gap-1.5"><MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><dt className="sr-only">{t("settingsSites.address")}</dt><dd className="break-words">{x.address}</dd></div>}
+            {x.phone && <div className="flex gap-1.5"><Phone className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><dt className="sr-only">{t("settingsSites.phone")}</dt><dd>{x.phone}</dd></div>}
+            {x.email && <div className="flex gap-1.5"><Mail className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><dt className="sr-only">{t("settingsSites.email")}</dt><dd className="break-all">{x.email}</dd></div>}
+          </dl>
+        ) : (
+          <span className="text-sm text-muted-foreground">{t("settingsSites.noContact")}</span>
+        ),
+    },
+    {
+      key: "actions",
+      header: t("settingsSites.col.actions"),
+      align: "right",
+      cell: (x) =>
+        x.status === "archived" ? (
+          d.canManage ? (
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={!d.canAdd || restore.isPending} onClick={() => restore.mutate({ siteId: x.siteId })}>
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("settingsSites.reactivate")}
+            </Button>
+          ) : null
+        ) : (
+          <div className="flex justify-end gap-1">
+            <Button size="sm" variant="ghost" onClick={() => setEditing(x)} aria-label={t("settingsSites.edit", { name: x.name })} title={t("settingsSites.edit", { name: x.name })} disabled={!d.managed || (!d.multiSite && !x.isPrimary)}>
+              <Pencil className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            {d.canManage && !x.isPrimary && (
+              <Button size="sm" variant="ghost" onClick={() => setArchiving(x)} aria-label={t("settingsSites.deactivate", { name: x.name })} title={t("settingsSites.deactivate", { name: x.name })}>
+                <Archive className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
+        ),
+    },
+  ];
+
   return (
     <AdminLayout>
       <div className="p-4 sm:p-6 space-y-6 max-w-5xl">
@@ -129,7 +223,17 @@ export default function SitesManager() {
           <PanelError error={q.error} onRetry={() => q.refetch()} title={t("settingsSites.loadError")} />
         ) : d ? (
           <>
-            <p className="text-sm text-muted-foreground" aria-live="polite">{limitText}</p>
+            <div className="grid gap-4 sm:grid-cols-3" aria-live="polite">
+              <SummaryCard icon={Layers} label={t("settingsSites.summary.used")} value={d.limit === null ? d.used : `${d.used} / ${d.limit}`} detail={limitText}>
+                {d.limit !== null && d.limit > 0 && (
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                    <div className={cn("h-full rounded-full", d.used >= d.limit ? "bg-warning" : "bg-primary")} style={{ width: `${Math.min(100, Math.round((d.used / d.limit) * 100))}%` }} />
+                  </div>
+                )}
+              </SummaryCard>
+              <SummaryCard icon={Star} label={t("settingsSites.summary.primary")} value={d.sites.find((x) => x.isPrimary)?.name ?? "—"} detail={t("settingsSites.summary.primaryHint")} />
+              <SummaryCard icon={ArchiveX} label={t("settingsSites.summary.archived")} value={archived.length} detail={archived.length ? t("settingsSites.summary.archivedHint") : t("settingsSites.summary.archivedNone")} />
+            </div>
             {!d.multiSite ? (
               <div role="note" className="rounded-xl border border-border bg-muted/40 p-4 text-sm text-foreground">
                 {t("settingsSites.singleNote")}{" "}
@@ -141,53 +245,12 @@ export default function SitesManager() {
               </div>
             ) : null}
 
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {active.map((s) => (
-                <li key={s.siteId} className="rounded-xl border border-border bg-card p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground break-words">{s.name}</p>
-                      {s.isPrimary && <span className="inline-block mt-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{t("settingsSites.primary")}</span>}
-                    </div>
-                    <div className="flex shrink-0 gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(s)} aria-label={t("settingsSites.edit", { name: s.name })} disabled={!d.managed || (!d.multiSite && !s.isPrimary)}>
-                        <Pencil className="w-4 h-4" aria-hidden="true" />
-                      </Button>
-                      {d.canManage && !s.isPrimary && (
-                        <Button size="sm" variant="ghost" onClick={() => setArchiving(s)} aria-label={t("settingsSites.deactivate", { name: s.name })}>
-                          <Archive className="w-4 h-4" aria-hidden="true" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <dl className="space-y-1 text-sm text-muted-foreground">
-                    {s.address && <div className="flex gap-1.5"><MapPin className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" /><dt className="sr-only">{t("settingsSites.address")}</dt><dd className="break-words">{s.address}</dd></div>}
-                    {s.phone && <div className="flex gap-1.5"><Phone className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" /><dt className="sr-only">{t("settingsSites.phone")}</dt><dd>{s.phone}</dd></div>}
-                    {s.email && <div className="flex gap-1.5"><Mail className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" /><dt className="sr-only">{t("settingsSites.email")}</dt><dd className="break-all">{s.email}</dd></div>}
-                    {!s.address && !s.phone && !s.email && <p>{t("settingsSites.noContact")}</p>}
-                  </dl>
-                </li>
-              ))}
-            </ul>
-
-            {archived.length > 0 && (
-              <section aria-labelledby="sedes-desactivadas" className="space-y-2">
-                <h2 id="sedes-desactivadas" className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{t("settingsSites.inactive")}</h2>
-                <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-                  {archived.map((s) => (
-                    <li key={s.siteId} className="flex items-center justify-between gap-3 p-3">
-                      <span className="text-sm text-foreground break-words">{s.name}</span>
-                      {d.canManage && (
-                        <Button size="sm" variant="outline" className="gap-1.5" disabled={!d.canAdd || restore.isPending} onClick={() => restore.mutate({ siteId: s.siteId })}>
-                          <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-                          {t("settingsSites.reactivate")}
-                        </Button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
+            <PanelDataList
+              caption={t("settingsSites.title")}
+              rows={[...active, ...archived]}
+              rowKey={(x) => x.siteId}
+              columns={columns(d)}
+            />
             {!d.managed && <p className="text-xs text-muted-foreground">{t("settingsSites.notManaged")}</p>}
           </>
         ) : null}
