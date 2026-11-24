@@ -6,6 +6,7 @@ import { Link } from "wouter";
 import { AlertTriangle, BedDouble } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PanelEmpty } from "@/components/admin/PanelStates";
 
 export const ROOM_STATES = [
   { value: "libre", label: "Libre" },
@@ -99,15 +100,12 @@ export function PmsNotInstalled() {
 /** Estado vacío con el siguiente paso. */
 export function EmptyStep({ title, text, href, action }: { title: string; text: string; href?: string; action?: string }) {
   return (
-    <div className="text-center py-12 px-4 text-muted-foreground space-y-3">
-      <BedDouble className="h-10 w-10 mx-auto opacity-30" />
-      <p className="font-medium text-foreground">{title}</p>
-      <p className="text-sm max-w-md mx-auto">{text}</p>
+    <PanelEmpty icon={<BedDouble />} title={title} description={text} className="border-0">
       {href && action && (
         <Button asChild size="sm" variant="outline">
           <Link href={href}>{action}</Link>
         </Button>
       )}
-    </div>
+    </PanelEmpty>
   );
 }
