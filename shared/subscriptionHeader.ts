@@ -25,6 +25,37 @@ export interface HeaderFact {
   tone?: HeaderTone;
 }
 
+/** Contratación formalizada (acuerdo aceptado) tal como la devuelve subscription.plan → customTerms.contracting. */
+export interface ContractingInput {
+  planName: string | null;
+  extensions: string[];
+  acceptedAt: number | null;
+  stage: string;
+  /** Solo true con el cobro enlazado por webhook verificado de Stripe. */
+  paymentMethodAuthorized: boolean;
+  trialActive: boolean;
+  trialEndsAt: number | null;
+  /** Primer cobro (o próximo) PREVISTO; nunca un cobro efectuado. */
+  nextChargeAt: number | null;
+  recurring: { netCents: number; taxCents: number; totalCents: number; currency: string } | null;
+}
+
+/** Panel «Plan contratado»: lo ya formalizado, separado del plan de prueba en uso. */
+export interface ContractedPanel {
+  title: string;
+  /** «Business» (plan contratado) o null si el acuerdo no incluye plan. */
+  planName: string | null;
+  extensions: string[];
+  /** Hechos confirmados por las fuentes reales (contratación formalizada, método de pago registrado). */
+  confirmations: Array<{ id: "formalized" | "payment_method"; label: string; tone: HeaderTone }>;
+  /** Cuota pactada (no es un cobro). */
+  fee: { label: string; value: string } | null;
+  /** Primer cobro PREVISTO, con su importe; distinto de un cobro efectuado. */
+  firstCharge: { label: string; value: string; note: string } | null;
+  /** Qué sucede al terminar la prueba. */
+  afterTrial: string;
+}
+
 export interface SubscriptionHeaderModel {
   /** «Tu plan actual», «Plan en prueba» o «Tu plan anterior». */
   eyebrow: string;
@@ -37,6 +68,8 @@ export interface SubscriptionHeaderModel {
   restriction: string | null;
   primary: HeaderAction | null;
   secondary: HeaderAction | null;
+  /** Solo con una contratación ya formalizada durante la prueba (cualquier empresa): sustituye a «Contrata un plan». */
+  contracted?: ContractedPanel | null;
 }
 
 export interface SubscriptionHeaderInput {
@@ -52,6 +85,7 @@ export interface SubscriptionHeaderInput {
     contract: { state: string; interval: "month" | "year"; recurringNetCents: number | null; currency: string; graceEndsAt: number | null } | null;
     period: { renewsAt: number | null; cancelAt: number | null } | null;
     billing: { status: string | null; cancelAtPeriodEnd: boolean };
+    customTerms?: { contracting?: ContractingInput | null; current?: { interval?: "month" | "year" } | null } | null;
   } | null;
   isAdmin: boolean;
   portalEnabled: boolean;
@@ -62,6 +96,29 @@ export interface SubscriptionHeaderInput {
 
 const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
 const days = (n: number) => (n === 1 ? "Te queda 1 día" : `Te quedan ${n} días`);
+
+/** Panel de la contratación formalizada; null si no consta un acuerdo aceptado (la presentación comercial no cambia). */
+export function contractedPanel(c: ContractingInput | null | undefined, trialEnd: number | null, trialPlanName: string, interval: "month" | "year" = "month"): ContractedPanel | null {
+  if (!c || c.acceptedAt === null) return null;
+  const per = interval === "year" ? "al año" : "al mes";
+  const confirmations: ContractedPanel["confirmations"] = [{ id: "formalized", label: `Contratación formalizada el ${formatConsultDate(c.acceptedAt)}`, tone: "success" }];
+  confirmations.push(
+    c.paymentMethodAuthorized
+      ? { id: "payment_method", label: "Método de pago registrado y confirmado por Stripe", tone: "success" }
+      : { id: "payment_method", label: "Método de pago pendiente de autorizar", tone: "warning" },
+  );
+  const fee = c.recurring ? { label: "Cuota pactada", value: `${money(c.recurring.netCents, c.recurring.currency)} + IVA ${per} (${money(c.recurring.totalCents, c.recurring.currency)} con IVA)` } : null;
+  const endsAt = trialEnd ?? c.trialEndsAt;
+  const firstCharge =
+    c.paymentMethodAuthorized && c.nextChargeAt && c.recurring
+      ? { label: "Primer cobro previsto", value: `${formatConsultDate(c.nextChargeAt)} · ${money(c.recurring.totalCents, c.recurring.currency)} con IVA`, note: "Todavía no se ha cobrado nada: es la fecha y el importe previstos." }
+      : null;
+  const target = [c.planName, ...c.extensions].filter(Boolean).join(" + ") || "tu plan contratado";
+  const afterTrial = c.paymentMethodAuthorized
+    ? `Al terminar la prueba${endsAt ? ` (${formatConsultDate(endsAt)})` : ""}, tu cuenta pasa del plan ${trialPlanName} a ${target} y se hace el primer cobro con el método de pago registrado. No tienes que hacer nada.`
+    : `Al terminar la prueba${endsAt ? ` (${formatConsultDate(endsAt)})` : ""}, tu cuenta pasará del plan ${trialPlanName} a ${target}. Para que el cambio y el cobro se hagan sin interrupciones, falta autorizar el método de pago.`;
+  return { title: "Plan contratado", planName: c.planName, extensions: c.extensions, confirmations, fee, firstCharge, afterTrial };
+}
 
 export function subscriptionHeader(i: SubscriptionHeaderInput): SubscriptionHeaderModel {
   const o = i.overview;
@@ -95,6 +152,21 @@ export function subscriptionHeader(i: SubscriptionHeaderInput): SubscriptionHead
     case "trial": {
       const t = o.trial;
       const facts: HeaderFact[] = t ? [{ id: "trial", label: days(Math.max(t.daysLeft, 0)), value: `hasta el ${formatConsultDate(t.endsAt)}` }] : [];
+      // Contratación ya formalizada durante la prueba: se muestra por separado y no se invita a contratar de nuevo
+      const contracted = contractedPanel(contract?.customTerms?.contracting, t?.endsAt ?? null, planName, contract?.customTerms?.current?.interval ?? "month");
+      if (contracted) {
+        return {
+          eyebrow: "Plan en prueba",
+          planName,
+          status: { label: "Prueba gratuita activa", tone: "info" },
+          facts,
+          dataNote: "No se te ha cobrado nada todavía. Tu contratación ya está formalizada: no hace falta que contrates de nuevo.",
+          restriction: null,
+          primary: plansAction("Ver la comparación de planes"),
+          secondary: null,
+          contracted,
+        };
+      }
       return {
         eyebrow: "Plan en prueba",
         planName,
@@ -108,6 +180,21 @@ export function subscriptionHeader(i: SubscriptionHeaderInput): SubscriptionHead
     }
     case "trial_expired": {
       const facts: HeaderFact[] = o.trial ? [{ id: "trial", label: "Terminó el", value: formatConsultDate(o.trial.endsAt) }] : [];
+      // Acuerdo ya aceptado: el cambio al plan contratado lo aplica el sistema; no se pide contratar
+      const contractedEnd = contractedPanel(contract?.customTerms?.contracting, o.trial?.endsAt ?? null, planName, contract?.customTerms?.current?.interval ?? "month");
+      if (contractedEnd) {
+        return {
+          eyebrow: "Plan en prueba",
+          planName,
+          status: { label: "Prueba finalizada · activando tu plan contratado", tone: "info" },
+          facts,
+          dataNote: "Tu contratación está formalizada y se está aplicando. No tienes que contratar de nuevo.",
+          restriction: null,
+          primary: plansAction("Ver la comparación de planes"),
+          secondary: null,
+          contracted: contractedEnd,
+        };
+      }
       return {
         eyebrow: "Plan en prueba",
         planName,

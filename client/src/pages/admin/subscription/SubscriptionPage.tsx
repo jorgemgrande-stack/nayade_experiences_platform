@@ -22,6 +22,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import type { Translate } from "@shared/i18n/core";
 import { useI18n } from "@/i18n/I18nProvider";
+import { usePanelText } from "@/i18n/usePanelText";
 import { WithdrawalSection } from "./WithdrawalSection";
 import { PlanContractSection } from "./PlanContractSection";
 import { ConversionSection, type ConversionRequest } from "./ConversionSection";
@@ -107,6 +108,7 @@ type DetailTab = (typeof TABS)[number];
 
 export default function SubscriptionPage() {
   const { t } = useI18n();
+  const px = usePanelText();
   const GROUP_LABELS = groupLabels(t);
   const CAP_STATUS = capStatus(t);
   const sub = usePanelSubscription();
@@ -134,9 +136,13 @@ export default function SubscriptionPage() {
 
   const plans = useMemo(() => parsePanelPlans((catalog.data as { plans?: unknown } | null | undefined)?.plans), [catalog.data]);
   const pc = (planChange.data ?? null) as PlanChangeInfo | null;
+  // ¿Contratación aceptada durante la prueba? (fuentes reales del servidor; cualquier empresa)
+  const contracting = ((contract.data as { customTerms?: { contracting?: { acceptedAt?: number | null } | null } | null } | null | undefined)?.customTerms?.contracting) ?? null;
+  const hasContracted = trial && !!contracting && contracting.acceptedAt != null;
   const cards = useMemo(
-    () => (data ? buildPlanComparison({ plans, currentPlanKey: data.plan?.key ?? null, state: data.state, isAdmin, conversion: conversion.data ?? null, planChange: pc }) : []),
-    [plans, data, isAdmin, conversion.data, pc],
+    // Con una contratación ya formalizada durante la prueba, las tarjetas no ofrecen contratar de nuevo
+    () => (data ? buildPlanComparison({ plans, currentPlanKey: data.plan?.key ?? null, state: data.state, isAdmin, conversion: hasContracted ? null : (conversion.data ?? null), planChange: pc }) : []),
+    [plans, data, isAdmin, conversion.data, pc, hasContracted],
   );
   const conversionOn = !!conversion.data?.enabled;
   const header = useMemo(
@@ -225,13 +231,13 @@ export default function SubscriptionPage() {
                       <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {t("subscription.page.plansEyebrow")}
                     </p>
                     <h2 id="sub-plans" className="text-balance text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-                      {trial ? t("subscription.page.plansTitleTrial") : t("subscription.page.plansTitle")}
+                      {hasContracted ? px("Comparación de planes") : trial ? t("subscription.page.plansTitleTrial") : t("subscription.page.plansTitle")}
                     </h2>
                     <p className="text-pretty text-sm text-muted-foreground sm:text-base">
-                      {trial ? t("subscription.page.plansIntroTrial") : t("subscription.page.plansIntro")}
+                      {hasContracted ? px("Tu contratación ya está formalizada: esta comparación es solo informativa y no hace falta que contrates de nuevo.") : trial ? t("subscription.page.plansIntroTrial") : t("subscription.page.plansIntro")}
                     </p>
                   </div>
-                  <PlanAssurances trial={trial} />
+                  {!hasContracted && <PlanAssurances trial={trial} />}
                 </div>
                 {catalog.isLoading && <PanelLoading label={t("subscription.page.plansLoading")} />}
                 {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("subscription.page.plansLoadError")} />}
@@ -257,7 +263,7 @@ export default function SubscriptionPage() {
               </section>
 
               {/* Contratar desde la prueba (solo administración; el servidor decide si está disponible) */}
-              {trial && <ConversionSection requested={requested} currentPlan={data.plan?.key ?? null} plans={plans} />}
+              {trial && !hasContracted && <ConversionSection requested={requested} currentPlan={data.plan?.key ?? null} plans={plans} />}
 
               <GrowSection />
 
