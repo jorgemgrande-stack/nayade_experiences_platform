@@ -213,7 +213,7 @@ export default function EmailTemplatesManager() {
               const tplAny = tpl as Record<string, unknown>;
               return (
                 <button key={tpl.id} type="button" aria-current={selectedId === tpl.id && mode !== "create"} onClick={() => { setSelectedId(tpl.id); setMode("view"); setEditForm(null); }}
-                  className={`w-full border-b border-l-2 px-4 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${selectedId === tpl.id && mode !== "create" ? "border-l-primary bg-accent" : "border-l-transparent"}`}>
+                  className={`w-full border-b border-l-2 px-4 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${selectedId === tpl.id && mode !== "create" ? "border-l-primary bg-primary/10" : "border-l-transparent"}`}>
                   <div className="flex items-start justify-between gap-1">
                     <span className="text-sm font-medium leading-tight">{localizeTemplateText(tpl.name, locale)}</span>
                     {!!(tplAny.isCustom) && <StatusBadge tone="brand" className="shrink-0">{t("emailTemplates.custom")}</StatusBadge>}

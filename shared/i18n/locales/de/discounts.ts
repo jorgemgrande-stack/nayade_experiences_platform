@@ -27,7 +27,7 @@ export default {
   prev: "Zurück",
   next: "Weiter",
   pageOf: "Seite {page} von {total}",
-  sections: { identity: "Identifikation", discount: "Rabatt", validity: "Gültigkeit und Limits", notes: "Notizen" },
+  sections: { identity: "Identifikation", discount: "Rabatt", validity: "Gültigkeit und Einlösungen", notes: "Notizen" },
   saving: "Wird gespeichert…",
   form: {
     editTitle: "Rabattcode bearbeiten",

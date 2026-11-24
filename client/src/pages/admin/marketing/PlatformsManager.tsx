@@ -866,8 +866,8 @@ export default function PlatformsManager() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-foreground/70 text-xs">Nombre *</Label>
-              <Input
+              <Label htmlFor="plat-campo-1" className="text-foreground/70 text-xs">Nombre *</Label>
+              <Input id="plat-campo-1"
                 value={platformForm.name}
                 onChange={(e) => setPlatformForm(f => ({ ...f, name: e.target.value, slug: editingPlatform ? f.slug : slugify(e.target.value) }))}
                 placeholder="Ej: Groupon"
@@ -875,8 +875,8 @@ export default function PlatformsManager() {
               />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Slug (identificador único) *</Label>
-              <Input
+              <Label htmlFor="plat-campo-2" className="text-foreground/70 text-xs">Slug (identificador único) *</Label>
+              <Input id="plat-campo-2"
                 value={platformForm.slug}
                 onChange={(e) => setPlatformForm(f => ({ ...f, slug: slugify(e.target.value) }))}
                 placeholder="groupon"
@@ -884,31 +884,31 @@ export default function PlatformsManager() {
               />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL del logo</Label>
-              <Input value={platformForm.logoUrl} onChange={(e) => setPlatformForm(f => ({ ...f, logoUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-3" className="text-foreground/70 text-xs">URL del logo</Label>
+              <Input id="plat-campo-3" value={platformForm.logoUrl} onChange={(e) => setPlatformForm(f => ({ ...f, logoUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL del proveedor</Label>
-              <Input value={platformForm.externalUrl} onChange={(e) => setPlatformForm(f => ({ ...f, externalUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-4" className="text-foreground/70 text-xs">URL del proveedor</Label>
+              <Input id="plat-campo-4" value={platformForm.externalUrl} onChange={(e) => setPlatformForm(f => ({ ...f, externalUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Frecuencia liquidación</Label>
+                <Label htmlFor="plat-campo-25" className="text-foreground/70 text-xs">Frecuencia liquidación</Label>
                 <Select value={platformForm.settlementFrequency} onValueChange={(v) => setPlatformForm(f => ({ ...f, settlementFrequency: v as "quincenal" | "mensual" | "trimestral" }))}>
-                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="plat-campo-25" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     {FREQ_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Comisión (%)</Label>
-                <Input type="number" min={0} max={100} step={0.01} value={platformForm.commissionPct} onChange={(e) => setPlatformForm(f => ({ ...f, commissionPct: e.target.value }))} placeholder="20.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-5" className="text-foreground/70 text-xs">Comisión (%)</Label>
+                <Input id="plat-campo-5" type="number" min={0} max={100} step={0.01} value={platformForm.commissionPct} onChange={(e) => setPlatformForm(f => ({ ...f, commissionPct: e.target.value }))} placeholder="20.00" className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas</Label>
-              <Textarea value={platformForm.notes} onChange={(e) => setPlatformForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="plat-campo-6" className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea id="plat-campo-6" value={platformForm.notes} onChange={(e) => setPlatformForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setPlatformForm(f => ({ ...f, active: !f.active }))}>
@@ -943,28 +943,28 @@ export default function PlatformsManager() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-foreground/70 text-xs">Nombre del producto en la plataforma *</Label>
-              <Input value={productForm.externalProductName} onChange={(e) => setProductForm(f => ({ ...f, externalProductName: e.target.value }))} placeholder="Ej: Forfait día completo adulto" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-7" className="text-foreground/70 text-xs">Nombre del producto en la plataforma *</Label>
+              <Input id="plat-campo-7" value={productForm.externalProductName} onChange={(e) => setProductForm(f => ({ ...f, externalProductName: e.target.value }))} placeholder="Ej: Forfait día completo adulto" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL del producto en la plataforma</Label>
-              <Input value={productForm.externalLink} onChange={(e) => setProductForm(f => ({ ...f, externalLink: e.target.value }))} placeholder="https://www.groupon.es/deals/..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-8" className="text-foreground/70 text-xs">URL del producto en la plataforma</Label>
+              <Input id="plat-campo-8" value={productForm.externalLink} onChange={(e) => setProductForm(f => ({ ...f, externalLink: e.target.value }))} placeholder="https://www.groupon.es/deals/..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs flex items-center gap-1"><Euro className="w-3 h-3" /> Precio PVP (€)</Label>
-                <Input type="number" min={0} step={0.01} value={productForm.pvpPrice} onChange={(e) => setProductForm(f => ({ ...f, pvpPrice: e.target.value }))} placeholder="45.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-9" className="text-foreground/70 text-xs flex items-center gap-1"><Euro className="w-3 h-3" /> Precio PVP (€)</Label>
+                <Input id="plat-campo-9" type="number" min={0} step={0.01} value={productForm.pvpPrice} onChange={(e) => setProductForm(f => ({ ...f, pvpPrice: e.target.value }))} placeholder="45.00" className="bg-muted/50 border-border text-foreground mt-1" />
                 <p className="text-muted-foreground text-xs mt-1">Precio de venta al público</p>
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs flex items-center gap-1 text-success/80"><Euro className="w-3 h-3" /> Precio neto (€)</Label>
-                <Input type="number" min={0} step={0.01} value={productForm.netPrice} onChange={(e) => setProductForm(f => ({ ...f, netPrice: e.target.value }))} placeholder="36.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-10" className="text-foreground/70 text-xs flex items-center gap-1 text-success/80"><Euro className="w-3 h-3" /> Precio neto (€)</Label>
+                <Input id="plat-campo-10" type="number" min={0} step={0.01} value={productForm.netPrice} onChange={(e) => setProductForm(f => ({ ...f, netPrice: e.target.value }))} placeholder="36.00" className="bg-muted/50 border-border text-foreground mt-1" />
                 <p className="text-muted-foreground text-xs mt-1">Lo que nos paga el proveedor</p>
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Fecha de caducidad del producto</Label>
-              <Input type="date" value={productForm.expiresAt} onChange={(e) => setProductForm(f => ({ ...f, expiresAt: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-11" className="text-foreground/70 text-xs flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Fecha de caducidad del producto</Label>
+              <Input id="plat-campo-11" type="date" value={productForm.expiresAt} onChange={(e) => setProductForm(f => ({ ...f, expiresAt: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               <p className="text-muted-foreground text-xs mt-1">Dejar vacío si no tiene caducidad</p>
             </div>
             <div className="flex items-center gap-3">
@@ -1009,37 +1009,37 @@ export default function PlatformsManager() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
-              <Input value={settlementForm.periodLabel} onChange={(e) => setSettlementForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-12" className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
+              <Input id="plat-campo-12" value={settlementForm.periodLabel} onChange={(e) => setSettlementForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Desde</Label>
-                <Input type="date" value={settlementForm.periodFrom} onChange={(e) => setSettlementForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-13" className="text-foreground/70 text-xs">Desde</Label>
+                <Input id="plat-campo-13" type="date" value={settlementForm.periodFrom} onChange={(e) => setSettlementForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Hasta</Label>
-                <Input type="date" value={settlementForm.periodTo} onChange={(e) => setSettlementForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-foreground/70 text-xs">Nº cupones</Label>
-                <Input type="number" min={0} value={settlementForm.totalCoupons} onChange={(e) => setSettlementForm(f => ({ ...f, totalCoupons: parseInt(e.target.value) || 0 }))} className="bg-muted/50 border-border text-foreground mt-1" />
-              </div>
-              <div>
-                <Label className="text-foreground/70 text-xs">Importe PVP (€)</Label>
-                <Input type="number" min={0} step={0.01} value={settlementForm.totalAmount} onChange={(e) => setSettlementForm(f => ({ ...f, totalAmount: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-14" className="text-foreground/70 text-xs">Hasta</Label>
+                <Input id="plat-campo-14" type="date" value={settlementForm.periodTo} onChange={(e) => setSettlementForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
-            <div>
-              <Label className="text-foreground/70 text-xs text-success/80">Importe neto a cobrar (€)</Label>
-              <Input type="number" min={0} step={0.01} value={settlementForm.netTotal} onChange={(e) => setSettlementForm(f => ({ ...f, netTotal: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="plat-campo-15" className="text-foreground/70 text-xs">Nº cupones</Label>
+                <Input id="plat-campo-15" type="number" min={0} value={settlementForm.totalCoupons} onChange={(e) => setSettlementForm(f => ({ ...f, totalCoupons: parseInt(e.target.value) || 0 }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="plat-campo-16" className="text-foreground/70 text-xs">Importe PVP (€)</Label>
+                <Input id="plat-campo-16" type="number" min={0} step={0.01} value={settlementForm.totalAmount} onChange={(e) => setSettlementForm(f => ({ ...f, totalAmount: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Estado</Label>
+              <Label htmlFor="plat-campo-17" className="text-foreground/70 text-xs text-success/80">Importe neto a cobrar (€)</Label>
+              <Input id="plat-campo-17" type="number" min={0} step={0.01} value={settlementForm.netTotal} onChange={(e) => setSettlementForm(f => ({ ...f, netTotal: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+            </div>
+            <div>
+              <Label htmlFor="plat-campo-26" className="text-foreground/70 text-xs">Estado</Label>
               <Select value={settlementForm.status} onValueChange={(v) => setSettlementForm(f => ({ ...f, status: v as "pendiente" | "emitida" | "pagada" }))}>
-                <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="plat-campo-26" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="pendiente">Pendiente de cobro</SelectItem>
                   <SelectItem value="emitida">Emitida (factura enviada)</SelectItem>
@@ -1048,16 +1048,16 @@ export default function PlatformsManager() {
               </Select>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Referencia factura</Label>
-              <Input value={settlementForm.invoiceRef} onChange={(e) => setSettlementForm(f => ({ ...f, invoiceRef: e.target.value }))} placeholder="FAC-2026-001" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-18" className="text-foreground/70 text-xs">Referencia factura</Label>
+              <Input id="plat-campo-18" value={settlementForm.invoiceRef} onChange={(e) => setSettlementForm(f => ({ ...f, invoiceRef: e.target.value }))} placeholder="FAC-2026-001" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">URL justificante</Label>
-              <Input value={settlementForm.justificantUrl} onChange={(e) => setSettlementForm(f => ({ ...f, justificantUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-19" className="text-foreground/70 text-xs">URL justificante</Label>
+              <Input id="plat-campo-19" value={settlementForm.justificantUrl} onChange={(e) => setSettlementForm(f => ({ ...f, justificantUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas</Label>
-              <Textarea value={settlementForm.notes} onChange={(e) => setSettlementForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="plat-campo-20" className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea id="plat-campo-20" value={settlementForm.notes} onChange={(e) => setSettlementForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
@@ -1092,22 +1092,22 @@ export default function PlatformsManager() {
               Agrupa automáticamente todos los cupones <strong>canjeados</strong> de <strong>{selectedPlatform?.name}</strong> en el periodo seleccionado que aún no tengan liquidación asignada.
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
-              <Input value={generateForm.periodLabel} onChange={(e) => setGenerateForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="plat-campo-21" className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
+              <Input id="plat-campo-21" value={generateForm.periodLabel} onChange={(e) => setGenerateForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Desde *</Label>
-                <Input type="date" value={generateForm.periodFrom} onChange={(e) => setGenerateForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-22" className="text-foreground/70 text-xs">Desde *</Label>
+                <Input id="plat-campo-22" type="date" value={generateForm.periodFrom} onChange={(e) => setGenerateForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Hasta *</Label>
-                <Input type="date" value={generateForm.periodTo} onChange={(e) => setGenerateForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="plat-campo-23" className="text-foreground/70 text-xs">Hasta *</Label>
+                <Input id="plat-campo-23" type="date" value={generateForm.periodTo} onChange={(e) => setGenerateForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas</Label>
-              <Textarea value={generateForm.notes} onChange={(e) => setGenerateForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="plat-campo-24" className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea id="plat-campo-24" value={generateForm.notes} onChange={(e) => setGenerateForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
@@ -1136,18 +1136,18 @@ export default function PlatformsManager() {
           <div className="space-y-4">
             {/* Summary cards */}
             {detailSettlement && (
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground">Cupones</p>
-                  <p className="text-2xl font-bold text-foreground">{detailSettlement.totalCoupons}</p>
+                  <p className="break-words text-xl font-bold sm:text-2xl text-foreground">{detailSettlement.totalCoupons}</p>
                 </div>
                 <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground">PVP Total</p>
-                  <p className="text-2xl font-bold text-foreground">{parseFloat(detailSettlement.totalAmount).toFixed(2)} €</p>
+                  <p className="break-words text-xl font-bold sm:text-2xl text-foreground">{parseFloat(detailSettlement.totalAmount).toFixed(2)} €</p>
                 </div>
                 <div className="rounded-lg border border-success/20 bg-success/5 p-3">
                   <p className="text-xs text-success/70">Neto Total</p>
-                  <p className="text-2xl font-bold text-success">{parseFloat(detailSettlement.netTotal ?? "0").toFixed(2)} €</p>
+                  <p className="break-words text-xl font-bold sm:text-2xl text-success">{parseFloat(detailSettlement.netTotal ?? "0").toFixed(2)} €</p>
                 </div>
                 <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground mb-1.5">Estado</p>

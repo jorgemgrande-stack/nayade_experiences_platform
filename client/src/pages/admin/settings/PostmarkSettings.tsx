@@ -278,7 +278,7 @@ export default function PostmarkSettings() {
 
             <Step n={4} title={t("settingsPostmark.step4.title")} done={statEntries.length > 0}>
               {statEntries.length ? (
-                <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                   {statEntries.map(([k, n]) => (
                     <li key={k}>
                       <MetricCard compact tone={STAT_TONE[k] ?? "neutral"} icon={<Mail />} label={STAT_KEYS.includes(k) ? t(`settingsPostmark.stat.${k}`) : k} value={n} />
@@ -294,7 +294,7 @@ export default function PostmarkSettings() {
             </Step>
 
             {s.configured && (
-              <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 p-4">
+              <section className="flex flex-col gap-3 rounded-xl border border-danger/30 bg-danger/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="min-w-0 flex-1 text-sm text-muted-foreground">{t("settingsPostmark.confirm.text")}</p>
                 <Button variant="outline" className="border-danger/40 text-danger hover:text-danger" onClick={() => setConfirmOff(true)}>
                   <Unplug className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("settingsPostmark.disconnect")}

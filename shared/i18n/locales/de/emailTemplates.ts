@@ -5,7 +5,7 @@ export default {
   sectionIdentity: "Identifikation",
   sectionContent: "E-Mail-Inhalt",
   loadError: "Die Vorlagen konnten nicht geladen werden",
-  summary: { all: "Vorlagen", active: "Aktiv", custom: "Eigene Vorlagen", inactive: "Deaktiviert" },
+  summary: { all: "Vorlagen", active: "Aktiv", custom: "Eigene Vorlagen", inactive: "Inaktiv" },
   unsaved: "Ungespeicherte Änderungen",
   saving: "Wird gespeichert…",
   title: "E-Mail-Vorlagen",

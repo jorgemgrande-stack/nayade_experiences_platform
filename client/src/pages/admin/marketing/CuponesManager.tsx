@@ -145,7 +145,7 @@ function DetailModal({ coupon, onClose, onConvert, onRedeem, onPostpone, onIncid
             </div>
           </div>
           {/* Info cupón */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-muted-foreground text-xs mb-1">Código cupón</p>
               <code className="text-primary font-mono">{coupon.couponCode}</code>
@@ -363,16 +363,16 @@ function ConvertModal({
           )}
 
           {/* Fecha y participantes */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label className="text-foreground/70 text-sm">Fecha de reserva *</Label>
-              <Input type="date" value={convertForm.reservationDate}
+              <Label htmlFor="cup-campo-1" className="text-foreground/70 text-sm">Fecha de reserva *</Label>
+              <Input id="cup-campo-1" type="date" value={convertForm.reservationDate}
                 onChange={(e) => setConvertForm(f => ({ ...f, reservationDate: e.target.value }))}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-sm">Participantes</Label>
-              <Input type="number" min={1} value={convertForm.participants}
+              <Label htmlFor="cup-campo-2" className="text-foreground/70 text-sm">Participantes</Label>
+              <Input id="cup-campo-2" type="number" min={1} value={convertForm.participants}
                 onChange={(e) => setConvertForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
@@ -754,8 +754,8 @@ export default function CuponesManager() {
                 <p className="text-foreground/60">Cupón: <code className="text-primary">{postponeCoupon.couponCode}</code></p>
               </div>
               <div>
-                <Label className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
-                <Textarea value={postponeNotes} onChange={(e) => setPostponeNotes(e.target.value)}
+                <Label htmlFor="cup-campo-3" className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
+                <Textarea id="cup-campo-3" value={postponeNotes} onChange={(e) => setPostponeNotes(e.target.value)}
                   placeholder="Motivo del aplazamiento..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={3} />
               </div>
             </div>
@@ -790,8 +790,8 @@ export default function CuponesManager() {
                 <p className="text-foreground/60">Cupón: <code className="text-primary">{incidenceCoupon.couponCode}</code></p>
               </div>
               <div>
-                <Label className="text-foreground/70 text-sm">Descripción de la incidencia</Label>
-                <Textarea value={incidenceNotes} onChange={(e) => setIncidenceNotes(e.target.value)}
+                <Label htmlFor="cup-campo-4" className="text-foreground/70 text-sm">Descripción de la incidencia</Label>
+                <Textarea id="cup-campo-4" value={incidenceNotes} onChange={(e) => setIncidenceNotes(e.target.value)}
                   placeholder="Describe el problema..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={3} />
               </div>
             </div>
@@ -832,18 +832,18 @@ export default function CuponesManager() {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-foreground/70 text-xs">Proveedor *</Label>
+                <Label htmlFor="cup-campo-16" className="text-foreground/70 text-xs">Proveedor *</Label>
                 <Select value={manualForm.provider} onValueChange={(v) => setManualForm(f => ({ ...f, provider: v }))}>
-                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="cup-campo-16" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     {PROVIDERS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Canal *</Label>
+                <Label htmlFor="cup-campo-17" className="text-foreground/70 text-xs">Canal *</Label>
                 <Select value={manualForm.channelEntry} onValueChange={(v) => setManualForm(f => ({ ...f, channelEntry: v as typeof manualForm.channelEntry }))}>
-                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="cup-campo-17" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     {["web", "email", "whatsapp", "telefono", "presencial", "manual"].map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
@@ -853,37 +853,37 @@ export default function CuponesManager() {
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Nombre cliente *</Label>
-              <Input value={manualForm.customerName} onChange={(e) => setManualForm(f => ({ ...f, customerName: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="cup-campo-5" className="text-foreground/70 text-xs">Nombre cliente *</Label>
+              <Input id="cup-campo-5" value={manualForm.customerName} onChange={(e) => setManualForm(f => ({ ...f, customerName: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Email *</Label>
-                <Input type="email" value={manualForm.email} onChange={(e) => setManualForm(f => ({ ...f, email: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="cup-campo-6" className="text-foreground/70 text-xs">Email *</Label>
+                <Input id="cup-campo-6" type="email" value={manualForm.email} onChange={(e) => setManualForm(f => ({ ...f, email: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Teléfono</Label>
-                <Input value={manualForm.phone} onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-foreground/70 text-xs">Código cupón *</Label>
-                <Input value={manualForm.couponCode} onChange={(e) => setManualForm(f => ({ ...f, couponCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
-              </div>
-              <div>
-                <Label className="text-foreground/70 text-xs">Código seguridad</Label>
-                <Input value={manualForm.securityCode} onChange={(e) => setManualForm(f => ({ ...f, securityCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
+                <Label htmlFor="cup-campo-7" className="text-foreground/70 text-xs">Teléfono</Label>
+                <Input id="cup-campo-7" value={manualForm.phone} onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Fecha solicitada</Label>
-                <Input type="date" value={manualForm.requestedDate} onChange={(e) => setManualForm(f => ({ ...f, requestedDate: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="cup-campo-8" className="text-foreground/70 text-xs">Código cupón *</Label>
+                <Input id="cup-campo-8" value={manualForm.couponCode} onChange={(e) => setManualForm(f => ({ ...f, couponCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Participantes</Label>
-                <Input type="number" min={1} value={manualForm.participants} onChange={(e) => setManualForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="cup-campo-9" className="text-foreground/70 text-xs">Código seguridad</Label>
+                <Input id="cup-campo-9" value={manualForm.securityCode} onChange={(e) => setManualForm(f => ({ ...f, securityCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="cup-campo-10" className="text-foreground/70 text-xs">Fecha solicitada</Label>
+                <Input id="cup-campo-10" type="date" value={manualForm.requestedDate} onChange={(e) => setManualForm(f => ({ ...f, requestedDate: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="cup-campo-11" className="text-foreground/70 text-xs">Participantes</Label>
+                <Input id="cup-campo-11" type="number" min={1} value={manualForm.participants} onChange={(e) => setManualForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
@@ -927,8 +927,8 @@ export default function CuponesManager() {
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas internas</Label>
-              <Textarea value={manualForm.notes} onChange={(e) => setManualForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="cup-campo-12" className="text-foreground/70 text-xs">Notas internas</Label>
+              <Textarea id="cup-campo-12" value={manualForm.notes} onChange={(e) => setManualForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
@@ -1068,9 +1068,9 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
 
           {/* Plataforma */}
           <div>
-            <Label className="text-foreground/70 text-sm">Plataforma *</Label>
+            <Label htmlFor="cup-campo-18" className="text-foreground/70 text-sm">Plataforma *</Label>
             <Select value={selectedPlatformId?.toString() ?? ""} onValueChange={(v) => { setSelectedPlatformId(parseInt(v)); setPlatformProductId(undefined); }}>
-              <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1">
+              <SelectTrigger id="cup-campo-18" className="bg-muted/50 border-border text-foreground mt-1">
                 <SelectValue placeholder="Selecciona la plataforma del cupón" />
               </SelectTrigger>
               <SelectContent className="bg-card border-border">
@@ -1121,15 +1121,15 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
           )}
 
           {/* Fecha y participantes */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label className="text-foreground/70 text-sm">Fecha de reserva *</Label>
-              <Input type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
+              <Label htmlFor="cup-campo-13" className="text-foreground/70 text-sm">Fecha de reserva *</Label>
+              <Input id="cup-campo-13" type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-sm">Participantes</Label>
-              <Input type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
+              <Label htmlFor="cup-campo-14" className="text-foreground/70 text-sm">Participantes</Label>
+              <Input id="cup-campo-14" type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
           </div>
@@ -1152,8 +1152,8 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
           </div>
 
           <div>
-            <Label className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+            <Label htmlFor="cup-campo-15" className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
+            <Textarea id="cup-campo-15" value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="Observaciones del canje..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
           </div>
         </div>
