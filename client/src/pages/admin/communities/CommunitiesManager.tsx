@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { COMMUNITY_ADMIN_TABS, COMMUNITY_CAPABILITY, isCommunityAdminTab, VISIBILITY_SHORT } from "@shared/communities";
 import { CommunityForm, EMPTY_COMMUNITY } from "./CommunityForm";
@@ -54,20 +55,17 @@ export default function CommunitiesManager() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Comunidades</h1>
-            <p className="max-w-3xl text-sm text-muted-foreground">
-              Comunidades de tus clientes y socios: publicaciones, comentarios y participación, con moderación y roles. Los miembros entran con su
-              cuenta de cliente en el área de miembros (<span className="font-mono">/comunidad</span>).
-            </p>
-          </div>
-          {canEdit && (
+        <PanelPageHeader
+          className="mb-1"
+          icon={<Users />}
+          title="Comunidades"
+          description={<>Comunidades de tus clientes y socios: publicaciones, comentarios y participación, con moderación y roles. Los miembros entran con su cuenta de cliente en el área de miembros (<span className="font-mono">/comunidad</span>).</>}
+          actions={canEdit ? (
             <Button onClick={() => setCreating(true)}>
               <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Nueva comunidad
             </Button>
-          )}
-        </div>
+          ) : undefined}
+        />
 
         {tab && items.length > 1 && (
           <div role="status" className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">

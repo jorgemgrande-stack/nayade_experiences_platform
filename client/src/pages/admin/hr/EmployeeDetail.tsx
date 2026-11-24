@@ -785,7 +785,7 @@ export default function EmployeeDetail() {
                   <p className="font-mono text-foreground/90">{employee.email}</p>
                 </div>
                 <label className="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:bg-foreground/[0.04]">
-                  <input type="checkbox" checked={sendEmailNow} onChange={(e) => setSendEmailNow(e.target.checked)} className="mt-0.5 accent-orange-500" />
+                  <input type="checkbox" checked={sendEmailNow} onChange={(e) => setSendEmailNow(e.target.checked)} className="mt-0.5 accent-primary" />
                   <div className="text-sm">
                     <p className="text-foreground/90 font-medium">Enviar credenciales por email</p>
                     <p className="text-foreground/50 text-xs">Si lo desmarcas, podrás copiar el enlace manualmente.</p>

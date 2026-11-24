@@ -299,7 +299,7 @@ export default function HRFiscalLedger() {
                   <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
                     <tr className="text-left text-xs uppercase tracking-widest text-foreground/50">
                       <th className="px-3 py-3 w-8">
-                        <input type="checkbox" className="accent-orange-500"
+                        <input type="checkbox" className="accent-primary"
                           checked={selectedIds.size > 0 && selectedIds.size === currentRowsIds.length}
                           onChange={() => selectAll(currentRowsIds)} />
                       </th>
@@ -316,7 +316,7 @@ export default function HRFiscalLedger() {
                       <tr key={r.id} className={cn("border-b border-foreground/[0.05] hover:bg-foreground/[0.03]",
                         selectedIds.has(r.id) && "bg-primary/[0.06]")}>
                         <td className="px-3 py-3">
-                          <input type="checkbox" className="accent-orange-500"
+                          <input type="checkbox" className="accent-primary"
                             checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} />
                         </td>
                         <td className="px-4 py-3 text-foreground/80 capitalize">{periodLabel(r.period)}</td>
@@ -349,7 +349,7 @@ export default function HRFiscalLedger() {
                   <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
                     <tr className="text-left text-xs uppercase tracking-widest text-foreground/50">
                       <th className="px-3 py-3 w-8">
-                        <input type="checkbox" className="accent-orange-500"
+                        <input type="checkbox" className="accent-primary"
                           checked={selectedIds.size > 0 && selectedIds.size === currentRowsIds.length}
                           onChange={() => selectAll(currentRowsIds)} />
                       </th>
@@ -365,7 +365,7 @@ export default function HRFiscalLedger() {
                       <tr key={r.id} className={cn("border-b border-foreground/[0.05] hover:bg-foreground/[0.03]",
                         selectedIds.has(r.id) && "bg-primary/[0.06]")}>
                         <td className="px-3 py-3">
-                          <input type="checkbox" className="accent-orange-500"
+                          <input type="checkbox" className="accent-primary"
                             checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} />
                         </td>
                         <td className="px-4 py-3 text-foreground/80 capitalize">{periodLabel(r.period)}</td>

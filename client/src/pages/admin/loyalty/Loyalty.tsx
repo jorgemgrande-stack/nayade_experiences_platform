@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
 import { toastError } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
@@ -819,13 +820,12 @@ export default function Loyalty() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Fidelización y puntos</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            Puntos internos para tus clientes del CRM: se ganan con compras confirmadas en el TPV o en la tienda online y con las acciones que premies. Las anulaciones y
-            devoluciones los retiran solas.
-          </p>
-        </div>
+        <PanelPageHeader
+          className="mb-1"
+          icon={<Coins />}
+          title="Fidelización y puntos"
+          description="Puntos internos para tus clientes del CRM: se ganan con compras confirmadas en el TPV o en la tienda online y con las acciones que premies. Las anulaciones y devoluciones los retiran solas."
+        />
         {overview.isLoading ? <PanelLoading label="Cargando el programa…" /> : overview.isError || !data ? <PanelError error={overview.error} onRetry={() => overview.refetch()} title="No se ha podido cargar el programa" /> : (
           <>
             {disabledNote && <div role="status" className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">{disabledNote}</div>}
