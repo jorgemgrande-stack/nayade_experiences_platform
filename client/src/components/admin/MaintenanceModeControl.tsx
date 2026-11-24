@@ -85,11 +85,13 @@ export default function MaintenanceModeControl({ mode = "technical" }: { mode?: 
       <Button
         variant={isEnabled ? "destructive" : "outline"}
         size="sm"
-        className="text-xs gap-1.5"
+        className="text-xs gap-1.5 px-2.5 xl:px-3 whitespace-nowrap"
         onClick={handleOpen}
+        title={isEnabled ? t.on : t.off}
+        aria-label={isEnabled ? t.on : t.off}
       >
-        <Wrench className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{isEnabled ? t.on : t.off}</span>
+        <Wrench className="w-3.5 h-3.5" aria-hidden="true" />
+        <span className="hidden xl:inline">{isEnabled ? t.on : t.off}</span>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
