@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MetricCard } from "@/components/admin/PanelVisual";
-import { PanelDataList, PanelPageHeader, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { PanelPageHeader, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
 import { PanelEmpty } from "@/components/admin/PanelStates";
 import { TONE_SURFACE } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
@@ -87,6 +87,51 @@ function DocumentDialog({ html, onClose }: { html: string; onClose: () => void }
         <iframe title={t("subscription.center.invoices.docTitle")} sandbox="" srcDoc={html} className="h-[70vh] w-full rounded-md border border-border bg-white" />
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Como PanelDataList, pero la tabla solo desde 1024 px: con 7-8 columnas, en tableta se lee mejor como tarjetas. */
+function RowsList<T>({ rows, columns, rowKey, caption }: { rows: T[]; columns: PanelColumn<T>[]; rowKey: (r: T) => string; caption: string }) {
+  const [first, ...rest] = columns;
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-background/40">
+      <table className="hidden w-full text-sm lg:table">
+        <caption className="sr-only">{caption}</caption>
+        <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+          <tr>
+            {columns.map((c) => (
+              <th key={c.key} scope="col" className={cn("px-3 py-2.5 font-medium", c.align === "right" && "text-right")}>
+                {c.header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r) => (
+            <tr key={rowKey(r)}>
+              {columns.map((c) => (
+                <td key={c.key} className={cn("px-3 py-2.5 align-top", c.align === "right" && "text-right", c.className)}>
+                  {c.cell(r)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ul className="divide-y divide-border lg:hidden" aria-label={caption}>
+        {rows.map((r) => (
+          <li key={rowKey(r)} className="space-y-1.5 p-4 text-sm">
+            <div className="min-w-0 break-words font-medium text-foreground">{first.cell(r)}</div>
+            {rest.map((c) => (
+              <div key={c.key} className="flex items-start justify-between gap-3">
+                <span className="shrink-0 text-xs text-muted-foreground">{c.header}</span>
+                <span className="min-w-0 break-words text-right">{c.cell(r)}</span>
+              </div>
+            ))}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -222,7 +267,7 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
         </span>
       ),
     },
-    { key: "date", header: t("subscription.center.invoices.date"), cell: (i) => <span className="tabular-nums">{date(i.issuedAt) ?? "—"}</span> },
+    { key: "date", header: t("subscription.center.invoices.date"), cell: (i) => <span className="whitespace-nowrap tabular-nums">{date(i.issuedAt) ?? "—"}</span> },
     { key: "concept", header: t("subscription.center.invoices.concept"), cell: (i) => i.concept ?? "—" },
     { key: "base", header: t("subscription.center.invoices.base"), align: "right", cell: (i) => <span className="whitespace-nowrap tabular-nums">{money(i.baseCents, i.currency)}</span> },
     { key: "tax", header: t("subscription.center.invoices.tax"), align: "right", cell: (i) => <span className="whitespace-nowrap tabular-nums">{money(i.taxCents, i.currency)}</span> },
@@ -269,7 +314,7 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
       )}
 
       {/* 1. Resumen */}
-      <section aria-label={t("subscription.center.title")} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section aria-label={t("subscription.center.title")} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         <MetricCard
           icon={<ShieldCheck />}
           tone={tone}
@@ -295,8 +340,8 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
           icon={<Receipt />}
           tone={last ? "success" : "neutral"}
           label={t("subscription.center.summary.lastPayment")}
-          value={last ? money(last.amountCents, last.currency) : t("subscription.center.summary.noneYet")}
-          detail={last ? [date(last.at), last.invoiceNumber ? t("subscription.center.summary.invoice", { number: last.invoiceNumber }) : null].filter(Boolean).join(" · ") : undefined}
+          value={last ? money(last.amountCents, last.currency) : "—"}
+          detail={last ? [date(last.at), last.invoiceNumber ? t("subscription.center.summary.invoice", { number: last.invoiceNumber }) : null].filter(Boolean).join(" · ") : t("subscription.center.summary.noneYet")}
         />
         <MetricCard
           icon={<CreditCard />}
@@ -352,7 +397,7 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
         {center.payments.length === 0 ? (
           <PanelEmpty icon={<CreditCard />} title={t("subscription.center.payments.empty")} description={t("subscription.center.payments.emptyText")} className="bg-background/40" />
         ) : (
-          <PanelDataList rows={center.payments} columns={paymentColumns} rowKey={(p) => p.id} caption={t("subscription.center.payments.caption")} className="bg-background/40" />
+          <RowsList rows={center.payments} columns={paymentColumns} rowKey={(p) => p.id} caption={t("subscription.center.payments.caption")} />
         )}
       </Panel>
 
@@ -361,7 +406,7 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
         {center.invoices.length === 0 ? (
           <PanelEmpty icon={<FileText />} title={t("subscription.center.invoices.empty")} className="bg-background/40" />
         ) : (
-          <PanelDataList rows={center.invoices} columns={invoiceColumns} rowKey={(i) => i.id} caption={t("subscription.center.invoices.caption")} className="bg-background/40" />
+          <RowsList rows={center.invoices} columns={invoiceColumns} rowKey={(i) => i.id} caption={t("subscription.center.invoices.caption")} />
         )}
       </Panel>
 
