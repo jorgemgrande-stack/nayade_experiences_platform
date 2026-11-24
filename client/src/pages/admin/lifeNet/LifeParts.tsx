@@ -15,12 +15,12 @@ import { LIFE_NET_CAPABILITY, LIFE_PATHS, TASK_STATE_LABELS, type LifeColor, typ
 export { LIFE_PATHS };
 
 export const COLOR_DOT: Record<LifeColor, string> = {
-  rojo: "bg-red-500",
-  azul: "bg-blue-500",
-  verde: "bg-emerald-500",
-  ambar: "bg-amber-500",
-  violeta: "bg-violet-500",
-  rosa: "bg-pink-500",
+  rojo: "bg-danger",
+  azul: "bg-info",
+  verde: "bg-success",
+  ambar: "bg-warning",
+  violeta: "bg-info",
+  rosa: "bg-info",
   gris: "bg-slate-500",
 };
 export const COLOR_LABELS: Record<LifeColor, string> = { rojo: "Rojo", azul: "Azul", verde: "Verde", ambar: "Ámbar", violeta: "Violeta", rosa: "Rosa", gris: "Gris" };

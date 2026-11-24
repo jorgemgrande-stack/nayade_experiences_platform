@@ -17,9 +17,9 @@ type BatchStatus = "borrador" | "emitida" | "cobrada" | "anulada";
 
 const STATUS_MAP: Record<BatchStatus, { label: string; cls: string }> = {
   borrador:  { label: "Borrador",  cls: "bg-gray-100 text-gray-600" },
-  emitida:   { label: "Emitida",   cls: "bg-blue-50 text-blue-600" },
-  cobrada:   { label: "Cobrada",   cls: "bg-green-50 text-green-700" },
-  anulada:   { label: "Anulada",   cls: "bg-red-50 text-red-500" },
+  emitida:   { label: "Emitida",   cls: "bg-info text-info" },
+  cobrada:   { label: "Cobrada",   cls: "bg-success text-success" },
+  anulada:   { label: "Anulada",   cls: "bg-danger text-danger" },
 };
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -87,7 +87,7 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
               disabled={updateStatus.isPending}>
               <CheckCircle className="w-3.5 h-3.5" /> Emitir
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-600 gap-1.5"
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-danger hover:text-danger gap-1.5"
               onClick={async () => { if ((await confirmAction({ description: "¿Eliminar esta liquidación?", destructive: true }))) deleteBatch.mutate({ id: batchId }); }}
               disabled={deleteBatch.isPending}>
               <Trash2 className="w-3.5 h-3.5" /> Eliminar
@@ -101,7 +101,7 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
               disabled={updateStatus.isPending}>
               <Euro className="w-3.5 h-3.5" /> Marcar cobrada
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-600 gap-1.5"
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-danger hover:text-danger gap-1.5"
               onClick={() => updateStatus.mutate({ id: batchId, status: "anulada" })}
               disabled={updateStatus.isPending}>
               <XCircle className="w-3.5 h-3.5" /> Anular
@@ -207,7 +207,7 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-background border border-foreground/[0.1] rounded-2xl shadow-xl w-full max-w-lg">
+      <div className="bg-background border border-foreground/[0.1] rounded-xl shadow-md w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b border-foreground/[0.08]">
           <h2 className="font-semibold text-foreground">Nueva liquidación</h2>
           <button onClick={onClose} className="text-foreground/40 hover:text-foreground/80"><X className="w-5 h-5" /></button>
@@ -215,9 +215,9 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
         <div className="px-6 py-5 space-y-4">
           <div>
-            <Label className="text-xs text-foreground/60">Partner <span className="text-red-400">*</span></Label>
+            <Label className="text-xs text-foreground/60">Partner <span className="text-danger">*</span></Label>
             <select
-              className="mt-1 w-full rounded-lg border border-foreground/[0.15] bg-background text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              className="mt-1 w-full rounded-lg border border-foreground/[0.15] bg-background text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
               value={partnerId ?? ""}
               onChange={e => setPartnerId(e.target.value ? parseInt(e.target.value) : null)}
             >
@@ -230,11 +230,11 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-foreground/60">Inicio período <span className="text-red-400">*</span></Label>
+              <Label className="text-xs text-foreground/60">Inicio período <span className="text-danger">*</span></Label>
               <Input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="mt-1 text-sm" />
             </div>
             <div>
-              <Label className="text-xs text-foreground/60">Fin período <span className="text-red-400">*</span></Label>
+              <Label className="text-xs text-foreground/60">Fin período <span className="text-danger">*</span></Label>
               <Input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="mt-1 text-sm" />
             </div>
           </div>
@@ -293,7 +293,7 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
         <div className="px-6 py-4 border-t border-foreground/[0.08] flex items-center gap-3 justify-end">
           <Button variant="ghost" onClick={onClose} className="text-sm">Cancelar</Button>
           <Button
-            className="bg-orange-600 hover:bg-orange-700 text-white text-sm gap-2"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm gap-2"
             disabled={!partnerId || !periodStart || !periodEnd || !preview?.length || createBatch.isPending}
             onClick={() => createBatch.mutate({ partnerId: partnerId!, periodType, periodStart, periodEnd, notes: notes || undefined })}
           >
@@ -326,7 +326,7 @@ export default function PartnerBillingManager() {
 
   return (
     <AdminLayout title="Facturación partners">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c] print:bg-white print:text-black">
+      <div className="min-h-screen bg-background text-foreground  print:bg-white print:text-black">
 
         {/* Header — oculto al imprimir */}
         <div className="px-4 sm:px-6 pt-4 pb-4 border-b border-foreground/[0.08] print:hidden">
@@ -387,7 +387,7 @@ export default function PartnerBillingManager() {
                     <button
                       key={batch.id}
                       onClick={() => setSelectedId(batch.id)}
-                      className={`w-full text-left px-4 py-3.5 transition-colors ${active ? "bg-orange-500/10" : "hover:bg-foreground/[0.03]"}`}
+                      className={`w-full text-left px-4 py-3.5 transition-colors ${active ? "bg-primary/10" : "hover:bg-foreground/[0.03]"}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono text-xs text-foreground/50">{batch.batchNumber}</span>

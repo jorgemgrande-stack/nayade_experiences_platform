@@ -103,7 +103,7 @@ export default function CommunitiesManager() {
                       <span><MessagesSquare className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />{c.posts} {c.posts === 1 ? "publicación" : "publicaciones"}</span>
                     </p>
                     {(c.pendingMembers > 0 || c.pendingPosts > 0) && (
-                      <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                      <p className="text-xs font-medium text-warning dark:text-warning">
                         Pendiente: {[c.pendingMembers ? `${c.pendingMembers} ${c.pendingMembers === 1 ? "solicitud" : "solicitudes"}` : null, c.pendingPosts ? `${c.pendingPosts} ${c.pendingPosts === 1 ? "publicación" : "publicaciones"} por revisar` : null].filter(Boolean).join(" · ")}
                       </p>
                     )}

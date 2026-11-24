@@ -65,15 +65,6 @@
     "coloresFijos": 6,
     "textoMinusculo": 3
   },
-  "pages/admin/careNet/Bonos.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/careNet/Clientes.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/careNet/Reservas.tsx": {
-    "geometriaAjena": 1
-  },
   "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
     "coloresFijos": 44,
     "textoMinusculo": 11
@@ -123,13 +114,6 @@
     "coloresFijos": 66,
     "textoMinusculo": 39,
     "geometriaAjena": 1
-  },
-  "pages/admin/communities/CommunitiesManager.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/communities/CommunityDetail.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
   },
   "pages/admin/connect/ConnectDetailPage.tsx": {
     "geometriaAjena": 5
@@ -278,73 +262,6 @@
   "pages/admin/hotel/pmsShared.tsx": {
     "coloresFijos": 6
   },
-  "pages/admin/hr/BatchDetail.tsx": {
-    "coloresFijos": 23,
-    "hexEnClases": 3,
-    "textoMinusculo": 8
-  },
-  "pages/admin/hr/BonusManager.tsx": {
-    "coloresFijos": 17,
-    "hexEnClases": 9,
-    "textoMinusculo": 12
-  },
-  "pages/admin/hr/EmployeeDetail.tsx": {
-    "coloresFijos": 36,
-    "hexEnClases": 9,
-    "textoMinusculo": 13
-  },
-  "pages/admin/hr/EmployeesList.tsx": {
-    "coloresFijos": 9,
-    "hexEnClases": 5,
-    "textoMinusculo": 11
-  },
-  "pages/admin/hr/HRDashboard.tsx": {
-    "coloresFijos": 2,
-    "hexEnClases": 1,
-    "textoMinusculo": 5
-  },
-  "pages/admin/hr/HRFiscalLedger.tsx": {
-    "coloresFijos": 22,
-    "hexEnClases": 3,
-    "textoMinusculo": 7
-  },
-  "pages/admin/hr/HRSettings.tsx": {
-    "coloresFijos": 4,
-    "hexEnClases": 1,
-    "textoMinusculo": 4
-  },
-  "pages/admin/hr/LeaveManager.tsx": {
-    "coloresFijos": 17,
-    "hexEnClases": 6,
-    "textoMinusculo": 9
-  },
-  "pages/admin/hr/PayrollBatchesManager.tsx": {
-    "coloresFijos": 18,
-    "hexEnClases": 3,
-    "textoMinusculo": 4
-  },
-  "pages/admin/hr/PayslipsManager.tsx": {
-    "coloresFijos": 23,
-    "hexEnClases": 5,
-    "textoMinusculo": 16
-  },
-  "pages/admin/hr/TimeClockManager.tsx": {
-    "coloresFijos": 14,
-    "hexEnClases": 7,
-    "textoMinusculo": 12
-  },
-  "pages/admin/lifeNet/LifeHome.tsx": {
-    "geometriaAjena": 2
-  },
-  "pages/admin/lifeNet/LifeMembers.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/lifeNet/LifeParts.tsx": {
-    "coloresFijos": 6
-  },
-  "pages/admin/lifeNet/LifeTracking.tsx": {
-    "geometriaAjena": 2
-  },
   "pages/admin/marketing/CuponesManager.tsx": {
     "textoMinusculo": 1
   },
@@ -358,9 +275,6 @@
   "pages/admin/marketing/SeoControl.tsx": {
     "coloresFijos": 3
   },
-  "pages/admin/net/NetProductHome.tsx": {
-    "geometriaAjena": 2
-  },
   "pages/admin/netReports/ReportParts.tsx": {
     "textoMinusculo": 1
   },
@@ -369,17 +283,6 @@
   },
   "pages/admin/operations/DailyActivities.tsx": {
     "textoMinusculo": 24
-  },
-  "pages/admin/partners/PartnerBillingManager.tsx": {
-    "coloresFijos": 11,
-    "hexEnClases": 1,
-    "geometriaAjena": 1
-  },
-  "pages/admin/partners/PartnersManager.tsx": {
-    "coloresFijos": 70,
-    "hexEnClases": 2,
-    "textoMinusculo": 18,
-    "geometriaAjena": 3
   },
   "pages/admin/restaurantNet/Carta.tsx": {
     "geometriaAjena": 1
@@ -413,10 +316,6 @@
     "coloresFijos": 45,
     "geometriaAjena": 14
   },
-  "pages/admin/socialTokenNet/SocialTokenNetHome.tsx": {
-    "coloresFijos": 1,
-    "geometriaAjena": 2
-  },
   "pages/admin/spa/SpaManager.tsx": {
     "coloresFijos": 15
   },
@@ -443,8 +342,5 @@
   "pages/admin/tpv/TpvScreen.tsx": {
     "textoMinusculo": 1,
     "geometriaAjena": 2
-  },
-  "pages/admin/travel/travelShared.tsx": {
-    "coloresFijos": 5
   }
 }

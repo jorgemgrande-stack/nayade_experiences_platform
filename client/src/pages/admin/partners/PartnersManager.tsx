@@ -148,27 +148,27 @@ function PartnerForm({
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Nombre del partner *</label>
             <Input value={form.name} onChange={e => set("name", e.target.value)}
-              placeholder="Hotel Ejemplo" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Hotel Ejemplo" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Razón social fiscal</label>
             <Input value={form.fiscalName} onChange={e => set("fiscalName", e.target.value)}
-              placeholder="Hotel Ejemplo S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Hotel Ejemplo S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">NIF / CIF</label>
             <Input value={form.nif} onChange={e => set("nif", e.target.value)}
-              placeholder="B12345678" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="B12345678" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Ciudad</label>
             <Input value={form.city} onChange={e => set("city", e.target.value)}
-              placeholder="Albacete" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Albacete" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div className="sm:col-span-2">
             <label className="text-xs text-foreground/50 mb-1 block">Dirección</label>
             <Input value={form.address} onChange={e => set("address", e.target.value)}
-              placeholder="Calle Mayor 1" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Calle Mayor 1" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
         </div>
       </section>
@@ -180,22 +180,22 @@ function PartnerForm({
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Persona de contacto</label>
             <Input value={form.contactName} onChange={e => set("contactName", e.target.value)}
-              placeholder="Ana García" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Ana García" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Email de contacto</label>
             <Input type="email" value={form.contactEmail} onChange={e => set("contactEmail", e.target.value)}
-              placeholder="contacto@hotel.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="contacto@hotel.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Teléfono</label>
             <Input value={form.contactPhone} onChange={e => set("contactPhone", e.target.value)}
-              placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Email de facturación</label>
             <Input type="email" value={form.billingEmail} onChange={e => set("billingEmail", e.target.value)}
-              placeholder="facturas@hotel.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="facturas@hotel.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
         </div>
       </section>
@@ -239,7 +239,7 @@ function PartnerForm({
                     return (
                       <label key={p.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer transition-all text-xs ${
                         checked
-                          ? "border-orange-500/40 bg-orange-500/10 text-orange-300"
+                          ? "border-primary/40 bg-primary/10 text-primary"
                           : "border-foreground/[0.10] text-foreground/50 hover:border-foreground/20"
                       }`}>
                         <input
@@ -258,7 +258,7 @@ function PartnerForm({
                 </div>
               )}
               {form.allowedReservationProductIds.length > 0 && (
-                <p className="text-[10px] text-orange-400/70">
+                <p className="text-xs text-primary/70">
                   {form.allowedReservationProductIds.length} producto{form.allowedReservationProductIds.length !== 1 ? "s" : ""} seleccionado{form.allowedReservationProductIds.length !== 1 ? "s" : ""}
                   {" "}— los demás no estarán disponibles para este partner
                 </p>
@@ -282,7 +282,7 @@ function PartnerForm({
             <div className="ml-7">
               <label className="text-xs text-foreground/50 mb-1 block">Periodicidad</label>
               <select value={form.billingPeriod} onChange={e => set("billingPeriod", e.target.value)}
-                className="px-3 py-2 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.05] text-white w-full sm:w-auto">
+                className="px-3 py-2 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.05] text-foreground w-full sm:w-auto">
                 {Object.entries(BILLING_PERIOD_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
@@ -301,7 +301,7 @@ function PartnerForm({
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Tipo de comisión</label>
             <select value={form.commissionType} onChange={e => set("commissionType", e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.05] text-white w-full">
+              className="px-3 py-2 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.05] text-foreground w-full">
               {Object.entries(COMMISSION_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
@@ -313,7 +313,7 @@ function PartnerForm({
                 Valor {form.commissionType === "percent" ? "(%)" : "(€)"}
               </label>
               <Input type="number" value={form.commissionValue} onChange={e => set("commissionValue", e.target.value)}
-                placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+                placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
             </div>
           )}
         </div>
@@ -326,12 +326,12 @@ function PartnerForm({
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Cupo mensual <span className="text-foreground/30">(vacío = sin límite)</span></label>
             <Input type="number" value={form.monthlyQuota} onChange={e => set("monthlyQuota", e.target.value)}
-              placeholder="Sin límite" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Sin límite" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Notas internas</label>
             <Input value={form.notes} onChange={e => set("notes", e.target.value)}
-              placeholder="Observaciones..." className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Observaciones..." className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
         </div>
       </section>
@@ -340,7 +340,7 @@ function PartnerForm({
       <div className="flex justify-end gap-2 pt-2 border-t border-foreground/[0.08]">
         <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
         <Button onClick={() => onSave(form)} disabled={saving || !form.name.trim()}
-          className="bg-orange-600 hover:bg-orange-700 text-white">
+          className="bg-primary hover:bg-primary/90 text-primary-foreground">
           {saving ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Check className="w-4 h-4 mr-1" />}
           Guardar
         </Button>
@@ -399,7 +399,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground/70 uppercase tracking-wider">Usuarios / Recepcionistas</h3>
         <Button size="sm" onClick={() => setShowInvite(true)}
-          className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-8">
+          className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-8">
           <UserPlus className="w-3.5 h-3.5 mr-1" /> Invitar
         </Button>
       </div>
@@ -410,13 +410,13 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Input placeholder="Nombre" value={inviteForm.name}
               onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))}
-              className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm" />
             <Input placeholder="Email" type="email" value={inviteForm.email}
               onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
-              className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm" />
             <select value={inviteForm.role}
               onChange={e => setInviteForm(f => ({ ...f, role: e.target.value }))}
-              className="px-3 py-2 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.05] text-white">
+              className="px-3 py-2 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.05] text-foreground">
               <option value="partner_user">Recepcionista</option>
               <option value="partner_admin">Admin del partner</option>
             </select>
@@ -426,7 +426,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
             <Button size="sm"
               onClick={() => inviteMut.mutate({ partnerId, name: inviteForm.name, email: inviteForm.email, role: inviteForm.role as any })}
               disabled={inviteMut.isPending || !inviteForm.name || !inviteForm.email}
-              className="bg-orange-600 hover:bg-orange-700 text-white text-xs">
+              className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs">
               {inviteMut.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Enviar invitación"}
             </Button>
           </div>
@@ -441,24 +441,24 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
         <div className="divide-y divide-foreground/[0.08]">
           {users.map(u => (
             <div key={u.id} className="flex items-center gap-3 py-3">
-              <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-orange-400">{(u.name ?? "?")[0].toUpperCase()}</span>
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold text-primary">{(u.name ?? "?")[0].toUpperCase()}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground truncate">{u.name ?? "—"}</div>
                 <div className="text-xs text-foreground/40 truncate">{u.email ?? "—"}</div>
               </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                 u.role === "partner_admin"
-                  ? "bg-violet-500/15 text-violet-400 border-violet-500/30"
-                  : "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                  ? "bg-info/15 text-info border-info/30"
+                  : "bg-info/15 text-info border-info/30"
               }`}>
                 {u.role === "partner_admin" ? "Admin" : "Recepcionista"}
               </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                 u.inviteAccepted
-                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                  : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                  ? "bg-success/15 text-success border-success/30"
+                  : "bg-warning/15 text-warning border-warning/30"
               }`}>
                 {u.inviteAccepted ? "Activo" : "Pendiente"}
               </span>
@@ -467,7 +467,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
               {!u.inviteAccepted && (
                 <Button size="sm" variant="ghost"
                   title="Reenviar enlace de activación"
-                  className="text-foreground/30 hover:text-blue-400 h-7 w-7 p-0"
+                  className="text-foreground/30 hover:text-info h-7 w-7 p-0"
                   disabled={resendMut.isPending}
                   onClick={() => resendMut.mutate({ partnerId, name: u.name ?? "", email: u.email ?? "", role: u.role as any })}>
                   <Send className="w-3.5 h-3.5" />
@@ -477,7 +477,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
               {/* Cambiar contraseña */}
               <Button size="sm" variant="ghost"
                 title="Cambiar contraseña"
-                className="text-foreground/30 hover:text-violet-400 h-7 w-7 p-0"
+                className="text-foreground/30 hover:text-info h-7 w-7 p-0"
                 onClick={() => { setPasswordTarget({ id: u.id, name: u.name ?? u.email ?? "usuario" }); setNewPassword(""); setShowPwd(false); }}>
                 <KeyRound className="w-3.5 h-3.5" />
               </Button>
@@ -485,7 +485,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
               {/* Desvincular */}
               <Button size="sm" variant="ghost"
                 title="Desvincular usuario"
-                className="text-foreground/30 hover:text-red-400 h-7 w-7 p-0"
+                className="text-foreground/30 hover:text-danger h-7 w-7 p-0"
                 onClick={async () => { if ((await confirmAction({ description: "¿Desvincular usuario?", destructive: true }))) removeMut.mutate({ userId: u.id }); }}>
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
@@ -499,7 +499,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-violet-600" />
+              <KeyRound className="w-4 h-4 text-info" />
               Cambiar contraseña — {passwordTarget?.name}
             </DialogTitle>
           </DialogHeader>
@@ -533,7 +533,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
             <Button
               onClick={() => passwordTarget && setPasswordMut.mutate({ userId: passwordTarget.id, password: newPassword })}
               disabled={newPassword.length < 8 || setPasswordMut.isPending}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
+              className="bg-info hover:bg-info/90 text-white"
             >
               {setPasswordMut.isPending ? "Guardando..." : "Guardar contraseña"}
             </Button>
@@ -547,25 +547,25 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
 // ─── Panel de operaciones del partner (leads + reservas) ─────────────────────
 
 const LEAD_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  nuevo:      { label: "Nuevo",      color: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-  contactado: { label: "Contactado", color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  en_proceso: { label: "En proceso", color: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
-  convertido: { label: "Convertido", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-  perdido:    { label: "Perdido",    color: "bg-red-500/15 text-red-400 border-red-500/30" },
+  nuevo:      { label: "Nuevo",      color: "bg-info/15 text-info border-info/30" },
+  contactado: { label: "Contactado", color: "bg-warning/15 text-warning border-warning/30" },
+  en_proceso: { label: "En proceso", color: "bg-info/15 text-info border-info/30" },
+  convertido: { label: "Convertido", color: "bg-success/15 text-success border-success/30" },
+  perdido:    { label: "Perdido",    color: "bg-danger/15 text-danger border-danger/30" },
 };
 
 const RES_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  PENDIENTE_CONFIRMACION: { label: "Pendiente",  color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  CONFIRMADA:             { label: "Confirmada", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-  EN_CURSO:               { label: "En curso",   color: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  PENDIENTE_CONFIRMACION: { label: "Pendiente",  color: "bg-warning/15 text-warning border-warning/30" },
+  CONFIRMADA:             { label: "Confirmada", color: "bg-success/15 text-success border-success/30" },
+  EN_CURSO:               { label: "En curso",   color: "bg-info/15 text-info border-info/30" },
   FINALIZADA:             { label: "Finalizada", color: "bg-gray-500/15 text-gray-400 border-gray-500/30" },
-  NO_SHOW:                { label: "No show",    color: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-  ANULADA:                { label: "Anulada",    color: "bg-red-500/15 text-red-400 border-red-500/30" },
+  NO_SHOW:                { label: "No show",    color: "bg-primary/15 text-primary border-primary/30" },
+  ANULADA:                { label: "Anulada",    color: "bg-danger/15 text-danger border-danger/30" },
 };
 
 function StatusBadgeOp({ label, color }: { label: string; color: string }) {
   return (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${color}`}>
+    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${color}`}>
       {label}
     </span>
   );
@@ -586,21 +586,21 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
     <div className="space-y-3">
       {/* KPIs rápidos */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-blue-400">{totalLeads}</div>
-          <div className="text-[10px] text-blue-400/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+        <div className="bg-info/10 border border-info/20 rounded-xl p-3 text-center">
+          <div className="text-xl font-bold text-info">{totalLeads}</div>
+          <div className="text-xs text-info/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
             <TrendingUp className="w-3 h-3" /> Leads enviados
           </div>
         </div>
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-emerald-400">{totalReservas}</div>
-          <div className="text-[10px] text-emerald-400/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+        <div className="bg-success/10 border border-success/20 rounded-xl p-3 text-center">
+          <div className="text-xl font-bold text-success">{totalReservas}</div>
+          <div className="text-xs text-success/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
             <CalendarDays className="w-3 h-3" /> Reservas
           </div>
         </div>
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
-          <div className="text-xl font-bold text-violet-400">{(totalFact / 100).toFixed(2)} €</div>
-          <div className="text-[10px] text-violet-400/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+        <div className="bg-info/10 border border-info/20 rounded-xl p-3 text-center">
+          <div className="text-xl font-bold text-info">{(totalFact / 100).toFixed(2)} €</div>
+          <div className="text-xs text-info/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
             <Euro className="w-3 h-3" /> Facturado total
           </div>
         </div>
@@ -612,7 +612,7 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
           onClick={() => setTab("leads")}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
             tab === "leads"
-              ? "border-blue-500 text-blue-400"
+              ? "border-info text-info"
               : "border-transparent text-foreground/40 hover:text-foreground/70"
           }`}
         >
@@ -623,7 +623,7 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
           onClick={() => setTab("reservas")}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
             tab === "reservas"
-              ? "border-emerald-500 text-emerald-400"
+              ? "border-success text-success"
               : "border-transparent text-foreground/40 hover:text-foreground/70"
           }`}
         >
@@ -632,7 +632,7 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
         </button>
         <button
           onClick={() => setShowResModal(true)}
-          className="ml-auto mb-1 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+          className="ml-auto mb-1 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-success/15 text-success border border-success/30 hover:bg-success/25 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> Nueva reserva
         </button>
@@ -710,7 +710,7 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
                       <td className="px-3 py-2 text-foreground/50">{r.bookingDate ?? "—"}</td>
                       <td className="px-3 py-2 font-medium text-foreground">{r.customerName}</td>
                       <td className="px-3 py-2 text-foreground/60 max-w-[140px] truncate">{r.productName}</td>
-                      <td className="px-3 py-2 font-semibold text-violet-400">{((r.amountTotal ?? 0) / 100).toFixed(2)} €</td>
+                      <td className="px-3 py-2 font-semibold text-info">{((r.amountTotal ?? 0) / 100).toFixed(2)} €</td>
                       <td className="px-3 py-2">
                         <StatusBadgeOp {...st} />
                       </td>
@@ -890,7 +890,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarDays className="w-4 h-4 text-emerald-500" /> Nueva reserva · {partnerName}
+            <CalendarDays className="w-4 h-4 text-success" /> Nueva reserva · {partnerName}
           </DialogTitle>
         </DialogHeader>
 
@@ -918,7 +918,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                 Actividades de la reserva ({lines.length})
               </Label>
               {lines.length > 1 && (
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   Cada actividad genera una reserva propia con la misma operación
                 </span>
               )}
@@ -931,14 +931,14 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
               return (
                 <div key={line.uid} className="border border-border/60 bg-muted/20 rounded-lg p-3 space-y-3 relative">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-foreground/60 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">
                       Línea {idx + 1}
                     </span>
                     {lines.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeLine(idx)}
-                        className="text-foreground/40 hover:text-red-400 transition-colors"
+                        className="text-foreground/40 hover:text-danger transition-colors"
                         title="Eliminar línea"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -950,10 +950,10 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                   <div className="relative">
                     <Label className="text-xs">Actividad *</Label>
                     {line.productName ? (
-                      <div className="mt-1 flex items-center justify-between bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-3 py-2">
+                      <div className="mt-1 flex items-center justify-between bg-success/10 border border-success/25 rounded-lg px-3 py-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-emerald-400 truncate">{line.productName}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                          <p className="text-sm font-medium text-success truncate">{line.productName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {line.basePrice > 0 ? `${line.basePrice.toFixed(2)} €` : "Sin precio base"}
                             {" · "}
                             {line.pricingType === "per_person" ? "por persona" : "por unidad"}
@@ -981,7 +981,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                           />
                         </div>
                         {line.showSugg && filtered.length > 0 && (
-                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl max-h-72 overflow-y-auto">
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-md max-h-72 overflow-y-auto">
                             {filtered.map((p: any) => {
                               const price = parseFloat(p.basePrice ?? "0");
                               const pricing = p.pricingType ?? "per_person";
@@ -1007,7 +1007,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                           </div>
                         )}
                         {line.showSugg && line.search.length > 0 && filtered.length === 0 && (
-                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl px-3 py-3 text-sm text-muted-foreground">
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-md px-3 py-3 text-sm text-muted-foreground">
                             Sin resultados para "{line.search}"
                           </div>
                         )}
@@ -1052,7 +1052,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
               </Button>
               <div className="text-sm">
                 <span className="text-muted-foreground">Total operación: </span>
-                <strong className="text-emerald-400">{totalEur.toFixed(2)} €</strong>
+                <strong className="text-success">{totalEur.toFixed(2)} €</strong>
               </div>
             </div>
           </div>
@@ -1065,8 +1065,8 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
           </div>
 
           {/* Justificación de la reserva delegada */}
-          <div className="border border-amber-500/25 bg-amber-500/[0.06] rounded-lg p-3 space-y-2">
-            <Label className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+          <div className="border border-warning/25 bg-warning/[0.06] rounded-lg p-3 space-y-2">
+            <Label className="text-xs font-semibold text-warning dark:text-warning">
               Justificación de la reserva delegada
             </Label>
             <Textarea
@@ -1109,13 +1109,13 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
               {proofFile && (
                 <span className="text-xs text-foreground/70 flex items-center gap-1.5">
                   <span className="truncate max-w-[180px]">{proofFile.name}</span>
-                  <button type="button" onClick={() => setProofFile(null)} className="text-red-400 hover:text-red-300">
+                  <button type="button" onClick={() => setProofFile(null)} className="text-danger hover:text-danger">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground">Máx. 8 MB · formatos PDF, JPG o PNG. "Hacer foto" abre la cámara del dispositivo (móvil/tablet) o la webcam (PC).</p>
+            <p className="text-xs text-muted-foreground">Máx. 8 MB · formatos PDF, JPG o PNG. "Hacer foto" abre la cámara del dispositivo (móvil/tablet) o la webcam (PC).</p>
           </div>
 
           <CameraCapture
@@ -1125,7 +1125,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
             fileNamePrefix="justificante"
           />
 
-          <div className="text-[11px] text-muted-foreground bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2">
+          <div className="text-xs text-muted-foreground bg-info/10 border border-info/20 rounded-lg px-3 py-2">
             La reserva se crea confirmada, con el mismo método y facturación que una reserva del
             partner: canal <strong>PARTNER</strong>, pago pendiente, y entra en el ciclo de
             facturación de <strong>{partnerName}</strong>.
@@ -1209,7 +1209,7 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold text-foreground/70 uppercase tracking-wider flex items-center gap-2">
-        <Megaphone className="w-4 h-4 text-amber-400" />
+        <Megaphone className="w-4 h-4 text-warning" />
         Notas / Avisos al partner
         <span className="text-xs font-normal text-foreground/30 normal-case">(aparecen en modal al acceder al portal)</span>
       </h3>
@@ -1221,20 +1221,20 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
           onChange={e => setNewText(e.target.value)}
           onKeyDown={e => e.key === "Enter" && addNote()}
           placeholder="Ej: Las actividades acuáticas están suspendidas hoy por mal tiempo"
-          className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
+          className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm"
         />
         <div className="flex gap-2">
           <select
             value={newDuration}
             onChange={e => setNewDuration(e.target.value)}
-            className="flex-1 bg-foreground/[0.05] border border-foreground/[0.12] text-white/70 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+            className="flex-1 bg-foreground/[0.05] border border-foreground/[0.12] text-foreground/70 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-warning/50"
           >
             {DURATION_OPTIONS.map(o => (
-              <option key={o.value} value={o.value} className="bg-[#0f1e35] text-white">{o.label}</option>
+              <option key={o.value} value={o.value} className="bg-card text-foreground">{o.label}</option>
             ))}
           </select>
           <Button size="sm" onClick={addNote} disabled={!newText.trim() || saveMut.isPending}
-            className="bg-amber-500 hover:bg-amber-600 text-white shrink-0">
+            className="bg-warning hover:bg-warning text-white shrink-0">
             <Plus className="w-3.5 h-3.5 mr-1" /> Añadir
           </Button>
         </div>
@@ -1246,13 +1246,13 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
       ) : (
         <div className="space-y-2">
           {announcements.map(a => (
-            <div key={a.id} className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+            <div key={a.id} className="flex items-start gap-2 bg-warning/10 border border-warning/20 rounded-xl p-3">
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-foreground/80">{a.text}</p>
-                <p className="text-[10px] text-foreground/30 mt-1">
+                <p className="text-xs text-foreground/30 mt-1">
                   {new Date(a.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                   {a.expiresAt
-                    ? <span className="ml-2 text-orange-400/60">· caduca {new Date(a.expiresAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                    ? <span className="ml-2 text-primary/60">· caduca {new Date(a.expiresAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
                     : <span className="ml-2 text-foreground/20">· perpetua</span>
                   }
                 </p>
@@ -1261,16 +1261,16 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
                 <button
                   onClick={() => toggleNew(a.id)}
                   title={a.isNew ? "Marcar como leída" : "Marcar como nueva"}
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                  className={`text-xs font-bold px-2 py-0.5 rounded-full border transition-colors ${
                     a.isNew
-                      ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                      ? "bg-danger/20 text-danger border-danger/30 hover:bg-danger/30"
                       : "bg-foreground/[0.08] text-foreground/30 border-foreground/20 hover:bg-foreground/[0.15]"
                   }`}
                 >
                   {a.isNew ? "🔴 Nueva" : "Leída"}
                 </button>
                 <button onClick={() => removeNote(a.id)}
-                  className="text-foreground/20 hover:text-red-400 transition-colors">
+                  className="text-foreground/20 hover:text-danger transition-colors">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -1389,7 +1389,7 @@ export default function PartnersManager() {
 
   return (
     <AdminLayout title="Partners / Colaboradores">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
+      <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
         <div className="px-4 sm:px-6 pt-4 pb-4 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between">
@@ -1398,7 +1398,7 @@ export default function PartnersManager() {
               <p className="text-xs text-foreground/50 mt-0.5">Gestión de hoteles, agencias y colaboradores externos</p>
             </div>
             <Button onClick={() => setShowCreate(true)}
-              className="bg-orange-600 hover:bg-orange-700 text-white">
+              className="bg-primary hover:bg-primary/90 text-primary-foreground">
               <Plus className="w-4 h-4 mr-1.5" /> Nuevo partner
             </Button>
           </div>
@@ -1411,7 +1411,7 @@ export default function PartnersManager() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
                 <Input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Buscar partner..." className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
+                  placeholder="Buscar partner..." className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm" />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
@@ -1427,9 +1427,9 @@ export default function PartnersManager() {
                 filtered.map(p => (
                   <button key={p.id}
                     onClick={() => { setSelectedId(p.id); setEditingId(null); }}
-                    className={`w-full text-left px-4 py-3 border-b border-foreground/[0.06] hover:bg-foreground/[0.04] transition-colors ${selectedId === p.id ? "bg-orange-500/10 border-l-2 border-l-orange-500" : ""}`}>
+                    className={`w-full text-left px-4 py-3 border-b border-foreground/[0.06] hover:bg-foreground/[0.04] transition-colors ${selectedId === p.id ? "bg-primary/10 border-l-2 border-l-orange-500" : ""}`}>
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${p.isActive ? "bg-emerald-400" : "bg-foreground/20"}`} />
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${p.isActive ? "bg-success" : "bg-foreground/20"}`} />
                       <span className="text-sm font-medium text-foreground truncate">{p.name}</span>
                     </div>
                     {p.contactEmail && (
@@ -1437,13 +1437,13 @@ export default function PartnersManager() {
                     )}
                     <div className="flex gap-1 mt-1.5 ml-4">
                       {p.canCreateReservations && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Reservas</span>
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/20">Reservas</span>
                       )}
                       {p.canCreateLeads && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/20">Leads</span>
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/20">Leads</span>
                       )}
                       {p.billingEnabled && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400 border border-violet-500/20">Facturación</span>
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/20">Facturación</span>
                       )}
                     </div>
                   </button>
@@ -1479,9 +1479,9 @@ export default function PartnersManager() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-xl font-bold text-foreground">{selectedPartner.name}</h2>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                         selectedPartner.isActive
-                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          ? "bg-success/15 text-success border-success/30"
                           : "bg-foreground/[0.08] text-foreground/40 border-foreground/20"
                       }`}>
                         {selectedPartner.isActive ? "Activo" : "Inactivo"}
@@ -1494,11 +1494,11 @@ export default function PartnersManager() {
                       className="border-foreground/20 text-foreground/60 hover:text-foreground text-xs"
                       onClick={() => toggleMut.mutate({ id: selectedPartner.id, active: !selectedPartner.isActive })}
                       disabled={toggleMut.isPending}>
-                      {selectedPartner.isActive ? <ToggleRight className="w-3.5 h-3.5 mr-1 text-emerald-400" /> : <ToggleLeft className="w-3.5 h-3.5 mr-1" />}
+                      {selectedPartner.isActive ? <ToggleRight className="w-3.5 h-3.5 mr-1 text-success" /> : <ToggleLeft className="w-3.5 h-3.5 mr-1" />}
                       {selectedPartner.isActive ? "Desactivar" : "Activar"}
                     </Button>
                     <Button size="sm" variant="outline"
-                      className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 text-xs"
+                      className="border-primary/30 text-primary hover:bg-primary/10 text-xs"
                       onClick={() => setEditingId(selectedPartner.id)}>
                       <Edit2 className="w-3.5 h-3.5 mr-1" /> Editar
                     </Button>
@@ -1507,7 +1507,7 @@ export default function PartnersManager() {
 
                 {/* Editar inline */}
                 {editingId === selectedPartner.id && (
-                  <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl p-5">
+                  <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-foreground mb-4">Editar partner</h3>
                     <PartnerForm
                       initial={buildFormInitial(selectedPartner as Partner)}
@@ -1539,7 +1539,7 @@ export default function PartnersManager() {
                           </div>
                         )}
                         {selectedPartner.billingEmail && selectedPartner.billingEmail !== selectedPartner.contactEmail && (
-                          <div className="flex items-center gap-1.5 text-xs text-violet-400/80">
+                          <div className="flex items-center gap-1.5 text-xs text-info/80">
                             <CreditCard className="w-3 h-3" /> {selectedPartner.billingEmail}
                             <span className="text-foreground/30">(facturación)</span>
                           </div>
@@ -1551,15 +1551,15 @@ export default function PartnersManager() {
                     <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4">
                       <h3 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Capacidades</h3>
                       <div className="space-y-2">
-                        <div className={`flex items-center gap-2 text-sm ${selectedPartner.canCreateLeads ? "text-emerald-400" : "text-foreground/30"}`}>
+                        <div className={`flex items-center gap-2 text-sm ${selectedPartner.canCreateLeads ? "text-success" : "text-foreground/30"}`}>
                           {selectedPartner.canCreateLeads ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
                           Crear oportunidades (leads)
                         </div>
-                        <div className={`flex items-center gap-2 text-sm ${selectedPartner.canCreateReservations ? "text-emerald-400" : "text-foreground/30"}`}>
+                        <div className={`flex items-center gap-2 text-sm ${selectedPartner.canCreateReservations ? "text-success" : "text-foreground/30"}`}>
                           {selectedPartner.canCreateReservations ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
                           Reservas directas confirmadas
                         </div>
-                        <div className={`flex items-center gap-2 text-sm ${selectedPartner.billingEnabled ? "text-violet-400" : "text-foreground/30"}`}>
+                        <div className={`flex items-center gap-2 text-sm ${selectedPartner.billingEnabled ? "text-info" : "text-foreground/30"}`}>
                           {selectedPartner.billingEnabled ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
                           Facturación agrupada
                           {selectedPartner.billingEnabled && (
@@ -1591,8 +1591,8 @@ export default function PartnersManager() {
 
                 {/* Notas internas (admin) */}
                 {selectedPartner.notes && (
-                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
-                    <p className="text-xs text-amber-400/70 font-semibold uppercase tracking-wider mb-1">Notas internas</p>
+                  <div className="bg-warning/5 border border-warning/20 rounded-xl p-4">
+                    <p className="text-xs text-warning/70 font-semibold uppercase tracking-wider mb-1">Notas internas</p>
                     <p className="text-sm text-foreground/70">{selectedPartner.notes}</p>
                   </div>
                 )}

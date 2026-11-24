@@ -86,7 +86,7 @@ function Summary({ communityId }: { communityId: number }) {
         <Stat label="Reportes pendientes" value={s.participation.openReports} />
       </div>
       {(s.members.pending > 0 || s.content.pendingPosts > 0) && (
-        <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+        <p className="rounded-lg border border-warning bg-warning p-3 text-sm text-warning dark:border-warning/40 dark:bg-warning/10 dark:text-warning">
           Pendiente de revisar: {s.members.pending} {s.members.pending === 1 ? "solicitud de entrada" : "solicitudes de entrada"} y {s.content.pendingPosts} {s.content.pendingPosts === 1 ? "publicación" : "publicaciones"}.
         </p>
       )}
@@ -97,7 +97,7 @@ function Summary({ communityId }: { communityId: number }) {
             <li key={w.weekStart} className="flex flex-1 flex-col items-center gap-1">
               <span className="text-xs text-muted-foreground">{w.count}</span>
               <div className="w-full rounded-t bg-primary/70" style={{ height: `${Math.max(2, (w.count / max) * 96)}px` }} aria-hidden="true" />
-              <span className="text-[11px] text-muted-foreground">{fmtWeek(w.weekStart)}</span>
+              <span className="text-xs text-muted-foreground">{fmtWeek(w.weekStart)}</span>
             </li>
           ))}
         </ol>
@@ -293,7 +293,7 @@ function MembersTab({ communityId, canEdit }: { communityId: number; canEdit: bo
                   <td className="p-2">
                     <span className="font-medium">{m.name}</span>
                     <br /><span className="text-xs text-muted-foreground">{m.email}{m.accountRole === "user" ? " · cuenta de cliente" : m.accountRole ? " · usuario del panel" : ""}</span>
-                    {m.invitePending && <><br /><span className="text-xs text-amber-700 dark:text-amber-300">Invitación pendiente</span></>}
+                    {m.invitePending && <><br /><span className="text-xs text-warning dark:text-warning">Invitación pendiente</span></>}
                   </td>
                   <td className="p-2">
                     <select aria-label={`Rol de ${m.name}`} className={`${selectClass} h-8 w-auto`} disabled={!canEdit || setRole.isPending} value={m.role} onChange={(e) => setRole.mutate({ memberId: m.id, role: e.target.value as MemberRole })}>
