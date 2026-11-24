@@ -66,3 +66,11 @@ export function formatIsoDayShort(day: string): string {
   const [y, m, d] = day.split("-");
   return `${d}/${m}/${y}`;
 }
+
+/** Periodo de peticiones de un producto tal como llega de la base (cadenas «AAAA-MM-DD…»); undefined = sin calendario. */
+export function requestDatesOfProduct(p: { requestDatesFrom?: unknown; requestDatesUntil?: unknown }): { from: string | null; until: string } | undefined {
+  const until = typeof p.requestDatesUntil === "string" ? parseIsoDay(p.requestDatesUntil.slice(0, 10)) : null;
+  if (!until) return undefined;
+  const from = typeof p.requestDatesFrom === "string" ? parseIsoDay(p.requestDatesFrom.slice(0, 10)) : null;
+  return { from, until };
+}

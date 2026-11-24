@@ -138,3 +138,22 @@ describe("processProductRequest con fecha de inicio", () => {
     expect(state.createdLeads).toHaveLength(0);
   });
 });
+
+describe("periodo de peticiones del producto (lo que lee la ficha pública y valida el administrador)", () => {
+  it("lee las fechas tal como llegan de la base y no abre calendario sin último día", async () => {
+    const { requestDatesOfProduct } = await import("../shared/requestDates");
+    expect(requestDatesOfProduct({ requestDatesFrom: null, requestDatesUntil: "2027-06-30" })).toEqual({ from: null, until: "2027-06-30" });
+    expect(requestDatesOfProduct({ requestDatesFrom: "2026-12-01", requestDatesUntil: "2027-06-30T00:00:00.000Z" })).toEqual({ from: "2026-12-01", until: "2027-06-30" });
+    expect(requestDatesOfProduct({ requestDatesUntil: null })).toBeUndefined();
+    expect(requestDatesOfProduct({ requestDatesUntil: "2027-02-30" })).toBeUndefined();
+    expect(requestDatesOfProduct({})).toBeUndefined();
+  });
+
+  it("ninguna validación de fecha del producto usa una expresión con las barras invertidas perdidas", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["server/routers.ts", "client/src/pages/ProductDetail.tsx", "shared/requestDates.ts"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src.includes("^d{4}-d{2}"), f).toBe(false);
+    }
+  });
+});
