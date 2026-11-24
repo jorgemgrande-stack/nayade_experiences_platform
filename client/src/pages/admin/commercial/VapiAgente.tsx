@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { serviceSecretProps } from "@/lib/credentialFields";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -432,6 +433,7 @@ export default function VapiAgente() {
                 <Label className="text-xs">API Key de Vapi <span className="text-red-400">*</span></Label>
                 <Input
                   type="password"
+                  {...serviceSecretProps("vapi-api-key")}
                   placeholder={creds?.hasApiKey ? "••••••••••••  (dejar vacío para mantener)" : "Pega tu API Key de Vapi"}
                   value={credApiKey}
                   onChange={e => setCredApiKey(e.target.value)}
@@ -442,6 +444,8 @@ export default function VapiAgente() {
               <div className="space-y-1.5">
                 <Label className="text-xs">Webhook Secret</Label>
                 <Input
+                  type="password"
+                  {...serviceSecretProps("vapi-webhook-secreto")}
                   placeholder={creds?.webhookSecret ? "••••••••  (dejar vacío para mantener)" : "Secreto para validar webhooks (opcional)"}
                   value={credSecret}
                   onChange={e => setCredSecret(e.target.value)}

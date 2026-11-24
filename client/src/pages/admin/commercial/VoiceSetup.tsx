@@ -6,6 +6,7 @@
  * (voiceSetup.status).
  */
 import { confirmAction } from "@/components/admin/ConfirmHost";
+import { serviceSecretProps } from "@/lib/credentialFields";
 import { useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -87,7 +88,7 @@ function KeyCard({ masked, onChanged }: { masked: string | null; onChanged: () =
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            autoComplete="new-password"
+            {...serviceSecretProps("vapi-clave-privada")}
             spellCheck={false}
             className="w-full h-10 px-3 rounded-lg border border-border/60 bg-background text-sm font-mono"
             placeholder="Pega aquí la Private Key"
