@@ -20,6 +20,23 @@ import mysql from "mysql2/promise";
 import { startEssentialApp, data, errCode, type EssentialApp } from "./essentialApp.testkit";
 import { setConnectGatewayFactoryForTests } from "./paymentsConnect/runtime";
 import { FakeConnectGateway } from "./paymentsConnect/testing";
+import { ConnectGatewayError, type CheckoutParams } from "./paymentsConnect/gateway";
+
+/** Como Stripe: la misma clave de idempotencia con los MISMOS parámetros devuelve la misma sesión; con otros, error de idempotencia. */
+class ReplayGateway extends FakeConnectGateway {
+  private seen = new Map<string, { body: string; result: { id: string; url: string } }>();
+  async createCheckoutSession(p: CheckoutParams) {
+    const body = JSON.stringify({ ...p, idempotencyKey: undefined });
+    const prev = this.seen.get(p.idempotencyKey);
+    if (prev) {
+      if (prev.body !== body) throw new ConnectGatewayError("Stripe rechazó la operación", "idempotency_error");
+      return prev.result;
+    }
+    const result = await super.createCheckoutSession(p);
+    this.seen.set(p.idempotencyKey, { body, result });
+    return result;
+  }
+}
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const SECRET = "whsec_" + "f".repeat(32);
@@ -48,7 +65,7 @@ describe.skipIf(!URL_)("Circuito de venta online de Quantum: edición, cupón, S
   let curso = 0;
   let ajeno = 0;
   let n = 0;
-  const fake = new FakeConnectGateway(ACCT_A);
+  const fake = new ReplayGateway(ACCT_A);
   const origin = () => `https://${ess.host("a")}`;
   const buyer = () => ({ customerName: "Lena Beispiel", customerEmail: `lena${++n}@comprador.example`, origin: origin(), provider: "stripe" as const, consentAccepted: true });
   const sessionNo = () => fake.sessions.length;
@@ -214,10 +231,11 @@ describe.skipIf(!URL_)("Circuito de venta online de Quantum: edición, cupón, S
     const mo = data(r).merchantOrder as string;
     const session = `cs_test_${sessionNo()}`;
     expect(Number((await edRow(ed)).reserved)).toBe(2);
-    expect((await post(expired(session))).json).toMatchObject({ outcome: "applied" });
+    const expiredEv = expired(session); // el MISMO evento (mismo id) reenviado por Stripe
+    expect((await post(expiredEv)).json).toMatchObject({ outcome: "applied" });
     expect((await rows(mo))[0]).toMatchObject({ status: "cancelled", h: "liberada" });
     expect(Number((await edRow(ed)).reserved)).toBe(0);
-    expect((await post(expired(session))).json).toMatchObject({ outcome: "duplicate" });
+    expect((await post(expiredEv)).json).toMatchObject({ outcome: "duplicate" });
     // Otra persona se queda las plazas antes del pago tardío
     const other = await checkout([line({ people: 2, editionId: ed })]);
     expect(other.status, JSON.stringify(other.json)).toBe(200);
