@@ -24,6 +24,8 @@ import { ipFingerprint, keyedLock } from "./_core/studioFormsSubmit";
 import { getRequestableEdition } from "./editionsDb";
 import { writeEnrollmentVariant, writeLeadRequestExtras } from "./leadWebRequestDb";
 import { normalizeCurrency } from "../shared/leadWebRequest";
+import { formatIsoDayShort, plannedEndDay, requestedStartProblem, todayIso } from "../shared/requestDates";
+import { productPeopleProblem, variantQuantityProblem } from "./shopCheckoutRules";
 
 export const PRODUCT_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -72,6 +74,8 @@ export interface ProductRequestInput {
   variantId?: number;
   /** Idioma de la web que veía la persona (código corto, p. ej. «de») */
   lang?: string;
+  /** Fecha de inicio deseada (YYYY-MM-DD) en un producto sin convocatoria: es una petición, no una reserva */
+  startDate?: string;
 }
 
 const eur = (n: number) => `${n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -127,7 +131,7 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
 
   const d = await getDb();
   if (!d) throw new Error("Base de datos no disponible");
-  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, isActive: experiences.isActive, offerMode: experiences.offerMode, basePrice: experiences.basePrice, currency: experiences.currency }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
+  const [product] = await d.select({ id: experiences.id, title: experiences.title, isPublished: experiences.isPublished, isActive: experiences.isActive, offerMode: experiences.offerMode, basePrice: experiences.basePrice, currency: experiences.currency, minPersons: experiences.minPersons, maxPersons: experiences.maxPersons, durationDays: experiences.durationDays, requestDatesFrom: experiences.requestDatesFrom, requestDatesUntil: experiences.requestDatesUntil }).from(experiences).where(eq(experiences.id, input.experienceId)).limit(1);
   if (!isPubliclyRequestable(product)) throw new ProductRequestError("NOT_FOUND", t.productGone);
 
   let edition: Awaited<ReturnType<typeof getRequestableEdition>> = null;
@@ -137,6 +141,26 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
     if (!canRequestSeat(edition.state)) throw new ProductRequestError("BAD_REQUEST", t.editionNoRequests);
   }
 
+  // Fecha de inicio deseada (solo sin convocatoria): dentro del periodo que la empresa fijó para el producto. Nunca se deduce
+  // la duración ni el fin de un texto; si la duración consta como dato, el fin es solo «previsto». No implica disponibilidad.
+  let startDay: string | null = null;
+  let endDay: string | null = null;
+  if (input.startDate !== undefined && input.startDate !== "") {
+    if (edition) throw new ProductRequestError("BAD_REQUEST", t.requestDateNotEnabled, { startDate: t.requestDateNotEnabled });
+    const rules = { from: product.requestDatesFrom ?? null, until: product.requestDatesUntil ?? null, durationDays: product.durationDays ?? null };
+    const problem = requestedStartProblem(input.startDate, rules, now);
+    if (problem) {
+      const tomorrow = formatIsoDayShort(plannedEndDay(todayIso(now), 2) as string);
+      const msg =
+        problem === "invalid" ? t.requestDateInvalid
+        : problem === "past" ? t.requestDatePast
+        : problem === "not_enabled" ? t.requestDateNotEnabled
+        : fillUiText(t.requestDateOutside, { from: rules.from ? formatIsoDayShort(rules.from) : tomorrow, until: rules.until ? formatIsoDayShort(rules.until) : "—" });
+      throw new ProductRequestError("BAD_REQUEST", msg, { startDate: msg });
+    }
+    startDay = input.startDate.trim();
+    endDay = plannedEndDay(startDay, rules.durationDays);
+  }
   // El texto tal como lo vio la persona (en español es el de siempre, con la misma versión)
   const consent = formConsentText({ consentText: consentSentence(t) });
   const page = cleanPath(input.page);
@@ -146,13 +170,22 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
     : `Solicitud de información sobre «${product.title}» (${offerModeOf(product) === "coming_soon" ? "próximamente" : offerModeOf(product) === "on_request" ? "bajo petición" : offerModeOf(product) === "priced_request" ? "precio visible, solo por solicitud" : "precio fijo"}).`;
   // Lo que la persona vio: precio publicado y modalidad elegida (los importes salen siempre de la BD, no del navegador)
   const baseNum = Number(product.basePrice ?? 0);
-  const variantRows = showsPrice(product) && input.variantId ? await getVariantsByExperience(product.id) : [];
+  const variantRows = (showsPrice(product) || startDay) && input.variantId ? await getVariantsByExperience(product.id) : [];
   const chosen = variantRows.find((v) => v.id === input.variantId);
+  if (startDay) {
+    // Con fecha pedida se valida también la opción y el número de participantes (los mismos límites que el pago online)
+    if (input.variantId && !chosen) throw new ProductRequestError("BAD_REQUEST", t.productGone);
+    const qty = variantQuantityProblem(chosen as any, seats) ?? productPeopleProblem(product as any, seats);
+    if (qty) throw new ProductRequestError("BAD_REQUEST", qty, { seats: qty });
+  }
   const chosenPrice = chosen ? (chosen.priceType === "percentage" ? baseNum * (1 + Number(chosen.priceModifier ?? 0) / 100) : Number(chosen.priceModifier ?? 0)) : 0;
-  const priceLine = chosen
+  const priceLine = chosen && showsPrice(product)
     ? `Modalidad elegida: ${chosen.name} · precio publicado: ${eur(chosenPrice)}`
     : showsPrice(product) && baseNum > 0 ? `Precio publicado (producto): ${eur(baseNum)}` : "";
-  const body = [header, priceLine, lang && `Idioma de la web: ${lang}`, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
+  const dateLine = startDay
+    ? `Fecha de inicio deseada: ${formatIsoDayShort(startDay)}${endDay ? ` · fin previsto: ${formatIsoDayShort(endDay)} (según la duración del producto: ${product.durationDays} días)` : ""} · Participantes: ${seats}${chosen ? ` · Opción: ${chosen.name}` : ""}. Es una petición: NO es una reserva ni garantiza disponibilidad; la empresa debe aceptarla o proponer otras fechas antes de cualquier pago.`
+    : "";
+  const body = [header, dateLine, priceLine, lang && `Idioma de la web: ${lang}`, message && `Mensaje: ${message}`, page && `Origen: ${page}`, `Consentimiento RGPD: aceptado el ${new Date(now).toISOString()} · texto v${consent.version}: «${consent.text}»`].filter(Boolean).join("\n");
 
   return keyedLock(`${ctx.tenantId}:solicitud:${email}:${product.id}:${edition?.edition.id ?? 0}`, async () => {
     // Repetido: la misma persona y la misma convocatoria (o el mismo producto hace un momento) → se anota, no se duplica
@@ -180,8 +213,8 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
       message: body.slice(0, 8000),
       experienceId: product.id,
       selectedProduct: product.title.slice(0, 256),
-      numberOfPersons: edition ? seats : undefined,
-      preferredDate: edition ? new Date(edition.edition.startsAt).toISOString() : undefined,
+      numberOfPersons: edition || startDay ? seats : undefined,
+      preferredDate: edition ? new Date(edition.edition.startsAt).toISOString() : startDay ? `${startDay}T00:00:00.000Z` : undefined,
       source: edition ? "web_solicitud_plaza" : "web_solicitud_producto",
       leadSourceCode: "HOME_FORM",
       requestLang: lang || undefined,

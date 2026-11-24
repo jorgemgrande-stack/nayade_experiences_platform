@@ -6,6 +6,7 @@ import { History, RotateCcw, Eye } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { cn } from "@/lib/utils";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -26,9 +27,11 @@ export function VersionsPanel({ slug, open, onOpenChange, viewingId, onView, onR
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {versions.isLoading ? (
-            <p className="p-3 text-sm text-muted-foreground">{tx("Cargando el historial…")}</p>
+            <PanelLoading label={tx("Cargando el historial…")} />
+          ) : versions.error ? (
+            <PanelError error={versions.error} onRetry={() => void versions.refetch()} />
           ) : !list.length ? (
-            <p className="p-3 text-sm text-muted-foreground">{tx("Todavía no hay versiones. Se guardará la primera cuando publiques esta página.")}</p>
+            <PanelEmpty icon={<History className="h-5 w-5" />} title={tx("Todavía no hay versiones. Se guardará la primera cuando publiques esta página.")} />
           ) : (
             <ol className="space-y-2">
               {list.map((v) => (

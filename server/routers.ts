@@ -20,6 +20,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { shopOrderProcedures } from "./routers/shopOrders";
 import { editionsRouter } from "./routers/editions";
 import { saleReadinessRouter } from "./routers/saleReadiness";
+import { parseIsoDay } from "../shared/requestDates";
 import { assertCanSwitchToFixed } from "./saleReadinessDb";
 import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, showsPrice, notForSaleMessage } from "../shared/offerMode";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
@@ -677,6 +678,8 @@ export const appRouter = router({
           page: z.string().max(200).optional(),
           variantId: z.number().int().positive().optional(),
           lang: z.string().max(5).optional(),
+          /** Fecha de inicio deseada (YYYY-MM-DD) de un producto sin convocatoria; el servidor la valida contra el periodo del producto */
+          startDate: z.string().max(10).optional(),
         }).optional(),
         studioForm: z.object({
           slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
@@ -1715,6 +1718,10 @@ export const appRouter = router({
         /** El administrador ha revisado los avisos de preparación y autoriza pasar a precio fijo. */
         confirmReadiness: z.boolean().optional(),
         requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
+        /** Migración 0088: duración como dato y periodo de peticiones de fecha de inicio (YYYY-MM-DD; null = sin calendario) */
+        durationDays: z.number().int().min(1).max(366).nullable().optional(),
+        requestDatesFrom: z.string().refine((v) => parseIsoDay(v) !== null, "Fecha no válida (AAAA-MM-DD)").nullable().optional(),
+        requestDatesUntil: z.string().refine((v) => parseIsoDay(v) !== null, "Fecha no válida (AAAA-MM-DD)").nullable().optional(),
         isFeatured: z.boolean().optional(),
         isActive: z.boolean().optional(),
         image1: z.string().optional(),

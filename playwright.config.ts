@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 30000,
   retries: 1,
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: `http://localhost:${process.env.VISUAL_PORT ?? 5173}`,
     headless: true,
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -17,8 +17,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm vite",
-    url: "http://localhost:5173",
+    command: `pnpm vite --port ${process.env.VISUAL_PORT ?? 5173} --strictPort`,
+    url: `http://localhost:${process.env.VISUAL_PORT ?? 5173}`,
     reuseExistingServer: true,
     timeout: 30000,
   },
