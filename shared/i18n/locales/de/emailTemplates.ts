@@ -2,6 +2,9 @@ import type { Mirror } from "../../core";
 import type es from "../es/emailTemplates";
 
 export default {
+  sectionIdentity: "Identifikation",
+  sectionContent: "E-Mail-Inhalt",
+  loadError: "Die Vorlagen konnten nicht geladen werden",
   title: "E-Mail-Vorlagen",
   subtitle: "{count} Vorlagen · Bearbeiten, erstellen und Vorschau ansehen",
   testEmailPlaceholder: "Test-E-Mail-Adresse",
