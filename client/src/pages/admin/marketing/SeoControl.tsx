@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import {
   SEO_ALERT_LABELS,
@@ -560,11 +561,7 @@ export default function SeoControl() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">SEO y reseñas (SEO Control)</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Sigue las posiciones de tus palabras clave en Google, revisa el SEO on-page de tu web y reúne tus reseñas en un solo panel, con alertas cuando algo empeora.</p>
-        </header>
+        <PanelPageHeader icon={<Search />} title="SEO y reseñas (SEO Control)" description="Sigue las posiciones de tus palabras clave en Google, revisa el SEO on-page de tu web y reúne tus reseñas en un solo panel, con alertas cuando algo empeora." />
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="panel">Panel</TabsTrigger>

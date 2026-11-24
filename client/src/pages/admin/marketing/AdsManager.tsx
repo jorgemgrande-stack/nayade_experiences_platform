@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { ADS_ERROR_LABELS, ADS_PLATFORMS, ADS_PLATFORM_LABELS, ADS_PLATFORM_SHORT, type AdsErrorKind, type AdsPlatform } from "@shared/adsManager";
 
@@ -593,11 +594,7 @@ export default function AdsManager() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">Publicidad (Ads Manager)</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Tus campañas de Meta y de Google en un solo panel: lo que inviertes, lo que consiguen según cada plataforma y lo que de verdad vendes gracias a ellas.</p>
-        </header>
+        <PanelPageHeader icon={<Megaphone />} title="Publicidad (Ads Manager)" description="Tus campañas de Meta y de Google en un solo panel: lo que inviertes, lo que consiguen según cada plataforma y lo que de verdad vendes gracias a ellas." />
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="panel">Panel</TabsTrigger>

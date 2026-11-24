@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import {
   MC_CHANNEL_KINDS,
@@ -678,11 +679,7 @@ export default function Multicanal() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Extensión</p>
-          <h1 className="text-2xl font-bold text-foreground">Venta multicanal</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Vende tus experiencias, tratamientos y habitaciones en marketplaces, agencias y canales de entradas con un cupo por canal. Cada venta del canal crea su reserva aquí, sin sobrevender, y la conciliación te dice cuánto has vendido, cuánta comisión pagas y qué te falta por cobrar.</p>
-        </header>
+        <PanelPageHeader icon={<Link2 />} title="Venta multicanal" description="Vende tus experiencias, tratamientos y habitaciones en marketplaces, agencias y canales de entradas con un cupo por canal. Cada venta del canal crea su reserva aquí, sin sobrevender, y la conciliación te dice cuánto has vendido, cuánta comisión pagas y qué te falta por cobrar." />
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="canales">Canales</TabsTrigger>
