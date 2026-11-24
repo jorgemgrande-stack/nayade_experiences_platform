@@ -12,6 +12,7 @@ import { CatalogConceptSelector, type CatalogProduct } from "@/components/Catalo
 import { Search, Plus, CheckCircle, RefreshCw, Trash2, Pencil, Gift } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { EUR2, QuoteLineItem, RegimeCell } from "../shared/crmCommon";
+import { CrmFormSection } from "../shared/ui/CrmUi";
 
 export function QuoteEditModal({
   quoteId,
@@ -134,7 +135,7 @@ export function QuoteEditModal({
 
   if (isLoading || !initialized) {
     return (
-      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
@@ -143,26 +144,29 @@ export function QuoteEditModal({
   }
 
   return (
-    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
+        <DialogTitle className="text-foreground flex items-center gap-2">
           <Pencil className="w-4 h-4 text-warning" />{" "}{t("crmQuotes.editarPresupuesto")}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+        <CrmFormSection title={t("crmOpps.seccionDatos")}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
             <Label className="text-foreground/65 text-xs">{t("crmQuotes.titulo")}</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{voc.serviceDateLabel}</Label>
-            <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{t("crmQuotes.validoHasta")}</Label>
-            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
         </div>
+        </CrmFormSection>
+        <CrmFormSection title={t("crmOpps.seccionLineas")}>
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label className="text-foreground/65 text-xs">{t("crmQuotes.conceptos")}</Label>
@@ -188,16 +192,16 @@ export function QuoteEditModal({
                   onChange={(v) => updateItem(idx, "description", v)}
                   onSelectProduct={(product) => selectCatalogProduct(idx, product)}
                   className="col-span-4"
-                  inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm pr-8"
+                  inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm pr-8"
                   showBadge={false}
                 />
                 <RegimeCell
                   item={item as QuoteLineItem}
                   onChange={(fr, tr) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: fr, taxRate: tr } : it))}
                 />
-                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
+                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
-                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
+                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
                 <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-warning" : "text-warning"}`}>{format.currency(item.total, "EUR", EUR2)}</div>
                 <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-danger p-1"
@@ -208,7 +212,7 @@ export function QuoteEditModal({
               <div className="flex items-center gap-2 pl-1">
                 <span className="text-[11px] text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
-                  className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
+                  className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-xs [color-scheme:dark]" />
                 <span className="text-[10px] text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
               </div>
               </div>
@@ -217,7 +221,9 @@ export function QuoteEditModal({
           </div>
           </div>
         </div>
-        <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
+        </CrmFormSection>
+        <CrmFormSection title={t("crmOpps.seccionResumen")}>
+        <div className="space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
               <div className="flex justify-between text-sm text-foreground/65"><span>{t("crmQuotes.baseImponibleGeneral")}</span><span>{format.currency((discountedBase - taxAmount), "EUR", EUR2)}</span></div>
@@ -239,10 +245,11 @@ export function QuoteEditModal({
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-warning/70 italic">{t("crmQuotes.operacionReavNoProcede")}</div>
           )}
-          <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2">
-            <span>{t("crmQuotes.total2")}</span><span className="text-warning text-xl">{format.currency(total, "EUR", EUR2)}</span>
+          <div className="flex justify-between text-base font-bold text-foreground border-t border-foreground/[0.12] pt-2">
+            <span>{t("crmQuotes.total2")}</span><span className="text-primary text-xl">{format.currency(total, "EUR", EUR2)}</span>
           </div>
         </div>
+        </CrmFormSection>
 
         {/* ── Panel: Aplicar bono / código de descuento ── */}
         {discount === 0 && (
@@ -262,7 +269,7 @@ export function QuoteEditModal({
                     value={bonoCode}
                     onChange={(e) => { setBonoCode(e.target.value.toUpperCase()); setBonoQueryCode(null); }}
                     placeholder={t("crmQuotes.ejBonA1b2C3d4")}
-                    className="bg-[#0a0a1a] border-foreground/[0.12] text-white placeholder:text-gray-600 font-mono text-xs h-8 flex-1"
+                    className="bg-background border-foreground/[0.12] text-foreground placeholder:text-muted-foreground font-mono text-xs h-8 flex-1"
                     spellCheck={false}
                   />
                   <Button size="sm" variant="outline"
@@ -278,21 +285,21 @@ export function QuoteEditModal({
                 )}
                 {bonoPreview?.found && (
                   <div className={`rounded-lg border p-3 space-y-2 text-xs ${
-                    bonoPreview.status === "canjeado" ? "border-gray-500/20 bg-gray-500/5" :
+                    bonoPreview.status === "canjeado" ? "border-gray-500/20 bg-muted" :
                     bonoPreview.status === "caducado" ? "border-danger/20 bg-danger/5" :
                     "border-primary/20 bg-primary/5"
                   }`}>
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-bold text-foreground">{bonoPreview.code}</span>
                       <span className={`font-semibold px-2 py-0.5 rounded-full text-xs ${
-                        bonoPreview.status === "canjeado" ? "text-gray-400 bg-gray-500/10" :
+                        bonoPreview.status === "canjeado" ? "text-muted-foreground bg-muted" :
                         bonoPreview.status === "caducado" ? "text-danger bg-danger/10" :
                         "text-primary bg-primary/10"
                       }`}>
                         {bonoPreview.status === "canjeado" ? t("crmQuotes.yaCanjeado") : bonoPreview.status === "caducado" ? t("crmQuotes.caducado") : t("crmQuotes.activo")}
                       </span>
                     </div>
-                    {bonoPreview.value > 0 && <p className="text-white font-bold">{t("crmQuotes.deDescuento", { formatEur: format.currency(bonoPreview.value, "EUR", EUR2) })}</p>}
+                    {bonoPreview.value > 0 && <p className="text-foreground font-bold">{t("crmQuotes.deDescuento", { formatEur: format.currency(bonoPreview.value, "EUR", EUR2) })}</p>}
                     {bonoPreview.activityName && <p className="text-foreground/50">{bonoPreview.activityName}</p>}
                     {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
                       <Button size="sm" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-7"
@@ -312,22 +319,23 @@ export function QuoteEditModal({
           </div>
         )}
 
+        <CrmFormSection title={t("crmOpps.seccionCondiciones")}>
         <div>
           <Label className="text-foreground/65 text-xs">{t("crmQuotes.notasParaElCliente")}</Label>
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-16 text-sm" />
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1 resize-none h-16 text-sm" />
         </div>
         <div>
           <Label className="text-foreground/65 text-xs">{t("crmQuotes.condiciones")}</Label>
-          <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-12 text-sm" />
+          <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1 resize-none h-12 text-sm" />
         </div>
+        </CrmFormSection>
       </div>
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmQuotes.cancelar")}</Button>
+        <Button variant="ghost" size="sm" onClick={onClose}>{t("crmQuotes.cancelar")}</Button>
         <Button
           size="sm"
           onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal: baseImponible, discount, taxRate: effectiveTaxRateE, total, validUntil, activityDate: activityDate || null })}
           disabled={updateQuote.isPending}
-          className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
           {updateQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}{t("crmQuotes.guardarCambios")}</Button>
       </DialogFooter>

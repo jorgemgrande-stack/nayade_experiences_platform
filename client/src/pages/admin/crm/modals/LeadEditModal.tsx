@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, CheckCircle, RefreshCw, Trash2, Pencil } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import { EUR2 } from "../shared/crmCommon";
+import { EUR2, FieldError, invalidProps } from "../shared/crmCommon";
+import { CrmFormSection } from "../shared/ui/CrmUi";
 
 // ─── LEAD EDIT MODAL ────────────────────────────────────────────────────────
 export function LeadEditModal({
@@ -24,6 +25,7 @@ export function LeadEditModal({
   const { t, format } = useI18n();
   const utils = trpc.useUtils();
   const voc = useVocabulary();
+  const [submitted, setSubmitted] = React.useState(false);
   const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
   const { data: leadSources } = trpc.crm.leadSources.list.useQuery();
 
@@ -116,7 +118,7 @@ export function LeadEditModal({
 
   if (isLoading || !form) {
     return (
-      <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="max-w-xl">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
@@ -125,6 +127,7 @@ export function LeadEditModal({
   }
 
   const handleSave = () => {
+    setSubmitted(true);
     if (!form.name.trim() || !form.email.trim()) {
       toast.error(t("crmLeads.nombreYEmailSon"));
       return;
@@ -158,34 +161,41 @@ export function LeadEditModal({
   };
 
   return (
-    <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
+        <DialogTitle className="text-foreground flex items-center gap-2">
           <Pencil className="w-4 h-4 text-warning" /> {voc.editLead}
         </DialogTitle>
       </DialogHeader>
+      <p className="-mt-1 text-xs text-muted-foreground">{t("crmOpps.camposObligatorios")}</p>
       <div className="space-y-4">
         {/* Datos del cliente */}
-        <div className="grid grid-cols-2 gap-3">
+        <CrmFormSection title={t("crmOpps.seccionContacto")}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <Label className="text-foreground/65 text-xs">{t("crmLeads.nombre")}{" "}<span className="text-danger">*</span></Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Label htmlFor="edit-lead-name" className="text-foreground/65 text-xs">{t("crmLeads.nombre")}{" "}<span className="text-danger">*</span></Label>
+            <Input id="edit-lead-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" {...invalidProps(submitted && !form.name.trim() ? "x" : undefined, "edit-lead-name-error")} />
+            <FieldError id="edit-lead-name-error" msg={submitted && !form.name.trim() ? t("crmOpps.campoObligatorio") : undefined} />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">{t("crmLeads.email")}{" "}<span className="text-danger">*</span></Label>
-            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Label htmlFor="edit-lead-email" className="text-foreground/65 text-xs">{t("crmLeads.email")}{" "}<span className="text-danger">*</span></Label>
+            <Input id="edit-lead-email" required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" {...invalidProps(submitted && !form.email.trim() ? "x" : undefined, "edit-lead-email-error")} />
+            <FieldError id="edit-lead-email-error" msg={submitted && !form.email.trim() ? t("crmOpps.campoObligatorio") : undefined} />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{t("crmLeads.telefono")}</Label>
-            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{t("crmLeads.empresaGrupo")}</Label>
-            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
         </div>
 
+        </CrmFormSection>
+
         {/* Líneas de actividad */}
+        <CrmFormSection title={t("crmOpps.seccionIntereses")}>
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label className="text-foreground/65 text-xs">{voc.interests}</Label>
@@ -205,13 +215,13 @@ export function LeadEditModal({
                       onFocus={() => { updateLine(idx, { showSuggestions: true }); setActiveLineIdx(idx); }}
                       onBlur={() => setTimeout(() => updateLine(idx, { showSuggestions: false }), 200)}
                       placeholder={voc.productSearch}
-                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
+                      className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground text-sm h-8"
                     />
                     {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
                         {(productSuggestions as any[]).map((p: any) => (
                           <button key={`${p.productType}-${p.id}`} type="button"
-                            className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-xs text-white flex items-center gap-2"
+                            className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-xs text-foreground flex items-center gap-2"
                             onMouseDown={() => updateLine(idx, {
                               experienceId: p.id,
                               experienceTitle: p.title,
@@ -232,7 +242,7 @@ export function LeadEditModal({
                     <Input
                       type="number" min={1} value={line.participants}
                       onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
-                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white w-14 h-8 text-xs text-center"
+                      className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground w-14 h-8 text-xs text-center"
                     />
                     {activityLines.length > 1 && (
                       <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-danger transition-colors ml-1">
@@ -249,44 +259,50 @@ export function LeadEditModal({
           </div>
         </div>
 
+        </CrmFormSection>
+
         {/* Fecha y participantes */}
+        <CrmFormSection title={t("crmOpps.seccionFechaPersonas")}>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="col-span-3 sm:col-span-1">
+          <div className="sm:col-span-1">
             <Label className="text-foreground/65 text-xs">{voc.serviceDate}</Label>
-            <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{t("crmLeads.adultos")}</Label>
-            <Input type="number" min={1} value={form.numberOfAdults} onChange={e => setForm({ ...form, numberOfAdults: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input type="number" min={1} value={form.numberOfAdults} onChange={e => setForm({ ...form, numberOfAdults: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{t("crmLeads.ninos")}</Label>
-            <Input type="number" min={0} value={form.numberOfChildren} onChange={e => setForm({ ...form, numberOfChildren: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+            <Input type="number" min={0} value={form.numberOfChildren} onChange={e => setForm({ ...form, numberOfChildren: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
           </div>
         </div>
 
+        </CrmFormSection>
+
         {/* Prioridad y estado */}
-        <div className="grid grid-cols-2 gap-3">
+        <CrmFormSection title={t("crmOpps.seccionEstadoNotas")}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label className="text-foreground/65 text-xs">{t("crmLeads.prioridad2")}</Label>
             <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="baja" className="text-white">{t("crmLeads.baja")}</SelectItem>
-                <SelectItem value="media" className="text-white">{t("crmLeads.media")}</SelectItem>
-                <SelectItem value="alta" className="text-white">{t("crmLeads.alta")}</SelectItem>
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-background border-foreground/[0.12]">
+                <SelectItem value="baja" className="text-foreground">{t("crmLeads.baja")}</SelectItem>
+                <SelectItem value="media" className="text-foreground">{t("crmLeads.media")}</SelectItem>
+                <SelectItem value="alta" className="text-foreground">{t("crmLeads.alta")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">{t("crmLeads.estadoOportunidad")}</Label>
             <Select value={form.opportunityStatus} onValueChange={(v) => setForm({ ...form, opportunityStatus: v })}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="nueva" className="text-white">{t("crmLeads.n1NuevaOportunidad")}</SelectItem>
-                <SelectItem value="enviada" className="text-white">{t("crmLeads.n2OportunidadEnviada")}</SelectItem>
-                <SelectItem value="ganada" className="text-white">{t("crmLeads.n3OportunidadGanada")}</SelectItem>
-                <SelectItem value="perdida" className="text-white">{t("crmLeads.n4OportunidadPerdida")}</SelectItem>
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-background border-foreground/[0.12]">
+                <SelectItem value="nueva" className="text-foreground">{t("crmLeads.n1NuevaOportunidad")}</SelectItem>
+                <SelectItem value="enviada" className="text-foreground">{t("crmLeads.n2OportunidadEnviada")}</SelectItem>
+                <SelectItem value="ganada" className="text-foreground">{t("crmLeads.n3OportunidadGanada")}</SelectItem>
+                <SelectItem value="perdida" className="text-foreground">{t("crmLeads.n4OportunidadPerdida")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -300,8 +316,8 @@ export function LeadEditModal({
               value={form.leadSourceId ? String(form.leadSourceId) : "none"}
               onValueChange={v => setForm({ ...form, leadSourceId: v === "none" ? null : Number(v) })}
             >
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue placeholder={t("crmLeads.sinAsignar")} /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1"><SelectValue placeholder={t("crmLeads.sinAsignar")} /></SelectTrigger>
+              <SelectContent className="bg-background border-foreground/[0.12]">
                 <SelectItem value="none" className="text-foreground/50 text-xs">{t("crmLeads.sinAsignar")}</SelectItem>
                 {(leadSources as any[]).map((src: any) => (
                   <SelectItem key={src.id} value={String(src.id)} className="text-xs">
@@ -316,16 +332,16 @@ export function LeadEditModal({
         {/* Notas */}
         <div>
           <Label className="text-foreground/65 text-xs">{t("crmLeads.mensajeComentarios")}</Label>
-          <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-16 text-sm" />
+          <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1 resize-none h-16 text-sm" />
         </div>
+        </CrmFormSection>
       </div>
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmLeads.cancelar")}</Button>
+        <Button variant="outline" size="sm" onClick={onClose}>{t("crmLeads.cancelar")}</Button>
         <Button
           size="sm"
           onClick={handleSave}
           disabled={updateLead.isPending}
-          className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
           {updateLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}{t("crmLeads.guardarCambios")}</Button>
       </DialogFooter>

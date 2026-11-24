@@ -171,23 +171,14 @@
     "geometriaAjena": 1
   },
   "pages/admin/crm/modals/DirectQuoteModal.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 2,
     "textoMinusculo": 2,
     "geometriaAjena": 1
   },
   "pages/admin/crm/modals/LeadDetailModal.tsx": {
-    "coloresFijos": 2,
-    "hexEnClases": 2,
     "textoMinusculo": 1
   },
   "pages/admin/crm/modals/LeadEditModal.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 6,
     "geometriaAjena": 1
-  },
-  "pages/admin/crm/modals/NewLeadModal.tsx": {
-    "hexEnClases": 2
   },
   "pages/admin/crm/modals/NewReservationModal.tsx": {
     "coloresFijos": 1,
@@ -195,18 +186,12 @@
     "geometriaAjena": 3
   },
   "pages/admin/crm/modals/QuoteBuilderModal.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 1,
     "textoMinusculo": 2
   },
   "pages/admin/crm/modals/QuoteDetailModal.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 8,
     "textoMinusculo": 3
   },
   "pages/admin/crm/modals/QuoteEditModal.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 3,
     "textoMinusculo": 2
   },
   "pages/admin/crm/modals/ReservationDetailModal.tsx": {
@@ -223,13 +208,8 @@
     "hexEnClases": 4,
     "geometriaAjena": 1
   },
-  "pages/admin/crm/tabs/LeadsTab.tsx": {
-    "hexEnClases": 1,
-    "textoMinusculo": 3
-  },
   "pages/admin/crm/tabs/QuotesTab.tsx": {
-    "hexEnClases": 7,
-    "textoMinusculo": 7
+    "hexEnClases": 4
   },
   "pages/admin/crm/tabs/ReservationsTab.tsx": {
     "hexEnClases": 3
