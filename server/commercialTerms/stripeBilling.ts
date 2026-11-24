@@ -44,6 +44,7 @@ import type { StripeStore } from "../stripe/store";
 import { needsVies, type VatVerifier } from "../stripe/vies";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { SyncBusy, type BillingLink, type BillingPlan, type NegotiatedBillingGateway, type TermsBillingService } from "./billing";
+import type { BillingNoticeEvent } from "./billingNotices";
 import { BillingStoreConflict, LINKED_STATES, type BillingState, type CheckoutOffer, type TermsBillingPatch, type TermsBillingRow, type TermsBillingStore } from "./billingStore";
 import { requireCustomPricing } from "./permission";
 import { NEGOTIATED_MARK, NegotiatedGatewayError, StripeNegotiatedGateway } from "./stripeGateway";
@@ -154,6 +155,8 @@ export interface NegotiatedBillingDeps {
    * (`TermsAcceptanceService.concludeDue`). Un fallo no revierte el cobro.
    */
   afterFirstCharge?: (subscriptionId: number) => Promise<unknown>;
+  /** Aviso interno a Dirección de un hecho de la contratación (solo correo; nunca lanza ni cambia estados). */
+  notice?: (e: BillingNoticeEvent) => Promise<void>;
   urls: { success: string; cancel: string };
   namespace: string;
   mode: StripeMode;
@@ -389,6 +392,12 @@ export class NegotiatedBillingService {
 
   private async patch(row: TermsBillingRow, patch: TermsBillingPatch): Promise<TermsBillingRow> {
     return this.d.store.patch(row.id, patch, row.version, this.now());
+  }
+
+  /** Aviso interno: un fallo del correo jamás frena el procesamiento financiero. */
+  private async notify(e: BillingNoticeEvent): Promise<void> {
+    if (!this.d.notice) return;
+    await this.d.notice(e).catch((err) => opsLog("warn", "CommercialTerms", "billing_notice_failed", { kind: e.kind, error: err instanceof Error ? err.name : "error" }));
   }
 
   private async history(termsId: number | null, kind: string, reason: string, after: unknown, actor: string) {
@@ -806,6 +815,10 @@ export class NegotiatedBillingService {
     // Prueba → pago: con el primer cobro real (la suscripción de Stripe ya no está en prueba y consta una factura pagada) se
     // concluye la prueba interna en el instante efectivo pactado. Es idempotente y solo actúa si ese instante ya llegó
     if (sub.status === "active" && lastPaid && this.d.afterFirstCharge) await this.d.afterFirstCharge(row.subscriptionId).catch((e) => opsLog("warn", "CommercialTerms", "after_first_charge_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" }));
+    // Método de pago confirmado SIN cobro: la sesión de pago se completó y Stripe tiene la suscripción en prueba
+    if (first && sub.status === "trialing") await this.notify({ kind: "method_confirmed", key: `stripe:${sub.id}`, subscriptionId: row.subscriptionId, at: this.now(), stripeStatus: sub.status, trialEnd: sub.currentPeriodEnd === null ? null : sub.currentPeriodEnd * 1000 });
+    if (next !== prev && (next === "past_due" || next === "suspended")) await this.notify({ kind: "payment_failed", key: `stripe:${sub.id}:${next}:${sub.latestInvoiceId ?? ""}`, subscriptionId: row.subscriptionId, at: this.now(), stripeStatus: sub.status });
+    if (next !== prev && next === "canceled") await this.notify({ kind: "cancellation", key: `stripe:${sub.id}`, subscriptionId: row.subscriptionId, at: this.now(), stripeStatus: sub.status });
     if (next !== prev) {
       opsLog("info", "CommercialTerms", "billing_state", { subscriptionId: row.subscriptionId, from: prev, to: next, stripeStatus: sub.status });
       await this.history(plan?.termsId ?? row.checkout?.termsId ?? null, "billing_state", `Cobro en Stripe: ${prev} → ${next}`, { subscriptionId: row.subscriptionId, from: prev, to: next, stripeStatus: sub.status, graceEndsAt: fresh.graceEndsAt, readOnlyUntil: fresh.readOnlyUntil, cancelAt: fresh.cancelAt }, this.actor);
@@ -873,7 +886,14 @@ export class NegotiatedBillingService {
       const opensPeriod = inv.billingReason === "subscription_cycle" || (inv.billingReason === "subscription_create" && !row.checkout?.firstChargeAt);
       if (opensPeriod && inv.status && inv.status !== "draft") await this.d.billing.notePeriod(row.subscriptionId, sub.id, inv.id, this.actor).catch((e) => opsLog("warn", "CommercialTerms", "billing_note_period_failed", { subscriptionId: row.subscriptionId, error: e instanceof Error ? e.name : "error" }));
       if (!isPaid) continue;
-      if (created) await this.history(plan?.termsId ?? row.checkout?.termsId ?? null, "billing_payment", `Factura de Stripe cobrada (${inv.billingReason ?? "sin motivo"})`, { subscriptionId: row.subscriptionId, invoiceId: inv.id, number: inv.number ?? null, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, taxCheck }, this.actor);
+      // Una factura pagada de 0 € (prueba gratuita) NO es un cobro: así consta en el historial y nunca se anuncia como cobro
+      const collectedCents = inv.amountPaid ?? 0;
+      if (created) await this.history(plan?.termsId ?? row.checkout?.termsId ?? null, "billing_payment", collectedCents > 0 ? `Factura de Stripe cobrada (${inv.billingReason ?? "sin motivo"})` : `Factura de Stripe sin importe a cobrar (${inv.billingReason ?? "sin motivo"}): no hay cobro`, { subscriptionId: row.subscriptionId, invoiceId: inv.id, number: inv.number ?? null, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, taxCheck }, this.actor);
+      if (created && collectedCents > 0) {
+        // ¿Hubo antes algún cobro real? Entonces es recurrente; si no, es el primer cobro real (también tras una prueba)
+        const before = (await this.d.store.invoices(row.id, 100).catch(() => [])).some((i) => i.stripeInvoiceId !== inv.id && i.status === "paid" && i.amountPaidCents > 0);
+        await this.notify({ kind: before ? "recurring_charge" : "first_charge", key: `invoice:${inv.id}`, subscriptionId: row.subscriptionId, at: this.now(), stripeStatus: sub.status, invoice: { id: inv.id, number: inv.number ?? null, subtotalCents: inv.subtotal, taxCents: inv.taxCents ?? null, totalCents: inv.total ?? null, amountPaidCents: collectedCents, currency: inv.currency } });
+      }
       // La última factura de la suscripción manda (la del evento puede ser anterior)
       if (!out || inv.id === sub.latestInvoiceId) out = { created, invoiceId: inv.id, reason: inv.billingReason };
     }
@@ -912,6 +932,7 @@ export class NegotiatedBillingService {
       if (lost && !known?.coverageLost) {
         opsLog("warn", "CommercialTerms", "billing_coverage_lost", log);
         recordFailure("stripe.coverage_lost");
+        await this.notify({ kind: "refund_or_dispute", key: `charge:${c.id}`, subscriptionId: cur.subscriptionId, at: this.now(), stripeStatus: sub.status, detail: c.disputeStatus ? `Disputa del cargo (${c.disputeStatus}).` : `Reembolso del cargo: ${(c.amountRefunded / 100).toFixed(2)} € de ${(c.amount / 100).toFixed(2)} €.` });
       } else if (!lost && c.amountRefunded > 0) {
         opsLog("warn", "CommercialTerms", "billing_partial_refund", log);
         recordFailure("stripe.partial_refund");

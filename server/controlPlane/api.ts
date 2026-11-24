@@ -205,6 +205,7 @@ import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
 import { LINKED_STATES } from "../commercialTerms/billingStore";
+import { createBillingNotifier } from "../commercialTerms/billingNotices";
 import { customDomainDecision, exemptTenantsFromEnv, quotaPolicyForPhase, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
@@ -2101,6 +2102,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     let termsBilling: TermsBillingService | null = null;
     let termsLicences: TermsLicences | null = null;
     let platformAfterPayment: PlatformActivationDeps | null = null;
+    // Avisos internos a Dirección (administracion@bigelephant.es): idempotentes por hecho de negocio, nunca frenan el cobro
+    const billingNotifier =
+      d.mail?.platform && d.subscriptions?.store && d.crm
+        ? createBillingNotifier({
+            subscriptions: d.subscriptions.store as never,
+            crmStore: d.crm.store as never,
+            billing: { plan: (sid) => termsBilling!.plan(sid) },
+            send: (k, t, l) => d.mail!.platform!.billingNotice(k, t, l),
+            crmUrl: process.env.CP_CRM_URL || undefined,
+          })
+        : undefined;
     const commercialTerms = d.subscriptions.terms
       ? new CommercialTermsService({
           store: d.subscriptions.terms,
@@ -2137,6 +2149,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             now: d.subscriptions.now,
             // El contrato sale por el correo de plataforma; el enlace se guarda cifrado si está la migración 0051
             mail: d.mail?.platform?.termsAcceptanceMail() ?? null,
+            notice: billingNotifier,
             links: d.termsAcceptance?.links ?? null,
             logo: d.termsAcceptance?.logo,
             // Condiciones aceptadas con un producto Net de sector: expediente de implantación (idempotente)
@@ -2706,6 +2719,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             capabilities: d.capabilities,
             licences: licences ? { ensure: (id, actor, o) => licences.ensure(id, actor, o) } : undefined,
             orderBilled: async (sid) => (await subscriptionBilling(ordersForTerms, sid)).source === "stripe",
+            notice: billingNotifier,
             afterFirstCharge:
               termsAcceptance || platformAfterPayment
                 ? async (sid) => {
@@ -2949,15 +2963,26 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             const byOrder = orderStore ? await subscriptionBilling(orderStore, sid) : ({ source: "shadow" } as const);
             if (byOrder.source === "stripe" || !termsBillingStore) return byOrder;
             const row = await termsBillingStore.bySubscription(sid);
-            if (!row || !row.linkedAt || !row.lastPaidInvoiceId || !LINKED_STATES.includes(row.status)) return byOrder;
+            if (!row || !row.linkedAt || !LINKED_STATES.includes(row.status)) return byOrder;
+            // Fuente de verdad del cobro: una factura PAGADA de importe mayor que cero. La suscripción activa, la prueba gratuita o
+            // una factura de 0 € no son un cobro (no se infiere de campos secundarios).
+            const paid = (await termsBillingStore.invoices(row.id, 100).catch(() => [])).filter((i) => i.status === "paid" && i.amountPaidCents > 0).sort((x, y) => (y.paidAt ?? y.createdAt) - (x.paidAt ?? x.createdAt))[0];
+            // Plan contratado según las condiciones vigentes (el contrato del CRM puede no llevar plan)
+            const live = await d.subscriptions?.terms?.list({ subscriptionId: sid, status: ["active", "scheduled"] }).catch(() => []);
+            const planLine = (live ?? []).flatMap((t) => t.lines).find((l) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan");
             return {
               source: "stripe" as const,
+              planName: planLine?.name ?? null,
               mode: d.stripe?.config.mode === "live" ? ("live" as const) : ("test" as const),
               orderId: 0,
               orderReference: null,
               orderState: "terms_billing" as never,
               graceEndsAt: row.graceEndsAt,
-              lastPayment: { status: "succeeded" as const, purpose: "initial" as const, amountCents: row.checkout?.firstChargeCents ?? 0, currency: "EUR", at: row.syncedAt ?? row.linkedAt, periodStart: null },
+              stripeStatus: row.stripeStatus,
+              trialEnd: row.stripeStatus === "trialing" ? row.currentPeriodEnd : null,
+              lastPayment: paid
+                ? { status: "succeeded" as const, purpose: paid.billingReason === "subscription_cycle" ? ("renewal" as const) : ("initial" as const), amountCents: paid.amountPaidCents, currency: paid.currency, at: paid.paidAt ?? paid.createdAt, periodStart: paid.periodStart }
+                : null,
             };
           }
         : undefined;
