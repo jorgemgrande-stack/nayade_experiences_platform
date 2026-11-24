@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
-  ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2,
+  ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2, Save,
   LifeBuoy, Maximize2, Minimize2, SlidersHorizontal, Smartphone, Tablet, Undo2, Upload, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -643,7 +643,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         {status && (
           <span
             className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-medium lg:px-2 lg:py-0.5",
+              "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-medium xl:px-2 xl:py-0.5",
               status.tone === "ok" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
               status.tone === "draft" && "bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200",
               status.tone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300",
@@ -653,7 +653,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             role="status"
           >
             {status.icon ? <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} /> : <span className="h-2 w-2 rounded-full bg-current lg:hidden" aria-hidden />}
-            <span className="sr-only lg:not-sr-only">{status.label}</span>
+            <span className="sr-only xl:not-sr-only">{status.label}</span>
           </span>
         )}
         {doc.status === "error" && (
@@ -687,7 +687,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               </button>
             ))}
           </div>
-          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 md:flex" role="group" aria-label={tx("Zoom del lienzo")}>
+          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 xl:flex" role="group" aria-label={tx("Zoom del lienzo")}>
             <button type="button" onClick={() => stepZoom(-1)} disabled={scale <= ZOOM_STEPS[0] + 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label={tx("Alejar")} title={tx("Alejar")}>
               <ZoomOut className="h-4 w-4" />
             </button>
@@ -717,7 +717,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </Button>
         </div>
 
-        <div className="hidden items-center rounded-lg bg-muted p-0.5 lg:flex" role="radiogroup" aria-label={tx("Modo de edición")}>
+        <div className="hidden items-center rounded-lg bg-muted p-0.5 xl:flex" role="radiogroup" aria-label={tx("Modo de edición")}>
           {[
             { v: false, label: tx("Sencillo") },
             { v: true, label: tx("Profesional") },
@@ -749,13 +749,15 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuItem className="sm:hidden" disabled={!page || !!viewing || !doc.dirty} onSelect={() => void doc.save().then((ok) => ok && toast.success(tx("Borrador guardado. Tu web no cambia hasta que publiques.")))}>
+              <Save className="mr-2 h-4 w-4" />{" "}{tx("Guardar el borrador")}</DropdownMenuItem>
             <DropdownMenuItem className="sm:hidden" disabled={!page} onSelect={openPreview}>
               <Eye className="mr-2 h-4 w-4" />{" "}{tx("Vista previa del borrador")}</DropdownMenuItem>
             {page?.isPublished && (
               <DropdownMenuItem onSelect={() => window.open(page.isHome ? "/" : `/${page.slug}`, "_blank", "noopener")}>
                 <ExternalLink className="mr-2 h-4 w-4" />{" "}{tx("Ver la página publicada")}</DropdownMenuItem>
             )}
-            <DropdownMenuItem className="lg:hidden" onSelect={() => setPro(!pro)}>
+            <DropdownMenuItem className="xl:hidden" onSelect={() => setPro(!pro)}>
               {pro ? tx("Pasar al modo sencillo") : tx("Pasar al modo profesional")}
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -777,8 +779,11 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </DropdownMenuContent>
         </DropdownMenu>
         <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+        <Button variant="ghost" size="sm" className="hidden h-9 sm:inline-flex" onClick={() => void doc.save().then((ok) => ok && toast.success(tx("Borrador guardado. Tu web no cambia hasta que publiques.")))} disabled={!page || !!viewing || !doc.dirty || doc.status === "saving"} aria-label={tx("Guardar")} title={tx("Guardar el borrador")}>
+          <Save className="h-4 w-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">{tx("Guardar")}</span>
+        </Button>
         <Button variant="outline" size="sm" className="hidden h-9 sm:inline-flex" onClick={openPreview} disabled={!page} aria-label={tx("Vista previa")} title={tx("Vista previa del borrador")}>
-          <Eye className="h-4 w-4 xl:mr-1.5" /> <span className="hidden xl:inline">{tx("Vista previa")}</span>
+          <Eye className="h-4 w-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">{tx("Vista previa")}</span>
         </Button>
         <Button
           size="sm"
