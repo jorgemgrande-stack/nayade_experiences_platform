@@ -425,7 +425,7 @@ function LegacyDashboard() {
                 {t("dashboard.refresh")}
               </button>
               <Link href="/admin/crm">
-                <button className="flex items-center gap-2 bg-info/20 hover:bg-info/15 border border-info/40 text-info text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:border-info/60">
+                <button className="flex items-center gap-2 bg-info/10 hover:bg-info/10 border border-info/40 text-info text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:border-info/60">
                   <Activity className="w-3.5 h-3.5" /> {t("dashboard.goCrm")} <ArrowUpRight className="w-3 h-3" />
                 </button>
               </Link>
@@ -452,7 +452,7 @@ function LegacyDashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
                 {(alerts?.transfersToValidate ?? 0) > 0 && (
                   <Link href="/admin/crm?tab=quotes">
-                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/10 transition-colors">
                       <Banknote className="w-4 h-4 text-danger shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-danger">{t("dashboard.critical.transfers", { n: alerts?.transfersToValidate ?? 0 })}</p>
@@ -464,7 +464,7 @@ function LegacyDashboard() {
                 )}
                 {(alerts?.invoicesOverdue ?? 0) > 0 && (
                   <Link href="/admin/crm?tab=invoices">
-                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/10 transition-colors">
                       <FileText className="w-4 h-4 text-danger shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-danger">{t("dashboard.critical.invoicesOverdue", { n: alerts?.invoicesOverdue ?? 0 })}</p>
@@ -476,7 +476,7 @@ function LegacyDashboard() {
                 )}
                 {cancellacionesPendientes > 0 && (
                   <Link href="/admin/crm?tab=anulaciones">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <XCircle className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">{t("dashboard.critical.cancellations", { n: cancellacionesPendientes })}</p>
@@ -490,7 +490,7 @@ function LegacyDashboard() {
                 )}
                 {(alerts?.quotesExpiringSoon ?? 0) > 0 && (
                   <Link href="/admin/crm?tab=quotes">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <Clock className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">{t("dashboard.critical.quotesExpiring", { n: alerts?.quotesExpiringSoon ?? 0 })}</p>
@@ -502,7 +502,7 @@ function LegacyDashboard() {
                 )}
                 {ticketingRecibidos > 0 && (
                   <Link href="/admin/marketing/cupones">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <Ticket className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">{t("dashboard.critical.couponsUnreviewed", { n: ticketingRecibidos })}</p>
@@ -514,7 +514,7 @@ function LegacyDashboard() {
                 )}
                 {ticketingIncidencias > 0 && (
                   <Link href="/admin/marketing/cupones">
-                    <div className="flex items-center gap-2 bg-info/10 border border-info/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-info/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-info/10 border border-info/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-info/10 transition-colors">
                       <Ticket className="w-4 h-4 text-info shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-info">{t("dashboard.critical.couponsIncident", { n: ticketingIncidencias })}</p>
@@ -526,7 +526,7 @@ function LegacyDashboard() {
                 )}
                 {leadsAging > 0 && (
                   <Link href="/admin/crm?tab=leads">
-                    <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-primary/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-primary/10 transition-colors">
                       <Clock className="w-4 h-4 text-primary shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-primary">{t("dashboard.critical.leadsToHandle", { n: leadsAging })}</p>
@@ -538,7 +538,7 @@ function LegacyDashboard() {
                 )}
                 {installmentsOverdue > 0 && (
                   <Link href="/admin/crm?tab=pagos_pendientes">
-                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/10 transition-colors">
                       <CreditCard className="w-4 h-4 text-danger shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-danger">{t("dashboard.critical.installmentsOverdue", { n: installmentsOverdue })}</p>
@@ -550,7 +550,7 @@ function LegacyDashboard() {
                 )}
                 {installmentsDueToday > 0 && installmentsOverdue === 0 && (
                   <Link href="/admin/crm?tab=pagos_pendientes">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <CreditCard className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">{t("dashboard.critical.installmentsToday", { n: installmentsDueToday })}</p>
@@ -562,7 +562,7 @@ function LegacyDashboard() {
                 )}
                 {tpvStaleBatches > 0 && (
                   <Link href="/admin/contabilidad/remesas-tpv">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <Package className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">{t("dashboard.critical.staleBatches", { n: tpvStaleBatches })}</p>
@@ -574,7 +574,7 @@ function LegacyDashboard() {
                 )}
                 {tpvDifferenceBatches > 0 && (
                   <Link href="/admin/contabilidad/remesas-tpv">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">{t("dashboard.critical.differenceBatches", { n: tpvDifferenceBatches })}</p>
@@ -586,7 +586,7 @@ function LegacyDashboard() {
                 )}
                 {tpvStaleMovements > 0 && (
                   <Link href="/admin/contabilidad/movimientos-bancarios">
-                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-danger/10 transition-colors">
                       <Banknote className="w-4 h-4 text-danger shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-danger">{t("dashboard.critical.staleMovements", { n: tpvStaleMovements })}</p>
@@ -598,7 +598,7 @@ function LegacyDashboard() {
                 )}
                 {tpvUnlinkedOps > 0 && (
                   <Link href="/admin/contabilidad/operaciones-tpv">
-                    <div className="flex items-center gap-2 bg-info/10 border border-info/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-info/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-info/10 border border-info/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-info/10 transition-colors">
                       <CreditCard className="w-4 h-4 text-info shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-info">{t("dashboard.critical.unlinkedOps", { n: tpvUnlinkedOps })}</p>
@@ -610,7 +610,7 @@ function LegacyDashboard() {
                 )}
                 {expenseCandidates > 0 && (
                   <Link href="/admin/contabilidad/gastos">
-                    <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-primary/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-primary/10 transition-colors">
                       <Banknote className="w-4 h-4 text-primary shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-primary">{t("dashboard.critical.expenseCandidates", { n: expenseCandidates })}</p>
@@ -622,7 +622,7 @@ function LegacyDashboard() {
                 )}
                 {expenseStale > 0 && (
                   <Link href="/admin/contabilidad/gastos">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">{t("dashboard.critical.expenseStale", { n: expenseStale })}</p>
@@ -634,7 +634,7 @@ function LegacyDashboard() {
                 )}
                 {distortion && distortion.month_.count > 0 && (
                   <Link href="/admin/contabilidad/gastos?treatment=tax_only">
-                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/15 transition-colors">
+                    <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-warning/10 transition-colors">
                       <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-warning">

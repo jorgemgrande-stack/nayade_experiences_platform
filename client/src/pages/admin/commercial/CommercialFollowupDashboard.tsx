@@ -341,10 +341,10 @@ export default function CommercialFollowupDashboard() {
         <WorkplaceLocks place="crm" className="mb-6" />
 
         {/* Tab nav */}
-        <div className="flex gap-1 mb-6 border-b border-border pb-0 overflow-x-auto">
+        <div role="tablist" className="flex gap-1 mb-6 border-b border-border pb-0 overflow-x-auto">
           {tabs.map(tb => (
-            <button key={tb.id} onClick={() => setTab(tb.id)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
+            <button role="tab" aria-selected={tab === tb.id} key={tb.id} onClick={() => setTab(tb.id)}
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
                 tab === tb.id
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"

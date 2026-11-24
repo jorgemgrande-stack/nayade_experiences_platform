@@ -463,7 +463,7 @@ function VoiceTab() {
           <li>{s.assistantId ? `✓ Asistente sincronizado (${s.assistantId})` : "✗ Asistente aún no creado"}{s.syncedAt ? ` · ${fmtDate(s.syncedAt)}` : ""}</li>
         </ul>
         {s.problems.length > 0 && (
-          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning dark:border-warning dark:bg-warning/20 ">
+          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning dark:border-warning dark:bg-warning/10 ">
             {s.problems.map((p) => <p key={p}>{p}</p>)}
             {(!s.hasApiKey || !s.hasWebhookSecret) && <p className="mt-1"><a className="underline" href="/admin/configuracion/integraciones">Ir a Integraciones</a></p>}
           </div>

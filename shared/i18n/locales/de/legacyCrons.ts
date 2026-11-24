@@ -1,0 +1,31 @@
+import type { Mirror } from "../../core";
+import type es from "../es/legacyCrons";
+
+export default {
+  title: "Aktive Automatisierungen",
+  description: "Die aktuellen geplanten Aufgaben des Systems. Diese Ansicht ist nur lesend: Um ihre Konfiguration zu ändern, müssen die Serverdateien angepasst werden.",
+  infoTitle: "So ist die Arbeit aufgeteilt",
+  info: "Die Angebotsnachverfolgung übernimmt die Automatisierungs-Engine mit ihren kaufmännischen Regeln; dupliziere sie nicht. Die generische Engine ist für Vorlagen ohne eigene Aufgabe gedacht (nach der Buchung, nach der Zahlung usw.), und der E-Mail-Manager sperrt die Planung für Angebote, um Doppelungen zu vermeiden.",
+  total: "Geplante Aufgaben",
+  withoutFlag: "Ohne Schalter (immer aktiv)",
+  keep: "Zur Beibehaltung empfohlen",
+  status: { active_no_flag: "Aktiv ohne Schalter", active_with_flag: "Aktiv mit Schalter, kontrolliert", superseded: "Ersetzt" },
+  recipient: { client: "Nur Kunde", admin: "Nur Team", both: "Kunde und Team" },
+  frequency: "Häufigkeit",
+  flag: "Schalter",
+  noFlag: "Ohne Schalter: immer aktiv",
+  condition: "Auslösebedingung",
+  templates: "Verwendete Vorlagen",
+  subject: "Betreff der E-Mail",
+  recommendation: "Empfehlung",
+  expand: "Technische Details anzeigen",
+  collapse: "Technische Details ausblenden",
+  details: "Technische Details",
+  limitRun: "Limit pro Ausführung",
+  limitQuote: "Maximum pro Angebot",
+  records: "{n} Datensätze",
+  legend: "Legende der Status",
+  legendFlag: "Aktiv mit Schalter: kontrolliert",
+  legendNoFlag: "Aktiv ohne Schalter: läuft immer",
+  legendSuperseded: "Ersetzt: ihre Funktion übernimmt eine andere Aufgabe",
+} as const satisfies Mirror<typeof es>;

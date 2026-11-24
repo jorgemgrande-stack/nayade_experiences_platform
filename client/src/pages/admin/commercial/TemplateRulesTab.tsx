@@ -355,7 +355,7 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
         <div className="border-t border-border p-4 space-y-4">
           {/* Aviso de cobertura legacy */}
           {LEGACY_CRON_KEYS[config.key] && (
-            <div className="bg-warning/20 border border-warning/40 rounded-lg p-3 flex gap-2 text-xs text-warning">
+            <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 flex gap-2 text-xs text-warning">
               <span className="shrink-0 mt-0.5">⚠</span>
               <div>
                 <span className="font-semibold">Cron legacy activo:</span>{" "}
