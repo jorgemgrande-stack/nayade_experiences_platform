@@ -61,7 +61,7 @@ export default {
     notViewed: "Nicht angesehen",
     count: "{n, plural, one {# Angebot} other {# Angebote}}",
     empty: "Keine Ergebnisse",
-    emptyHint: "Ändern Sie die Filter oder die Suche, um weitere Angebote zu sehen.",
+    emptyHint: "Ändere die Filter oder die Suche, um weitere Angebote zu sehen.",
   },
   history: {
     count: "{n, plural, one {# Nachricht} other {# Nachrichten}}",

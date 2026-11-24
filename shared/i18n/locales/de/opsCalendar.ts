@@ -4,7 +4,7 @@ import type es from "../es/opsCalendar";
 export default {
   pageTitle: "Aktivitätenkalender",
   heading: "Buchungskalender",
-  subtitle: "Nur bestätigte Buchungen · Klicken Sie auf eine Buchung, um die Einsatzdetails zu sehen",
+  subtitle: "Nur bestätigte Buchungen · Klicke auf eine Buchung, um die Einsatzdetails zu sehen",
   today: "Heute",
   prevMonth: "Vorheriger Monat",
   nextMonth: "Nächster Monat",

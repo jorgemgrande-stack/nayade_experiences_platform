@@ -15,7 +15,7 @@ export default {
   col: { number: "Aktivitäts-Nr.", client: "Kunde", date: "Datum", persons: "Personen", total: "Gesamt", origin: "Herkunft", state: "Status", actions: "Aktionen" },
   manual: "Manuell",
   noMatchTitle: "Keine passende Aktivität",
-  noMatchText: "Ändern Sie die Suche oder den Status, um weitere Aktivitäten zu sehen.",
+  noMatchText: "Ändere die Suche oder den Status, um weitere Aktivitäten zu sehen.",
   clearFilters: "Filter entfernen",
   summaryCount: "Angezeigte Aktivitäten",
   loadError: "Die Aktivitäten konnten nicht geladen werden",

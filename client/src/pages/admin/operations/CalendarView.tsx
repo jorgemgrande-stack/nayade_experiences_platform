@@ -163,7 +163,7 @@ function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) 
               { label: t("opsCalendar.session.duration"), value: s.durationMinutes ? `${s.durationMinutes} min` : "—" },
             ].map((k) => (
               <div key={k.label} className="bg-muted rounded-lg p-3 text-center">
-                <div className="text-[10px] text-muted-foreground mb-1">{k.label}</div>
+                <div className="text-xs text-muted-foreground mb-1">{k.label}</div>
                 <p className="text-foreground text-xs font-medium">{k.value}</p>
               </div>
             ))}
@@ -246,11 +246,11 @@ function ReservationModal({
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                <Badge className="bg-info/20 text-info border-info/40 text-[10px]">
+                <Badge className="bg-info/20 text-info border-info/40 text-xs">
                   {ev.channel || "—"}
                 </Badge>
                 {ev.statusReservation && (
-                  <Badge className="bg-muted/50 text-foreground/80 text-[10px]">
+                  <Badge className="bg-muted/50 text-foreground/80 text-xs">
                     {ev.statusReservation}
                   </Badge>
                 )}
@@ -289,7 +289,7 @@ function ReservationModal({
               { label: t("opsCalendar.res.state"), value: ev.opStatus ? (["pendiente", "confirmado", "completado", "incidencia", "cancelado"].includes(ev.opStatus) ? t(`opsCalendar.opState.${ev.opStatus}`) : ev.opStatus) : t("opsCalendar.opState.pendiente"), icon: <CheckCircle className="w-3 h-3" />, ok: ev.opStatus === "confirmado" || ev.opStatus === "completado" },
             ].map(item => (
               <div key={item.label} className="bg-muted rounded-lg p-3 text-center">
-                <div className={`flex items-center justify-center gap-1 text-[10px] mb-1 ${item.ok ? "text-success" : "text-warning"}`}>
+                <div className={`flex items-center justify-center gap-1 text-xs mb-1 ${item.ok ? "text-success" : "text-warning"}`}>
                   {item.icon}
                   <span>{item.label}</span>
                 </div>
@@ -320,11 +320,11 @@ function ReservationModal({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{ev.activityTitle || t("opsCalendar.res.mainActivity")}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{ev.numberOfPersons} {t("opsCalendar.pax")}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{ev.numberOfPersons} {t("opsCalendar.pax")}</p>
                       </div>
-                      {op.isInherited && <Badge className="text-[9px] bg-muted/50 text-muted-foreground border-border">{t("opsCalendar.res.inherited")}</Badge>}
+                      {op.isInherited && <Badge className="text-xs bg-muted/50 text-muted-foreground border-border">{t("opsCalendar.res.inherited")}</Badge>}
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
                         {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-danger">{t("opsCalendar.noMonitor")}</span>}
@@ -334,7 +334,7 @@ function ReservationModal({
                         {op.arrivalTime || <span className="text-warning">{t("opsCalendar.res.noTime")}</span>}
                       </span>
                     </div>
-                    {op.opNotes && <p className="text-[10px] text-muted-foreground italic mt-1">"{op.opNotes}"</p>}
+                    {op.opNotes && <p className="text-xs text-muted-foreground italic mt-1">"{op.opNotes}"</p>}
                   </div>
                 );
               })()}
@@ -348,11 +348,11 @@ function ReservationModal({
                         <p className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                           {ex.experienceTitle || ex.name || t("opsCalendar.res.activityN", { n: i + 2 })}
                         </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{ex.participants || ex.pax || "—"} {t("opsCalendar.pax")}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{ex.participants || ex.pax || "—"} {t("opsCalendar.pax")}</p>
                       </div>
-                      {op.isInherited && <Badge className="text-[9px] bg-muted/50 text-muted-foreground border-border">{t("opsCalendar.res.inherited")}</Badge>}
+                      {op.isInherited && <Badge className="text-xs bg-muted/50 text-muted-foreground border-border">{t("opsCalendar.res.inherited")}</Badge>}
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
                         {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-danger">{t("opsCalendar.noMonitor")}</span>}
@@ -362,7 +362,7 @@ function ReservationModal({
                         {op.arrivalTime || <span className="text-warning">{t("opsCalendar.res.noTime")}</span>}
                       </span>
                     </div>
-                    {op.opNotes && <p className="text-[10px] text-muted-foreground italic mt-1">"{op.opNotes}"</p>}
+                    {op.opNotes && <p className="text-xs text-muted-foreground italic mt-1">"{op.opNotes}"</p>}
                   </div>
                 );
               })}
@@ -431,7 +431,7 @@ function DayDetailModal({
             ].map(k => (
               <div key={k.label} className="bg-muted rounded-lg p-3 text-center">
                 <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
-                <div className="text-muted-foreground text-[10px] mt-0.5">{k.label}</div>
+                <div className="text-muted-foreground text-xs mt-0.5">{k.label}</div>
               </div>
             ))}
           </div>
@@ -476,7 +476,7 @@ function DayDetailModal({
                         </div>
                       </div>
                       {ev.reservationNumber && (
-                        <p className="text-[10px] font-mono text-info/70 mt-1">{ev.reservationNumber}</p>
+                        <p className="text-xs font-mono text-info/70 mt-1">{ev.reservationNumber}</p>
                       )}
                     </button>
                   );
