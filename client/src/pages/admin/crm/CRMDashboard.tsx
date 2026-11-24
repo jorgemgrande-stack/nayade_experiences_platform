@@ -308,8 +308,8 @@ export default function CRMDashboard() {
   const moneyShort = (v: number | string | null | undefined) => format.currency(Number(v) || 0, "EUR", { maximumFractionDigits: 0 });
   const tabsNode = (
         <div className="px-4 sm:px-6">
-          <div className="-mx-1 overflow-x-auto px-1 pb-1 sm:overflow-visible">
-          <div className="flex min-w-max gap-1 rounded-xl border border-border bg-muted/50 p-1 sm:min-w-0 sm:flex-wrap">
+          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <div className="flex min-w-max gap-1 rounded-xl border border-border bg-muted/50 p-1">
             {([
               { key: "leads", label: voc.leads, icon: Users, count: leadCounters?.total },
               { key: "quotes", label: voc.quotes, icon: FileText, count: quoteCounters?.enviado },
@@ -327,7 +327,7 @@ export default function CRMDashboard() {
                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
                   ${tab === key ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground"}`}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-4 w-4 sm:hidden 2xl:block" />
                 {label}
                 {count !== undefined && count > 0 && (
                   <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${tab === key ? "bg-primary-foreground/20 text-primary-foreground" : "bg-foreground/[0.08] text-foreground/70"}`}>
@@ -1089,7 +1089,7 @@ export default function CRMDashboard() {
         {unified && (
           <div className="px-4 sm:px-6 py-3 sm:py-4">{filterBarNode}</div>
         )}
-        {!unified && tab !== "anulaciones" && tab !== "bonos" && (
+        {!unified && tab !== "anulaciones" && tab !== "bonos" && tab !== "invoices" && (
         <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
