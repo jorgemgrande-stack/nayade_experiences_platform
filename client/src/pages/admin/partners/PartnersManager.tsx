@@ -3,6 +3,8 @@ import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import CameraCapture from "@/components/CameraCapture";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
+  ArrowLeft, Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
   ChevronRight, Mail, Phone, X, Check, AlertCircle, UserPlus, Trash2,
   CreditCard, RefreshCw, KeyRound, Send, Eye, EyeOff,
   ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone, Loader2, Upload, Camera,
@@ -246,7 +248,7 @@ function PartnerForm({
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleProduct(p.id)}
-                          className="accent-orange-500 shrink-0"
+                          className="accent-primary shrink-0"
                         />
                         <span className="truncate">{p.title}</span>
                         {p.basePrice && (
@@ -504,7 +506,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <Label htmlFor="partner-new-password" className="text-sm text-gray-600">
+            <Label htmlFor="partner-new-password" className="text-sm text-muted-foreground">
               Nueva contraseña (mínimo 8 caracteres)
             </Label>
             <div className="relative">
@@ -519,7 +521,7 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
               />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
                 onClick={() => setShowPwd(v => !v)}
               >
                 {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -558,7 +560,7 @@ const RES_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   PENDIENTE_CONFIRMACION: { label: "Pendiente",  color: "bg-warning/15 text-warning border-warning/30" },
   CONFIRMADA:             { label: "Confirmada", color: "bg-success/15 text-success border-success/30" },
   EN_CURSO:               { label: "En curso",   color: "bg-info/15 text-info border-info/30" },
-  FINALIZADA:             { label: "Finalizada", color: "bg-gray-500/15 text-gray-400 border-gray-500/30" },
+  FINALIZADA:             { label: "Finalizada", color: "bg-muted text-muted-foreground border-border" },
   NO_SHOW:                { label: "No show",    color: "bg-primary/15 text-primary border-primary/30" },
   ANULADA:                { label: "Anulada",    color: "bg-danger/15 text-danger border-danger/30" },
 };
@@ -658,7 +660,7 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
               </thead>
               <tbody>
                 {leads.map(l => {
-                  const st = LEAD_STATUS_LABELS[l.status] ?? { label: l.status, color: "bg-gray-500/15 text-gray-400 border-gray-500/30" };
+                  const st = LEAD_STATUS_LABELS[l.status] ?? { label: l.status, color: "bg-muted text-muted-foreground border-border" };
                   return (
                     <tr key={l.id} className="border-b border-foreground/[0.06] hover:bg-foreground/[0.03] transition-colors">
                       <td className="px-3 py-2 text-foreground/50">
@@ -703,7 +705,7 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
               </thead>
               <tbody>
                 {reservas.map(r => {
-                  const st = RES_STATUS_LABELS[r.statusReservation ?? ""] ?? { label: r.status, color: "bg-gray-500/15 text-gray-400 border-gray-500/30" };
+                  const st = RES_STATUS_LABELS[r.statusReservation ?? ""] ?? { label: r.status, color: "bg-muted text-muted-foreground border-border" };
                   return (
                     <tr key={r.id} className="border-b border-foreground/[0.06] hover:bg-foreground/[0.03] transition-colors">
                       <td className="px-3 py-2 text-foreground/40 font-mono">{r.reservationNumber ?? `#${r.id}`}</td>
@@ -1286,7 +1288,7 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
 
 export default function PartnersManager() {
   const utils = trpc.useUtils();
-  const { data: partners, isLoading } = trpc.partners.list.useQuery();
+  const { data: partners, isLoading, error, refetch } = trpc.partners.list.useQuery();
 
   const createMut = trpc.partners.create.useMutation({
     onSuccess: () => { utils.partners.list.invalidate(); setShowCreate(false); toast.success("Partner creado correctamente"); },
@@ -1391,22 +1393,24 @@ export default function PartnersManager() {
     <AdminLayout title="Partners / Colaboradores">
       <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
-        <div className="px-4 sm:px-6 pt-4 pb-4 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Partners / Colaboradores</h1>
-              <p className="text-xs text-foreground/50 mt-0.5">Gestión de hoteles, agencias y colaboradores externos</p>
-            </div>
-            <Button onClick={() => setShowCreate(true)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              <Plus className="w-4 h-4 mr-1.5" /> Nuevo partner
-            </Button>
-          </div>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6">
+          <PanelPageHeader
+            className="mb-0"
+            icon={<Building2 />}
+            title="Partners / Colaboradores"
+            description="Gestión de hoteles, agencias y colaboradores externos"
+            actions={
+              <Button onClick={() => setShowCreate(true)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Plus className="w-4 h-4 mr-1.5" /> Nuevo partner
+              </Button>
+            }
+          />
         </div>
 
-        <div className="flex h-[calc(100vh-9rem)]">
-          {/* Lista izquierda */}
-          <div className="w-80 border-r border-foreground/[0.08] flex flex-col">
+        <div className="flex h-[calc(100vh-11rem)] min-h-[28rem]">
+          {/* Lista izquierda: a pantalla completa en móvil mientras no haya partner abierto */}
+          <div className={`${selectedPartner || showCreate ? "hidden md:flex" : "flex"} w-full md:w-80 shrink-0 border-r border-foreground/[0.08] flex-col`}>
             <div className="p-3 border-b border-foreground/[0.08]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
@@ -1416,18 +1420,16 @@ export default function PartnersManager() {
             </div>
             <div className="flex-1 overflow-y-auto">
               {isLoading ? (
-                <div className="flex items-center justify-center h-32">
-                  <RefreshCw className="w-5 h-5 animate-spin text-foreground/30" />
-                </div>
+                <PanelLoading label="Cargando partners…" />
+              ) : error ? (
+                <div className="p-3"><PanelError error={error} onRetry={() => refetch()} /></div>
               ) : !filtered.length ? (
-                <div className="text-center py-12 text-foreground/30 text-sm">
-                  {search ? "Sin resultados" : "No hay partners todavía"}
-                </div>
+                <PanelEmpty className="m-3" icon={<Building2 />} title={search ? "Sin resultados" : "No hay partners todavía"} description={search ? undefined : "Crea el primero con el botón «Nuevo partner»."} />
               ) : (
                 filtered.map(p => (
                   <button key={p.id}
                     onClick={() => { setSelectedId(p.id); setEditingId(null); }}
-                    className={`w-full text-left px-4 py-3 border-b border-foreground/[0.06] hover:bg-foreground/[0.04] transition-colors ${selectedId === p.id ? "bg-primary/10 border-l-2 border-l-orange-500" : ""}`}>
+                    className={`w-full text-left px-4 py-3 border-b border-foreground/[0.06] hover:bg-foreground/[0.04] transition-colors ${selectedId === p.id ? "bg-primary/10 border-l-2 border-l-primary" : ""}`}>
                     <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full shrink-0 ${p.isActive ? "bg-success" : "bg-foreground/20"}`} />
                       <span className="text-sm font-medium text-foreground truncate">{p.name}</span>
@@ -1453,7 +1455,12 @@ export default function PartnersManager() {
           </div>
 
           {/* Panel derecho */}
-          <div className="flex-1 overflow-y-auto">
+          <div className={`${selectedPartner || showCreate ? "block" : "hidden md:block"} min-w-0 flex-1 overflow-y-auto`}>
+            <div className="px-4 pt-3 md:hidden">
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setSelectedId(null); setEditingId(null); setShowCreate(false); }}>
+                <ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" /> Volver a la lista
+              </Button>
+            </div>
             {/* Crear nuevo partner */}
             {showCreate && (
               <div className="p-6">
@@ -1606,11 +1613,7 @@ export default function PartnersManager() {
 
             {/* Estado vacío */}
             {!showCreate && !selectedPartner && (
-              <div className="flex flex-col items-center justify-center h-full text-foreground/30">
-                <Building2 className="w-12 h-12 mb-3 opacity-30" />
-                <p className="text-sm">Selecciona un partner para ver su detalle</p>
-                <p className="text-xs mt-1">o crea uno nuevo con el botón superior</p>
-              </div>
+              <PanelEmpty className="m-6" icon={<Building2 />} title="Selecciona un partner para ver su detalle" description="O crea uno nuevo con el botón superior." />
             )}
           </div>
         </div>

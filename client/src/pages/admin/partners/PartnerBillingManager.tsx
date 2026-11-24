@@ -2,6 +2,8 @@ import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelEmpty, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +18,7 @@ import {
 type BatchStatus = "borrador" | "emitida" | "cobrada" | "anulada";
 
 const STATUS_MAP: Record<BatchStatus, { label: string; cls: string }> = {
-  borrador:  { label: "Borrador",  cls: "bg-gray-100 text-gray-600" },
+  borrador:  { label: "Borrador",  cls: "bg-muted text-muted-foreground" },
   emitida:   { label: "Emitida",   cls: "bg-info text-info" },
   cobrada:   { label: "Cobrada",   cls: "bg-success text-success" },
   anulada:   { label: "Anulada",   cls: "bg-danger text-danger" },
@@ -47,9 +49,7 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
 
   if (isLoading || !batch) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
-      </div>
+      <PanelLoading label="Cargando liquidación…" />
     );
   }
 
@@ -329,16 +329,18 @@ export default function PartnerBillingManager() {
       <div className="min-h-screen bg-background text-foreground  print:bg-white print:text-black">
 
         {/* Header — oculto al imprimir */}
-        <div className="px-4 sm:px-6 pt-4 pb-4 border-b border-foreground/[0.08] print:hidden">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Facturación partners</h1>
-              <p className="text-xs text-foreground/50 mt-0.5">Liquidaciones agrupadas de reservas por colaborador</p>
-            </div>
-            <Button onClick={() => setShowNew(true)}>
-              <Plus className="w-4 h-4 mr-1.5" /> Nueva liquidación
-            </Button>
-          </div>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6 print:hidden">
+          <PanelPageHeader
+            className="mb-0"
+            icon={<Euro />}
+            title="Facturación partners"
+            description="Liquidaciones agrupadas de reservas por colaborador"
+            actions={
+              <Button onClick={() => setShowNew(true)}>
+                <Plus className="w-4 h-4 mr-1.5" /> Nueva liquidación
+              </Button>
+            }
+          />
         </div>
 
         <div className="flex h-[calc(100vh-9rem)] print:block print:h-auto">
@@ -371,14 +373,9 @@ export default function PartnerBillingManager() {
             {/* Listado */}
             <div className="flex-1 overflow-y-auto divide-y divide-foreground/[0.05]">
               {isLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-foreground/20" />
-                </div>
+                <PanelLoading label="Cargando liquidaciones…" />
               ) : filtered.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="w-8 h-8 text-foreground/20 mx-auto mb-3" />
-                  <p className="text-sm text-foreground/40">Sin liquidaciones</p>
-                </div>
+                <PanelEmpty className="m-3" icon={<FileText />} title="Sin liquidaciones" description="Crea la primera con «Nueva liquidación»." />
               ) : (
                 filtered.map(batch => {
                   const s = STATUS_MAP[batch.status as BatchStatus] ?? STATUS_MAP.borrador;
