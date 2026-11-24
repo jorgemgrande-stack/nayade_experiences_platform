@@ -50,6 +50,25 @@ export function TrialFirstSteps({ facts, can }: { facts: FirstStepFacts; can: { 
       </p>
     );
   }
+  // Casi terminado (solo falta un paso): una sola línea con el paso que falta, sin ocupar la pantalla de trabajo
+  const nextStep = steps.find((x) => !x.done);
+  if (nextStep && done >= steps.length - 1) {
+    return (
+      <section aria-label={t("onboardingShared.trial.title")} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5" data-trial-first-steps="slim">
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+          {t("onboardingShared.trial.intro", { done, total: steps.length })}
+        </span>
+        <span className="min-w-0 flex-1 text-sm text-muted-foreground">{copy[nextStep.id].title}</span>
+        <Link href={nextStep.href} className="inline-flex items-center gap-1 rounded text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {copy[nextStep.id].cta} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+        <button type="button" onClick={() => toggle(true)} aria-label={t("onboardingShared.trial.hide")} className="rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </section>
+    );
+  }
   return (
     <section aria-labelledby="trial-first-steps" className="rounded-2xl border border-primary/30 bg-primary/5 p-5" data-trial-first-steps="open">
       <div className="flex items-start justify-between gap-3">

@@ -60,7 +60,7 @@ const METRIC_ICON: Record<Tone, string> = {
  * Tarjeta de métrica: icono en recuadro de color, cifra grande, etiqueta y detalle. Con `href` o `onClick` es un
  * acceso (toda la tarjeta); a cero puede explicar qué hacer (`hint`) y ofrecer la acción (`action`).
  */
-export function MetricCard({ icon, tone = "brand", label, value, detail, hint, action, href, onClick, active, className }: {
+export function MetricCard({ icon, tone = "brand", label, value, detail, hint, action, href, onClick, active, className, compact }: {
   icon: ReactNode;
   tone?: Tone;
   label: string;
@@ -72,8 +72,24 @@ export function MetricCard({ icon, tone = "brand", label, value, detail, hint, a
   onClick?: () => void;
   active?: boolean;
   className?: string;
+  /** Versión densa para filas de indicadores (Inicio): icono pequeño, cifra y etiqueta en una línea, detalle recortado. */
+  compact?: boolean;
 }) {
-  const body = (
+  const body = compact ? (
+    <>
+      <div className="flex items-center gap-3">
+        <span className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg [&_svg]:h-4.5 [&_svg]:w-4.5", METRIC_ICON[tone])} aria-hidden="true">
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-xs font-medium leading-snug text-muted-foreground">{label}</p>
+          <div className="whitespace-nowrap text-lg font-semibold leading-tight tabular-nums text-foreground sm:text-xl">{value}</div>
+        </div>
+      </div>
+      {(detail || hint) && <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{detail ?? hint}</p>}
+      {action && <div className="mt-2">{action}</div>}
+    </>
+  ) : (
     <>
       <div className="flex items-start justify-between gap-3">
         <span className={cn("inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl [&_svg]:h-5 [&_svg]:w-5", METRIC_ICON[tone])} aria-hidden="true">
@@ -92,7 +108,8 @@ export function MetricCard({ icon, tone = "brand", label, value, detail, hint, a
     </>
   );
   const base = cn(
-    "block min-w-0 rounded-xl border bg-card p-4 text-left shadow-sm transition",
+    "block min-w-0 rounded-xl border bg-card text-left shadow-sm transition",
+    compact ? "p-3" : "p-4",
     active ? "border-primary ring-1 ring-primary/40" : "border-border",
     (href || onClick) && "hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     className,

@@ -10,7 +10,7 @@ import {
   Users, Plus, Search, RefreshCw, Phone, Mail, Building2, MapPin, Tag, AlertCircle, Download, Upload, User, Loader2, MoreHorizontal, Sparkles, X,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MetricCard, PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
 import ClientImportDialog, { downloadTextFile } from "@/components/admin/crm/ClientImportDialog";
 import AdminLayout from "@/components/AdminLayout";
 import { Link, useLocation } from "wouter";
@@ -185,7 +185,7 @@ export default function ClientsManager() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <div className="mx-auto w-full max-w-[1680px] px-4 py-5 sm:px-6">
         {/* Cabecera: la acción principal es una; importar y exportar pasan a «Más» */}
         <PanelPageHeader
           icon={<Users />}
@@ -217,14 +217,6 @@ export default function ClientsManager() {
           </>}
         />
 
-        {/* Resumen: cada tarjeta es también un filtro */}
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MetricCard icon={<Users />} tone="brand" label={t("crmClients.stats.total")} value={stats.data?.total ?? "—"} onClick={() => setTypeFilter("")} active={typeFilter === ""} />
-          <MetricCard icon={<Building2 />} tone="info" label={t("crmClients.stats.companies")} value={stats.data?.companies ?? "—"} onClick={() => setTypeFilter("empresa")} active={typeFilter === "empresa"} />
-          <MetricCard icon={<User />} tone="success" label={t("crmClients.stats.individuals")} value={stats.data?.individuals ?? "—"} onClick={() => setTypeFilter("particular")} active={typeFilter === "particular"} />
-          <MetricCard icon={<Sparkles />} tone="warning" label={t("crmClients.stats.newThisMonth")} value={stats.data?.newThisMonth ?? "—"} />
-        </div>
-
         {/* Barra de filtros */}
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">
@@ -252,6 +244,12 @@ export default function ClientsManager() {
               { value: "particular", label: t("crmClients.individuals"), count: stats.data?.individuals ?? null },
             ]}
           />
+          {stats.data && (
+            <p className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground" data-clients-new-this-month>
+              <Sparkles className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
+              <span className="tabular-nums font-medium text-foreground">{stats.data.newThisMonth}</span> {t("crmClients.stats.newThisMonth").toLowerCase()}
+            </p>
+          )}
           {canTags && (
             <div className="flex items-center gap-2 lg:w-56">
               <label htmlFor="clients-tag-filter" className="sr-only">{t("crmClients.filterTag")}</label>
