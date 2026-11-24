@@ -6,6 +6,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,20 +70,21 @@ export default function GestoriaAplazamientos() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-3xl mx-auto">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <CalendarClock className="w-6 h-6 text-primary" /> Aplazamientos y Fraccionamientos
-            </h1>
-            <p className="text-sm text-muted-foreground">Aplazamientos de obligaciones ante la AEAT</p>
-          </div>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        <PanelPageHeader
+          icon={<CalendarClock />}
+          title="Aplazamientos y Fraccionamientos"
+          description="Aplazamientos de obligaciones ante la AEAT"
+          actions={
+            <>
+            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            </>
+          }
+        />
 
         {/* Nuevo aplazamiento */}
         <div className="bg-card border border-border rounded-lg p-4 space-y-3">
@@ -168,7 +171,7 @@ export default function GestoriaAplazamientos() {
         <div className="bg-card border border-border rounded-lg p-4">
           <h2 className="text-sm font-semibold text-foreground mb-2">Aplazamientos del ejercicio</h2>
           {deferrals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin aplazamientos registrados.</p>
+            <PanelEmpty icon={<CalendarClock className="w-5 h-5" />} title="Sin aplazamientos registrados" className="border-0" />
           ) : (
             <div className="space-y-1.5">
               {deferrals.map((r) => (
