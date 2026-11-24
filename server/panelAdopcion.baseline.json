@@ -11,31 +11,6 @@
   "components/admin/crm/CustomerEmailDelivery.tsx": {
     "coloresFijos": 3
   },
-  "components/admin/studio/Guide.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 1,
-    "textoMinusculo": 3
-  },
-  "components/admin/studio/Inspector.tsx": {
-    "textoMinusculo": 3
-  },
-  "components/admin/studio/LeftPanel.tsx": {
-    "coloresFijos": 2,
-    "hexEnClases": 3,
-    "textoMinusculo": 10
-  },
-  "components/admin/studio/PageSettings.tsx": {
-    "coloresFijos": 2,
-    "hexEnClases": 1,
-    "textoMinusculo": 1
-  },
-  "components/admin/studio/QuickInsert.tsx": {
-    "textoMinusculo": 3
-  },
-  "components/admin/studio/VersionsPanel.tsx": {
-    "coloresFijos": 1,
-    "textoMinusculo": 1
-  },
   "pages/admin/AdminDashboard.tsx": {
     "coloresFijos": 214,
     "hexEnClases": 9,
@@ -237,60 +212,16 @@
   "pages/admin/marketing/SeoControl.tsx": {
     "coloresFijos": 3
   },
-  "pages/admin/netReports/ReportParts.tsx": {
-    "textoMinusculo": 1
-  },
   "pages/admin/operations/CalendarView.tsx": {
     "textoMinusculo": 20
   },
   "pages/admin/operations/DailyActivities.tsx": {
     "textoMinusculo": 24
   },
-  "pages/admin/restaurantNet/Carta.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/restaurantNet/Cocina.tsx": {
-    "textoMinusculo": 2,
-    "geometriaAjena": 1
-  },
-  "pages/admin/restaurantNet/CocinaAjustes.tsx": {
-    "geometriaAjena": 4
-  },
-  "pages/admin/restaurantNet/Comanda.tsx": {
-    "textoMinusculo": 5,
-    "geometriaAjena": 2
-  },
-  "pages/admin/restaurantNet/RestaurantNetParts.tsx": {
-    "textoMinusculo": 4
-  },
-  "pages/admin/restaurantNet/Sala.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/restaurantNet/SalasMesas.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/studio/StudioPage.tsx": {
-    "coloresFijos": 8,
-    "textoMinusculo": 3,
-    "geometriaAjena": 2
-  },
   "pages/admin/suppliers/SettlementsManager.tsx": {
     "coloresFijos": 32
   },
   "pages/admin/suppliers/SuppliersManager.tsx": {
     "coloresFijos": 25
-  },
-  "pages/admin/tpv/TpvCashMovement.tsx": {
-    "textoMinusculo": 3
-  },
-  "pages/admin/tpv/TpvCashMovementAccounting.tsx": {
-    "textoMinusculo": 6
-  },
-  "pages/admin/tpv/TpvCashPayment.tsx": {
-    "dialogosNativos": 1
-  },
-  "pages/admin/tpv/TpvScreen.tsx": {
-    "textoMinusculo": 1,
-    "geometriaAjena": 2
   }
 }

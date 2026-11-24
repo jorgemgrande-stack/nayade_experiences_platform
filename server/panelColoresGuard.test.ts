@@ -59,6 +59,22 @@ const MIGRATED = [
   "components/connect/SheetBlocks.tsx",
   "pages/admin/crm/ProposalsPage.tsx",
   "pages/admin/crm/CrmTags.tsx",
+  "pages/admin/restaurantNet/Carta.tsx",
+  "pages/admin/restaurantNet/Cocina.tsx",
+  "pages/admin/restaurantNet/CocinaAjustes.tsx",
+  "pages/admin/restaurantNet/Comanda.tsx",
+  "pages/admin/restaurantNet/RestaurantNetParts.tsx",
+  "pages/admin/restaurantNet/Sala.tsx",
+  "pages/admin/restaurantNet/SalasMesas.tsx",
+  "pages/admin/netReports/ReportParts.tsx",
+  "pages/admin/tpv/TpvCashMovementAccounting.tsx",
+  "pages/admin/studio/StudioPage.tsx",
+  "components/admin/studio/Guide.tsx",
+  "components/admin/studio/Inspector.tsx",
+  "components/admin/studio/LeftPanel.tsx",
+  "components/admin/studio/PageSettings.tsx",
+  "components/admin/studio/QuickInsert.tsx",
+  "components/admin/studio/VersionsPanel.tsx",
 ];
 
 /** Pendientes de migrar (pantallas del panel de Essential): líneas con colores fijos hoy. Solo pueden bajar. */
