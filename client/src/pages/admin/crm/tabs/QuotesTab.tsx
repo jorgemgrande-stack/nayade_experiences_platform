@@ -8,10 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Eye, Send, CheckCircle, XCircle, Clock, AlertTriangle, RefreshCw, Trash2, Copy, Banknote, Pencil, FileDown, Sparkles, Receipt, CreditCard, Upload, X, CalendarDays, MoreHorizontal } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Eye, Send, CheckCircle, XCircle, Clock, AlertTriangle, RefreshCw, Trash2, Copy, Banknote, Pencil, FileDown, Sparkles, Receipt, CreditCard, Upload, X, CalendarDays, Plus, FileText } from "lucide-react";
+import { StatusBadge } from "@/components/admin/PanelUi";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { useI18n } from "@/i18n/I18nProvider";
-import { DT_FULL, EUR2, toastQuoteMail, Tab, QuoteStatus, QuoteStatusBadge, CrmTableState, PAGE_SIZE } from "../shared/crmCommon";
+import { DT_FULL, EUR2, toastQuoteMail, Tab, QuoteStatus, QuoteStatusBadge, PAGE_SIZE } from "../shared/crmCommon";
+import { CrmBulkBar, CrmPager, CrmRowActions, CrmTable } from "../shared/ui/CrmUi";
 import { DirectQuoteModal } from "../modals/DirectQuoteModal";
 import { QuoteEditModal } from "../modals/QuoteEditModal";
 import { QuoteDetailModal } from "../modals/QuoteDetailModal";
@@ -222,218 +224,156 @@ export function QuotesTab({ ctrl, tab, setBulkConfirm, filterStatus, search, set
   const { t, format } = useI18n();
   const voc = useVocabulary();
   const { selectedQuotes, bulkQuotesStatus, bulkUpdateQuotesStatus, bulkDeleteQuotes, setSelectedQuotes, quotesData, quotesLoading, quotesError, refetchQuotesList, setShowDirectQuoteModal, setSelectedQuoteId, setEditQuoteId, setSendQuoteId, resendQuoteMutation, setConfirmPaymentId, setRowPendingPayQuoteId, setRowPendingPayDueDate, setRowPendingPayReason, generatePdfMutation, downloadQuotePdf, duplicateQuoteMutation, setMarkLostQuoteId, setDeleteQuoteId, quotesPage, setQuotesPage } = ctrl;
+  const filtered = filterStatus !== "all" || !!search.trim();
   return (
     <>
 {tab === "quotes" && (
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            {/* Barra acción masiva quotes */}
-            {selectedQuotes.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-info/10 border-b border-info/20">
-                <span className="text-xs text-info font-medium shrink-0">{t("crmQuotes.seleccionadoS", { size: selectedQuotes.size })}</span>
-                <select value={bulkQuotesStatus} onChange={e => { if (e.target.value) bulkUpdateQuotesStatus.mutate({ ids: Array.from(selectedQuotes), status: e.target.value as any }); }} disabled={bulkUpdateQuotesStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                  <option value="">{t("crmQuotes.cambiarEstado")}</option>
-                  <option value="borrador">{t("crmQuotes.borrador")}</option>
-                  <option value="enviado">{t("crmQuotes.enviado")}</option>
-                  <option value="aceptado">{t("crmQuotes.aceptado")}</option>
-                  <option value="rechazado">{t("crmQuotes.rechazado")}</option>
-                  <option value="perdido">{t("crmQuotes.perdido")}</option>
-                  <option value="expirado">{t("crmQuotes.expirado")}</option>
-                </select>
-                <button type="button" onClick={() => setBulkConfirm("quotes")} disabled={bulkDeleteQuotes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-danger/40 text-danger hover:bg-danger/10 transition-colors disabled:opacity-40">
-                  <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmQuotes.eliminar2")}</button>
-                <button onClick={() => setSelectedQuotes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
-              </div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                    <th className="w-10 px-3 py-3">
-                      <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!quotesData?.rows?.length && selectedQuotes.size === quotesData.rows.length} onChange={e => setSelectedQuotes(e.target.checked ? new Set(quotesData?.rows?.map((q: any) => q.id)) : new Set())} />
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.referencia")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.cliente")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmQuotes.titulo2")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.estado")}</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.total")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmQuotes.fecha")}</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmQuotes.acciones")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {quotesLoading || quotesError || !quotesData?.rows?.length ? (
-                    <CrmTableState
-                      colSpan={8}
-                      loading={quotesLoading}
-                      error={quotesError}
-                      onRetry={() => refetchQuotesList()}
-                      filtered={filterStatus !== "all" || !!search.trim()}
-                      onClearFilters={() => { setFilterStatus("all"); setSearch(""); }}
-                      emptyTitle={t("crmEmpty.empty.quotes")}
-                      emptyHint={t("crmEmpty.empty.quotesHint")}
-                      actionLabel={t("crmEmpty.empty.quotesAction")}
-                      onAction={() => setShowDirectQuoteModal(true)}
-                    />
-                  ) : quotesData.rows.map((quote: any) => (
-                    <tr key={quote.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group ${selectedQuotes.has(quote.id) ? "bg-info/5" : ""}`}>
-                      <td className="w-10 px-3 py-3">
-                        <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedQuotes.has(quote.id)} onChange={e => setSelectedQuotes(prev => { const s = new Set(prev); e.target.checked ? s.add(quote.id) : s.delete(quote.id); return s; })} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="whitespace-nowrap text-sm font-mono font-semibold text-primary">{quote.quoteNumber}</div>
-                        <div className="text-[10px] text-foreground/40 mt-0.5">{format.date(quote.createdAt, {})}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {(quote as typeof quote & { clientId?: number }).clientId ? (
-                          <a
-                            href={`/admin/crm/clientes?clientId=${(quote as typeof quote & { clientId?: number }).clientId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-sm font-medium text-foreground/90 hover:text-info hover:underline transition-colors block"
-                          >{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</a>
-                        ) : (
-                          <div className="text-sm font-medium text-foreground/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
-                        )}
-                        <div className="text-[10px] text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap max-w-[140px]">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap max-w-[180px]">{quote.title}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
+            <div className="space-y-3">
+            {quotesError ? (
+              <PanelError error={quotesError} onRetry={() => refetchQuotesList()} />
+            ) : quotesLoading ? (
+              <div className="rounded-xl border border-border bg-card"><PanelLoading /></div>
+            ) : !quotesData?.rows?.length ? (
+              <PanelEmpty
+                icon={<FileText className="h-5 w-5" />}
+                title={filtered ? t("crmShared.ningunResultadoConEstos") : t("crmEmpty.empty.quotes")}
+                description={filtered ? undefined : t("crmEmpty.empty.quotesHint")}
+              >
+                {filtered ? (
+                  <Button variant="outline" onClick={() => { setFilterStatus("all"); setSearch(""); }}>{t("crmShared.quitarFiltros")}</Button>
+                ) : (
+                  <Button onClick={() => setShowDirectQuoteModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("crmEmpty.empty.quotesAction")}</Button>
+                )}
+              </PanelEmpty>
+            ) : (
+              <>
+                <CrmBulkBar count={selectedQuotes.size} label={t("crmQuotes.seleccionadoS", { size: selectedQuotes.size })} onClear={() => setSelectedQuotes(new Set())}>
+                  <select aria-label={t("crmQuotes.cambiarEstado")} value={bulkQuotesStatus} onChange={e => { if (e.target.value) bulkUpdateQuotesStatus.mutate({ ids: Array.from(selectedQuotes), status: e.target.value as any }); }} disabled={bulkUpdateQuotesStatus.isPending} className="h-8 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-40">
+                    <option value="">{t("crmQuotes.cambiarEstado")}</option>
+                    <option value="borrador">{t("crmQuotes.borrador")}</option>
+                    <option value="enviado">{t("crmQuotes.enviado")}</option>
+                    <option value="aceptado">{t("crmQuotes.aceptado")}</option>
+                    <option value="rechazado">{t("crmQuotes.rechazado")}</option>
+                    <option value="perdido">{t("crmQuotes.perdido")}</option>
+                    <option value="expirado">{t("crmQuotes.expirado")}</option>
+                  </select>
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 border-danger/40 text-danger hover:bg-danger/10 hover:text-danger" onClick={() => setBulkConfirm("quotes")} disabled={bulkDeleteQuotes.isPending}>
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />{t("crmQuotes.eliminar2")}
+                  </Button>
+                </CrmBulkBar>
+                <CrmTable
+                  rows={quotesData.rows as any[]}
+                  caption={voc.quotes}
+                  rowKey={(q) => q.id}
+                  rowId={(q) => q.id}
+                  rowClassName={(q) => selectedQuotes.has(q.id) ? "bg-primary/5" : undefined}
+                  selection={{
+                    selected: selectedQuotes,
+                    onToggle: (id, checked) => setSelectedQuotes(prev => { const s = new Set(prev); if (checked) s.add(id); else s.delete(id); return s; }),
+                    onToggleAll: (checked) => setSelectedQuotes(checked ? new Set(quotesData.rows.map((q: any) => q.id)) : new Set()),
+                  }}
+                  columns={[
+                    {
+                      key: "ref", header: t("crmQuotes.referencia"), mobile: "title",
+                      cell: (quote: any) => <span className="whitespace-nowrap font-mono text-sm font-semibold text-primary">{quote.quoteNumber}</span>,
+                    },
+                    {
+                      key: "cliente", header: t("crmQuotes.cliente"),
+                      cell: (quote: any) => (
+                        <div className="min-w-0">
+                          {(quote as typeof quote & { clientId?: number }).clientId ? (
+                            <a href={`/admin/crm/clientes?clientId=${(quote as typeof quote & { clientId?: number }).clientId}`} className="font-medium text-foreground hover:text-info hover:underline">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</a>
+                          ) : (
+                            <div className="font-medium text-foreground">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
+                          )}
+                          <div className="break-all text-xs text-muted-foreground">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
+                        </div>
+                      ),
+                    },
+                    { key: "titulo", header: t("crmQuotes.titulo2"), priority: "lg", cell: (quote: any) => <span className="line-clamp-2 text-foreground">{quote.title}</span> },
+                    {
+                      key: "estado", header: t("crmQuotes.estado"),
+                      cell: (quote: any) => (
+                        <div className="flex flex-wrap items-center gap-1">
                           <QuoteStatusBadge status={quote.status as QuoteStatus} />
-                          {quote.status === "aceptado" && !quote.paidAt && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-full">
-                              <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />{t("crmQuotes.pendienteCobro")}</span>
-                          )}
-                          {quote.paidAt && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-full">
-                              <CheckCircle className="w-2.5 h-2.5" />{t("crmQuotes.cobrado2")}</span>
-                          )}
+                          {quote.status === "aceptado" && !quote.paidAt && <StatusBadge tone="warning" icon={<Clock />}>{t("crmQuotes.pendienteCobro")}</StatusBadge>}
+                          {quote.paidAt && <StatusBadge tone="success" icon={<CheckCircle />}>{t("crmQuotes.cobrado2")}</StatusBadge>}
                           {quote.isAutoGenerated && (
-                            <span
-                              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full"
-                              title={voc.licensed ? t("crmQuotes.generadoAutomaticamenteDesdeLo") : t("crmQuotes.generadoAutomaticamenteDesdeLa")}
-                            >
-                              <Sparkles className="w-2.5 h-2.5" />{t("crmQuotes.autoIa")}</span>
-                          )}
-                          {quote.viewedAt && !quote.paidAt && (
-                            <span
-                              className="inline-flex items-center gap-1 text-[10px] font-medium text-info bg-info/10 border border-info/20 px-1.5 py-0.5 rounded-full"
-                              title={t("crmQuotes.vistoPorElClienteEl", { date: format.dateTime(quote.viewedAt, DT_FULL) })}
-                            >
-                              <Eye className="w-2.5 h-2.5" />{t("crmQuotes.visto2")}{" "}{format.date(quote.viewedAt, {})}
+                            <span title={voc.licensed ? t("crmQuotes.generadoAutomaticamenteDesdeLo") : t("crmQuotes.generadoAutomaticamenteDesdeLa")}>
+                              <StatusBadge tone="brand" icon={<Sparkles />}>{t("crmQuotes.autoIa")}</StatusBadge>
                             </span>
                           )}
-                          {quote.sentAt && !quote.viewedAt && !quote.paidAt &&
-                            quote.status !== "pago_fallido" && quote.status !== "convertido_carrito" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-foreground/40 bg-foreground/[0.05] border border-foreground/[0.12] px-1.5 py-0.5 rounded-full">
-                              <Eye className="w-2.5 h-2.5" />{t("crmQuotes.noVisto")}</span>
+                          {quote.viewedAt && !quote.paidAt && (
+                            <span title={t("crmQuotes.vistoPorElClienteEl", { date: format.dateTime(quote.viewedAt, DT_FULL) })}>
+                              <StatusBadge tone="info" icon={<Eye />}>{t("crmQuotes.visto2")}{" "}{format.date(quote.viewedAt, {})}</StatusBadge>
+                            </span>
+                          )}
+                          {quote.sentAt && !quote.viewedAt && !quote.paidAt && quote.status !== "pago_fallido" && quote.status !== "convertido_carrito" && (
+                            <StatusBadge tone="neutral" icon={<Eye />}>{t("crmQuotes.noVisto")}</StatusBadge>
                           )}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-bold text-foreground">{format.currency(Number(quote.total), "EUR", EUR2)}</span>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-foreground/50">
-                          {quote.sentAt ? (
-                            <span className="text-info">{t("crmQuotes.env")}{" "}{format.date(quote.sentAt, {})}</span>
-                          ) : (
-                            format.date(quote.createdAt, {})
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-0.5">
-                          {/* Ver */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title={t("crmQuotes.verDetalle")}>
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                          {/* Editar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-info h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title={t("crmQuotes.editar")}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          {/* Enviar al cliente (solo borrador) */}
-                          {(quote.status === "borrador") && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-warning h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title={t("crmQuotes.enviarAlCliente")}>
-                              <Send className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Reenviar (usa resend para no resetear el status) */}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-info h-7 w-7 p-0"
-                              onClick={() => resendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title={t("crmQuotes.reenviarAlCliente")}>
-                              <RefreshCw className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                          {/* Confirmar pago — solo sin plan fraccionado; con plan, hacerlo cuota a cuota desde el detalle */}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && !quote.paymentPlanId && (
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-success h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title={t("crmQuotes.confirmarPagoRecibido")}>
-                              <CheckCircle className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                                                    <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" aria-label={`${t("crmQuotes.acciones")}: ${quote.quoteNumber}`}>
-                                <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
-                                <DropdownMenuItem onSelect={() => setSelectedQuoteId(quote.id)}>
-                                  <CalendarDays className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.planFraccionadoConfirmaCuotas")}
-                                </DropdownMenuItem>
-                              )}
-                              {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-                                <DropdownMenuItem onSelect={() => { setRowPendingPayQuoteId(quote.id); setRowPendingPayDueDate(""); setRowPendingPayReason(""); }}>
-                                  <Clock className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.convertirAPendienteDe", { order: voc.order })}
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem disabled={generatePdfMutation.isPending} onSelect={() => downloadQuotePdf(quote.id, quote.quoteNumber)}>
-                                <FileDown className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.descargarPresupuestoEnPdf")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => duplicateQuoteMutation.mutate({ id: quote.id })}>
-                                <Copy className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.duplicarPresupuesto")}
-                              </DropdownMenuItem>
-                              {(quote.status === "borrador" || (quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido")) && (
-                                <DropdownMenuItem onSelect={() => setMarkLostQuoteId(quote.id)}>
-                                  <XCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.marcarComoPerdido")}
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteQuoteId(quote.id)}>
-                                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmQuotes.eliminar2")}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {quotesData && quotesData.total > 0 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
-                <span className="text-sm text-foreground/50">
-                  {quotesData.total <= PAGE_SIZE
-                    ? t("crmQuotes.mostrandoDePresupuestos", { total: quotesData.total, total2: quotesData.total })
-                    : t("crmQuotes.paginaDePresupuestos", { v: quotesPage + 1, ceil: Math.ceil(quotesData.total / PAGE_SIZE), total: quotesData.total })}
-                </span>
-                {quotesData.total > PAGE_SIZE && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setQuotesPage(p => p - 1)}
-                    disabled={quotesPage === 0}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >{t("crmQuotes.anterior")}</button>
-                  <button
-                    onClick={() => setQuotesPage(p => p + 1)}
-                    disabled={(quotesPage + 1) * PAGE_SIZE >= quotesData.total}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >{t("crmQuotes.siguiente")}</button>
-                </div>
-                )}
-              </div>
+                      ),
+                    },
+                    {
+                      key: "total", header: t("crmQuotes.total"), align: "right", num: true, mobile: "amount",
+                      cell: (quote: any) => <span className="font-semibold text-foreground">{format.currency(Number(quote.total), "EUR", EUR2)}</span>,
+                    },
+                    {
+                      key: "fecha", header: t("crmQuotes.fecha"), priority: "md", num: true,
+                      cell: (quote: any) => quote.sentAt
+                        ? <span className="text-info">{t("crmQuotes.env")}{" "}{format.date(quote.sentAt, {})}</span>
+                        : <span className="text-muted-foreground">{format.date(quote.createdAt, {})}</span>,
+                    },
+                  ]}
+                  actions={(quote: any) => {
+                    const sentLike = quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido";
+                    const canConfirmPay = (sentLike || (quote.status === "aceptado" && !quote.paidAt)) && !quote.paymentPlanId;
+                    const view = { label: t("crmQuotes.verDetalle"), icon: <Eye />, onSelect: () => setSelectedQuoteId(quote.id) };
+                    const send = { label: t("crmQuotes.enviarAlCliente"), icon: <Send />, onSelect: () => setSendQuoteId(quote.id) };
+                    const resend = { label: t("crmQuotes.reenviarAlCliente"), icon: <RefreshCw />, onSelect: () => resendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin }) };
+                    const confirmPay = { label: t("crmQuotes.confirmarPagoRecibido"), icon: <CheckCircle />, onSelect: () => setConfirmPaymentId(quote.id) };
+                    const primary = quote.status === "borrador"
+                      ? { label: t("crmOpps.accionPrincipalEnviar"), icon: <Send className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: send.onSelect }
+                      : canConfirmPay && quote.status === "aceptado"
+                        ? { label: t("crmOpps.accionPrincipalCobrar"), icon: <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: confirmPay.onSelect }
+                        : { label: t("crmOpps.accionPrincipalVer"), icon: <Eye className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: view.onSelect };
+                    const primaryIsView = primary.label === t("crmOpps.accionPrincipalVer");
+                    return (
+                      <CrmRowActions
+                        name={quote.quoteNumber}
+                        primary={primary}
+                        menu={[
+                          ...(primaryIsView ? [] : [view]),
+                          { label: t("crmQuotes.editar"), icon: <Pencil />, onSelect: () => setEditQuoteId(quote.id) },
+                          ...(quote.status === "borrador" && primary.label !== t("crmOpps.accionPrincipalEnviar") ? [send] : []),
+                          ...(sentLike ? [resend] : []),
+                          ...(canConfirmPay && primary.label !== t("crmOpps.accionPrincipalCobrar") ? [confirmPay] : []),
+                          ...(sentLike && !!quote.paymentPlanId ? [{ label: t("crmQuotes.planFraccionadoConfirmaCuotas"), icon: <CalendarDays />, onSelect: () => setSelectedQuoteId(quote.id) }] : []),
+                          ...(sentLike ? [{ label: t("crmQuotes.convertirAPendienteDe", { order: voc.order }), icon: <Clock />, onSelect: () => { setRowPendingPayQuoteId(quote.id); setRowPendingPayDueDate(""); setRowPendingPayReason(""); } }] : []),
+                          { label: t("crmQuotes.descargarPresupuestoEnPdf"), icon: <FileDown />, disabled: generatePdfMutation.isPending, onSelect: () => downloadQuotePdf(quote.id, quote.quoteNumber) },
+                          { label: t("crmQuotes.duplicarPresupuesto"), icon: <Copy />, onSelect: () => duplicateQuoteMutation.mutate({ id: quote.id }) },
+                          ...(quote.status === "borrador" || sentLike ? [{ label: t("crmQuotes.marcarComoPerdido"), icon: <XCircle />, onSelect: () => setMarkLostQuoteId(quote.id) }] : []),
+                          { label: t("crmQuotes.eliminar2"), icon: <Trash2 />, destructive: true, onSelect: () => setDeleteQuoteId(quote.id) },
+                        ]}
+                      />
+                    );
+                  }}
+                  footer={
+                    <CrmPager
+                      text={quotesData.total <= PAGE_SIZE
+                        ? t("crmQuotes.mostrandoDePresupuestos", { total: quotesData.total, total2: quotesData.total })
+                        : t("crmQuotes.paginaDePresupuestos", { v: quotesPage + 1, ceil: Math.ceil(quotesData.total / PAGE_SIZE), total: quotesData.total })}
+                      paged={quotesData.total > PAGE_SIZE}
+                      hasPrev={quotesPage > 0}
+                      hasNext={(quotesPage + 1) * PAGE_SIZE < quotesData.total}
+                      onPrev={() => setQuotesPage(p => p - 1)}
+                      onNext={() => setQuotesPage(p => p + 1)}
+                      prevLabel={t("crmQuotes.anterior")}
+                      nextLabel={t("crmQuotes.siguiente")}
+                    />
+                  }
+                />
+              </>
             )}
             </div>
           )}
@@ -469,19 +409,19 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
       </Dialog>
 {/* Delete Quote confirmation */}
 <Dialog open={deleteQuoteId !== null} onOpenChange={(o) => !o && setDeleteQuoteId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <AlertTriangle className="w-5 h-5 text-danger" />{" "}{t("crmInvoices.eliminarPresupuesto")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.estaAccionEsIrreversible2")}</p>
+          <p className="py-2 text-sm text-muted-foreground">{t("crmInvoices.estaAccionEsIrreversible2")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteQuoteId(null)}>{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => deleteQuoteId !== null && deleteQuote.mutate({ id: deleteQuoteId })}
               disabled={deleteQuote.isPending}
-              className="bg-destructive hover:bg-destructive/90 text-white"
+              variant="destructive"
             >
               {deleteQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}{t("crmInvoices.eliminar")}</Button>
           </DialogFooter>
@@ -489,19 +429,19 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
       </Dialog>
 {/* Send Quote confirmation */}
 <Dialog open={sendQuoteId !== null} onOpenChange={(o) => !o && setSendQuoteId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Send className="w-5 h-5 text-warning" />{" "}{t("crmInvoices.enviarPresupuestoAlCliente")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seEnviaraElPresupuesto")}</p>
+          <p className="py-2 text-sm text-muted-foreground">{t("crmInvoices.seEnviaraElPresupuesto")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
+            <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)}>{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => sendQuoteId !== null && sendQuoteMutation.mutate({ id: sendQuoteId, origin: window.location.origin })}
               disabled={sendQuoteMutation.isPending}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              
             >
               {sendQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}{t("crmInvoices.enviar")}</Button>
           </DialogFooter>
@@ -792,19 +732,19 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
       </Dialog>
 {/* Mark Lost */}
 <Dialog open={markLostQuoteId !== null} onOpenChange={(o) => !o && setMarkLostQuoteId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <XCircle className="w-5 h-5 text-danger" />{" "}{t("crmInvoices.marcarPresupuestoComoPerdido")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seMarcaraElPresupuesto")}</p>
+          <p className="py-2 text-sm text-muted-foreground">{t("crmInvoices.seMarcaraElPresupuesto")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setMarkLostQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
+            <Button variant="outline" size="sm" onClick={() => setMarkLostQuoteId(null)}>{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => markLostQuoteId !== null && markLostQuoteMutation.mutate({ id: markLostQuoteId })}
               disabled={markLostQuoteMutation.isPending}
-              className="bg-destructive hover:bg-destructive/90 text-white"
+              variant="destructive"
             >
               {markLostQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}{t("crmInvoices.marcarPerdido")}</Button>
           </DialogFooter>

@@ -14,6 +14,7 @@ import { CatalogConceptSelector } from "@/components/CatalogConceptSelector";
 import { Users, Plus, Trash2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { FieldError, invalidProps } from "../shared/crmCommon";
+import { CrmFormSection } from "../shared/ui/CrmUi";
 
 // ─── DIRECT QUOTE MODAL (sin lead previo) ───────────────────────────────────
 
@@ -104,37 +105,42 @@ export function NewLeadModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
+        <DialogTitle className="text-foreground flex items-center gap-2">
           <Users className="w-4 h-4 text-primary" /> {voc.newLead}
         </DialogTitle>
       </DialogHeader>
+      <p className="-mt-1 text-xs text-muted-foreground">{t("crmOpps.camposObligatorios")}</p>
       <div className="space-y-4">
         {/* Datos del cliente */}
-        <div className="grid grid-cols-2 gap-3">
+        <CrmFormSection title={t("crmOpps.seccionContacto")}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="new-lead-name" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.nombre")}{" "}<span className="text-danger">*</span></Label>
-            <Input id="new-lead-name" required value={name} onChange={e => setName(e.target.value)} placeholder={t("crmLeads.anaGarcia")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.name, "new-lead-name-error")} />
+            <Input id="new-lead-name" required value={name} onChange={e => setName(e.target.value)} placeholder={t("crmLeads.anaGarcia")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" {...invalidProps(errors.name, "new-lead-name-error")} />
             <FieldError id="new-lead-name-error" msg={errors.name} />
           </div>
           <div>
             <Label htmlFor="new-lead-email" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.email")}{" "}<span className="text-danger">*</span></Label>
-            <Input id="new-lead-email" required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.email, "new-lead-email-error")} />
+            <Input id="new-lead-email" required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" {...invalidProps(errors.email, "new-lead-email-error")} />
             <FieldError id="new-lead-email-error" msg={errors.email} />
           </div>
           <div>
             <Label htmlFor="new-lead-phone" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.telefono")}</Label>
-            <Input id="new-lead-phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.phone, "new-lead-phone-error")} />
+            <Input id="new-lead-phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" {...invalidProps(errors.phone, "new-lead-phone-error")} />
             <FieldError id="new-lead-phone-error" msg={errors.phone} />
           </div>
           <div>
             <Label htmlFor="new-lead-company" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.empresaGrupo")}</Label>
-            <Input id="new-lead-company" value={company} onChange={e => setCompany(e.target.value)} placeholder={t("crmLeads.empresaSL")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+            <Input id="new-lead-company" value={company} onChange={e => setCompany(e.target.value)} placeholder={t("crmLeads.empresaSL")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" />
           </div>
         </div>
 
+        </CrmFormSection>
+
         {/* Líneas de actividad */}
+        <CrmFormSection title={t("crmOpps.seccionIntereses")}>
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label className="text-xs text-foreground/60">{voc.interests}</Label>
@@ -156,7 +162,7 @@ export function NewLeadModal({ onClose }: { onClose: () => void }) {
                       experienceTitle: p.title,
                       family: p.productType === "experience" ? "experience" : "pack",
                     })}
-                    inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
+                    inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground text-sm h-8"
                     placeholder={voc.productSearch}
                     showBadge={false}
                     sourceType={line.family === "experience" ? "experience" : line.family === "pack" ? "legoPack" : undefined}
@@ -166,7 +172,7 @@ export function NewLeadModal({ onClose }: { onClose: () => void }) {
                     <Input
                       type="number" min={1} value={line.participants}
                       onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
-                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white w-14 h-8 text-xs text-center"
+                      className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground w-14 h-8 text-xs text-center"
                     />
                     {activityLines.length > 1 && (
                       <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-danger transition-colors ml-1">
@@ -186,41 +192,48 @@ export function NewLeadModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        </CrmFormSection>
+
         {/* Fecha y participantes globales */}
+        <CrmFormSection title={t("crmOpps.seccionFechaPersonas")}>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="col-span-3 sm:col-span-1">
+          <div className="sm:col-span-1">
             <Label htmlFor="new-lead-date" className="text-xs text-foreground/60 mb-1 block">{voc.serviceDate}</Label>
-            <Input id="new-lead-date" type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+            <Input id="new-lead-date" type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <Label htmlFor="new-lead-adults" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.adultos")}</Label>
-            <Input id="new-lead-adults" type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+            <Input id="new-lead-adults" type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
           <div>
             <Label htmlFor="new-lead-children" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.ninos")}</Label>
-            <Input id="new-lead-children" type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+            <Input id="new-lead-children" type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
           </div>
         </div>
 
+        </CrmFormSection>
+
         {/* Canal y notas */}
+        <CrmFormSection title={t("crmOpps.seccionOrigenNotas")}>
         <div>
           <Label htmlFor="new-lead-source" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.canalDeOrigen")}</Label>
           <Select value={source} onValueChange={setSource}>
-            <SelectTrigger id="new-lead-source" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
-            <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-              <SelectItem value="admin" className="text-white text-xs">{voc.licensed ? t("crmLeads.altaManual") : t("crmLeads.adminManual")}</SelectItem>
-              <SelectItem value="telefono" className="text-white text-xs">{t("crmLeads.telefono2")}</SelectItem>
-              <SelectItem value="email" className="text-white text-xs">{t("crmLeads.email2")}</SelectItem>
-              <SelectItem value="whatsapp" className="text-white text-xs">{t("crmLeads.whatsapp")}</SelectItem>
-              <SelectItem value="presencial" className="text-white text-xs">{t("crmLeads.presencial")}</SelectItem>
-              <SelectItem value="otro" className="text-white text-xs">{t("crmLeads.otro")}</SelectItem>
+            <SelectTrigger id="new-lead-source" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground"><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-background border-foreground/[0.12]">
+              <SelectItem value="admin" className="text-foreground text-xs">{voc.licensed ? t("crmLeads.altaManual") : t("crmLeads.adminManual")}</SelectItem>
+              <SelectItem value="telefono" className="text-foreground text-xs">{t("crmLeads.telefono2")}</SelectItem>
+              <SelectItem value="email" className="text-foreground text-xs">{t("crmLeads.email2")}</SelectItem>
+              <SelectItem value="whatsapp" className="text-foreground text-xs">{t("crmLeads.whatsapp")}</SelectItem>
+              <SelectItem value="presencial" className="text-foreground text-xs">{t("crmLeads.presencial")}</SelectItem>
+              <SelectItem value="otro" className="text-foreground text-xs">{t("crmLeads.otro")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div>
           <Label htmlFor="new-lead-message" className="text-xs text-foreground/60 mb-1 block">{t("crmLeads.mensajeNotas")}</Label>
-          <Textarea id="new-lead-message" value={messageText} onChange={e => setMessageText(e.target.value)} placeholder={t("crmLeads.informacionAdicionalDelCliente")} rows={3} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
+          <Textarea id="new-lead-message" value={messageText} onChange={e => setMessageText(e.target.value)} placeholder={t("crmLeads.informacionAdicionalDelCliente")} rows={3} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground resize-none" />
         </div>
+        </CrmFormSection>
       </div>
       <DialogFooter className="gap-2">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmLeads.cancelar")}</Button>

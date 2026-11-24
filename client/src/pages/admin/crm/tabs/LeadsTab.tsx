@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ProposalLeadButton } from "../ProposalsManager";
-import { FileText, Eye, Phone, AlertTriangle, RefreshCw, Trash2, Pencil, X, MoreHorizontal } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { FileText, Eye, Phone, AlertTriangle, RefreshCw, Trash2, Pencil, Plus, Users } from "lucide-react";
 import { PersonAvatar } from "@/components/admin/PanelVisual";
+import { StatusBadge } from "@/components/admin/PanelUi";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { useI18n } from "@/i18n/I18nProvider";
-import { Tab, OpportunityStatus, Priority, OpportunityBadge, PriorityDot, CrmTableState, PAGE_SIZE } from "../shared/crmCommon";
+import { Tab, OpportunityStatus, Priority, OpportunityBadge, PriorityDot, PAGE_SIZE } from "../shared/crmCommon";
+import { CrmBulkBar, CrmPager, CrmRowActions, CrmTable } from "../shared/ui/CrmUi";
 import { LeadDetailModal } from "../modals/LeadDetailModal";
 import { LeadEditModal } from "../modals/LeadEditModal";
 import { NewLeadModal } from "../modals/NewLeadModal";
@@ -83,206 +85,153 @@ export function LeadsTab({ ctrl, tab, setBulkConfirm, filterStatus, search, setF
   const { t, format } = useI18n();
   const voc = useVocabulary();
   const panelSub = usePanelSubscription();
-  const { selectedLeads, bulkMarkSeenLeads, bulkLeadsStatus, bulkUpdateLeadsStatus, bulkDeleteLeads, setSelectedLeads, leadsData, leadsLoading, leadsError, refetchLeadsList, setShowNewLeadModal, setSelectedLeadId, setEditLeadId, markLeadContacted, setConvertLeadId, setConvertLeadName, setDeleteLeadId, leadsPage, setLeadsPage } = ctrl;
+  const { selectedLeads, bulkMarkSeenLeads, bulkLeadsStatus, bulkUpdateLeadsStatus, bulkDeleteLeads, setSelectedLeads, leadsData, leadsLoading, leadsError, refetchLeadsList, setShowNewLeadModal, setSelectedLeadId, setEditLeadId, markLeadContacted, setConvertLeadId, setConvertLeadName, setDeleteLeadId, leadsPage, setLeadsPage, leadSourceFilter, setLeadSourceFilter } = ctrl;
+  const filtered = filterStatus !== "all" || !!search.trim() || leadSourceFilter !== "all";
   return (
     <>
 {tab === "leads" && (
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            {/* Barra acción masiva leads */}
-            {selectedLeads.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-info/10 border-b border-info/20">
-                <span className="text-xs text-info font-medium shrink-0">{t("crmLeads.seleccionadoS", { size: selectedLeads.size })}</span>
-                <button onClick={() => bulkMarkSeenLeads.mutate({ ids: Array.from(selectedLeads) })} disabled={bulkMarkSeenLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-foreground/20 hover:bg-foreground/10 transition-colors disabled:opacity-40">
-                  <Eye className="w-3.5 h-3.5" />{" "}{t("crmLeads.marcarLeidos")}</button>
-                <select value={bulkLeadsStatus} onChange={e => { if (e.target.value) bulkUpdateLeadsStatus.mutate({ ids: Array.from(selectedLeads), status: e.target.value as any }); }} disabled={bulkUpdateLeadsStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                  <option value="">{t("crmLeads.cambiarEstado2")}</option>
-                  <option value="nueva">{t("crmLeads.nueva")}</option>
-                  <option value="enviada">{t("crmLeads.enviada")}</option>
-                  <option value="ganada">{t("crmLeads.ganada")}</option>
-                  <option value="perdida">{t("crmLeads.perdida")}</option>
-                </select>
-                <button type="button" onClick={() => setBulkConfirm("leads")} disabled={bulkDeleteLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-danger/40 text-danger hover:bg-danger/10 transition-colors disabled:opacity-40">
-                  <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmLeads.eliminar")}</button>
-                <button onClick={() => setSelectedLeads(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
-              </div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                    <th className="w-10 px-3 py-3">
-                      <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!leadsData?.rows?.length && selectedLeads.size === leadsData.rows.length} onChange={e => setSelectedLeads(e.target.checked ? new Set(leadsData?.rows?.map((l: any) => l.id)) : new Set())} />
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmLeads.recibido")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium min-w-[260px]">{t("crmLeads.cliente")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmLeads.producto")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">{voc.serviceDateColumn}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">{t("crmLeads.origen")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmLeads.estado")}</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmLeads.acciones")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leadsLoading || leadsError || !leadsData?.rows?.length ? (
-                    <CrmTableState
-                      colSpan={8}
-                      loading={leadsLoading}
-                      error={leadsError}
-                      onRetry={() => refetchLeadsList()}
-                      filtered={filterStatus !== "all" || !!search.trim()}
-                      onClearFilters={() => { setFilterStatus("all"); setSearch(""); }}
-                      emptyTitle={panelSub.isLicensed ? t("crmEmpty.empty.leadsLicensed", { leadsLower: voc.leadsLower }) : t("crmEmpty.empty.leadsLegacy", { leadsLower: voc.leadsLower })}
-                      emptyHint={t("crmEmpty.empty.leadsHint")}
-                      actionLabel={panelSub.isLicensed ? t("crmEmpty.empty.leadsActionLicensed") : t("crmEmpty.empty.leadsActionLegacy")}
-                      onAction={() => setShowNewLeadModal(true)}
-                    />
-                  ) : leadsData.rows.map((lead: any) => (
-                    <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedLeads.has(lead.id) ? "bg-info/5" : !lead.seenAt ? "bg-info/20" : ""}`}>
-                      <td className="w-10 px-3 py-3">
-                        <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedLeads.has(lead.id)} onChange={e => setSelectedLeads(prev => { const s = new Set(prev); e.target.checked ? s.add(lead.id) : s.delete(lead.id); return s; })} />
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-foreground/70 font-medium">{format.date(lead.createdAt, {})}</div>
-                        <div className="text-[11px] text-foreground/40">{format.time(lead.createdAt, { hour: "2-digit", minute: "2-digit" })}</div>
-                      </td>
-                      <td className="px-4 py-3">
+            <div className="space-y-3">
+            {leadsError ? (
+              <PanelError error={leadsError} onRetry={() => refetchLeadsList()} />
+            ) : leadsLoading ? (
+              <div className="rounded-xl border border-border bg-card"><PanelLoading /></div>
+            ) : !leadsData?.rows?.length ? (
+              <PanelEmpty
+                icon={<Users className="h-5 w-5" />}
+                title={filtered ? t("crmShared.ningunResultadoConEstos") : panelSub.isLicensed ? t("crmEmpty.empty.leadsLicensed", { leadsLower: voc.leadsLower }) : t("crmEmpty.empty.leadsLegacy", { leadsLower: voc.leadsLower })}
+                description={filtered ? undefined : t("crmEmpty.empty.leadsHint")}
+              >
+                {filtered ? (
+                  <Button variant="outline" onClick={() => { setFilterStatus("all"); setSearch(""); setLeadSourceFilter("all"); }}>{t("crmShared.quitarFiltros")}</Button>
+                ) : (
+                  <Button onClick={() => setShowNewLeadModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{panelSub.isLicensed ? t("crmEmpty.empty.leadsActionLicensed") : t("crmEmpty.empty.leadsActionLegacy")}</Button>
+                )}
+              </PanelEmpty>
+            ) : (
+              <>
+                <CrmBulkBar count={selectedLeads.size} label={t("crmLeads.seleccionadoS", { size: selectedLeads.size })} onClear={() => setSelectedLeads(new Set())}>
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => bulkMarkSeenLeads.mutate({ ids: Array.from(selectedLeads) })} disabled={bulkMarkSeenLeads.isPending}>
+                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />{t("crmLeads.marcarLeidos")}
+                  </Button>
+                  <select aria-label={t("crmLeads.cambiarEstado2")} value={bulkLeadsStatus} onChange={e => { if (e.target.value) bulkUpdateLeadsStatus.mutate({ ids: Array.from(selectedLeads), status: e.target.value as any }); }} disabled={bulkUpdateLeadsStatus.isPending} className="h-8 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-40">
+                    <option value="">{t("crmLeads.cambiarEstado2")}</option>
+                    <option value="nueva">{t("crmLeads.nueva")}</option>
+                    <option value="enviada">{t("crmLeads.enviada")}</option>
+                    <option value="ganada">{t("crmLeads.ganada")}</option>
+                    <option value="perdida">{t("crmLeads.perdida")}</option>
+                  </select>
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 border-danger/40 text-danger hover:bg-danger/10 hover:text-danger" onClick={() => setBulkConfirm("leads")} disabled={bulkDeleteLeads.isPending}>
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />{t("crmLeads.eliminar")}
+                  </Button>
+                </CrmBulkBar>
+                <CrmTable
+                  rows={leadsData.rows as any[]}
+                  caption={voc.leads}
+                  rowKey={(l) => l.id}
+                  rowId={(l) => l.id}
+                  rowClassName={(l) => selectedLeads.has(l.id) ? "bg-primary/5" : !l.seenAt ? "bg-info/5" : undefined}
+                  selection={{
+                    selected: selectedLeads,
+                    onToggle: (id, checked) => setSelectedLeads(prev => { const s = new Set(prev); if (checked) s.add(id); else s.delete(id); return s; }),
+                    onToggleAll: (checked) => setSelectedLeads(checked ? new Set(leadsData.rows.map((l: any) => l.id)) : new Set()),
+                  }}
+                  columns={[
+                    {
+                      key: "cliente", header: t("crmLeads.cliente"), mobile: "title",
+                      cell: (lead: any) => (
                         <div className="flex items-center gap-2.5">
-                          {/* Punto pulse para leads no leídos */}
                           {!lead.seenAt ? (
-                            <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-info opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-info" />
+                            <span className="relative flex h-2.5 w-2.5 shrink-0" title={t("crmOpps.nuevoEtiqueta")}>
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-info opacity-75" />
+                              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-info" />
                             </span>
                           ) : (
                             <PriorityDot priority={lead.priority as Priority} />
                           )}
                           <PersonAvatar name={lead.name || lead.email || "?"} id={lead.id} size="md" />
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
                               {(lead as typeof lead & { clientId?: number }).clientId ? (
-                                <a
-                                  href={`/admin/crm/clientes?clientId=${(lead as typeof lead & { clientId?: number }).clientId}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-sm font-medium text-foreground hover:text-info hover:underline transition-colors"
-                                >{lead.name}</a>
+                                <a href={`/admin/crm/clientes?clientId=${(lead as typeof lead & { clientId?: number }).clientId}`} className="font-medium text-foreground hover:text-info hover:underline">{lead.name}</a>
                               ) : (
-                                <span className="text-sm font-medium text-foreground">{lead.name}</span>
+                                <span className="font-medium text-foreground">{lead.name}</span>
                               )}
-                              {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-info bg-info/10 px-1.5 py-0.5 rounded-full">{t("crmLeads.nuevo")}</span>}
+                              {!lead.seenAt && <StatusBadge tone="info">{t("crmLeads.nuevo")}</StatusBadge>}
                             </div>
-                            <div className="break-all text-xs text-muted-foreground">{lead.email}</div>
+                            <div className="break-all text-xs font-normal text-muted-foreground">{lead.email}</div>
                           </div>
                         </div>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 ? (
-                          <div className="flex flex-col gap-0.5">
-                            {(lead.activitiesJson as any[]).slice(0, 2).map((act: any, i: number) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <span className="text-sm text-foreground/80">{act.experienceTitle}</span>
-                                <span className="text-xs text-warning font-semibold">{t("crmLeads.p", { participants: act.participants })}</span>
-                              </div>
-                            ))}
-                            {(lead.activitiesJson as any[]).length > 2 && (
-                              <span className="text-xs text-foreground/40">{t("crmLeads.mas", { v: (lead.activitiesJson as any[]).length - 2 })}</span>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-sm text-foreground/65">{lead.selectedProduct || lead.selectedCategory || "—"}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 hidden lg:table-cell">
-                        <div className="text-sm text-foreground/60">{lead.preferredDate ? format.date(lead.preferredDate, {}) : "—"}</div>
-                      </td>
-                      <td className="px-4 py-3 hidden xl:table-cell">
-                        {lead.lsName ? (
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border"
-                            style={{
-                              color: lead.lsColor ?? "#9CA3AF",
-                              borderColor: `${lead.lsColor ?? "#9CA3AF"}40`,
-                              backgroundColor: `${lead.lsColor ?? "#9CA3AF"}15`,
-                            }}
-                          >
-                            {lead.lsName}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-foreground/30">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-foreground/60 hover:text-foreground h-7 px-2 text-xs"
-                            onClick={() => setSelectedLeadId(lead.id)}
-                            title={t("crmLeads.verFicha")}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-info hover:text-info h-7 px-2 text-xs"
-                            onClick={() => setEditLeadId(lead.id)}
-                            title={voc.licensed ? t("crmLeads.editarOportunidad") : t("crmLeads.editarLead")}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <ProposalLeadButton leadId={lead.id} leadName={lead.name} />
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-foreground" aria-label={`${t("crmLeads.acciones")}: ${lead.name}`}>
-                                <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {lead.opportunityStatus === "nueva" && (
-                                <DropdownMenuItem disabled={markLeadContacted.isPending} onSelect={() => markLeadContacted.mutate({ id: lead.id })}>
-                                  <Phone className="mr-2 h-4 w-4" aria-hidden="true" />{voc.agreeLead(t("crmEmpty.hint.contactedM", { leadsLower: voc.leadsLower }), t("crmEmpty.hint.contactedF", { leadsLower: voc.leadsLower }))}
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem onSelect={() => { setConvertLeadId(lead.id); setConvertLeadName(lead.name); }}>
-                                <FileText className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmLeads.crearPresupuesto2")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteLeadId(lead.id)}>
-                                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />{voc.licensed ? t("crmLeads.eliminarOportunidad") : t("crmLeads.eliminarLead")}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                      ),
+                    },
+                    {
+                      key: "producto", header: t("crmLeads.producto"), priority: "md",
+                      cell: (lead: any) => (
+                        <div className="min-w-0">
+                          {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 ? (
+                            <div className="flex flex-col gap-0.5">
+                              {(lead.activitiesJson as any[]).slice(0, 2).map((act: any, i: number) => (
+                                <div key={i} className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-foreground">{act.experienceTitle}</span>
+                                  <span className="text-xs font-semibold text-warning">{t("crmLeads.p", { participants: act.participants })}</span>
+                                </div>
+                              ))}
+                              {(lead.activitiesJson as any[]).length > 2 && <span className="text-xs text-muted-foreground">{t("crmLeads.mas", { v: (lead.activitiesJson as any[]).length - 2 })}</span>}
+                            </div>
+                          ) : (
+                            <span className="text-foreground">{lead.selectedProduct || lead.selectedCategory || "—"}</span>
+                          )}
+                          {lead.preferredDate && <div className="mt-0.5 text-xs text-muted-foreground">{voc.serviceDateColumn}: {format.date(lead.preferredDate, {})}</div>}
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {leadsData && leadsData.total > 0 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
-                <span className="text-sm text-foreground/50">
-                  {leadsData.total <= PAGE_SIZE
-                    ? t("crmLeads.mostrandoDe", { total: leadsData.total, total2: leadsData.total, leadsLower: voc.leadsLower })
-                    : t("crmLeads.paginaDe", { v: leadsPage + 1, ceil: Math.ceil(leadsData.total / PAGE_SIZE), total: leadsData.total, leadsLower: voc.leadsLower })}
-                </span>
-                {leadsData.total > PAGE_SIZE && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setLeadsPage(p => p - 1)}
-                      disabled={leadsPage === 0}
-                      className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                    >{t("crmLeads.anterior")}</button>
-                    <button
-                      onClick={() => setLeadsPage(p => p + 1)}
-                      disabled={(leadsPage + 1) * PAGE_SIZE >= leadsData.total}
-                      className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                    >{t("crmLeads.siguiente")}</button>
-                  </div>
-                )}
-              </div>
+                      ),
+                    },
+                    {
+                      key: "recibido", header: t("crmLeads.recibido"), priority: "md", num: true,
+                      cell: (lead: any) => (
+                        <div>
+                          <div className="text-foreground">{format.date(lead.createdAt, {})}</div>
+                          <div className="text-xs text-muted-foreground">{format.time(lead.createdAt, { hour: "2-digit", minute: "2-digit" })}</div>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "origen", header: t("crmLeads.origen"), priority: "lg",
+                      cell: (lead: any) => lead.lsName ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium" style={{ color: lead.lsColor ?? undefined, borderColor: lead.lsColor ? `${lead.lsColor}40` : undefined, backgroundColor: lead.lsColor ? `${lead.lsColor}15` : undefined }}>
+                          {lead.lsName}
+                        </span>
+                      ) : <span className="text-muted-foreground">—</span>,
+                    },
+                    { key: "estado", header: t("crmLeads.estado"), cell: (lead: any) => <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} /> },
+                  ]}
+                  actions={(lead: any) => (
+                    <CrmRowActions
+                      name={lead.name}
+                      primary={{ label: t("crmOpps.accionPrincipalVer"), icon: <Eye className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => setSelectedLeadId(lead.id) }}
+                      secondary={<ProposalLeadButton leadId={lead.id} leadName={lead.name} />}
+                      menu={[
+                        { label: voc.licensed ? t("crmLeads.editarOportunidad") : t("crmLeads.editarLead"), icon: <Pencil />, onSelect: () => setEditLeadId(lead.id) },
+                        ...(lead.opportunityStatus === "nueva" ? [{ label: voc.agreeLead(t("crmEmpty.hint.contactedM", { leadsLower: voc.leadsLower }), t("crmEmpty.hint.contactedF", { leadsLower: voc.leadsLower })), icon: <Phone />, disabled: markLeadContacted.isPending, onSelect: () => markLeadContacted.mutate({ id: lead.id }) }] : []),
+                        { label: t("crmLeads.crearPresupuesto2"), icon: <FileText />, onSelect: () => { setConvertLeadId(lead.id); setConvertLeadName(lead.name); } },
+                        { label: voc.licensed ? t("crmLeads.eliminarOportunidad") : t("crmLeads.eliminarLead"), icon: <Trash2 />, destructive: true, onSelect: () => setDeleteLeadId(lead.id) },
+                      ]}
+                    />
+                  )}
+                  footer={
+                    <CrmPager
+                      text={leadsData.total <= PAGE_SIZE
+                        ? t("crmLeads.mostrandoDe", { total: leadsData.total, total2: leadsData.total, leadsLower: voc.leadsLower })
+                        : t("crmLeads.paginaDe", { v: leadsPage + 1, ceil: Math.ceil(leadsData.total / PAGE_SIZE), total: leadsData.total, leadsLower: voc.leadsLower })}
+                      paged={leadsData.total > PAGE_SIZE}
+                      hasPrev={leadsPage > 0}
+                      hasNext={(leadsPage + 1) * PAGE_SIZE < leadsData.total}
+                      onPrev={() => setLeadsPage(p => p - 1)}
+                      onNext={() => setLeadsPage(p => p + 1)}
+                      prevLabel={t("crmLeads.anterior")}
+                      nextLabel={t("crmLeads.siguiente")}
+                    />
+                  }
+                />
+              </>
             )}
             </div>
           )}
@@ -328,20 +277,20 @@ export function LeadsModals({ ctrl }: { ctrl: LeadsController }) {
       </Dialog>
 {/* Delete Lead confirmation */}
 <Dialog open={deleteLeadId !== null} onOpenChange={(o) => !o && setDeleteLeadId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <AlertTriangle className="w-5 h-5 text-danger" /> {voc.licensed ? t("crmInvoices.eliminarOportunidad") : t("crmInvoices.eliminarLead")}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.estaAccionEsIrreversible")}{" "}{voc.licensed ? t("crmInvoices.laOportunidad") : t("crmInvoices.elLead")}{" "}{t("crmInvoices.yTodaSuActividad")}</p>
+          <p className="py-2 text-sm text-muted-foreground">{t("crmInvoices.estaAccionEsIrreversible")}{" "}{voc.licensed ? t("crmInvoices.laOportunidad") : t("crmInvoices.elLead")}{" "}{t("crmInvoices.yTodaSuActividad")}</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)}>{t("crmInvoices.cancelar")}</Button>
             <Button
               size="sm"
               onClick={() => deleteLeadId !== null && deleteLead.mutate({ id: deleteLeadId })}
               disabled={deleteLead.isPending}
-              className="bg-destructive hover:bg-destructive/90 text-white"
+              variant="destructive"
             >
               {deleteLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}{t("crmInvoices.eliminar")}</Button>
           </DialogFooter>
