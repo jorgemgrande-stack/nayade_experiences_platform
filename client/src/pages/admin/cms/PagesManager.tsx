@@ -103,16 +103,16 @@ export default function PagesManager() {
         ) : (
           <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
             {pages.map((p) => (
-              <li key={p.slug} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
+              <li key={p.slug} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                  <div className="flex min-w-0 items-center gap-2">
                     {p.isHome ? <Home className="h-4 w-4 text-primary" aria-hidden /> : p.isLegal ? <Scale className="h-4 w-4 text-muted-foreground" aria-hidden /> : <FileText className="h-4 w-4 text-muted-foreground" aria-hidden />}
                     <button type="button" className="overflow-hidden text-ellipsis whitespace-nowrap text-left font-medium hover:underline" onClick={() => edit(p.slug)}>
                       {p.title}
                     </button>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    <span>{p.isHome ? tx("Portada") : `/${p.slug}`}</span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="mr-1">{p.isHome ? tx("Portada") : `/${p.slug}`}</span>
                     <StatusBadge tone={p.isPublished ? "success" : "neutral"}>{p.isPublished ? tx("Publicada") : tx("Borrador")}</StatusBadge>
                     {p.hasDraft && p.isPublished && <StatusBadge tone="warning">{tx("Cambios sin publicar")}</StatusBadge>}
                     {p.isLegal && <StatusBadge tone="neutral">{tx("Texto legal")}</StatusBadge>}

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Upload, Copy, Trash2, Image, Search, Grid3X3, List, X, FolderOpen } from "lucide-react";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { useI18n } from "@/i18n/I18nProvider";
-import { PanelError } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import CmsSectionNav from "./CmsSectionNav";
 
@@ -157,14 +157,18 @@ export default function MultimediaManager() {
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        className={`mb-6 border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+        role="button"
+        tabIndex={0}
+        aria-label={tx("Arrastra imágenes aquí o haz clic para seleccionar")}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileRef.current?.click(); } }}
+        className={`border-2 border-dashed rounded-xl text-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${(files?.length ?? 0) > 0 ? "mb-4 flex items-center justify-center gap-3 p-3" : "mb-6 p-6"} ${
           dragOver
             ? "border-primary bg-primary/5 text-primary"
             : "border-border text-muted-foreground hover:border-primary/50 hover:bg-muted/30"
         }`}
         onClick={() => fileRef.current?.click()}
       >
-        <Upload className={`w-8 h-8 mx-auto mb-2 ${dragOver ? "text-primary" : "text-muted-foreground/50"}`} />
+        <Upload className={`shrink-0 ${(files?.length ?? 0) > 0 ? "w-5 h-5" : "w-8 h-8 mx-auto mb-2"} ${dragOver ? "text-primary" : "text-muted-foreground/50"}`} />
         <p className="text-sm font-medium">
           {dragOver ? tx("Suelta las imágenes aquí") : tx("Arrastra imágenes aquí o haz clic para seleccionar")}
         </p>
@@ -175,21 +179,13 @@ export default function MultimediaManager() {
       {isError ? (
         <PanelError error={error} onRetry={() => void refetch()} />
       ) : isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className="aspect-square bg-muted animate-pulse rounded-xl" />
-          ))}
-        </div>
+        <PanelLoading label={tx("Cargando…")} />
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Image className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-muted-foreground font-medium">
-            {search ? tx("No hay archivos que coincidan con la búsqueda") : tx("No hay archivos multimedia")}
-          </p>
-          {!search && (
-            <p className="text-sm text-muted-foreground mt-1">{tx("Sube imágenes arrastrándolas o usando el botón de arriba")}</p>
-          )}
-        </div>
+        <PanelEmpty
+          icon={<Image className="h-6 w-6" />}
+          title={search ? tx("No hay archivos que coincidan con la búsqueda") : tx("No hay archivos multimedia")}
+          description={search ? undefined : tx("Sube imágenes arrastrándolas o usando el botón de arriba")}
+        />
       ) : view === "grid" ? (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {filtered.map((file) => (
