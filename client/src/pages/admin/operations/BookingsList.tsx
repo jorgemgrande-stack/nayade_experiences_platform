@@ -8,24 +8,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Search, CalendarDays, Users, CheckCircle, XCircle, Clock, PlayCircle, CreditCard, ArrowUpDown, Banknote, HelpCircle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 
-const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  pendiente:  { label: "opsBookings.status.pendiente",  color: "bg-amber-100 text-amber-700",  icon: <Clock className="w-3 h-3" /> },
-  confirmado: { label: "opsBookings.status.confirmado", color: "bg-blue-100 text-blue-700",    icon: <CheckCircle className="w-3 h-3" /> },
-  en_curso:   { label: "opsBookings.status.en_curso",   color: "bg-green-100 text-green-700",  icon: <PlayCircle className="w-3 h-3" /> },
-  completado: { label: "opsBookings.status.completado", color: "bg-gray-100 text-gray-700",    icon: <CheckCircle className="w-3 h-3" /> },
-  cancelado:  { label: "opsBookings.status.cancelado",  color: "bg-red-100 text-red-700",      icon: <XCircle className="w-3 h-3" /> },
+const statusConfig: Record<string, { label: string; tone: Tone; icon: React.ReactNode }> = {
+  pendiente:  { label: "opsBookings.status.pendiente",  tone: "warning", icon: <Clock className="w-3 h-3" /> },
+  confirmado: { label: "opsBookings.status.confirmado", tone: "info",    icon: <CheckCircle className="w-3 h-3" /> },
+  en_curso:   { label: "opsBookings.status.en_curso",   tone: "success", icon: <PlayCircle className="w-3 h-3" /> },
+  completado: { label: "opsBookings.status.completado", tone: "neutral", icon: <CheckCircle className="w-3 h-3" /> },
+  cancelado:  { label: "opsBookings.status.cancelado",  tone: "danger",  icon: <XCircle className="w-3 h-3" /> },
 };
 
-const sourceConfig: Record<string, { label: string; color: string; icon: React.ReactNode; crmTab: string }> = {
-  tarjeta_fisica: { label: "opsBookings.source.tarjeta_fisica",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
-  tarjeta_redsys: { label: "opsBookings.source.tarjeta_redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
-  redsys:         { label: "opsBookings.source.tarjeta_redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
-  transferencia:  { label: "opsBookings.source.transferencia",     color: "bg-sky-100 text-sky-700",       icon: <ArrowUpDown className="w-3 h-3" />, crmTab: "reservations" },
-  efectivo:       { label: "opsBookings.source.efectivo",          color: "bg-emerald-100 text-emerald-700", icon: <Banknote className="w-3 h-3" />,  crmTab: "reservations" },
-  otro:           { label: "opsBookings.source.otro",              color: "bg-gray-100 text-gray-600",     icon: <HelpCircle className="w-3 h-3" />, crmTab: "reservations" },
+const sourceConfig: Record<string, { label: string; tone: Tone; icon: React.ReactNode; crmTab: string }> = {
+  tarjeta_fisica: { label: "opsBookings.source.tarjeta_fisica",   tone: "brand",   icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  tarjeta_redsys: { label: "opsBookings.source.tarjeta_redsys",   tone: "brand",   icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  redsys:         { label: "opsBookings.source.tarjeta_redsys",   tone: "brand",   icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  transferencia:  { label: "opsBookings.source.transferencia",     tone: "info",    icon: <ArrowUpDown className="w-3 h-3" />, crmTab: "reservations" },
+  efectivo:       { label: "opsBookings.source.efectivo",          tone: "success", icon: <Banknote className="w-3 h-3" />,  crmTab: "reservations" },
+  otro:           { label: "opsBookings.source.otro",              tone: "neutral", icon: <HelpCircle className="w-3 h-3" />, crmTab: "reservations" },
 };
 
 export default function BookingsList() {
@@ -34,7 +37,7 @@ export default function BookingsList() {
   const [statusFilter, setStatusFilter] = useState("all");
   const utils = trpc.useUtils();
 
-  const { data: bookings, isLoading } = trpc.bookings.getAll.useQuery({
+  const { data: bookings, isLoading, isError, error, refetch } = trpc.bookings.getAll.useQuery({
     status: statusFilter === "all" ? undefined : statusFilter,
     limit: 100,
     offset: 0,
@@ -53,22 +56,23 @@ export default function BookingsList() {
 
   return (
     <AdminLayout title={t("opsBookings.title")}>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">{t("opsBookings.heading")}</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("opsBookings.count", { n: filtered.length })}
-          </p>
-        </div>
-      </div>
+      <PanelPageHeader icon={<CalendarDays />} title={t("opsBookings.heading")} description={t("opsBookings.count", { n: filtered.length })} />
 
-      <div className="flex gap-3 mb-5">
-        <div className="relative flex-1 max-w-xs">
+      {filtered.length > 0 && (
+        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard tone="brand" icon={<CalendarDays />} label={t("opsBookings.summaryCount")} value={filtered.length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone="info" icon={<Users />} label={t("opsBookings.col.persons")} value={filtered.reduce((n, b) => n + (b.numberOfPersons ?? 0), 0)} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone="success" icon={<Banknote />} label={t("opsBookings.col.total")} value={f.currency(filtered.reduce((n, b) => n + (parseFloat(b.totalAmount) || 0), 0))} className="bg-gradient-to-br from-primary/5 to-card" />
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative min-w-0 flex-1 sm:max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("opsBookings.searchPlaceholder")} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-full sm:w-44">
             <SelectValue placeholder={t("opsBookings.statusPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
@@ -83,20 +87,14 @@ export default function BookingsList() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-muted animate-pulse rounded-xl" />)}
-        </div>
+        <PanelLoading />
+      ) : isError ? (
+        <PanelError error={error} onRetry={() => refetch()} title={t("opsBookings.loadError")} />
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <CalendarDays className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-muted-foreground font-medium">{t("opsBookings.emptyTitle")}</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("opsBookings.emptyText")}
-          </p>
-        </div>
+        <PanelEmpty icon={<CalendarDays />} title={t("opsBookings.emptyTitle")} description={t("opsBookings.emptyText")} />
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <table className="w-full">
+        <div className="bg-card border border-border rounded-xl overflow-x-auto">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("opsBookings.col.number")}</th>
@@ -144,17 +142,13 @@ export default function BookingsList() {
                     </td>
                     <td className="px-5 py-3.5">
                       {src ? (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${src.color}`}>
-                          {src.icon} {t(src.label)}
-                        </span>
+                        <StatusBadge tone={src.tone} icon={src.icon}>{t(src.label)}</StatusBadge>
                       ) : (
                         <span className="text-xs text-muted-foreground">{t("opsBookings.manual")}</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${st.color}`}>
-                        {st.icon} {t(st.label)}
-                      </span>
+                      <StatusBadge tone={st.tone} icon={st.icon}>{t(st.label)}</StatusBadge>
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex gap-1 justify-end items-center">
@@ -172,7 +166,7 @@ export default function BookingsList() {
                           </Button>
                         )}
                         {b.status === "confirmado" && (
-                          <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-200 hover:bg-green-50"
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-success border-success/40 hover:bg-success/10"
                             onClick={() => updateStatus.mutate({ id: b.id, status: "completado" })}>
                             {t("opsBookings.complete")}
                           </Button>
