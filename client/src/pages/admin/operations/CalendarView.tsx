@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { productEditionsHref } from "@shared/leadWebRequest";
 import { useI18n } from "@/i18n/I18nProvider";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import {
   Calendar, CalendarDays, ChevronLeft, ChevronRight,
   Waves, Utensils, RefreshCw, AlertTriangle, Users,
@@ -58,10 +59,10 @@ function getOpStatus(ev: any): "completa" | "sin_monitor" | "sin_hora" | "incide
 }
 
 const OP_STATUS_CONFIG = {
-  completa:    { dot: "bg-emerald-400", label: "opsCalendar.op.completa",   border: "border-l-emerald-500" },
-  sin_monitor: { dot: "bg-red-400",     label: "opsCalendar.op.sin_monitor",          border: "border-l-red-500" },
-  sin_hora:    { dot: "bg-amber-400",   label: "opsCalendar.op.sin_hora",  border: "border-l-amber-500" },
-  incidencia:  { dot: "bg-orange-400",  label: "opsCalendar.op.incidencia",           border: "border-l-orange-500" },
+  completa:    { dot: "bg-success", label: "opsCalendar.op.completa",   border: "border-l-emerald-500" },
+  sin_monitor: { dot: "bg-danger",     label: "opsCalendar.op.sin_monitor",          border: "border-l-red-500" },
+  sin_hora:    { dot: "bg-warning",   label: "opsCalendar.op.sin_hora",  border: "border-l-amber-500" },
+  incidencia:  { dot: "bg-warning",  label: "opsCalendar.op.incidencia",           border: "border-l-orange-500" },
 };
 
 // ─── Pill de reserva en la celda ──────────────────────────────────────────────
@@ -74,7 +75,7 @@ function ReservationPill({ ev, onClick }: { ev: any; onClick: () => void }) {
       <button
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border truncate
-          bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25 transition-colors text-left"
+          bg-success/15 text-success border-success/30 hover:bg-success/25 transition-colors text-left"
       >
         <Utensils className="w-2.5 h-2.5 shrink-0" />
         <span className="truncate">{ev.clientName}</span>
@@ -86,12 +87,12 @@ function ReservationPill({ ev, onClick }: { ev: any; onClick: () => void }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border-l-2 border border-slate-700 truncate
-        bg-slate-800/80 hover:bg-slate-700/80 transition-colors text-left ${cfg.border}`}
+      className={`w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border-l-2 border border-border truncate
+        bg-muted/80 hover:bg-muted transition-colors text-left ${cfg.border}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
-      <span className="truncate text-white/90">{ev.clientName}</span>
-      <span className="shrink-0 text-slate-400 ml-auto">·{ev.numberOfPersons}</span>
+      <span className="truncate text-foreground/90">{ev.clientName}</span>
+      <span className="shrink-0 text-muted-foreground ml-auto">·{ev.numberOfPersons}</span>
     </button>
   );
 }
@@ -124,7 +125,7 @@ function SessionPill({ s, onClick }: { s: SessionEvent; onClick: () => void }) {
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       data-testid="sesion-convocatoria"
       className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border border-dashed truncate
-        bg-violet-500/15 text-violet-200 border-violet-400/40 hover:bg-violet-500/25 transition-colors text-left"
+        bg-primary/15 text-primary border-primary/40 hover:bg-primary/25 transition-colors text-left"
     >
       <Layers className="w-2.5 h-2.5 shrink-0" />
       <span className="shrink-0" title={s.startTime ? undefined : t("opsCalendar.session.timeTbc")}>{s.startTime ?? t("opsCalendar.session.timeTbcShort")}</span>
@@ -140,18 +141,18 @@ function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) 
   const day = f.date(new Date(s.scheduledDate + "T12:00:00"), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-md">
+      <DialogContent className="bg-card border-border text-foreground max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
-            <Layers className="w-5 h-5 text-violet-300" />
+          <DialogTitle className="flex items-center gap-2 text-foreground">
+            <Layers className="w-5 h-5 text-primary" />
             {t("opsCalendar.session.title")}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 mt-1 text-sm">
-          <div className="bg-slate-800/60 rounded-lg p-4 space-y-1">
-            <p className="font-semibold text-white">{s.productTitle}</p>
-            <p className="text-slate-300">{s.editionLabel}{s.title ? ` · ${s.title}` : ""}</p>
-            <p className="text-violet-300 text-xs">{t("opsCalendar.session.indexOf", { index: s.index, total: s.total })}{s.status === "done" ? t("opsCalendar.session.done") : ""}{s.editionStatus === "draft" ? t("opsCalendar.session.draft") : ""}</p>
+          <div className="bg-muted/60 rounded-lg p-4 space-y-1">
+            <p className="font-semibold text-foreground">{s.productTitle}</p>
+            <p className="text-foreground/80">{s.editionLabel}{s.title ? ` · ${s.title}` : ""}</p>
+            <p className="text-primary text-xs">{t("opsCalendar.session.indexOf", { index: s.index, total: s.total })}{s.status === "done" ? t("opsCalendar.session.done") : ""}{s.editionStatus === "draft" ? t("opsCalendar.session.draft") : ""}</p>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[
@@ -159,18 +160,18 @@ function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) 
               { label: t("opsCalendar.session.time"), value: s.startTime ? `${s.startTime} h` : t("opsCalendar.session.toConfirm") },
               { label: t("opsCalendar.session.duration"), value: s.durationMinutes ? `${s.durationMinutes} min` : "—" },
             ].map((k) => (
-              <div key={k.label} className="bg-slate-800 rounded-lg p-3 text-center">
-                <div className="text-[10px] text-slate-400 mb-1">{k.label}</div>
-                <p className="text-white text-xs font-medium">{k.value}</p>
+              <div key={k.label} className="bg-muted rounded-lg p-3 text-center">
+                <div className="text-[10px] text-muted-foreground mb-1">{k.label}</div>
+                <p className="text-foreground text-xs font-medium">{k.value}</p>
               </div>
             ))}
           </div>
-          <p className="flex items-center gap-1.5 text-slate-300">
-            <Users className="w-4 h-4 text-violet-300" />
+          <p className="flex items-center gap-1.5 text-foreground/80">
+            <Users className="w-4 h-4 text-primary" />
             {t("opsCalendar.session.places", { places: s.participants, enrollments: s.confirmedEnrollments })}
           </p>
-          <div className="flex gap-2 pt-2 border-t border-slate-700">
-            <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">{t("opsCalendar.close")}</Button>
+          <div className="flex gap-2 pt-2 border-t border-border">
+            <Button variant="outline" size="sm" onClick={onClose} className="border-border text-foreground/80">{t("opsCalendar.close")}</Button>
             <Button size="sm" onClick={() => navigate(productEditionsHref(s.experienceId))} className="ml-auto gap-1">
               <ExternalLink className="w-3.5 h-3.5" /> {t("opsCalendar.session.openEditions")}
             </Button>
@@ -218,36 +219,36 @@ function ReservationModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border text-foreground max-w-xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
-            <CalendarDays className="w-5 h-5 text-blue-400" />
+          <DialogTitle className="flex items-center gap-2 text-foreground">
+            <CalendarDays className="w-5 h-5 text-info" />
             {t("opsCalendar.res.title")}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 mt-1">
           {/* Estado operativo */}
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border-l-4 ${cfg.border.replace("border-l-", "border-l-4 border-")}`}>
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-muted border-l-4 ${cfg.border.replace("border-l-", "border-l-4 border-")}`}>
             <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-            <span className="text-sm text-slate-300">{t(cfg.label)}</span>
+            <span className="text-sm text-foreground/80">{t(cfg.label)}</span>
           </div>
 
           {/* Cabecera: datos del cliente y reserva */}
-          <div className="bg-slate-800/60 rounded-lg p-4 space-y-3">
+          <div className="bg-muted/60 rounded-lg p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-semibold text-white text-base">{ev.clientName}</p>
+                <p className="font-semibold text-foreground text-base">{ev.clientName}</p>
                 {ev.reservationNumber && (
-                  <p className="text-blue-400 text-xs font-mono mt-0.5">{ev.reservationNumber}</p>
+                  <p className="text-info text-xs font-mono mt-0.5">{ev.reservationNumber}</p>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/40 text-[10px]">
+                <Badge className="bg-info/20 text-info border-info/40 text-[10px]">
                   {ev.channel || "—"}
                 </Badge>
                 {ev.statusReservation && (
-                  <Badge className="bg-slate-600/50 text-slate-300 text-[10px]">
+                  <Badge className="bg-muted/50 text-foreground/80 text-[10px]">
                     {ev.statusReservation}
                   </Badge>
                 )}
@@ -256,22 +257,22 @@ function ReservationModal({
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               {ev.clientPhone && (
-                <div className="flex items-center gap-1.5 text-slate-400">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
                   <Phone className="w-3 h-3" />
-                  <a href={`tel:${ev.clientPhone}`} className="hover:text-white transition-colors">{ev.clientPhone}</a>
+                  <a href={`tel:${ev.clientPhone}`} className="hover:text-foreground transition-colors">{ev.clientPhone}</a>
                 </div>
               )}
               {ev.clientEmail && (
-                <div className="flex items-center gap-1.5 text-slate-400 truncate">
+                <div className="flex items-center gap-1.5 text-muted-foreground truncate">
                   <Mail className="w-3 h-3 shrink-0" />
                   <span className="truncate">{ev.clientEmail}</span>
                 </div>
               )}
-              <div className="flex items-center gap-1.5 text-slate-400">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
                 <CalendarDays className="w-3 h-3" />
                 <span>{t("opsCalendar.res.activityDate", { date: scheduledDate })}</span>
               </div>
-              <div className="flex items-center gap-1.5 text-slate-400">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Users className="w-3 h-3" />
                 <span>{t("opsCalendar.res.paxActivities", { pax: ev.numberOfPersons, n: totalActivities })}</span>
               </div>
@@ -285,27 +286,27 @@ function ReservationModal({
               { label: t("opsCalendar.res.arrival"), value: ev.arrivalTime || t("opsCalendar.res.notAssigned"), icon: <Clock className="w-3 h-3" />, ok: !!ev.arrivalTime },
               { label: t("opsCalendar.res.state"), value: ev.opStatus ? (["pendiente", "confirmado", "completado", "incidencia", "cancelado"].includes(ev.opStatus) ? t(`opsCalendar.opState.${ev.opStatus}`) : ev.opStatus) : t("opsCalendar.opState.pendiente"), icon: <CheckCircle className="w-3 h-3" />, ok: ev.opStatus === "confirmado" || ev.opStatus === "completado" },
             ].map(item => (
-              <div key={item.label} className="bg-slate-800 rounded-lg p-3 text-center">
-                <div className={`flex items-center justify-center gap-1 text-[10px] mb-1 ${item.ok ? "text-emerald-400" : "text-amber-400"}`}>
+              <div key={item.label} className="bg-muted rounded-lg p-3 text-center">
+                <div className={`flex items-center justify-center gap-1 text-[10px] mb-1 ${item.ok ? "text-success" : "text-warning"}`}>
                   {item.icon}
                   <span>{item.label}</span>
                 </div>
-                <p className="text-white text-xs font-medium truncate">{item.value}</p>
+                <p className="text-foreground text-xs font-medium truncate">{item.value}</p>
               </div>
             ))}
           </div>
 
           {/* Notas operativas generales */}
           {ev.opNotes && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-              <p className="text-xs text-amber-300 font-medium mb-1">{t("opsCalendar.res.opNotes")}</p>
-              <p className="text-xs text-slate-300 italic">"{ev.opNotes}"</p>
+            <div className="bg-warning/10 border border-warning/20 rounded-lg p-3">
+              <p className="text-xs text-warning font-medium mb-1">{t("opsCalendar.res.opNotes")}</p>
+              <p className="text-xs text-foreground/80 italic">"{ev.opNotes}"</p>
             </div>
           )}
 
           {/* Actividades de la reserva */}
           <div>
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
               {t("opsCalendar.res.activitiesIncluded", { n: totalActivities })}
             </h4>
             <div className="space-y-2">
@@ -313,25 +314,25 @@ function ReservationModal({
               {(() => {
                 const op = getActivityOp(0);
                 return (
-                  <div className="bg-slate-800 rounded-lg p-3">
+                  <div className="bg-muted rounded-lg p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{ev.activityTitle || t("opsCalendar.res.mainActivity")}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{ev.numberOfPersons} {t("opsCalendar.pax")}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{ev.activityTitle || t("opsCalendar.res.mainActivity")}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{ev.numberOfPersons} {t("opsCalendar.pax")}</p>
                       </div>
-                      {op.isInherited && <Badge className="text-[9px] bg-slate-600/50 text-slate-400 border-slate-600">{t("opsCalendar.res.inherited")}</Badge>}
+                      {op.isInherited && <Badge className="text-[9px] bg-muted/50 text-muted-foreground border-border">{t("opsCalendar.res.inherited")}</Badge>}
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                    <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-red-400">{t("opsCalendar.noMonitor")}</span>}
+                        {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-danger">{t("opsCalendar.noMonitor")}</span>}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {op.arrivalTime || <span className="text-amber-400">{t("opsCalendar.res.noTime")}</span>}
+                        {op.arrivalTime || <span className="text-warning">{t("opsCalendar.res.noTime")}</span>}
                       </span>
                     </div>
-                    {op.opNotes && <p className="text-[10px] text-slate-500 italic mt-1">"{op.opNotes}"</p>}
+                    {op.opNotes && <p className="text-[10px] text-muted-foreground italic mt-1">"{op.opNotes}"</p>}
                   </div>
                 );
               })()}
@@ -339,27 +340,27 @@ function ReservationModal({
               {extras.map((ex: any, i: number) => {
                 const op = getActivityOp(i + 1);
                 return (
-                  <div key={i} className="bg-slate-800 rounded-lg p-3">
+                  <div key={i} className="bg-muted rounded-lg p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">
+                        <p className="text-sm font-medium text-foreground truncate">
                           {ex.experienceTitle || ex.name || t("opsCalendar.res.activityN", { n: i + 2 })}
                         </p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{ex.participants || ex.pax || "—"} {t("opsCalendar.pax")}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{ex.participants || ex.pax || "—"} {t("opsCalendar.pax")}</p>
                       </div>
-                      {op.isInherited && <Badge className="text-[9px] bg-slate-600/50 text-slate-400 border-slate-600">{t("opsCalendar.res.inherited")}</Badge>}
+                      {op.isInherited && <Badge className="text-[9px] bg-muted/50 text-muted-foreground border-border">{t("opsCalendar.res.inherited")}</Badge>}
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                    <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" />
-                        {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-red-400">{t("opsCalendar.noMonitor")}</span>}
+                        {op.monitorId ? (ev.monitorName || t("opsCalendar.res.monitorNum", { id: op.monitorId })) : <span className="text-danger">{t("opsCalendar.noMonitor")}</span>}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {op.arrivalTime || <span className="text-amber-400">{t("opsCalendar.res.noTime")}</span>}
+                        {op.arrivalTime || <span className="text-warning">{t("opsCalendar.res.noTime")}</span>}
                       </span>
                     </div>
-                    {op.opNotes && <p className="text-[10px] text-slate-500 italic mt-1">"{op.opNotes}"</p>}
+                    {op.opNotes && <p className="text-[10px] text-muted-foreground italic mt-1">"{op.opNotes}"</p>}
                   </div>
                 );
               })}
@@ -367,18 +368,18 @@ function ReservationModal({
           </div>
 
           {/* Acciones */}
-          <div className="flex gap-2 pt-2 border-t border-slate-700">
-            <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">
+          <div className="flex gap-2 pt-2 border-t border-border">
+            <Button variant="outline" size="sm" onClick={onClose} className="border-border text-foreground/80">
               {t("opsCalendar.close")}
             </Button>
             <Button size="sm" variant="outline"
               onClick={() => navigate(`/admin/crm?tab=reservas&id=${ev.id}`)}
-              className="border-blue-600/50 text-blue-400 hover:bg-blue-600/10 gap-1">
+              className="border-info/50 text-info hover:bg-info/10 gap-1">
               <ExternalLink className="w-3.5 h-3.5" /> {t("opsCalendar.res.viewCrm")}
             </Button>
             <Button size="sm"
               onClick={() => { onGoToActivities(scheduledDate); onClose(); }}
-              className="bg-blue-600 hover:bg-blue-700 text-white ml-auto gap-1">
+              className="bg-primary hover:bg-primary/90 text-primary-foreground ml-auto gap-1">
               <CalendarDays className="w-3.5 h-3.5" /> {t("opsCalendar.res.viewDayActivities")}
             </Button>
           </div>
@@ -410,10 +411,10 @@ function DayDetailModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-white capitalize flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-blue-400" />
+          <DialogTitle className="text-foreground capitalize flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-info" />
             {label}
           </DialogTitle>
         </DialogHeader>
@@ -421,36 +422,36 @@ function DayDetailModal({
           {/* KPIs */}
           <div className="grid grid-cols-4 gap-2">
             {[
-              { label: t("opsCalendar.day.reservations"), value: events.length, color: "text-white" },
-              { label: t("opsCalendar.paxTotal"), value: totalPax, color: "text-blue-300" },
-              { label: t("opsCalendar.noMonitor"), value: sinMonitor, color: sinMonitor > 0 ? "text-red-400" : "text-emerald-400" },
-              { label: t("opsCalendar.res.noTime"), value: sinHora, color: sinHora > 0 ? "text-amber-400" : "text-emerald-400" },
+              { label: t("opsCalendar.day.reservations"), value: events.length, color: "text-foreground" },
+              { label: t("opsCalendar.paxTotal"), value: totalPax, color: "text-info" },
+              { label: t("opsCalendar.noMonitor"), value: sinMonitor, color: sinMonitor > 0 ? "text-danger" : "text-success" },
+              { label: t("opsCalendar.res.noTime"), value: sinHora, color: sinHora > 0 ? "text-warning" : "text-success" },
             ].map(k => (
-              <div key={k.label} className="bg-slate-800 rounded-lg p-3 text-center">
+              <div key={k.label} className="bg-muted rounded-lg p-3 text-center">
                 <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
-                <div className="text-slate-400 text-[10px] mt-0.5">{k.label}</div>
+                <div className="text-muted-foreground text-[10px] mt-0.5">{k.label}</div>
               </div>
             ))}
           </div>
 
           {/* Alertas */}
           {sinMonitor > 0 && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center gap-2 text-sm">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-              <span className="text-red-300">{t("opsCalendar.day.noMonitorAlert", { n: sinMonitor })}</span>
+            <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 flex items-center gap-2 text-sm">
+              <AlertTriangle className="w-4 h-4 text-danger shrink-0" />
+              <span className="text-danger">{t("opsCalendar.day.noMonitorAlert", { n: sinMonitor })}</span>
             </div>
           )}
           {sinHora > 0 && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-center gap-2 text-sm">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-amber-300">{t("opsCalendar.day.noTimeAlert", { n: sinHora })}</span>
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 flex items-center gap-2 text-sm">
+              <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+              <span className="text-warning">{t("opsCalendar.day.noTimeAlert", { n: sinHora })}</span>
             </div>
           )}
 
           {/* Listado de reservas de actividad */}
           {activities.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <h4 className="text-xs font-semibold text-info uppercase tracking-wide mb-2 flex items-center gap-1">
                 <Waves className="w-3.5 h-3.5" /> {t("opsCalendar.day.confirmed", { n: activities.length })}
               </h4>
               <div className="space-y-1.5">
@@ -459,21 +460,21 @@ function DayDetailModal({
                   const cfg = OP_STATUS_CONFIG[opStatus];
                   return (
                     <button key={i} onClick={() => { onSelectReservation(ev); onClose(); }}
-                      className={`w-full bg-slate-800 rounded-lg p-3 text-left hover:bg-slate-700/80 transition-colors border-l-2 ${cfg.border.replace("border-l-", "border-l-2 border-")}`}>
+                      className={`w-full bg-muted rounded-lg p-3 text-left hover:bg-muted transition-colors border-l-2 ${cfg.border.replace("border-l-", "border-l-2 border-")}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-white text-sm truncate">{ev.clientName}</p>
-                          <p className="text-slate-400 text-xs mt-0.5 truncate">{ev.activityTitle}</p>
+                          <p className="font-medium text-foreground text-sm truncate">{ev.clientName}</p>
+                          <p className="text-muted-foreground text-xs mt-0.5 truncate">{ev.activityTitle}</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="flex items-center gap-1 text-xs text-slate-400">
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Users className="w-3 h-3" />{ev.numberOfPersons}
                           </span>
                           <span className={`w-2 h-2 rounded-full ${cfg.dot}`} title={t(cfg.label)} />
                         </div>
                       </div>
                       {ev.reservationNumber && (
-                        <p className="text-[10px] font-mono text-blue-400/70 mt-1">{ev.reservationNumber}</p>
+                        <p className="text-[10px] font-mono text-info/70 mt-1">{ev.reservationNumber}</p>
                       )}
                     </button>
                   );
@@ -485,19 +486,19 @@ function DayDetailModal({
           {/* Restaurantes */}
           {restaurants.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <h4 className="text-xs font-semibold text-success uppercase tracking-wide mb-2 flex items-center gap-1">
                 <Utensils className="w-3.5 h-3.5" /> {t("opsCalendar.day.restaurant", { n: restaurants.length })}
               </h4>
               <div className="space-y-1.5">
                 {restaurants.map((ev: any, i: number) => (
                   <button key={i} onClick={() => { onSelectReservation(ev); onClose(); }}
-                    className="w-full bg-slate-800 rounded-lg p-3 text-left hover:bg-slate-700/80 transition-colors">
+                    className="w-full bg-muted rounded-lg p-3 text-left hover:bg-muted transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-white text-sm truncate">{ev.activityTitle}</p>
-                        <p className="text-slate-400 text-xs mt-0.5">{ev.clientName}</p>
+                        <p className="font-medium text-foreground text-sm truncate">{ev.activityTitle}</p>
+                        <p className="text-muted-foreground text-xs mt-0.5">{ev.clientName}</p>
                       </div>
-                      <span className="flex items-center gap-1 text-xs text-slate-400 shrink-0">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
                         <Users className="w-3 h-3" />{ev.numberOfPersons}
                       </span>
                     </div>
@@ -508,16 +509,16 @@ function DayDetailModal({
           )}
 
           {events.length === 0 && (
-            <p className="text-center text-slate-500 py-6">{t("opsCalendar.day.empty")}</p>
+            <p className="text-center text-muted-foreground py-6">{t("opsCalendar.day.empty")}</p>
           )}
 
-          <div className="flex gap-2 justify-end pt-2 border-t border-slate-700">
-            <Button variant="outline" size="sm" onClick={onClose} className="border-slate-600 text-slate-300">
+          <div className="flex gap-2 justify-end pt-2 border-t border-border">
+            <Button variant="outline" size="sm" onClick={onClose} className="border-border text-foreground/80">
               {t("opsCalendar.close")}
             </Button>
             <Button size="sm"
               onClick={() => { onGoToActivities(formatDate(date)); onClose(); }}
-              className="bg-blue-600 hover:bg-blue-700 text-white">
+              className="bg-primary hover:bg-primary/90 text-primary-foreground">
               {t("opsCalendar.day.goToActivities")}
             </Button>
           </div>
@@ -588,35 +589,32 @@ export default function CalendarView() {
 
   return (
     <AdminLayout title={t("opsCalendar.pageTitle")}>
-      <div className="min-h-screen bg-[#0a0f1a] text-white p-6 -m-6">
+      <div className="min-h-screen bg-background text-foreground p-6 -m-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Calendar className="w-6 h-6 text-blue-400" />
-              {t("opsCalendar.heading")}
-            </h1>
-            <p className="text-slate-400 text-sm mt-1">
-              {t("opsCalendar.subtitle")}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="border-slate-700 text-slate-300 hover:bg-slate-800">
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-        </div>
+        <PanelPageHeader
+          className="mb-4"
+          icon={<Calendar />}
+          title={t("opsCalendar.heading")}
+          description={t("opsCalendar.subtitle")}
+          actions={
+            <Button variant="outline" size="icon" onClick={() => refetch()} aria-label={t("panelStates.retry")}>
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+          }
+        />
 
         {/* Resumen del mes */}
         {!isLoading && (
           <div className="grid grid-cols-4 gap-3 mb-4">
             {[
-              { label: t("opsCalendar.month.reservations"), value: monthActivities.length, color: "text-blue-300" },
-              { label: t("opsCalendar.paxTotal"), value: monthPax, color: "text-white" },
-              { label: t("opsCalendar.noMonitor"), value: sinMonitorTotal, color: sinMonitorTotal > 0 ? "text-red-400" : "text-emerald-400" },
-              { label: t("opsCalendar.month.restaurant"), value: allEvents.filter(e => e.eventType === "restaurant").length, color: "text-emerald-300" },
+              { label: t("opsCalendar.month.reservations"), value: monthActivities.length, color: "text-info" },
+              { label: t("opsCalendar.paxTotal"), value: monthPax, color: "text-foreground" },
+              { label: t("opsCalendar.noMonitor"), value: sinMonitorTotal, color: sinMonitorTotal > 0 ? "text-danger" : "text-success" },
+              { label: t("opsCalendar.month.restaurant"), value: allEvents.filter(e => e.eventType === "restaurant").length, color: "text-success" },
             ].map(k => (
-              <div key={k.label} className="bg-[#111827] rounded-lg p-3 border border-slate-800">
+              <div key={k.label} className="bg-card rounded-lg p-3 border border-border">
                 <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
-                <div className="text-slate-400 text-xs mt-0.5">{k.label}</div>
+                <div className="text-muted-foreground text-xs mt-0.5">{k.label}</div>
               </div>
             ))}
           </div>
@@ -626,39 +624,39 @@ export default function CalendarView() {
         <div className="flex items-center gap-3 mb-4">
           <Button variant="outline" size="icon"
             onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8">
+            className="border-border text-foreground/80 hover:bg-muted w-8 h-8">
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <Button variant="outline" size="sm"
             onClick={() => setCurrentDate(new Date())}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 text-xs">
+            className="border-border text-foreground/80 hover:bg-muted text-xs">
             {t("opsCalendar.today")}
           </Button>
           <Button variant="outline" size="icon"
             onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8">
+            className="border-border text-foreground/80 hover:bg-muted w-8 h-8">
             <ChevronRight className="w-4 h-4" />
           </Button>
-          <h2 className="text-xl font-semibold text-white capitalize">{monthLabel}</h2>
-          <div className="ml-auto flex items-center gap-3 text-[10px] text-slate-400">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />{t("opsCalendar.legend.complete")}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />{t("opsCalendar.legend.noTime")}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />{t("opsCalendar.noMonitor")}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />{t("opsCalendar.op.incidencia")}</span>
-            <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5 text-violet-300" />{t("opsCalendar.session.title")}</span>
+          <h2 className="text-xl font-semibold text-foreground capitalize">{monthLabel}</h2>
+          <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" />{t("opsCalendar.legend.complete")}</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning inline-block" />{t("opsCalendar.legend.noTime")}</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-danger inline-block" />{t("opsCalendar.noMonitor")}</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning inline-block" />{t("opsCalendar.op.incidencia")}</span>
+            <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5 text-primary" />{t("opsCalendar.session.title")}</span>
           </div>
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center h-64 text-slate-400">
+          <div className="flex items-center justify-center h-64 text-muted-foreground">
             <RefreshCw className="w-6 h-6 animate-spin mr-2" />{t("opsCalendar.loading")}
           </div>
         ) : (
-          <div className="bg-[#111827] rounded-xl border border-slate-800 overflow-hidden">
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
             {/* Day-of-week header */}
-            <div className="grid grid-cols-7 border-b border-slate-800">
+            <div className="grid grid-cols-7 border-b border-border">
               {DOW_LABELS.map(d => (
-                <div key={d} className="py-2 text-center text-xs font-semibold text-slate-400 uppercase tracking-wide">{d}</div>
+                <div key={d} className="py-2 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">{d}</div>
               ))}
             </div>
 
@@ -678,8 +676,8 @@ export default function CalendarView() {
                     key={key}
                     onClick={() => dayEvents.length > 0 && setSelectedDay(day)}
                     className={`
-                      min-h-[110px] p-1.5 border-b border-r border-slate-800
-                      ${dayEvents.length > 0 ? "cursor-pointer hover:bg-slate-800/40 transition-colors" : ""}
+                      min-h-[110px] p-1.5 border-b border-r border-border
+                      ${dayEvents.length > 0 ? "cursor-pointer hover:bg-muted transition-colors" : ""}
                       ${!isCurrentMonth ? "opacity-35" : ""}
                       ${isLastRow ? "border-b-0" : ""}
                       ${(idx + 1) % 7 === 0 ? "border-r-0" : ""}
@@ -688,10 +686,10 @@ export default function CalendarView() {
                     {/* Day number */}
                     <div className="flex items-center justify-between mb-1">
                       <span className={`text-sm font-semibold w-6 h-6 flex items-center justify-center rounded-full
-                        ${isToday ? "bg-blue-600 text-white" : "text-slate-300"}`}>
+                        ${isToday ? "bg-primary text-primary-foreground" : "text-foreground/80"}`}>
                         {day.getDate()}
                       </span>
-                      {hasAlert && <AlertTriangle className="w-3 h-3 text-amber-400" />}
+                      {hasAlert && <AlertTriangle className="w-3 h-3 text-warning" />}
                     </div>
 
                     {/* Reservation pills — click individual */}
@@ -703,12 +701,12 @@ export default function CalendarView() {
                         <SessionPill key={`s${s.sessionId}`} s={s} onClick={() => setSelectedSession(s)} />
                       ))}
                       {(sessionsByDay[key] || []).length > 2 && (
-                        <p className="text-[10px] text-violet-300/70 pl-1">{t("opsCalendar.moreSessions", { n: (sessionsByDay[key] || []).length - 2 })}</p>
+                        <p className="text-[10px] text-primary/70 pl-1">{t("opsCalendar.moreSessions", { n: (sessionsByDay[key] || []).length - 2 })}</p>
                       )}
                       {dayEvents.length > 3 && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setSelectedDay(day); }}
-                          className="text-[10px] text-slate-500 pl-1 hover:text-slate-300 transition-colors w-full text-left"
+                          className="text-[10px] text-muted-foreground pl-1 hover:text-foreground/80 transition-colors w-full text-left"
                         >
                           {t("opsCalendar.more", { n: dayEvents.length - 3 })}
                         </button>
