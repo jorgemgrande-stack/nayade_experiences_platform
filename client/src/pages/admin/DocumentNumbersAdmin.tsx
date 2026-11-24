@@ -12,10 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { PanelError } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { AlertTriangle, RefreshCw, Edit2, History, Hash } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 
 const DOC_TYPES = ["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"];
 
@@ -89,15 +90,7 @@ export default function DocumentNumbersAdmin() {
   return (
     <AdminLayout>
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Hash className="h-7 w-7 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold">{t("documentNumbers.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("documentNumbers.subtitle")}
-          </p>
-        </div>
-      </div>
+      <PanelPageHeader icon={<Hash />} title={t("documentNumbers.title")} description={t("documentNumbers.subtitle")} />
 
       {/* Aviso importante */}
       <div className="flex items-start gap-3 p-4 rounded-lg border border-warning/40 bg-warning/10 text-warning">
@@ -117,7 +110,7 @@ export default function DocumentNumbersAdmin() {
           {countersError ? (
             <PanelError title={t("documentNumbers.loadError")} error={countersError} onRetry={() => void refetchCounters()} />
           ) : isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">{t("documentNumbers.loading")}</div>
+            <PanelLoading label={t("documentNumbers.loading")} />
           ) : (
             <Table>
               <TableHeader>
@@ -131,6 +124,13 @@ export default function DocumentNumbersAdmin() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {(counters ?? []).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="p-2">
+                      <PanelEmpty icon={<Hash className="h-5 w-5" />} title={t("documentNumbers.noCounters")} className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" />
+                    </TableCell>
+                  </TableRow>
+                )}
                 {(counters ?? []).map((counter) => (
                   <TableRow key={`${counter.documentType}-${counter.year}`}>
                     <TableCell>
@@ -320,7 +320,7 @@ export default function DocumentNumbersAdmin() {
               </Select>
             </div>
             {logsLoading ? (
-              <div className="text-center py-8 text-muted-foreground">{t("documentNumbers.loadingHistory")}</div>
+              <PanelLoading label={t("documentNumbers.loadingHistory")} />
             ) : (
               <Table>
                 <TableHeader>
@@ -350,8 +350,8 @@ export default function DocumentNumbersAdmin() {
                   ))}
                   {(logs ?? []).length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                        {t("documentNumbers.noLogs")}
+                      <TableCell colSpan={5} className="p-2">
+                        <PanelEmpty icon={<History className="h-5 w-5" />} title={t("documentNumbers.noLogs")} className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" />
                       </TableCell>
                     </TableRow>
                   )}

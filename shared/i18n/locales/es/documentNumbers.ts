@@ -57,4 +57,5 @@ export default {
   colBy: "Generado por",
   colDate: "Fecha",
   noLogs: "No hay registros en el historial",
+  noCounters: "Todavía no hay series de numeración",
 };
