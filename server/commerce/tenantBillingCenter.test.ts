@@ -33,12 +33,13 @@ describe("centro de suscripción: etapa y cobros", () => {
     expect(c.stage).toBe("trial_authorized");
     expect(c.customTerms).toBe(true);
     expect(c.lastPayment).toBeNull();
-    expect(c.payments).toHaveLength(1);
-    expect(c.payments[0]).toMatchObject({ status: "free", amountCents: 0 });
+    // La factura de 0 € no es un cobro: no entra en el historial de pagos (consta en facturas)
+    expect(c.payments).toHaveLength(0);
     expect(c.invoices[0]).toMatchObject({ free: true, state: "free", totalCents: 0 });
     // El próximo cobro es el fin de la prueba de Stripe (28/11), no el periodo interno del CRM (13/12)
     expect(c.nextCharge).toMatchObject({ at: D("2026-11-28T20:53:00Z"), basis: "trial_end", estimatedTotalCents: 5445 });
-    expect(c.billingPeriod?.end).toBe(D("2026-11-28T20:53:00Z"));
+    // En prueba no hay periodo de facturación: el inicio interno del CRM no se mezcla con la fecha de Stripe
+    expect(c.billingPeriod).toBeNull();
     expect(c.trial?.endsAt).toBe(D("2026-11-28T20:53:00Z"));
     expect(c.paymentMethod.state).toBe("authorized");
     expect(c.actions.selfServicePlanChange).toBe(false);

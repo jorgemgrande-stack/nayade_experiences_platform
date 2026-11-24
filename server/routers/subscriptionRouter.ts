@@ -118,7 +118,18 @@ export const subscriptionRouter = router({
    */
   billingCenter: protectedProcedure.query(async ({ ctx }) => {
     if (String(ctx.user.role) !== "admin" || getTenantMode() !== "multi" || !commerceClientFromEnv()) return null;
-    return reach(async (c, t) => (c.billingCenter ? c.billingCenter(t) : null));
+    const center = await reach(async (c, t) => (c.billingCenter ? c.billingCenter(t) : null));
+    // Plan con el que prueba la plataforma (el de la licencia vigente), distinto del plan contratado: solo mientras dura la prueba
+    if (center?.trial) {
+      try {
+        const access = getCapabilityAccess();
+        const ov = buildSubscriptionOverview({ mode: "multi", enforcing: access.enforcing(), grants: await access.list(), now: access.currentTime() });
+        if (ov.state === "trial" && ov.plan?.name) return { ...center, trial: { ...center.trial, planName: ov.plan.name } };
+      } catch {
+        /* sin licencia legible: el centro se muestra sin el plan de prueba */
+      }
+    }
+    return center;
   }),
   /** Enlaces oficiales (PDF de Stripe o documento del sistema) de UNA factura de la propia empresa. */
   billingInvoiceLinks: protectedProcedure.input(z.object({ id: z.string().regex(/^(stripe|crm):[A-Za-z0-9_-]{1,80}$/) }).strict()).mutation(({ ctx, input }) =>
