@@ -2,6 +2,9 @@ import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +20,7 @@ import { toast } from "sonner";
 import ImageUploader from "@/components/ImageUploader";
 import {
   BedDouble, Plus, Pencil, Trash2, Eye, EyeOff, Star,
-  Users, Baby, Maximize2, ChevronLeft, ChevronRight, RefreshCw,
+  Users, Baby, Maximize2, ChevronLeft, ChevronRight, RefreshCw, CalendarDays,
 } from "lucide-react";
 import SupplierSelect from "@/components/SupplierSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -371,9 +374,7 @@ function InventoryCalendar({ rooms }: { rooms: any[] }) {
             {DAYS.map(d => <div key={d} className="text-center text-xs text-muted-foreground font-medium py-1">{d}</div>)}
           </div>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Cargando...
-            </div>
+            <PanelLoading />
           ) : (
             <div className="grid grid-cols-7 gap-1">
               {blanks.map((_, i) => <div key={`b${i}`} />)}
@@ -513,9 +514,9 @@ function RateSeasonsTab() {
       )}
 
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+        <PanelLoading />
       ) : (seasons ?? []).length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No hay temporadas configuradas.</div>
+        <PanelEmpty icon={<CalendarDays />} title="No hay temporadas configuradas" description="Las temporadas ajustan el precio de las noches en un rango de fechas." />
       ) : (
         <div className="space-y-2">
           {(seasons ?? []).map((s: any) => (
@@ -541,7 +542,7 @@ function RateSeasonsTab() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function HotelManager() {
-  const { data: rooms, isLoading } = trpc.hotel.adminGetRoomTypes.useQuery();
+  const { data: rooms, isLoading, error: roomsError, refetch: refetchRooms } = trpc.hotel.adminGetRoomTypes.useQuery();
   const [showForm, setShowForm] = useState(false);
   const [editRoom, setEditRoom] = useState<any>(null);
   const utils = trpc.useUtils();
@@ -558,18 +559,29 @@ export default function HotelManager() {
   return (
     <AdminLayout title="Hotel">
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Hotel</h1>
-          <p className="text-muted-foreground text-sm">Gestiona tipologías, tarifas e inventario</p>
+      <PanelPageHeader
+        icon={<BedDouble />}
+        title="Hotel"
+        description="Gestiona tipologías, tarifas e inventario"
+        actions={
+          <Button onClick={() => { setEditRoom(null); setShowForm(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> Nueva tipología
+          </Button>
+        }
+        className="mb-0"
+      />
+
+      {!isLoading && !roomsError && (rooms ?? []).length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard icon={<BedDouble />} label="Tipologías" value={(rooms ?? []).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Eye />} tone="success" label="Activas" value={(rooms ?? []).filter((r: any) => r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<EyeOff />} tone="neutral" label="Inactivas" value={(rooms ?? []).filter((r: any) => !r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Star />} tone="warning" label="Destacadas" value={(rooms ?? []).filter((r: any) => r.isFeatured).length} className="bg-gradient-to-br from-primary/5 to-card" />
         </div>
-        <Button onClick={() => { setEditRoom(null); setShowForm(true); }}>
-          <Plus className="h-4 w-4 mr-2" /> Nueva tipología
-        </Button>
-      </div>
+      )}
 
       <Tabs defaultValue="rooms">
-        <TabsList>
+        <TabsList className="h-auto max-w-full flex-wrap justify-start">
           <TabsTrigger value="rooms">Tipologías</TabsTrigger>
           <TabsTrigger value="inventory">Inventario / Calendario</TabsTrigger>
           <TabsTrigger value="rates">Temporadas de precio</TabsTrigger>
@@ -578,12 +590,13 @@ export default function HotelManager() {
         {/* ── Rooms ── */}
         <TabsContent value="rooms" className="mt-4">
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Cargando...</div>
+            <PanelLoading />
+          ) : roomsError ? (
+            <PanelError error={roomsError} onRetry={() => void refetchRooms()} />
           ) : (rooms ?? []).length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <BedDouble className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>No hay tipologías. Crea la primera.</p>
-            </div>
+            <PanelEmpty icon={<BedDouble />} title="Aún no hay tipologías" description="Crea la primera tipología (doble, suite…) con su precio y unidades para poder vender y gestionar habitaciones.">
+              <Button onClick={() => { setEditRoom(null); setShowForm(true); }}><Plus className="h-4 w-4 mr-2" /> Nueva tipología</Button>
+            </PanelEmpty>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {(rooms ?? []).map((room: any) => (
@@ -641,7 +654,7 @@ export default function HotelManager() {
         {/* ── Inventory ── */}
         <TabsContent value="inventory" className="mt-4">
           {(rooms ?? []).length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">Primero crea al menos una tipología.</div>
+            <PanelEmpty icon={<BedDouble />} title="Primero crea una tipología" description="El inventario y el calendario se calculan sobre tus tipologías." />
           ) : (
             <InventoryCalendar rooms={rooms ?? []} />
           )}

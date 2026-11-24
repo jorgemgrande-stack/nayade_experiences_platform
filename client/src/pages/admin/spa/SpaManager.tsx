@@ -2,6 +2,9 @@ import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -328,9 +331,9 @@ function CategoriesTab() {
         </Card>
       )}
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+        <PanelLoading />
       ) : (categories ?? []).length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No hay categorías.</div>
+        <PanelEmpty icon={<Sparkles />} title="No hay categorías" description="Las categorías agrupan los tratamientos en la web." />
       ) : (
         <div className="space-y-2">
           {(categories ?? []).map((c: any) => (
@@ -476,11 +479,9 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
       )}
 
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+        <PanelLoading />
       ) : (templates ?? []).length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <p>No hay plantillas. Crea una para empezar a generar slots automáticamente.</p>
-        </div>
+        <PanelEmpty icon={<Clock />} title="No hay plantillas de horario" description="Crea una para empezar a generar slots automáticamente." />
       ) : (
         <div className="space-y-2">
           {(templates ?? []).map((t: any) => {
@@ -570,9 +571,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
               {DAYS.map(d => <div key={d} className="text-center text-xs text-muted-foreground font-medium py-1">{d}</div>)}
             </div>
             {isLoading ? (
-              <div className="flex items-center justify-center py-12 text-muted-foreground">
-                <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Cargando...
-              </div>
+              <PanelLoading />
             ) : (
               <div className="grid grid-cols-7 gap-1">
                 {Array(firstDow).fill(null).map((_, i) => <div key={`b${i}`} />)}
@@ -654,7 +653,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function SpaManager() {
-  const { data: treatments, isLoading } = trpc.spa.adminGetTreatments.useQuery();
+  const { data: treatments, isLoading, error: treatmentsError, refetch: refetchTreatments } = trpc.spa.adminGetTreatments.useQuery();
   const { data: categories } = trpc.spa.adminGetCategories.useQuery();
   const [showForm, setShowForm] = useState(false);
   const [editTreatment, setEditTreatment] = useState<any>(null);
@@ -672,18 +671,29 @@ export default function SpaManager() {
   return (
     <AdminLayout title="SPA">
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">SPA</h1>
-          <p className="text-muted-foreground text-sm">Gestiona tratamientos, horarios y disponibilidad</p>
+      <PanelPageHeader
+        icon={<Sparkles />}
+        title="SPA"
+        description="Gestiona tratamientos, horarios y disponibilidad"
+        actions={
+          <Button onClick={() => { setEditTreatment(null); setShowForm(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> Nuevo tratamiento
+          </Button>
+        }
+        className="mb-0"
+      />
+
+      {!isLoading && !treatmentsError && (treatments ?? []).length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard icon={<Sparkles />} label="Tratamientos" value={(treatments ?? []).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Eye />} tone="success" label="Activos" value={(treatments ?? []).filter((t: any) => t.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<EyeOff />} tone="neutral" label="Inactivos" value={(treatments ?? []).filter((t: any) => !t.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Star />} tone="warning" label="Destacados" value={(treatments ?? []).filter((t: any) => t.isFeatured).length} className="bg-gradient-to-br from-primary/5 to-card" />
         </div>
-        <Button onClick={() => { setEditTreatment(null); setShowForm(true); }}>
-          <Plus className="h-4 w-4 mr-2" /> Nuevo tratamiento
-        </Button>
-      </div>
+      )}
 
       <Tabs defaultValue="treatments">
-        <TabsList>
+        <TabsList className="h-auto max-w-full flex-wrap justify-start">
           <TabsTrigger value="treatments">Tratamientos</TabsTrigger>
           <TabsTrigger value="categories">Categorías</TabsTrigger>
           <TabsTrigger value="schedule">Plantillas de horario</TabsTrigger>
@@ -693,12 +703,13 @@ export default function SpaManager() {
         {/* ── Treatments ── */}
         <TabsContent value="treatments" className="mt-4">
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Cargando...</div>
+            <PanelLoading />
+          ) : treatmentsError ? (
+            <PanelError error={treatmentsError} onRetry={() => void refetchTreatments()} />
           ) : (treatments ?? []).length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>No hay tratamientos. Crea el primero.</p>
-            </div>
+            <PanelEmpty icon={<Sparkles />} title="Aún no hay tratamientos" description="Crea el primer tratamiento con su duración, aforo y precio para poder generar horarios y reservas.">
+              <Button onClick={() => { setEditTreatment(null); setShowForm(true); }}><Plus className="h-4 w-4 mr-2" /> Nuevo tratamiento</Button>
+            </PanelEmpty>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {(treatments ?? []).map((t: any) => (
@@ -760,7 +771,7 @@ export default function SpaManager() {
         {/* ── Schedule Templates ── */}
         <TabsContent value="schedule" className="mt-4">
           {(treatments ?? []).length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">Primero crea al menos un tratamiento.</div>
+            <PanelEmpty icon={<Sparkles />} title="Primero crea un tratamiento" description="Los horarios y los slots se generan sobre tus tratamientos." />
           ) : (
             <ScheduleTemplatesTab treatments={treatments ?? []} />
           )}
@@ -769,7 +780,7 @@ export default function SpaManager() {
         {/* ── Slots Calendar ── */}
         <TabsContent value="slots" className="mt-4">
           {(treatments ?? []).length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">Primero crea al menos un tratamiento.</div>
+            <PanelEmpty icon={<Sparkles />} title="Primero crea un tratamiento" description="Los horarios y los slots se generan sobre tus tratamientos." />
           ) : (
             <SlotsCalendar treatments={treatments ?? []} />
           )}
