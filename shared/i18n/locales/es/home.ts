@@ -19,6 +19,7 @@ export default {
     newProduct: "Nuevo producto",
     editWeb: "Editar mi web",
     aria: "Accesos rápidos",
+    more: "Más acciones",
   },
   notice: {
     trial: "Estás probando <b>{plan}</b>: {days, plural, one {te queda <b># día</b>} other {te quedan <b># días</b>}}. Si contratas, conservas todo lo que hayas creado.",

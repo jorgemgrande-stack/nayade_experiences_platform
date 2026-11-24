@@ -60,8 +60,10 @@ describe("cierre de los diálogos", () => {
     const src = read("client/src/components/ui/dialog.tsx");
     const close = src.match(/<DialogPrimitive\.Close\s+data-slot="dialog-close"\s+className="([^"]*)"/)?.[1] ?? "";
     expect(close.split(" ")).toEqual(expect.arrayContaining(["size-10", "inline-flex", "items-center", "justify-center"]));
-    expect(src).toContain(`<span className="sr-only">Cerrar</span>`);
+    // La etiqueta sale del diccionario (i18n): en español sigue siendo «Cerrar» y nunca el «Close» de Radix
+    expect(src).toContain(`<span className="sr-only">{t("common.close")}</span>`);
     expect(src).not.toContain(`<span className="sr-only">Close</span>`);
+    expect(read("shared/i18n/locales/es/common.ts")).toMatch(/close: "Cerrar"/);
   });
 });
 

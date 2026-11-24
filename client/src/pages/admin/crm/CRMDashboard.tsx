@@ -5992,15 +5992,18 @@ export default function CRMDashboard() {
 
   return (
     <AdminLayout title={voc.crmTitle}>
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
-        {/* Header */}
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
+      <div className="flex min-h-screen flex-col bg-background text-foreground dark:bg-[#080e1c]">
+        {/* Header compacto: el trabajo va primero; la franja «Amplía tu empresa» pasa al final */}
+        <div className="px-4 sm:px-6 pt-3 sm:pt-4 pb-3 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between mb-1">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground">{voc.crmTitle}</h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">{voc.crmSubtitle}</p>
+              {/* El título «Ventas» ya está en la barra superior: aquí solo el recorrido, sin repetirlo */}
+              <h1 className="sr-only">{voc.crmTitle}</h1>
+              <p className="text-sm text-foreground/60">{voc.crmSubtitle}</p>
             </div>
           </div>
+        </div>
+        <div className="order-last px-4 sm:px-6 pb-6">
           <WorkplaceLocks place="crm" className="mt-3" />
         </div>
 
@@ -6778,7 +6781,7 @@ export default function CRMDashboard() {
                       <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!leadsData?.rows?.length && selectedLeads.size === leadsData.rows.length} onChange={e => setSelectedLeads(e.target.checked ? new Set(leadsData?.rows?.map((l: any) => l.id)) : new Set())} />
                     </th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmLeads.recibido")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmLeads.cliente")}</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium min-w-[260px]">{t("crmLeads.cliente")}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmLeads.producto")}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">{voc.serviceDateColumn}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">{t("crmLeads.origen")}</th>
