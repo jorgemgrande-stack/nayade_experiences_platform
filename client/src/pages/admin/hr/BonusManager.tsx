@@ -13,8 +13,9 @@ import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useMemo } from "react";
 import {
   TrendingUp, Plus, Pencil, Trash2, CheckCircle2, XCircle,
-  Search, ExternalLink, Wallet, ArrowRight, Banknote, } from "lucide-react";
+  Search, ExternalLink, Wallet, ArrowRight, Banknote, , Hash, Euro,} from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Link } from "wouter";
@@ -477,10 +478,6 @@ export default function BonusManager() {
 }
 
 function Stat({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
-  return (
-    <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-      <p className="text-xs uppercase tracking-wider text-foreground/40">{label}</p>
-      <p className={cn("text-sm font-bold tabular-nums mt-0.5", color ?? "text-foreground/80")}>{value}</p>
-    </div>
-  );
+  const tone = color === "text-success" ? "success" : color === "text-warning" ? "warning" : color === "text-info" ? "info" : color === "text-primary" ? "brand" : "neutral";
+  return <MetricCard compact tone={tone} icon={typeof value === "number" ? <Hash /> : <Euro />} label={label} value={value} />;
 }

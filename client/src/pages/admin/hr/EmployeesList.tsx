@@ -12,6 +12,7 @@ import {
   Mail, Phone, Building2,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
@@ -105,21 +106,10 @@ export default function EmployeesList() {
           />
 
           {/* Mini-counters */}
-          <div className="flex items-center gap-3 mt-3 text-xs">
-            <span className="flex items-center gap-1.5 text-success">
-              <UserCheck className="w-3.5 h-3.5" />
-              <strong>{counts.active}</strong> activos
-            </span>
-            <span className="text-foreground/30">·</span>
-            <span className="flex items-center gap-1.5 text-danger">
-              <UserX className="w-3.5 h-3.5" />
-              <strong>{counts.inactive}</strong> inactivos
-            </span>
-            <span className="text-foreground/30">·</span>
-            <span className="flex items-center gap-1.5 text-foreground/60">
-              <Users className="w-3.5 h-3.5" />
-              <strong>{counts.total}</strong> total
-            </span>
+          <div className="grid grid-cols-3 gap-3">
+            <MetricCard compact tone="success" icon={<UserCheck />} label="Activos" value={counts.active} />
+            <MetricCard compact tone="danger" icon={<UserX />} label="Inactivos" value={counts.inactive} />
+            <MetricCard compact tone="brand" icon={<Users />} label="Total" value={counts.total} />
           </div>
         </div>
 
