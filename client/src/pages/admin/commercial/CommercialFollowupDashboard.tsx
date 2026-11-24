@@ -29,7 +29,9 @@ import EmailAuditTab from "./EmailAuditTab";
 import TemplateRulesTab from "./TemplateRulesTab";
 import PendingJobsTab from "./PendingJobsTab";
 import { toastError } from "@/lib/errorMessage";
-import { PanelError } from "@/components/admin/PanelStates";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -78,18 +80,21 @@ function daysSince(d: Date | string | null | undefined): number | null {
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
+/** Tono semántico del indicador a partir del color que le asigna cada llamada. */
+function kpiTone(color: string): Tone {
+  if (color.includes("emerald")) return "success";
+  if (color.includes("red")) return "danger";
+  if (color.includes("orange") || color.includes("amber")) return "warning";
+  if (color.includes("sky")) return "info";
+  if (color.includes("purple")) return "brand";
+  return "neutral";
+}
+
 function KpiCard({ label, value, sub, color, icon: Icon }: {
   label: string; value: number | string; sub?: string; color: string; icon: React.ElementType;
 }) {
   return (
-    <div className={`rounded-xl border border-foreground/[0.08] bg-background p-4 flex flex-col gap-1`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-foreground/50 font-medium uppercase tracking-wide">{label}</span>
-        <Icon className={`w-4 h-4 ${color}`} />
-      </div>
-      <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-foreground/40">{sub}</div>}
-    </div>
+    <MetricCard tone={kpiTone(color)} icon={<Icon />} label={label} value={value} detail={sub} />
   );
 }
 
@@ -323,26 +328,26 @@ export default function CommercialFollowupDashboard() {
     <AdminLayout>
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">{t("crmFollowup.title")}</h1>
-            <p className="text-sm text-foreground/50">{t("crmFollowup.subtitle")}</p>
-          </div>
-          <button onClick={() => { refetchDash(); refetchOpen(); }}
-            className="p-2 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-foreground transition-colors">
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
+        <PanelPageHeader
+          icon={<Target />}
+          title={t("crmFollowup.title")}
+          description={t("crmFollowup.subtitle")}
+          actions={
+            <Button type="button" variant="outline" size="icon" aria-label={t("panelStates.retry")} onClick={() => { refetchDash(); refetchOpen(); }}>
+              <RefreshCw className="w-4 h-4" aria-hidden="true" />
+            </Button>
+          }
+        />
         <WorkplaceLocks place="crm" className="mb-6" />
 
         {/* Tab nav */}
-        <div className="flex gap-1 mb-6 border-b border-foreground/[0.08] pb-0">
+        <div className="flex gap-1 mb-6 border-b border-border pb-0 overflow-x-auto">
           {tabs.map(tb => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
                 tab === tb.id
-                  ? "border-orange-400 text-orange-400"
-                  : "border-transparent text-foreground/50 hover:text-foreground hover:border-foreground/20"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
               }`}>
               <tb.icon className="w-3.5 h-3.5" />
               {tb.label}
@@ -356,9 +361,7 @@ export default function CommercialFollowupDashboard() {
             {dashError ? (
               <PanelError title={t("crmFollowup.loadError")} error={dashError} onRetry={() => void refetchDash()} />
             ) : dashLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
-              </div>
+              <PanelLoading />
             ) : (
               <>
                 {/* KPIs */}
@@ -377,91 +380,21 @@ export default function CommercialFollowupDashboard() {
                 {(hasWhatsApp || hasVoice) && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {hasWhatsApp && (<>
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-emerald-500/15 shrink-0">
-                      <MessageCircle className="w-4 h-4 text-emerald-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-emerald-400">
-                        {whatsappStats?.conversations?.newToday ?? 0}
-                      </div>
-                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.whatsappToday")}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-sky-500/15 shrink-0">
-                      <MessageCircle className="w-4 h-4 text-sky-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-sky-400">
-                        {whatsappStats?.conversations?.unread ?? 0}
-                      </div>
-                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.whatsappUnread")}</div>
-                    </div>
-                  </div>
+                  <MetricCard tone="success" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappToday")} value={whatsappStats?.conversations?.newToday ?? 0} />
+                  <MetricCard tone="info" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappUnread")} value={whatsappStats?.conversations?.unread ?? 0} />
                   </>)}
                   {hasVoice && (<>
-                  <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-violet-500/15 shrink-0">
-                      <Bot className="w-4 h-4 text-violet-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-violet-400">
-                        {vapiStats?.today ?? 0}
-                      </div>
-                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.callsToday")}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-amber-500/15 shrink-0">
-                      <Bot className="w-4 h-4 text-amber-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-amber-400">
-                        {vapiStats?.unreviewed ?? 0}
-                      </div>
-                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.callsUnreviewed")}</div>
-                    </div>
-                  </div>
+                  <MetricCard tone="brand" icon={<Bot />} label={t("crmFollowup.kpi.callsToday")} value={vapiStats?.today ?? 0} />
+                  <MetricCard tone="warning" icon={<Bot />} label={t("crmFollowup.kpi.callsUnreviewed")} value={vapiStats?.unreviewed ?? 0} />
                   </>)}
                 </div>
                 )}
 
                 {/* ─── KPIs Email Comercial ──────────────────────────────────── */}
                 <div className="grid grid-cols-3 gap-3">
-                  <a href="/admin/atencion-comercial/email" className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 flex items-center gap-3 hover:bg-sky-500/10 transition-colors">
-                    <div className="p-2 rounded-lg bg-sky-500/15 shrink-0">
-                      <Mail className="w-4 h-4 text-sky-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-sky-400">
-                        {emailStats?.receivedToday ?? 0}
-                      </div>
-                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.emailsToday")}</div>
-                    </div>
-                  </a>
-                  <a href="/admin/atencion-comercial/email" className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4 flex items-center gap-3 hover:bg-orange-500/10 transition-colors">
-                    <div className="p-2 rounded-lg bg-orange-500/15 shrink-0">
-                      <MailOpen className="w-4 h-4 text-orange-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-orange-400">
-                        {emailStats?.unreadInbox ?? 0}
-                      </div>
-                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.emailsUnread")}</div>
-                    </div>
-                  </a>
-                  <a href="/admin/atencion-comercial/email?folder=sent" className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-4 flex items-center gap-3 hover:bg-teal-500/10 transition-colors">
-                    <div className="p-2 rounded-lg bg-teal-500/15 shrink-0">
-                      <SendHorizonal className="w-4 h-4 text-teal-400" />
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold text-teal-400">
-                        {emailStats?.sent ?? 0}
-                      </div>
-                      <div className="text-xs text-foreground/50">{t("crmFollowup.kpi.emailsSent")}</div>
-                    </div>
-                  </a>
+                  <MetricCard tone="info" icon={<Mail />} label={t("crmFollowup.kpi.emailsToday")} value={emailStats?.receivedToday ?? 0} href="/admin/atencion-comercial/email" />
+                  <MetricCard tone="warning" icon={<MailOpen />} label={t("crmFollowup.kpi.emailsUnread")} value={emailStats?.unreadInbox ?? 0} href="/admin/atencion-comercial/email" />
+                  <MetricCard tone="info" icon={<SendHorizonal />} label={t("crmFollowup.kpi.emailsSent")} value={emailStats?.sent ?? 0} href="/admin/atencion-comercial/email?folder=sent" />
                 </div>
 
                 {/* ─── Control notificaciones WhatsApp ───────────────────────── */}
@@ -586,7 +519,7 @@ export default function CommercialFollowupDashboard() {
                 <span className="text-xs text-foreground/50">{t("crmFollowup.open.count", { n: openData?.total ?? 0 })}</span>
               </div>
               {openLoading ? (
-                <div className="flex items-center justify-center h-32"><RefreshCw className="w-5 h-5 animate-spin text-orange-400" /></div>
+                <PanelLoading />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -629,7 +562,7 @@ export default function CommercialFollowupDashboard() {
               <span className="text-xs text-foreground/50">{t("crmFollowup.history.count", { n: historyData?.total ?? 0 })}</span>
             </div>
             {histLoading ? (
-              <div className="flex items-center justify-center h-32"><RefreshCw className="w-5 h-5 animate-spin text-orange-400" /></div>
+              <PanelLoading />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
