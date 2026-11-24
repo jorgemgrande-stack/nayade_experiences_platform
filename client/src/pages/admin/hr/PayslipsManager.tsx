@@ -196,7 +196,7 @@ export default function PayslipsManager() {
             }
           />
           {/* Totales */}
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 mt-3 text-xs">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-3 text-xs">
             <Stat label="Nóminas" value={totals.count} />
             <Stat label="Bruto total" value={fmtEur(totals.gross)} color="text-primary" />
             <Stat label="IRPF" value={fmtEur(totals.irpf)} />

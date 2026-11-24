@@ -199,7 +199,7 @@ export default function LeaveManager() {
                       <td className="px-4 py-3 text-foreground/70 text-xs">{fmtDate(r.fromDate)}</td>
                       <td className="px-4 py-3 text-foreground/70 text-xs">{fmtDate(r.toDate)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-primary font-semibold">{Number(r.days)}</td>
-                      <td className="px-4 py-3 text-xs text-foreground/60 max-w-[180px] truncate" title={r.reason ?? ""}>
+                      <td className="px-4 py-3 text-xs text-foreground/60 max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={r.reason ?? ""}>
                         {r.reason || <span className="text-foreground/30">—</span>}
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -207,7 +207,7 @@ export default function LeaveManager() {
                           {r.status}
                         </span>
                         {r.status !== "pendiente" && r.decisionReason && (
-                          <p className="text-xs text-foreground/40 mt-1 max-w-[140px] mx-auto truncate" title={r.decisionReason}>
+                          <p className="text-xs text-foreground/40 mt-1 max-w-[140px] mx-auto overflow-hidden text-ellipsis whitespace-nowrap" title={r.decisionReason}>
                             {r.decisionReason}
                           </p>
                         )}

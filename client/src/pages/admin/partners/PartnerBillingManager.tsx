@@ -149,8 +149,8 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
                   <td className="px-4 py-3 text-foreground/70 hidden sm:table-cell">
                     {item.bookingDate ? new Date(item.bookingDate).toLocaleDateString("es-ES") : "—"}
                   </td>
-                  <td className="px-4 py-3 text-foreground/70 hidden md:table-cell truncate max-w-[140px]">{item.customerName ?? "—"}</td>
-                  <td className="px-4 py-3 text-foreground/70 hidden lg:table-cell truncate max-w-[160px]">{item.productName ?? "—"}</td>
+                  <td className="px-4 py-3 text-foreground/70 hidden md:table-cell overflow-hidden text-ellipsis whitespace-nowrap max-w-[140px]">{item.customerName ?? "—"}</td>
+                  <td className="px-4 py-3 text-foreground/70 hidden lg:table-cell overflow-hidden text-ellipsis whitespace-nowrap max-w-[160px]">{item.productName ?? "—"}</td>
                   <td className="px-4 py-3 text-right font-medium text-foreground">
                     {parseFloat(item.amount ?? "0").toFixed(2)} €
                   </td>
@@ -270,7 +270,7 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                   <div className="space-y-1 max-h-40 overflow-y-auto">
                     {preview.map((r: any) => (
                       <div key={r.id} className="flex items-center justify-between text-xs text-foreground/60">
-                        <span className="truncate">{r.customerName} · {r.productName}</span>
+                        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{r.customerName} · {r.productName}</span>
                         <span className="ml-2 font-medium flex-shrink-0">{((r.amountTotal ?? 0) / 100).toFixed(2)} €</span>
                       </div>
                     ))}
@@ -390,7 +390,7 @@ export default function PartnerBillingManager() {
                         <span className="font-mono text-xs text-foreground/50">{batch.batchNumber}</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${s.cls}`}>{s.label}</span>
                       </div>
-                      <p className="text-sm font-medium text-foreground mt-0.5 truncate">{batch.partnerFiscalName ?? batch.partnerName}</p>
+                      <p className="text-sm font-medium text-foreground mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{batch.partnerFiscalName ?? batch.partnerName}</p>
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-xs text-foreground/50 flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> {batch.periodStart} – {batch.periodEnd}

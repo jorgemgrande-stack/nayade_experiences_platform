@@ -250,7 +250,7 @@ function PartnerForm({
                           onChange={() => toggleProduct(p.id)}
                           className="accent-primary shrink-0"
                         />
-                        <span className="truncate">{p.title}</span>
+                        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</span>
                         {p.basePrice && (
                           <span className="ml-auto shrink-0 text-foreground/30">{parseFloat(p.basePrice).toFixed(0)}€</span>
                         )}
@@ -447,8 +447,8 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
                 <span className="text-xs font-bold text-primary">{(u.name ?? "?")[0].toUpperCase()}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground truncate">{u.name ?? "—"}</div>
-                <div className="text-xs text-foreground/40 truncate">{u.email ?? "—"}</div>
+                <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{u.name ?? "—"}</div>
+                <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap">{u.email ?? "—"}</div>
               </div>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                 u.role === "partner_admin"
@@ -711,7 +711,7 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
                       <td className="px-3 py-2 text-foreground/40 font-mono">{r.reservationNumber ?? `#${r.id}`}</td>
                       <td className="px-3 py-2 text-foreground/50">{r.bookingDate ?? "—"}</td>
                       <td className="px-3 py-2 font-medium text-foreground">{r.customerName}</td>
-                      <td className="px-3 py-2 text-foreground/60 max-w-[140px] truncate">{r.productName}</td>
+                      <td className="px-3 py-2 text-foreground/60 max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap">{r.productName}</td>
                       <td className="px-3 py-2 font-semibold text-info">{((r.amountTotal ?? 0) / 100).toFixed(2)} €</td>
                       <td className="px-3 py-2">
                         <StatusBadgeOp {...st} />
@@ -954,7 +954,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                     {line.productName ? (
                       <div className="mt-1 flex items-center justify-between bg-success/10 border border-success/25 rounded-lg px-3 py-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-success truncate">{line.productName}</p>
+                          <p className="text-sm font-medium text-success overflow-hidden text-ellipsis whitespace-nowrap">{line.productName}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {line.basePrice > 0 ? `${line.basePrice.toFixed(2)} €` : "Sin precio base"}
                             {" · "}
@@ -999,7 +999,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                                   className="w-full text-left px-3 py-2.5 hover:bg-muted/50 text-sm flex items-center gap-2.5 border-b border-border/50 last:border-0 transition-colors"
                                 >
                                   <span className="text-base leading-none">🏊</span>
-                                  <span className="flex-1 truncate">{p.title}</span>
+                                  <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</span>
                                   {priceLabel && (
                                     <span className="text-muted-foreground text-xs shrink-0">{priceLabel}</span>
                                   )}
@@ -1110,7 +1110,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
               )}
               {proofFile && (
                 <span className="text-xs text-foreground/70 flex items-center gap-1.5">
-                  <span className="truncate max-w-[180px]">{proofFile.name}</span>
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap max-w-[180px]">{proofFile.name}</span>
                   <button type="button" onClick={() => setProofFile(null)} className="text-danger hover:text-danger">
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1410,7 +1410,7 @@ export default function PartnersManager() {
 
         <div className="flex h-[calc(100vh-11rem)] min-h-[28rem]">
           {/* Lista izquierda: a pantalla completa en móvil mientras no haya partner abierto */}
-          <div className={`${selectedPartner || showCreate ? "hidden md:flex" : "flex"} w-full md:w-80 shrink-0 border-r border-foreground/[0.08] flex-col`}>
+          <div className={`${selectedPartner || showCreate ? "hidden md:flex" : "flex"} w-full md:w-80 shrink-0 md:border-r border-foreground/[0.08] flex-col`}>
             <div className="p-3 border-b border-foreground/[0.08]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
@@ -1432,10 +1432,10 @@ export default function PartnersManager() {
                     className={`w-full text-left px-4 py-3 border-b border-foreground/[0.06] hover:bg-foreground/[0.04] transition-colors ${selectedId === p.id ? "bg-primary/10 border-l-2 border-l-primary" : ""}`}>
                     <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full shrink-0 ${p.isActive ? "bg-success" : "bg-foreground/20"}`} />
-                      <span className="text-sm font-medium text-foreground truncate">{p.name}</span>
+                      <span className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{p.name}</span>
                     </div>
                     {p.contactEmail && (
-                      <div className="text-xs text-foreground/40 mt-0.5 ml-4 truncate">{p.contactEmail}</div>
+                      <div className="text-xs text-foreground/40 mt-0.5 ml-4 overflow-hidden text-ellipsis whitespace-nowrap">{p.contactEmail}</div>
                     )}
                     <div className="flex gap-1 mt-1.5 ml-4">
                       {p.canCreateReservations && (

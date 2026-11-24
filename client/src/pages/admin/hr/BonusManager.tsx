@@ -13,7 +13,8 @@ import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useMemo } from "react";
 import {
   TrendingUp, Plus, Pencil, Trash2, CheckCircle2, XCircle,
-  Search, ExternalLink, Wallet, ArrowRight, Banknote, , Hash, Euro,} from "lucide-react";
+  Search, ExternalLink, Wallet, ArrowRight, Banknote, Hash, Euro,
+} from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
@@ -291,7 +292,7 @@ export default function BonusManager() {
                             {TYPE_LABEL[r.type] ?? r.type}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-foreground/80 text-xs max-w-xs truncate">{r.concept}</td>
+                        <td className="px-4 py-3 text-foreground/80 text-xs max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">{r.concept}</td>
                         <td className="px-4 py-3 text-right tabular-nums text-primary font-semibold">{fmtEur(r.amount)}</td>
                         <td className="px-4 py-3 text-right tabular-nums text-foreground/60">{Number(r.irpfAmount) > 0 ? fmtEur(r.irpfAmount) : "—"}</td>
                         <td className="px-4 py-3 text-xs">

@@ -146,7 +146,7 @@ export default function BatchDetail() {
 
         {/* Totales */}
         <div className="px-4 sm:px-6 py-5">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <Stat label="Nóminas" value={batch.payslips.length} />
             <Stat label="Bruto total" value={fmtEur(batch.totalGross)} color="text-primary" />
             <Stat label="IRPF" value={fmtEur(batch.totalIrpf)} />

@@ -106,7 +106,7 @@ export default function EmployeesList() {
           />
 
           {/* Mini-counters */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 min-[520px]:grid-cols-3 gap-3">
             <MetricCard compact tone="success" icon={<UserCheck />} label="Activos" value={counts.active} />
             <MetricCard compact tone="danger" icon={<UserX />} label="Inactivos" value={counts.inactive} />
             <MetricCard compact tone="brand" icon={<Users />} label="Total" value={counts.total} />
