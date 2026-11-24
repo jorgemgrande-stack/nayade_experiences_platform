@@ -872,9 +872,9 @@ export default function ExpensesManager() {
               </thead>
               <tbody>
                 {expensesQ.isLoading ? (
-                  <tr><td colSpan={10}><PanelLoading className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
+                  <tr><td colSpan={10}><PanelLoading className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={10} className="p-2"><PanelEmpty title="No hay gastos con los filtros actuales" className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
+                  <tr><td colSpan={10} className="p-2"><PanelEmpty title="No hay gastos con los filtros actuales" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                 ) : (
                   filtered.map((e) => (
                     <tr key={e.id} className="border-t hover:bg-muted/20">

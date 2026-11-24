@@ -457,9 +457,9 @@ export default function BankMovementsManager() {
                 </thead>
                 <tbody>
                   {movementsQ.isLoading ? (
-                    <tr><td colSpan={9}><PanelLoading className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
+                    <tr><td colSpan={9}><PanelLoading className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
                   ) : movements.length === 0 ? (
-                    <tr><td colSpan={9} className="p-2"><PanelEmpty title="No hay movimientos con los filtros seleccionados" className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
+                    <tr><td colSpan={9} className="p-2"><PanelEmpty title="No hay movimientos con los filtros seleccionados" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                   ) : movements.map((mv) => {
                     const amount = parseFloat(mv.importe);
                     const isPos = amount >= 0;
