@@ -85,6 +85,11 @@ describe("processProductRequest con fecha de inicio", () => {
     const r = await processProductRequest({ ...base, email: email(), variantId: 16, seats: 3, startDate: "2026-12-15" }, ctx);
     expect(r.ok).toBe(true);
     expect(r.kind).toBe("info");
+    // La persona ve expresamente que está pendiente de confirmación y que no es una reserva
+    expect(r.message).toMatch(/^Solicitud pendiente de confirmación\./);
+    expect(r.message).toContain("15/12/2026");
+    expect(r.message).toMatch(/No es una reserva ni está confirmada/);
+    expect(r.message).not.toMatch(/Reserva confirmada/i);
     const lead = state.createdLeads[0];
     expect(lead.experienceId).toBe(26);
     expect(lead.variantId).toBe(16);
