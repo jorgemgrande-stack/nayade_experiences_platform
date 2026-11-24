@@ -133,7 +133,8 @@ function RoomFormDialog({ open, onClose, editRoom }: {
           <DialogTitle>{editRoom ? "Editar tipología" : "Nueva tipología"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Datos básicos</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>Nombre *</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: slugify(e.target.value) }))} placeholder="Suite Junior" />
@@ -151,7 +152,8 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             <Label>Descripción completa</Label>
             <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={4} />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Capacidad y precio</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <Label>Precio base (€/noche) *</Label>
               <Input type="number" value={form.basePrice} onChange={e => setForm(f => ({ ...f, basePrice: e.target.value }))} placeholder="120" />
@@ -165,7 +167,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
               <Input type="number" min={0} value={form.maxChildren} onChange={e => setForm(f => ({ ...f, maxChildren: parseInt(e.target.value) || 0 }))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>Superficie (m²)</Label>
               <Input type="number" value={form.surfaceM2} onChange={e => setForm(f => ({ ...f, surfaceM2: e.target.value }))} placeholder="28" />
@@ -175,15 +177,17 @@ function RoomFormDialog({ open, onClose, editRoom }: {
               <Input type="number" min={1} value={form.totalUnits} onChange={e => setForm(f => ({ ...f, totalUnits: parseInt(e.target.value) || 1 }))} />
             </div>
           </div>
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Imágenes</h3>
           <div>
             <Label>Imagen de portada</Label>
             <ImageUploader value={form.coverImageUrl} onChange={url => setForm(f => ({ ...f, coverImageUrl: url }))} />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div><Label>Imagen 2</Label><ImageUploader value={form.image1} onChange={url => setForm(f => ({ ...f, image1: url }))} /></div>
             <div><Label>Imagen 3</Label><ImageUploader value={form.image2} onChange={url => setForm(f => ({ ...f, image2: url }))} /></div>
             <div><Label>Imagen 4</Label><ImageUploader value={form.image3} onChange={url => setForm(f => ({ ...f, image3: url }))} /></div>
           </div>
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Servicios y condiciones comerciales</h3>
           <div>
             <Label>Servicios incluidos (separados por coma)</Label>
             <Input value={form.amenities} onChange={e => setForm(f => ({ ...f, amenities: e.target.value }))} placeholder="WiFi, Desayuno, TV, Minibar..." />
@@ -191,7 +195,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
           {/* Descuento promocional */}
           <div className="border rounded-lg p-4 space-y-3 bg-warning/10">
             <h4 className="font-semibold text-sm text-warning">Descuento promocional</h4>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <Label>Descuento (%)</Label>
                 <Input type="number" min={0} max={100} step={0.01} value={form.discountPercent}
@@ -212,7 +216,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
           {/* Régimen fiscal */}
           <div className="border rounded-lg p-4 space-y-3 bg-info/10">
             <h4 className="font-semibold text-sm text-info">Régimen fiscal</h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label>Régimen</Label>
                 <Select value={form.fiscalRegime} onValueChange={v => setForm(f => ({ ...f, fiscalRegime: v }))}>
@@ -250,7 +254,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
           {/* Proveedor y liquidaciones */}
           <div className="border rounded-lg p-4 space-y-3 bg-primary/10">
             <h4 className="font-semibold text-sm text-primary">Proveedor y liquidaciones</h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="col-span-2">
                 <Label>Proveedor</Label>
                 <SupplierSelect value={form.supplierId} onChange={v => setForm(f => ({ ...f, supplierId: v }))} />
@@ -305,6 +309,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             </div>
           </div>
         </div>
+        {(!form.name || !form.basePrice) && <p className="text-xs text-danger" role="alert">Para guardar, completa el nombre y el precio base (campos con *).</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleSubmit} disabled={isLoading || !form.name || !form.basePrice}>

@@ -123,7 +123,8 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
           <DialogTitle>{editTreatment ? "Editar tratamiento" : "Nuevo tratamiento"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Datos básicos</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>Nombre *</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: slugify(e.target.value) }))} placeholder="Masaje relajante" />
@@ -141,7 +142,8 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             <Label>Descripción completa</Label>
             <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={4} />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Duración, aforo y precio</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <Label>Precio (€/persona) *</Label>
               <Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="55" />
@@ -166,6 +168,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Imagen</h3>
           <div>
             <Label>Imagen de portada</Label>
             <ImageUploader value={form.coverImageUrl} onChange={url => setForm(f => ({ ...f, coverImageUrl: url }))} />
@@ -173,7 +176,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
           {/* Descuento promocional */}
           <div className="border rounded-lg p-4 space-y-3 bg-warning/10">
             <h4 className="font-semibold text-sm text-warning">Descuento promocional</h4>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <Label>Descuento (%)</Label>
                 <Input type="number" min={0} max={100} step={0.01} value={form.discountPercent}
@@ -194,7 +197,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
           {/* Régimen fiscal */}
           <div className="border rounded-lg p-4 space-y-3 bg-info/10">
             <h4 className="font-semibold text-sm text-info">Régimen fiscal</h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label>Régimen</Label>
                 <Select value={form.fiscalRegime} onValueChange={v => setForm(f => ({ ...f, fiscalRegime: v }))}>
@@ -232,7 +235,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
           {/* Proveedor y liquidaciones */}
           <div className="border rounded-lg p-4 space-y-3 bg-primary/10">
             <h4 className="font-semibold text-sm text-primary">Proveedor y liquidaciones</h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="col-span-2">
                 <Label>Proveedor</Label>
                 <SupplierSelect value={form.supplierId} onChange={v => setForm(f => ({ ...f, supplierId: v }))} />
@@ -287,6 +290,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             </div>
           </div>
         </div>
+        {(!form.name || !form.price) && <p className="text-xs text-danger" role="alert">Para guardar, completa el nombre y el precio (campos con *).</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleSubmit} disabled={isLoading || !form.name || !form.price}>
