@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelLoading, PanelEmpty } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +150,7 @@ export default function ExpensesManager() {
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [showFormErrors, setShowFormErrors] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<ExpenseForm>(emptyForm);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -316,6 +318,7 @@ export default function ExpensesManager() {
   const totalIvaSoportado = filtered.reduce((sum, e) => sum + ivaSoportado(e), 0);
 
   function openCreate() {
+    setShowFormErrors(false);
     setEditingId(null);
     setForm(emptyForm);
     setPendingFiles([]);
@@ -324,6 +327,7 @@ export default function ExpensesManager() {
   }
 
   function openEdit(e: typeof expenses[number]) {
+    setShowFormErrors(false);
     setEditingId(e.id);
     setForm({
       date: e.date,
@@ -349,6 +353,7 @@ export default function ExpensesManager() {
   }
 
   async function handleSave() {
+    setShowFormErrors(true);
     if (!form.concept || !form.amount || !form.categoryId || !form.costCenterId || !form.date) {
       toast.error("Campos requeridos: Rellena concepto, importe, categoría, centro de coste y fecha.");
       return;
@@ -551,6 +556,111 @@ export default function ExpensesManager() {
     });
   }
 
+  type ExpenseRow = (typeof filtered)[number];
+  const dayChip = (v: string) => new Date(`${v}T00:00:00`).toLocaleDateString("es-ES");
+  const clearFilters = () => {
+    setSearch(""); setFilterCategory("all"); setFilterCostCenter("all"); setFilterStatus("all");
+    setFilterDateFrom(""); setFilterDateTo(""); setFilterTreatment("all"); setFilterSource("all");
+  };
+  const chips: FilterChip[] = [
+    ...(search ? [{ id: "q", label: `Búsqueda: ${search}`, onRemove: () => setSearch("") }] : []),
+    ...(filterStatus !== "all" ? [{ id: "status", label: `Estado: ${STATUS_LABELS[filterStatus] ?? filterStatus}`, onRemove: () => setFilterStatus("all") }] : []),
+    ...(filterCategory !== "all" ? [{ id: "cat", label: `Categoría: ${getCategoryName(Number(filterCategory))}`, onRemove: () => setFilterCategory("all") }] : []),
+    ...(filterCostCenter !== "all" ? [{ id: "cc", label: `Centro: ${getCostCenterName(Number(filterCostCenter))}`, onRemove: () => setFilterCostCenter("all") }] : []),
+    ...(filterDateFrom ? [{ id: "from", label: `Desde ${dayChip(filterDateFrom)}`, onRemove: () => setFilterDateFrom("") }] : []),
+    ...(filterDateTo ? [{ id: "to", label: `Hasta ${dayChip(filterDateTo)}`, onRemove: () => setFilterDateTo("") }] : []),
+    ...(filterSource === "email" ? [{ id: "src", label: "Origen: email", onRemove: () => setFilterSource("all") }] : []),
+    ...(filterTreatment !== "all" ? [{ id: "treat", label: filterTreatment === "tax_only" ? "Solo fiscales" : "Solo operativos", onRemove: () => setFilterTreatment("all") }] : []),
+  ];
+
+  const columns: EconomyColumn<ExpenseRow>[] = [
+    {
+      key: "fecha",
+      header: "Fecha",
+      mobile: "title",
+      cell: (e) => (
+        <>
+          <span className="whitespace-nowrap text-muted-foreground @2xl:text-foreground">{e.date}</span>
+          <span className="mt-0.5 block text-sm font-medium text-foreground @2xl:hidden">{e.concept}</span>
+        </>
+      ),
+    },
+    {
+      key: "concepto",
+      header: "Concepto",
+      mobile: "hidden",
+      className: "max-w-[16rem]",
+      cell: (e) => (
+        <>
+          <div className="flex min-w-0 items-center gap-1.5" title={e.concept}>
+            {(e as any).source === "email" && <StatusBadge tone="info" icon={<Mail />}>Email</StatusBadge>}
+            {(e as any).isOperational === false && (
+              <span title="Gasto solo fiscal — no computa en P&L operativo, EBITDA ni KPIs del negocio. Sí computa en gestoría, IVA y tesorería.">
+                <StatusBadge tone="warning">Solo fiscal</StatusBadge>
+              </span>
+            )}
+            <span className="overflow-hidden text-ellipsis whitespace-nowrap">{e.concept}</span>
+          </div>
+          {(e as any).missingAttachment && (
+            <div className="mt-0.5 flex items-center gap-1 text-xs text-warning">
+              <AlertTriangle className="h-3 w-3" /> Sin adjunto
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "proveedor",
+      header: "Proveedor",
+      priority: "lg",
+      className: "max-w-[10rem]",
+      cell: (e) => <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground" title={getSupplierName((e as any).supplierId)}>{getSupplierName((e as any).supplierId)}</span>,
+    },
+    { key: "categoria", header: "Categoría", priority: "md", cell: (e) => <span className="text-xs text-muted-foreground">{getCategoryName(e.categoryId)}</span> },
+    { key: "metodo", header: "Método", priority: "xl", cell: (e) => <span className="text-xs">{PAYMENT_METHOD_LABELS[e.paymentMethod]}</span> },
+    {
+      key: "importe",
+      header: "Importe",
+      align: "right",
+      num: true,
+      mobile: "amount",
+      cell: (e) => <span className="font-semibold text-danger">{parseFloat(e.amount).toFixed(2)} €</span>,
+    },
+    {
+      key: "iva",
+      header: "IVA soportado",
+      align: "right",
+      num: true,
+      priority: "lg",
+      cell: (e) => {
+        const iva = ivaSoportado(e);
+        const rate = (e as any).taxRate != null && (e as any).taxRate !== "" ? parseFloat((e as any).taxRate) : 21;
+        const isHr = typeof (e as any).source === "string" && (e as any).source.startsWith("hr_");
+        if (isHr || iva === 0) return <span className="text-xs text-muted-foreground">— sin IVA</span>;
+        return <span className="text-xs font-medium text-success" title={`Tipo ${rate}%`}>{iva.toFixed(2)} €</span>;
+      },
+    },
+    {
+      key: "estado",
+      header: "Estado",
+      cell: (e) => (
+        <StatusBadge tone={STATUS_TONES[e.status] ?? "neutral"} icon={e.status === "conciliado" ? <LinkIcon /> : undefined}>
+          {STATUS_LABELS[e.status] ?? e.status}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: "adj",
+      header: "Adj.",
+      align: "center",
+      priority: "md",
+      cell: (e) =>
+        e.files.length > 0 ? (
+          <span className="inline-flex items-center gap-1 text-info"><FileText className="h-3.5 w-3.5" /><span className="text-xs font-medium">{e.files.length}</span></span>
+        ) : <span className="text-muted-foreground">—</span>,
+    },
+  ];
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -608,29 +718,26 @@ export default function ExpensesManager() {
           }
         />
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {["pending", "justified", "accounted", "conciliado"].map((s) => {
-            const count = filtered.filter((e) => e.status === s).length;
-            const amt = filtered.filter((e) => e.status === s).reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        {/* Resumen */}
+        <EconomySummary>
+          <MetricCard icon={<TrendingDown />} tone="danger" label="Total periodo" value={`${totalAmount.toFixed(2)} €`} detail={`${filtered.length} gastos · IVA soportado ${totalIvaSoportado.toFixed(2)} €`} />
+          {(["pending", "justified", "accounted", "conciliado"] as const).map((s) => {
+            const rowsOf = filtered.filter((e) => e.status === s);
+            const amt = rowsOf.reduce((sum, e) => sum + parseFloat(e.amount), 0);
             return (
-              <Card key={s} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setFilterStatus(filterStatus === s ? "all" : s)}>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground">{STATUS_LABELS[s]}</p>
-                  <p className="text-xl font-bold">{amt.toFixed(2)} €</p>
-                  <p className="text-xs text-muted-foreground">{count} gastos</p>
-                </CardContent>
-              </Card>
+              <MetricCard
+                key={s}
+                icon={s === "pending" ? <Clock /> : s === "justified" ? <FileText /> : s === "accounted" ? <Calculator /> : <LinkIcon />}
+                tone={STATUS_TONES[s]}
+                label={STATUS_LABELS[s]}
+                value={`${amt.toFixed(2)} €`}
+                detail={`${rowsOf.length} gastos`}
+                active={filterStatus === s}
+                onClick={() => setFilterStatus(filterStatus === s ? "all" : s)}
+              />
             );
           })}
-          <Card>
-            <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Total periodo</p>
-              <p className="text-xl font-bold text-danger">{totalAmount.toFixed(2)} €</p>
-              <p className="text-xs text-muted-foreground">{filtered.length} gastos</p>
-            </CardContent>
-          </Card>
-        </div>
+        </EconomySummary>
 
         {/* KPI Distorsión fiscal — mes + año en curso */}
         {distortionQ.data && distortionQ.data.year_.count > 0 && (
@@ -765,59 +872,14 @@ export default function ExpensesManager() {
           </Card>
         )}
 
-        {/* Search & Filters */}
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por concepto..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2">
-              <Filter className="w-4 h-4" />
-              Filtros
-              <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? "rotate-180" : ""}`} />
-            </Button>
-          </div>
-
-          {showFilters && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-muted/30 rounded-lg border">
-              <div>
-                <Label className="text-xs">Desde</Label>
-                <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Hasta</Label>
-                <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Categoría</Label>
-                <Select value={filterCategory} onValueChange={setFilterCategory}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Centro de coste</Label>
-                <Select value={filterCostCenter} onValueChange={setFilterCostCenter}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {costCenters.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Estado</Label>
+        {/* Filtros */}
+        <EconomyFilterBar
+          search={{ value: search, onChange: setSearch, placeholder: "Buscar por concepto..." }}
+          primary={
+            <>
+              <FilterField label="Estado" className="w-full sm:w-44">
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="pending">Pendiente</SelectItem>
@@ -826,165 +888,110 @@ export default function ExpensesManager() {
                     <SelectItem value="conciliado">Conciliado</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Origen</Label>
+              </FilterField>
+              <FilterField label="Categoría" className="w-full sm:w-48">
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FilterField>
+            </>
+          }
+          more={
+            <>
+              <FilterField label="Desde">
+                <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+              </FilterField>
+              <FilterField label="Hasta">
+                <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+              </FilterField>
+              <FilterField label="Centro de coste">
+                <Select value={filterCostCenter} onValueChange={setFilterCostCenter}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {costCenters.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FilterField>
+              <FilterField label="Origen">
                 <Select value={filterSource} onValueChange={(v) => setFilterSource(v as "all" | "email")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="email">Desde email</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Imputación</Label>
+              </FilterField>
+              <FilterField label="Imputación">
                 <Select value={filterTreatment} onValueChange={(v) => setFilterTreatment(v as "all" | "operational" | "tax_only")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="operational">Solo operativos</SelectItem>
                     <SelectItem value="tax_only">Solo fiscales</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-          )}
-        </div>
+              </FilterField>
+            </>
+          }
+          chips={chips}
+          onClear={clearFilters}
+          summary={`${total} ${total === 1 ? "gasto" : "gastos"}`}
+        />
 
-        {/* Expenses Table */}
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left p-3 font-medium">Fecha</th>
-                  <th className="text-left p-3 font-medium">Proveedor</th>
-                  <th className="text-left p-3 font-medium">Concepto</th>
-                  <th className="text-left p-3 font-medium">Categoría</th>
-                  <th className="text-left p-3 font-medium">Método</th>
-                  <th className="text-right p-3 font-medium">Importe</th>
-                  <th className="text-right p-3 font-medium">IVA soportado</th>
-                  <th className="text-center p-3 font-medium">Estado</th>
-                  <th className="text-center p-3 font-medium">Adj.</th>
-                  <th className="text-center p-3 font-medium sticky right-0 bg-muted/50">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {expensesQ.isLoading ? (
-                  <tr><td colSpan={10}><PanelLoading className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td colSpan={10} className="p-2"><PanelEmpty title="No hay gastos con los filtros actuales" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
-                ) : (
-                  filtered.map((e) => (
-                    <tr key={e.id} className="border-t hover:bg-muted/20">
-                      <td className="p-3 whitespace-nowrap">{e.date}</td>
-                      <td className="p-3 text-xs text-muted-foreground max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap" title={getSupplierName((e as any).supplierId)}>{getSupplierName((e as any).supplierId)}</td>
-                      <td className="p-3 max-w-[220px]" title={e.concept}>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {(e as any).source === "email" && (
-                            <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/25">
-                              <Mail className="w-2.5 h-2.5" /> Email
-                            </span>
-                          )}
-                          {(e as any).isOperational === false && (
-                            <span
-                              className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30"
-                              title="Gasto solo fiscal — no computa en P&L operativo, EBITDA ni KPIs del negocio. Sí computa en gestoría, IVA y tesorería."
-                            >
-                              Solo fiscal
-                            </span>
-                          )}
-                          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{e.concept}</span>
-                        </div>
-                        {(e as any).missingAttachment && (
-                          <div className="flex items-center gap-1 mt-0.5 text-xs text-warning">
-                            <AlertTriangle className="w-2.5 h-2.5" /> Sin adjunto
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-3 text-xs text-muted-foreground">{getCategoryName(e.categoryId)}</td>
-                      <td className="p-3 text-xs">{PAYMENT_METHOD_LABELS[e.paymentMethod]}</td>
-                      <td className="p-3 text-right font-medium text-danger">{parseFloat(e.amount).toFixed(2)} €</td>
-                      <td className="p-3 text-right text-xs whitespace-nowrap">
-                        {(() => {
-                          const iva = ivaSoportado(e);
-                          const rate = (e as any).taxRate != null && (e as any).taxRate !== "" ? parseFloat((e as any).taxRate) : 21;
-                          const isHr = typeof (e as any).source === "string" && (e as any).source.startsWith("hr_");
-                          if (isHr || iva === 0) {
-                            return <span className="text-muted-foreground/50">— sin IVA</span>;
-                          }
-                          return (
-                            <span className="text-success font-medium" title={`Tipo ${rate}%`}>
-                              {iva.toFixed(2)} €
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="p-3 text-center">
-                        <StatusBadge tone={STATUS_TONES[e.status] ?? "neutral"} icon={e.status === "conciliado" ? <LinkIcon /> : undefined}>
-                          {STATUS_LABELS[e.status] ?? e.status}
-                        </StatusBadge>
-                      </td>
-                      <td className="p-3 text-center">
-                        {e.files.length > 0 ? (
-                          <button
-                            className="flex items-center justify-center gap-1 text-info hover:text-info transition-colors mx-auto"
-                            onClick={() => openEdit(e)}
-                            title="Ver adjuntos"
-                          >
-                            <FileText className="w-3 h-3" />
-                            <span className="text-xs font-medium">{e.files.length}</span>
-                          </button>
-                        ) : "—"}
-                      </td>
-                      <td className="p-3 text-center sticky right-0 bg-background border-l">
-                        <div className="flex gap-1 justify-center">
-                          <Button size="sm" variant="ghost" onClick={() => openEdit(e)}>
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => handleDelete(e.id)}>
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          {/* Paginación (limit/offset · mismo patrón que CRM) */}
-          {total > 0 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <span className="text-sm text-muted-foreground">
+        {/* Tabla de gastos */}
+        <EconomyTable
+          rows={filtered}
+          columns={columns}
+          rowKey={(e) => e.id}
+          caption="Gastos"
+          loading={expensesQ.isLoading}
+          error={expensesQ.error}
+          errorTitle="No se han podido cargar los gastos"
+          onRetry={() => void expensesQ.refetch()}
+          emptyTitle="No hay gastos con los filtros actuales"
+          emptyDescription="Cambia o quita algún filtro, o registra un gasto nuevo."
+          emptyAction={
+            <>
+              {chips.length > 0 && <Button variant="outline" size="sm" onClick={clearFilters}>Limpiar filtros</Button>}
+              <Button size="sm" onClick={openCreate}><Plus className="mr-1 h-4 w-4" /> Nuevo gasto</Button>
+            </>
+          }
+          onRowClick={(e) => openEdit(e)}
+          actions={(e) => (
+            <RowActions
+              label={e.concept}
+              primary={{ label: "Editar", icon: <Pencil className="h-4 w-4" />, onSelect: () => openEdit(e) }}
+              menu={[
+                ...(e.files.length > 0 ? [{ label: `Ver adjuntos (${e.files.length})`, icon: <FileText />, onSelect: () => openEdit(e) }] : []),
+                { label: "Eliminar gasto", icon: <Trash2 />, destructive: true, onSelect: () => handleDelete(e.id) },
+              ]}
+            />
+          )}
+          footer={total > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/30 px-4 py-3">
+              <span className="text-sm tabular-nums text-muted-foreground">
                 {total <= PAGE_SIZE
                   ? `Mostrando ${total} de ${total} gastos`
                   : `Página ${page + 1} de ${Math.ceil(total / PAGE_SIZE)} · ${total} gastos`}
               </span>
               {total > PAGE_SIZE && (
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => p - 1)}
-                    disabled={page === 0}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setPage((p) => p - 1)} disabled={page === 0}>
                     ← Anterior
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={(page + 1) * PAGE_SIZE >= total}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total}>
                     Siguiente →
                   </Button>
                 </div>
               )}
             </div>
-          )}
-        </div>
+          ) : undefined}
+        />
       </div>
 
       {/* Create/Edit Dialog */}
@@ -995,33 +1002,34 @@ export default function ExpensesManager() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Fecha *</Label>
+            <FormSection title="Datos del gasto">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Fecha" required error={showFormErrors && !form.date ? "Indica la fecha del gasto." : null}>
                 <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-              </div>
-              <div>
-                <Label>Importe (€) *</Label>
+              </FormField>
+              <FormField label="Importe (€)" required error={showFormErrors && !form.amount ? "Indica el importe total con IVA." : null}>
                 <Input
                   type="number"
                   step="0.01"
                   placeholder="0.00"
+                  className="tabular-nums"
                   value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
                 />
-              </div>
+              </FormField>
             </div>
 
-            <div>
-              <Label>Concepto *</Label>
+            <FormField label="Concepto" required error={showFormErrors && !form.concept ? "Describe el gasto." : null}>
               <Input
                 placeholder="Descripción del gasto"
                 value={form.concept}
                 onChange={(e) => setForm({ ...form, concept: e.target.value })}
               />
-            </div>
+            </FormField>
+            </FormSection>
 
-            <div className="grid grid-cols-2 gap-4">
+            <FormSection title="Clasificación">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label>Categoría *</Label>
@@ -1030,11 +1038,12 @@ export default function ExpensesManager() {
                   </button>
                 </div>
                 <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                   <SelectContent>
                     {categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {showFormErrors && !form.categoryId && <p role="alert" className="mt-1 text-xs text-danger">Elige una categoría.</p>}
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -1044,11 +1053,12 @@ export default function ExpensesManager() {
                   </button>
                 </div>
                 <Select value={form.costCenterId} onValueChange={(v) => setForm({ ...form, costCenterId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                   <SelectContent>
                     {costCenters.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {showFormErrors && !form.costCenterId && <p role="alert" className="mt-1 text-xs text-danger">Elige un centro de coste.</p>}
               </div>
             </div>
 
@@ -1080,13 +1090,11 @@ export default function ExpensesManager() {
                 </Select>
               </div>
             </div>
+            </FormSection>
 
             {/* ── Datos fiscales (IVA soportado) — Gestoría e Impuestos ── */}
-            <div className="border border-border rounded-lg p-3 space-y-3 bg-muted/20">
-              <div className="text-xs font-semibold text-foreground/70 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> Datos fiscales (IVA soportado)
-              </div>
-              <div className="grid grid-cols-3 gap-3">
+            <FormSection title="Datos fiscales (IVA soportado)" className="bg-muted/20">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <Label className="text-xs">Tipo de factura</Label>
                   <Select value={form.invoiceType} onValueChange={(v) => setForm({ ...form, invoiceType: v })}>
@@ -1131,21 +1139,21 @@ export default function ExpensesManager() {
                 return (
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div className="bg-background rounded px-2 py-1.5">
-                      <div className="text-foreground/50">Base imponible</div>
+                      <div className="text-muted-foreground">Base imponible</div>
                       <div className="font-semibold">{base.toFixed(2)} €</div>
                     </div>
                     <div className="bg-background rounded px-2 py-1.5">
-                      <div className="text-foreground/50">Cuota IVA</div>
+                      <div className="text-muted-foreground">Cuota IVA</div>
                       <div className="font-semibold">{cuota.toFixed(2)} €</div>
                     </div>
                     <div className="bg-background rounded px-2 py-1.5">
-                      <div className="text-foreground/50">IVA deducible</div>
+                      <div className="text-muted-foreground">IVA deducible</div>
                       <div className="font-semibold text-success">{(cuota * ded / 100).toFixed(2)} €</div>
                     </div>
                   </div>
                 );
               })()}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <Label className="text-xs">NIF proveedor</Label>
                   <Input
@@ -1172,17 +1180,13 @@ export default function ExpensesManager() {
                   />
                 </div>
               </div>
-              <p className="text-xs text-foreground/40">
+              <p className="text-xs text-muted-foreground">
                 El importe del gasto se entiende como total con IVA incluido. La base y la cuota se calculan automáticamente.
               </p>
-            </div>
+            </FormSection>
 
             {/* ── Tratamiento operativo ─────────────────────────────────── */}
-            <div className={`border rounded-lg p-3 transition-colors ${
-              form.isOperational
-                ? "border-border bg-muted/20"
-                : "border-warning/40 bg-warning/[0.06]"
-            }`}>
+            <FormSection title="Tratamiento operativo" className={form.isOperational ? "bg-muted/20" : "border-warning/40 bg-warning/10"}>
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1199,19 +1203,20 @@ export default function ExpensesManager() {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-foreground/50 mt-0.5 leading-snug">
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
                     Si lo desactivas, el gasto seguirá existiendo a efectos fiscales y tributarios (gestoría, IVA,
                     Impuesto de Sociedades, tesorería y conciliación bancaria), pero no afectará a los dashboards
                     ni a la rentabilidad operativa del negocio (EBITDA, márgenes, KPIs, P&amp;L operativo).
                   </p>
                 </div>
               </label>
-            </div>
+            </FormSection>
 
+            <FormSection title="Estado y notas">
             <div>
               <Label>Estado</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pending">Pendiente</SelectItem>
                   <SelectItem value="justified">Justificado</SelectItem>
@@ -1229,7 +1234,9 @@ export default function ExpensesManager() {
                 rows={2}
               />
             </div>
+            </FormSection>
 
+            <FormSection title="Adjuntos">
             {/* Adjuntos guardados */}
             {existingFiles.length > 0 && (
               <div>
@@ -1302,7 +1309,9 @@ export default function ExpensesManager() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            </FormSection>
+
+            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending}>
                 {editingId ? "Guardar cambios" : "Crear gasto"}

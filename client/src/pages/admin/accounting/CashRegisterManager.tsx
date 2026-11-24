@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelEmpty } from "@/components/admin/PanelStates";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -308,6 +309,129 @@ export default function CashRegisterManager() {
   const isIncome = (type: string) =>
     ["income", "transfer_in", "opening_balance"].includes(type);
 
+  const [movSearch, setMovSearch] = useState("");
+  type Mov = (typeof movements)[number];
+  type Closure = (typeof closures)[number];
+  const MOVE_TONE: Record<string, Tone> = { income: "success", expense: "danger", transfer_out: "info", transfer_in: "info", opening_balance: "brand", adjustment: "neutral" };
+  const CLOSURE_TONE: Record<string, Tone> = { balanced: "success", difference: "danger", reviewed: "info", adjusted: "brand", accepted_difference: "neutral", closed: "info", reconciled: "success", open: "warning" };
+  const accountName = (id: number) => accounts.find(a => a.id === id)?.name ?? "–";
+  const shownMovements = movSearch.trim()
+    ? movements.filter(m => `${m.concept} ${m.counterparty ?? ""} ${m.notes ?? ""}`.toLowerCase().includes(movSearch.trim().toLowerCase()))
+    : movements;
+  const dayChip = (v: string) => new Date(`${v}T00:00:00`).toLocaleDateString("es-ES");
+  const clearMovFilters = () => { setFilterDateFrom(""); setFilterDateTo(""); setFilterAccount("all"); setMovSearch(""); };
+  const accountChip: FilterChip[] = filterAccount !== "all" ? [{ id: "acc", label: `Cuenta: ${accountName(Number(filterAccount))}`, onRemove: () => setFilterAccount("all") }] : [];
+  const movChips: FilterChip[] = [
+    ...(movSearch.trim() ? [{ id: "q", label: `Búsqueda: ${movSearch.trim()}`, onRemove: () => setMovSearch("") }] : []),
+    ...accountChip,
+    ...(filterDateFrom ? [{ id: "from", label: `Desde ${dayChip(filterDateFrom)}`, onRemove: () => setFilterDateFrom("") }] : []),
+    ...(filterDateTo ? [{ id: "to", label: `Hasta ${dayChip(filterDateTo)}`, onRemove: () => setFilterDateTo("") }] : []),
+  ];
+  const accountField = (
+    <FilterField label="Cuenta" className="w-full sm:w-56">
+      <Select value={filterAccount} onValueChange={setFilterAccount}>
+        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todas las cuentas</SelectItem>
+          {accounts.map(a => (
+            <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </FilterField>
+  );
+
+  const movColumns: EconomyColumn<Mov>[] = [
+    {
+      key: "fecha",
+      header: "Fecha",
+      mobile: "title",
+      cell: (mv) => (
+        <>
+          <span className="whitespace-nowrap text-muted-foreground @2xl:text-foreground">{mv.date}</span>
+          <span className="mt-0.5 block text-sm font-medium text-foreground @2xl:hidden">{mv.concept}</span>
+        </>
+      ),
+    },
+    { key: "cuenta", header: "Cuenta", priority: "md", cell: (mv) => accountName(mv.accountId) },
+    {
+      key: "tipo",
+      header: "Tipo",
+      cell: (mv) => <StatusBadge tone={MOVE_TONE[mv.type] ?? "neutral"}>{movTypeMeta(mv.type).label}</StatusBadge>,
+    },
+    {
+      key: "concepto",
+      header: "Concepto",
+      mobile: "hidden",
+      className: "max-w-xs",
+      cell: (mv) => (
+        <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={mv.concept}>
+          {mv.concept}
+          {mv.notes && <span className="ml-1 text-xs text-muted-foreground">· {mv.notes}</span>}
+        </span>
+      ),
+    },
+    { key: "contraparte", header: "Contraparte", priority: "lg", cell: (mv) => <span className="text-xs text-muted-foreground">{mv.counterparty ?? "–"}</span> },
+    {
+      key: "importe",
+      header: "Importe",
+      align: "right",
+      num: true,
+      mobile: "amount",
+      cell: (mv) => <span className={`font-semibold ${isIncome(mv.type) ? "text-success" : "text-danger"}`}>{isIncome(mv.type) ? "+" : "–"}{fmtEur(mv.amount)}</span>,
+    },
+  ];
+
+  const closureColumns: EconomyColumn<Closure>[] = [
+    { key: "fecha", header: "Fecha", mobile: "title", cell: (cl) => <span className="whitespace-nowrap">{cl.date}<span className="ml-2 text-xs font-normal text-muted-foreground @3xl:hidden">{accountName(cl.accountId)}</span></span> },
+    { key: "cuenta", header: "Cuenta", priority: "md", cell: (cl) => accountName(cl.accountId) },
+    {
+      key: "origen",
+      header: "Origen",
+      priority: "lg",
+      cell: (cl) =>
+        cl.sourceEntityType === "tpv_session" ? (
+          <StatusBadge tone="info">
+            TPV
+            {cl.sourceEntityId && (
+              <a href="/admin/tpv" className="ml-1 inline-flex items-center gap-0.5 underline opacity-70 hover:opacity-100" title="Ver sesión TPV">
+                #{cl.sourceEntityId}<ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            )}
+          </StatusBadge>
+        ) : (
+          <span className="text-xs text-muted-foreground">Manual</span>
+        ),
+    },
+    { key: "apertura", header: "Apertura", align: "right", num: true, priority: "lg", cell: (cl) => <span className="text-muted-foreground">{fmtEur(cl.openingBalance)}</span> },
+    { key: "cierre", header: "Cierre", align: "right", num: true, cell: (cl) => <span className="font-semibold text-foreground">{fmtEur(cl.closingBalance)}</span> },
+    {
+      key: "dif",
+      header: "Diferencia",
+      align: "right",
+      num: true,
+      mobile: "amount",
+      cell: (cl) => {
+        const diff = cl.difference ? parseFloat(cl.difference) : null;
+        return (
+          <span className={`text-xs font-semibold ${diff === null ? "text-muted-foreground" : Math.abs(diff) < 0.01 ? "text-success" : diff < 0 ? "text-danger" : "text-warning"}`}>
+            {diff === null ? "–" : Math.abs(diff) < 0.01 ? "✓ Cuadrado" : `${diff >= 0 ? "+" : ""}${fmtEur(diff)}`}
+          </span>
+        );
+      },
+    },
+    {
+      key: "estado",
+      header: "Estado",
+      cell: (cl) => {
+        const statusMeta = CLOSURE_STATUS_META[cl.status] ?? CLOSURE_STATUS_META.open;
+        return <StatusBadge tone={CLOSURE_TONE[cl.status] ?? "warning"}>{statusMeta.label}</StatusBadge>;
+      },
+    },
+  ];
+
+  const movStarted = !!(movForm.concept || movForm.amount);
+
   return (
     <AdminLayout>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -377,9 +501,13 @@ export default function CashRegisterManager() {
           </div>
         )}
 
-        {/* KPI summary */}
-        {summary && (
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {/* Resumen */}
+        {summaryQ.isLoading ? (
+          <div className="rounded-xl border border-border bg-card"><PanelLoading label="Cargando resumen de caja..." className="py-8" /></div>
+        ) : summaryQ.error ? (
+          <PanelError title="No se ha podido cargar el resumen de caja" error={summaryQ.error} onRetry={() => void summaryQ.refetch()} />
+        ) : summary ? (
+          <EconomySummary>
             <MetricCard icon={<Wallet />} tone={summary.totalBalance >= 0 ? "brand" : "danger"} label="Saldo total" value={fmtEur(summary.totalBalance)} detail={`${accounts.filter(a => a.isActive).length} cuentas activas`} />
             <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos hoy" value={fmtEur(summary.todayRealIncome ?? summary.todayIncome)} detail="ventas y cobros" />
             <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos hoy" value={fmtEur(summary.todayRealExpenses ?? summary.todayExpenses)} detail="solo gastos reales" />
@@ -388,8 +516,8 @@ export default function CashRegisterManager() {
               const net = (summary.todayRealIncome ?? summary.todayIncome) - (summary.todayRealExpenses ?? summary.todayExpenses);
               return <MetricCard icon={<Banknote />} tone={net >= 0 ? "success" : "danger"} label="Neto hoy" value={`${net >= 0 ? "+" : ""}${fmtEur(net)}`} detail="ingresos − gastos" />;
             })()}
-          </div>
-        )}
+          </EconomySummary>
+        ) : null}
 
         {/* Tabs */}
         <div className="border-b flex gap-1">
@@ -414,94 +542,57 @@ export default function CashRegisterManager() {
         {/* ── TAB: MOVIMIENTOS ── */}
         {tab === "movimientos" && (
           <div className="space-y-4">
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3 items-end">
-              <div>
-                <Label className="text-xs mb-1 block">Cuenta</Label>
-                <Select value={filterAccount} onValueChange={setFilterAccount}>
-                  <SelectTrigger className="w-44 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las cuentas</SelectItem>
-                    {accounts.map(a => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block">Desde</Label>
-                <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="h-8 text-xs w-36" />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block">Hasta</Label>
-                <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="h-8 text-xs w-36" />
-              </div>
-              {(filterDateFrom || filterDateTo || filterAccount !== "all") && (
-                <Button variant="ghost" size="sm" onClick={() => { setFilterDateFrom(""); setFilterDateTo(""); setFilterAccount("all"); }}>
-                  <X className="w-3 h-3 mr-1" /> Limpiar
-                </Button>
-              )}
-            </div>
+            <EconomyFilterBar
+              search={{ value: movSearch, onChange: setMovSearch, placeholder: "Buscar por concepto, contraparte o nota..." }}
+              primary={
+                <>
+                  {accountField}
+                  <FilterField label="Desde" className="w-[calc(50%-0.375rem)] sm:w-40">
+                    <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
+                  </FilterField>
+                  <FilterField label="Hasta" className="w-[calc(50%-0.375rem)] sm:w-40">
+                    <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
+                  </FilterField>
+                </>
+              }
+              chips={movChips}
+              onClear={clearMovFilters}
+              summary={`${shownMovements.length} ${shownMovements.length === 1 ? "movimiento" : "movimientos"}`}
+            />
 
-            {/* Movements table */}
-            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-              <table className="w-full text-sm">
-                <thead className="bg-muted border-b">
-                  <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Fecha</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Cuenta</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Tipo</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Concepto</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Contraparte</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Importe</th>
-                    <th className="py-3 px-4" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {movements.length === 0 && (
-                    <tr><td colSpan={7} className="p-2"><PanelEmpty title="No hay movimientos con los filtros actuales" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
-                  )}
-                  {movements.map(mv => {
-                    const meta = movTypeMeta(mv.type);
-                    const acc = accounts.find(a => a.id === mv.accountId);
-                    const income = isIncome(mv.type);
-                    return (
-                      <tr key={mv.id} className="border-b last:border-0 hover:bg-muted/50 dark:hover:bg-muted/50">
-                        <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{mv.date}</td>
-                        <td className="py-3 px-4 text-foreground">{acc?.name ?? "–"}</td>
-                        <td className="py-3 px-4">
-                          <Badge className={`text-xs ${meta.color}`}>{meta.label}</Badge>
-                        </td>
-                        <td className="py-3 px-4 text-foreground max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
-                          {mv.concept}
-                          {mv.notes && <span className="text-muted-foreground ml-1 text-xs">· {mv.notes}</span>}
-                        </td>
-                        <td className="py-3 px-4 text-muted-foreground text-xs">{mv.counterparty ?? "–"}</td>
-                        <td className={`py-3 px-4 text-right font-semibold ${income ? "text-success" : "text-danger"}`}>
-                          {income ? "+" : "–"}{fmtEur(mv.amount)}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-danger"
-                            onClick={async () => {
-                              if ((await confirmAction({ description: "¿Eliminar este movimiento? El saldo se ajustará automáticamente.", destructive: true }))) {
-                                deleteMovMut.mutate({ id: mv.id });
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <EconomyTable
+              rows={shownMovements}
+              columns={movColumns}
+              rowKey={(mv) => mv.id}
+              caption="Movimientos de caja"
+              loading={movementsQ.isLoading}
+              error={movementsQ.error}
+              errorTitle="No se han podido cargar los movimientos de caja"
+              onRetry={() => void movementsQ.refetch()}
+              emptyTitle="No hay movimientos con los filtros actuales"
+              emptyDescription="Cambia o quita algún filtro, o registra un nuevo movimiento."
+              emptyAction={
+                <>
+                  {movChips.length > 0 && <Button variant="outline" size="sm" onClick={clearMovFilters}>Limpiar filtros</Button>}
+                  <Button size="sm" onClick={() => { setMovForm(emptyMovForm()); setMovDialog(true); }}><Plus className="mr-1 h-4 w-4" /> Nuevo movimiento</Button>
+                </>
+              }
+              actions={(mv) => (
+                <RowActions
+                  label={mv.concept}
+                  menu={[{
+                    label: "Eliminar movimiento",
+                    icon: <Trash2 />,
+                    destructive: true,
+                    onSelect: async () => {
+                      if ((await confirmAction({ description: "¿Eliminar este movimiento? El saldo se ajustará automáticamente.", destructive: true }))) {
+                        deleteMovMut.mutate({ id: mv.id });
+                      }
+                    },
+                  }]}
+                />
+              )}
+            />
           </div>
         )}
 
@@ -550,99 +641,45 @@ export default function CashRegisterManager() {
         {/* ── TAB: CIERRES ── */}
         {tab === "cierres" && (
           <div className="space-y-4">
-            <div className="flex justify-between items-end">
-              <div>
-                <Label className="text-xs mb-1 block">Filtrar por cuenta</Label>
-                <Select value={filterAccount} onValueChange={setFilterAccount}>
-                  <SelectTrigger className="w-48 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las cuentas</SelectItem>
-                    {accounts.map(a => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={() => { setClosureForm(emptyClosureForm()); setClosureDialog(true); }}>
-                <Calendar className="w-4 h-4 mr-2" /> Realizar cierre
-              </Button>
-            </div>
-            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-              <table className="w-full text-sm">
-                <thead className="bg-muted border-b">
-                  <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Fecha</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Cuenta</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Origen</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Apertura</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Cierre</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-muted-foreground">Diferencia</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-muted-foreground">Estado</th>
-                    <th className="py-3 px-4" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {closures.length === 0 && (
-                    <tr><td colSpan={8} className="p-2"><PanelEmpty title="No hay cierres registrados" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
-                  )}
-                  {closures.map(cl => {
-                    const acc = accounts.find(a => a.id === cl.accountId);
-                    const diff = cl.difference ? parseFloat(cl.difference) : null;
-                    const statusMeta = CLOSURE_STATUS_META[cl.status] ?? CLOSURE_STATUS_META.open;
-                    const isFromTpv = cl.sourceEntityType === "tpv_session";
-                    const isActionable = ["difference", "reviewed"].includes(cl.status);
-                    return (
-                      <tr key={cl.id} className={`border-b last:border-0 hover:bg-muted/50 dark:hover:bg-muted/50 ${cl.status === "difference" ? "bg-danger/10" : ""}`}>
-                        <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{cl.date}</td>
-                        <td className="py-3 px-4 text-foreground">{acc?.name ?? "–"}</td>
-                        <td className="py-3 px-4">
-                          {isFromTpv ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-info bg-info/10 border border-info/40 rounded px-2 py-0.5">
-                              TPV
-                              {cl.sourceEntityId && (
-                                <a href="/admin/tpv" className="underline opacity-60 hover:opacity-100 flex items-center gap-0.5" title="Ver sesión TPV">
-                                  #{cl.sourceEntityId}<ExternalLink className="w-2.5 h-2.5" />
-                                </a>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Manual</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-right text-muted-foreground">{fmtEur(cl.openingBalance)}</td>
-                        <td className="py-3 px-4 text-right font-semibold text-foreground">{fmtEur(cl.closingBalance)}</td>
-                        <td className={`py-3 px-4 text-right text-xs font-semibold ${
-                          diff === null ? "text-muted-foreground"
-                          : Math.abs(diff) < 0.01 ? "text-success"
-                          : diff < 0 ? "text-danger" : "text-warning"
-                        }`}>
-                          {diff === null ? "–"
-                            : Math.abs(diff) < 0.01 ? "✓ Cuadrado"
-                            : `${diff >= 0 ? "+" : ""}${fmtEur(diff)}`}
-                        </td>
-                        <td className="py-3 px-4">
-                          <Badge className={`text-xs ${statusMeta.color}`}>
-                            {statusMeta.icon} {statusMeta.label}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <Button
-                            variant={isActionable ? "default" : "ghost"}
-                            size="sm"
-                            className={isActionable ? "h-7 text-xs bg-danger hover:bg-danger/90 text-primary-foreground" : "h-7 text-xs text-muted-foreground hover:text-foreground"}
-                            onClick={() => setSelectedClosureId(cl.id)}
-                          >
-                            {isActionable ? "Resolver" : "Ver"}
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <EconomyFilterBar
+              primary={accountField}
+              actions={
+                <Button onClick={() => { setClosureForm(emptyClosureForm()); setClosureDialog(true); }}>
+                  <Calendar className="w-4 h-4 mr-2" /> Realizar cierre
+                </Button>
+              }
+              chips={accountChip}
+              onClear={() => setFilterAccount("all")}
+              summary={`${closures.length} ${closures.length === 1 ? "cierre" : "cierres"}`}
+            />
+            <EconomyTable
+              rows={closures}
+              columns={closureColumns}
+              rowKey={(cl) => cl.id}
+              caption="Cierres de caja"
+              loading={closuresQ.isLoading}
+              error={closuresQ.error}
+              errorTitle="No se han podido cargar los cierres"
+              onRetry={() => void closuresQ.refetch()}
+              emptyTitle="No hay cierres registrados"
+              emptyDescription="Registra el primer cierre de caja de una cuenta."
+              emptyAction={<Button size="sm" onClick={() => { setClosureForm(emptyClosureForm()); setClosureDialog(true); }}><Calendar className="mr-1 h-4 w-4" /> Realizar cierre</Button>}
+              rowClassName={(cl) => (cl.status === "difference" ? "bg-danger/10" : undefined)}
+              onRowClick={(cl) => setSelectedClosureId(cl.id)}
+              actions={(cl) => {
+                const isActionable = ["difference", "reviewed"].includes(cl.status);
+                return (
+                  <Button
+                    variant={isActionable ? "default" : "outline"}
+                    size="sm"
+                    className={isActionable ? "h-8 bg-danger text-primary-foreground hover:bg-danger/90" : "h-8"}
+                    onClick={() => setSelectedClosureId(cl.id)}
+                  >
+                    {isActionable ? "Resolver" : "Ver"}
+                  </Button>
+                );
+              }}
+            />
           </div>
         )}
 
@@ -936,115 +973,104 @@ export default function CashRegisterManager() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmitMov} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Cuenta *</Label>
-                <Select value={movForm.accountId} onValueChange={v => setMovForm(f => ({ ...f, accountId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cuenta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.filter(a => a.isActive).map(a => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <FormSection title="Movimiento">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Cuenta" required error={movStarted && !movForm.accountId ? "Selecciona la cuenta de caja." : null}>
+                  <Select value={movForm.accountId} onValueChange={v => setMovForm(f => ({ ...f, accountId: v }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar cuenta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.filter(a => a.isActive).map(a => (
+                        <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Fecha" required>
+                  <Input type="date" value={movForm.date} onChange={e => setMovForm(f => ({ ...f, date: e.target.value }))} required />
+                </FormField>
+                <FormField label="Tipo" required>
+                  <Select value={movForm.type} onValueChange={v => setMovForm(f => ({ ...f, type: v as MoveType }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MOVE_TYPES.map(t => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Importe (€)" required error={movStarted && !movForm.amount ? "Indica el importe." : null}>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                    className="tabular-nums"
+                    value={movForm.amount}
+                    onChange={e => setMovForm(f => ({ ...f, amount: e.target.value }))}
+                    required
+                  />
+                </FormField>
               </div>
-              <div>
-                <Label>Fecha *</Label>
-                <Input type="date" value={movForm.date} onChange={e => setMovForm(f => ({ ...f, date: e.target.value }))} required />
-              </div>
-            </div>
+              {movForm.type === "transfer_out" && (
+                <FormField label="Cuenta destino" required>
+                  <Select value={movForm.transferToAccountId} onValueChange={v => setMovForm(f => ({ ...f, transferToAccountId: v }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar cuenta destino" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.filter(a => a.isActive && String(a.id) !== movForm.accountId).map(a => (
+                        <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              )}
+            </FormSection>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Tipo *</Label>
-                <Select value={movForm.type} onValueChange={v => setMovForm(f => ({ ...f, type: v as MoveType }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MOVE_TYPES.map(t => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Importe (€) *</Label>
+            <FormSection title="Detalle">
+              <FormField label="Concepto" required>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="0.00"
-                  value={movForm.amount}
-                  onChange={e => setMovForm(f => ({ ...f, amount: e.target.value }))}
+                  placeholder="Descripción del movimiento"
+                  value={movForm.concept}
+                  onChange={e => setMovForm(f => ({ ...f, concept: e.target.value }))}
                   required
                 />
+              </FormField>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Contraparte">
+                  <Input
+                    placeholder="Proveedor, cliente..."
+                    value={movForm.counterparty}
+                    onChange={e => setMovForm(f => ({ ...f, counterparty: e.target.value }))}
+                  />
+                </FormField>
+                <FormField label="Categoría">
+                  <Input
+                    placeholder="ej: Material oficina"
+                    value={movForm.category}
+                    onChange={e => setMovForm(f => ({ ...f, category: e.target.value }))}
+                  />
+                </FormField>
               </div>
-            </div>
-
-            <div>
-              <Label>Concepto *</Label>
-              <Input
-                placeholder="Descripción del movimiento"
-                value={movForm.concept}
-                onChange={e => setMovForm(f => ({ ...f, concept: e.target.value }))}
-                required
-              />
-            </div>
-
-            {movForm.type === "transfer_out" && (
-              <div>
-                <Label>Cuenta destino *</Label>
-                <Select value={movForm.transferToAccountId} onValueChange={v => setMovForm(f => ({ ...f, transferToAccountId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cuenta destino" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.filter(a => a.isActive && String(a.id) !== movForm.accountId).map(a => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Contraparte</Label>
-                <Input
-                  placeholder="Proveedor, cliente..."
-                  value={movForm.counterparty}
-                  onChange={e => setMovForm(f => ({ ...f, counterparty: e.target.value }))}
+              <FormField label="Notas">
+                <Textarea
+                  placeholder="Observaciones adicionales..."
+                  value={movForm.notes}
+                  onChange={e => setMovForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2}
                 />
-              </div>
-              <div>
-                <Label>Categoría</Label>
-                <Input
-                  placeholder="ej: Material oficina"
-                  value={movForm.category}
-                  onChange={e => setMovForm(f => ({ ...f, category: e.target.value }))}
-                />
-              </div>
-            </div>
+              </FormField>
+            </FormSection>
 
-            <div>
-              <Label>Notas</Label>
-              <Textarea
-                placeholder="Observaciones adicionales..."
-                value={movForm.notes}
-                onChange={e => setMovForm(f => ({ ...f, notes: e.target.value }))}
-                rows={2}
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
               <Button type="button" variant="outline" onClick={() => setMovDialog(false)}>Cancelar</Button>
               <Button
                 type="submit"
                 disabled={createMovMut.isPending || !movForm.accountId || !movForm.amount}
-               
               >
                 {createMovMut.isPending ? "Guardando..." : "Registrar movimiento"}
               </Button>

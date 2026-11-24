@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelLoading, PanelEmpty } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip, type RowAction } from "./shared/EconomyUi";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { trpc } from "@/lib/trpc";
@@ -28,6 +29,9 @@ import { Textarea } from "../../../components/ui/textarea";
 import {
   Upload,
   Search,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
   RefreshCw,
   Link,
   MoreHorizontal,
@@ -287,6 +291,96 @@ export default function CardTerminalOperationsManager() {
   const total = listQ.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  type Op = (typeof ops)[number];
+  const pendientes = ops.filter((o) => o.status === "pendiente").length;
+  const incidencias = ops.filter((o) => o.status === "incidencia").length;
+  const dateChip = (v: string) => new Date(`${v}T00:00:00`).toLocaleDateString("es-ES");
+  const chips: FilterChip[] = [
+    ...(search ? [{ id: "q", label: `Búsqueda: ${search}`, onRemove: () => { setSearch(""); setPage(1); } }] : []),
+    ...(statusFilter !== "todos" ? [{ id: "status", label: `Estado: ${STATUS_LABELS[statusFilter]?.label ?? statusFilter}`, onRemove: () => { setStatusFilter("todos"); setPage(1); } }] : []),
+    ...(typeFilter !== "todos" ? [{ id: "type", label: `Tipo: ${TYPE_LABELS[typeFilter]?.label ?? typeFilter}`, onRemove: () => { setTypeFilter("todos"); setPage(1); } }] : []),
+    ...(dateFrom ? [{ id: "from", label: `Desde ${dateChip(dateFrom)}`, onRemove: () => { setDateFrom(""); setPage(1); } }] : []),
+    ...(dateTo ? [{ id: "to", label: `Hasta ${dateChip(dateTo)}`, onRemove: () => { setDateTo(""); setPage(1); } }] : []),
+  ];
+
+  const columns: EconomyColumn<Op>[] = [
+    {
+      key: "fecha",
+      header: "Fecha",
+      mobile: "title",
+      cell: (op) => (
+        <>
+          <span className="whitespace-nowrap">{fmtDatetime(op.operationDatetime)}</span>
+          <span className="mt-0.5 block font-mono text-xs font-normal text-muted-foreground">{op.operationNumber || "-"}</span>
+        </>
+      ),
+    },
+    { key: "terminal", header: "Terminal", priority: "xl", cell: (op) => <span className="text-xs text-muted-foreground">{op.terminalCode || "-"}</span> },
+    {
+      key: "tipo",
+      header: "Tipo",
+      cell: (op) => {
+        const typeInfo = TYPE_LABELS[op.operationType] ?? TYPE_LABELS.OTRO;
+        return <StatusBadge tone={typeInfo.tone}>{typeInfo.label}</StatusBadge>;
+      },
+    },
+    {
+      key: "importe",
+      header: "Importe",
+      align: "right",
+      num: true,
+      mobile: "amount",
+      cell: (op) => <span className={`font-semibold ${op.operationType === "DEVOLUCION" ? "text-warning" : "text-success"}`}>{fmtCurrency(String(op.amount))}</span>,
+    },
+    { key: "tarjeta", header: "Tarjeta", priority: "lg", cell: (op) => <span className="font-mono text-xs">{op.card ? `****${op.card.slice(-4)}` : "-"}</span> },
+    {
+      key: "estado",
+      header: "Estado",
+      cell: (op) => {
+        const statusInfo = STATUS_LABELS[op.status] ?? STATUS_LABELS.pendiente;
+        return <StatusBadge tone={statusInfo.tone}>{statusInfo.label}</StatusBadge>;
+      },
+    },
+    {
+      key: "link",
+      header: "Vinculado a",
+      priority: "md",
+      cell: (op) =>
+        op.linkedEntityType && op.linkedEntityType !== "none" ? (
+          op.linkedEntityType === "reservation" ? (
+            <a
+              href={`/admin/crm?tab=reservations&search=${encodeURIComponent((op as any).linkedReservationNumber ?? String(op.linkedEntityId))}`}
+              className="text-xs font-medium text-info hover:text-info hover:underline"
+            >
+              {(op as any).linkedReservationNumber ?? `#${op.linkedEntityId}`}
+            </a>
+          ) : (
+            <span className="text-xs font-medium text-warning">Presupuesto #{op.linkedEntityId}</span>
+          )
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
+  ];
+
+  const rowActions = (op: Op) => {
+    const openLink = () => { setLinkModalId(op.id); setLinkModalAmount(parseFloat(op.amount)); setLinkModalOpType((op as any).operation_type ?? (op as any).operationType ?? null); };
+    const menu: RowAction[] = [{ label: "Ver detalle", icon: <Eye />, onSelect: () => setDetailId(op.id) }];
+    if (op.status === "pendiente") menu.push({ label: "Ignorar", icon: <X />, onSelect: () => updateStatusMut.mutate({ id: op.id, status: "ignorado" }) });
+    if (op.status !== "incidencia" && op.status !== "conciliado") menu.push({ label: "Marcar incidencia", icon: <AlertTriangle />, destructive: true, onSelect: () => setIncidentId(op.id) });
+    return (
+      <RowActions
+        label={op.operationNumber || fmtDatetime(op.operationDatetime)}
+        primary={
+          op.status === "conciliado"
+            ? { label: "Desvincular", icon: <Unlink className="h-4 w-4" />, onSelect: () => setUnlinkId(op.id) }
+            : { label: "Vincular", icon: <Link className="h-4 w-4" />, onSelect: openLink }
+        }
+        menu={menu}
+      />
+    );
+  };
+
   return (
     <AdminLayout>
     <div className="p-6 space-y-6">
@@ -300,42 +394,44 @@ export default function CardTerminalOperationsManager() {
             <Button variant="outline" size="sm" onClick={() => listQ.refetch()}>
               <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={syncing}
-              onClick={() => {
-                setSyncing(true);
-                setSyncResult(null);
-                syncEmailMut.mutate({ retryErrors: false });
-              }}
-            >
-              <Mail className="w-4 h-4 mr-1" />
-              {syncing ? "Sincronizando..." : "Sincronizar correo TPV"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const date = prompt("Fecha a reprocesar (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
-                if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                  resetLogsMut.mutate({ date });
-                }
-              }}
-            >
-              <RefreshCw className="w-4 h-4 mr-1" /> Reprocesar fecha
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                if ((await confirmAction({ description: "¿Reparar operaciones enlazadas con estado incorrecto? Se pondrán en 'Conciliado'." }))) {
-                  repairStatusMut.mutate();
-                }
-              }}
-            >
-              <RefreshCw className="w-4 h-4 mr-1" /> Reparar estados
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="Más acciones de operaciones TPV">
+                  <MoreHorizontal className="w-4 h-4 mr-1" /> Más
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={syncing}
+                  onSelect={() => {
+                    setSyncing(true);
+                    setSyncResult(null);
+                    syncEmailMut.mutate({ retryErrors: false });
+                  }}
+                >
+                  <Mail className="mr-2 h-4 w-4" /> {syncing ? "Sincronizando..." : "Sincronizar correo TPV"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    const date = prompt("Fecha a reprocesar (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
+                    if (date && /^d{4}-d{2}-d{2}$/.test(date)) {
+                      resetLogsMut.mutate({ date });
+                    }
+                  }}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" /> Reprocesar fecha
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={async () => {
+                    if ((await confirmAction({ description: "¿Reparar operaciones enlazadas con estado incorrecto? Se pondrán en 'Conciliado'." }))) {
+                      repairStatusMut.mutate();
+                    }
+                  }}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" /> Reparar estados
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" onClick={() => { setShowImportModal(true); setImportResult(null); }}>
               <Upload className="w-4 h-4 mr-1" /> Importar Excel/PDF
             </Button>
@@ -372,6 +468,89 @@ export default function CardTerminalOperationsManager() {
           )}
         </div>
       )}
+
+      {/* Resumen */}
+      <EconomySummary>
+        <MetricCard icon={<CreditCard />} tone="info" label="Total operaciones" value={total} detail={`${pendientes} pendientes · ${incidencias} con incidencia (página)`} />
+        <MetricCard icon={<TrendingUp />} tone="success" label="Total ventas" value={fmtCurrency(listQ.data?.totalVentas ?? 0)} detail="importe cobrado en datáfono" />
+        <MetricCard icon={<TrendingDown />} tone="warning" label="Total devoluciones" value={fmtCurrency(listQ.data?.totalDevoluciones ?? 0)} detail="importe devuelto" />
+        <MetricCard icon={<Wallet />} tone={(listQ.data?.totalVentas ?? 0) - (listQ.data?.totalDevoluciones ?? 0) >= 0 ? "success" : "danger"} label="Neto" value={fmtCurrency((listQ.data?.totalVentas ?? 0) - (listQ.data?.totalDevoluciones ?? 0))} detail="ventas − devoluciones" />
+      </EconomySummary>
+
+      {/* Filtros */}
+      <EconomyFilterBar
+        search={{ value: search, onChange: (v) => { setSearch(v); setPage(1); }, placeholder: "Nº op, tarjeta, terminal..." }}
+        primary={
+          <>
+            <FilterField label="Estado" className="w-full sm:w-40">
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as OpStatus); setPage(1); }}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                  <SelectItem value="conciliado">Conciliado</SelectItem>
+                  <SelectItem value="incidencia">Incidencia</SelectItem>
+                  <SelectItem value="ignorado">Ignorado</SelectItem>
+                </SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="Tipo" className="w-full sm:w-40">
+              <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v as OpType); setPage(1); }}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="VENTA">Venta</SelectItem>
+                  <SelectItem value="DEVOLUCION">Devolución</SelectItem>
+                  <SelectItem value="ANULACION">Anulación</SelectItem>
+                  <SelectItem value="OTRO">Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            </FilterField>
+          </>
+        }
+        more={
+          <>
+            <FilterField label="Desde">
+              <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} />
+            </FilterField>
+            <FilterField label="Hasta">
+              <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} />
+            </FilterField>
+          </>
+        }
+        chips={chips}
+        onClear={resetFilters}
+        summary={`${total} ${total === 1 ? "operación" : "operaciones"}`}
+      />
+
+      {/* Tabla */}
+      <EconomyTable
+        rows={ops}
+        columns={columns}
+        rowKey={(op) => op.id}
+        caption="Operaciones del datáfono"
+        loading={listQ.isLoading}
+        error={listQ.error}
+        errorTitle="No se han podido cargar las operaciones"
+        onRetry={() => void listQ.refetch()}
+        emptyTitle="No hay operaciones"
+        emptyDescription="Importa el fichero del datáfono o sincroniza el correo del TPV para traer operaciones."
+        emptyAction={chips.length > 0 ? <Button variant="outline" size="sm" onClick={resetFilters}>Limpiar filtros</Button> : undefined}
+        onRowClick={(op) => setDetailId(op.id)}
+        actions={rowActions}
+        footer={totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/30 px-4 py-3">
+            <p className="text-sm tabular-nums text-muted-foreground">
+              Mostrando {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} de {total}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+              <span className="flex items-center px-2 text-sm tabular-nums">{page} / {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
+            </div>
+          </div>
+        ) : undefined}
+      />
 
       {/* Email ingestion logs */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -463,197 +642,6 @@ export default function CardTerminalOperationsManager() {
           </div>
         )}
       </div>
-
-      {/* KPIs */}
-      {listQ.data && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-card border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground">Total operaciones</p>
-            <p className="text-2xl font-bold">{total}</p>
-          </div>
-          <div className="bg-card border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground">Total ventas</p>
-            <p className="text-2xl font-bold text-success">{fmtCurrency(listQ.data.totalVentas)}</p>
-          </div>
-          <div className="bg-card border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground">Total devoluciones</p>
-            <p className="text-2xl font-bold text-warning">{fmtCurrency(listQ.data.totalDevoluciones)}</p>
-          </div>
-          <div className="bg-card border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground">Neto</p>
-            <p className="text-2xl font-bold">{fmtCurrency(listQ.data.totalVentas - listQ.data.totalDevoluciones)}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-end bg-muted/30 p-4 rounded-lg">
-        <div className="flex-1 min-w-48">
-          <Label className="text-xs mb-1 block">Buscar</Label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              className="pl-9 h-9"
-              placeholder="Nº op, tarjeta, terminal..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            />
-          </div>
-        </div>
-        <div>
-          <Label className="text-xs mb-1 block">Estado</Label>
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as OpStatus); setPage(1); }}>
-            <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="pendiente">Pendiente</SelectItem>
-              <SelectItem value="conciliado">Conciliado</SelectItem>
-              <SelectItem value="incidencia">Incidencia</SelectItem>
-              <SelectItem value="ignorado">Ignorado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="text-xs mb-1 block">Tipo</Label>
-          <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v as OpType); setPage(1); }}>
-            <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="VENTA">Venta</SelectItem>
-              <SelectItem value="DEVOLUCION">Devolución</SelectItem>
-              <SelectItem value="ANULACION">Anulación</SelectItem>
-              <SelectItem value="OTRO">Otro</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="text-xs mb-1 block">Desde</Label>
-          <Input type="date" className="h-9 w-36" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} />
-        </div>
-        <div>
-          <Label className="text-xs mb-1 block">Hasta</Label>
-          <Input type="date" className="h-9 w-36" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} />
-        </div>
-        <Button variant="ghost" size="sm" onClick={resetFilters}>
-          <X className="w-4 h-4 mr-1" /> Limpiar
-        </Button>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-auto rounded-xl border border-border bg-card shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left p-3 font-medium">Fecha</th>
-              <th className="text-left p-3 font-medium">Nº Operación</th>
-              <th className="text-left p-3 font-medium">Terminal</th>
-              <th className="text-left p-3 font-medium">Tipo</th>
-              <th className="text-right p-3 font-medium">Importe</th>
-              <th className="text-left p-3 font-medium">Tarjeta</th>
-              <th className="text-left p-3 font-medium">Estado</th>
-              <th className="text-left p-3 font-medium">Vinculado a</th>
-              <th className="p-3 font-medium">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {listQ.isLoading && (
-              <tr><td colSpan={9}><PanelLoading className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
-            )}
-            {!listQ.isLoading && ops.length === 0 && (
-              <tr><td colSpan={9} className="p-2"><PanelEmpty title="No hay operaciones" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
-            )}
-            {ops.map((op) => {
-              const statusInfo = STATUS_LABELS[op.status] ?? STATUS_LABELS.pendiente;
-              const typeInfo = TYPE_LABELS[op.operationType] ?? TYPE_LABELS.OTRO;
-              return (
-                <tr key={op.id} className="hover:bg-muted/30">
-                  <td className="p-3 whitespace-nowrap">{fmtDatetime(op.operationDatetime)}</td>
-                  <td className="p-3 font-mono text-xs">{op.operationNumber || "-"}</td>
-                  <td className="p-3 text-xs text-muted-foreground">{op.terminalCode || "-"}</td>
-                  <td className="p-3">
-                    <StatusBadge tone={typeInfo.tone}>{typeInfo.label}</StatusBadge>
-                  </td>
-                  <td className={`p-3 text-right font-medium ${op.operationType === "DEVOLUCION" ? "text-warning" : "text-success"}`}>
-                    {fmtCurrency(String(op.amount))}
-                  </td>
-                  <td className="p-3 font-mono text-xs">{op.card ? `****${op.card.slice(-4)}` : "-"}</td>
-                  <td className="p-3">
-                    <StatusBadge tone={statusInfo.tone}>{statusInfo.label}</StatusBadge>
-                  </td>
-                  <td className="p-3 text-xs">
-                    {op.linkedEntityType && op.linkedEntityType !== "none" ? (
-                      op.linkedEntityType === "reservation" ? (
-                        <a
-                          href={`/admin/crm?tab=reservations&search=${encodeURIComponent((op as any).linkedReservationNumber ?? String(op.linkedEntityId))}`}
-                          className="text-info hover:text-info hover:underline font-medium"
-                        >
-                          {(op as any).linkedReservationNumber ?? `#${op.linkedEntityId}`}
-                        </a>
-                      ) : (
-                        <span className="text-warning font-medium">
-                          Presupuesto #{op.linkedEntityId}
-                        </span>
-                      )
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    <div className="flex gap-1 justify-center">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver detalle" onClick={() => setDetailId(op.id)}>
-                        <Eye className="w-3.5 h-3.5" />
-                      </Button>
-                      {op.status !== "conciliado" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Vincular manualmente" onClick={() => { setLinkModalId(op.id); setLinkModalAmount(parseFloat(op.amount)); setLinkModalOpType((op as any).operation_type ?? (op as any).operationType ?? null); }}>
-                          <Link className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      {op.status === "conciliado" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-warning" title="Desvincular" onClick={() => { setUnlinkId(op.id); }}>
-                          <Unlink className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      {op.status !== "incidencia" && op.status !== "conciliado" && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Más acciones" aria-label="Más acciones">
-                              <MoreHorizontal className="w-3.5 h-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="text-danger focus:text-danger" onClick={() => setIncidentId(op.id)}>
-                              <AlertTriangle className="mr-2 h-4 w-4" /> Marcar incidencia
-                            </DropdownMenuItem>
-                            {op.status === "pendiente" && (
-                              <DropdownMenuItem onClick={() => updateStatusMut.mutate({ id: op.id, status: "ignorado" })}>
-                                <X className="mr-2 h-4 w-4" /> Ignorar
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Mostrando {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} de {total}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-            <span className="flex items-center text-sm px-2">{page} / {totalPages}</span>
-            <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
-          </div>
-        </div>
-      )}
 
       {/* Import history */}
       {importsQ.data && importsQ.data.length > 0 && (
@@ -750,7 +738,8 @@ export default function CardTerminalOperationsManager() {
             <DialogTitle>Detalle operación TPV</DialogTitle>
           </DialogHeader>
           {detailQ.data ? (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-4 text-sm">
+              <FormSection title="Operación">
               <div className="grid grid-cols-2 gap-3">
                 <div><p className="text-xs text-muted-foreground">Fecha</p><p className="font-medium">{fmtDatetime(detailQ.data.operationDatetime)}</p></div>
                 <div><p className="text-xs text-muted-foreground">Nº Operación</p><p className="font-mono">{detailQ.data.operationNumber || "-"}</p></div>
@@ -763,7 +752,8 @@ export default function CardTerminalOperationsManager() {
                 <div><p className="text-xs text-muted-foreground">Terminal</p><p>{detailQ.data.terminalCode || "-"}</p></div>
                 <div><p className="text-xs text-muted-foreground">Comercio</p><p>{detailQ.data.commerceCode || "-"}</p></div>
               </div>
-              <hr />
+              </FormSection>
+              <FormSection title="Estado y vinculación">
               <div className="grid grid-cols-2 gap-3">
                 <div><p className="text-xs text-muted-foreground">Estado</p>
                   <StatusBadge tone={STATUS_LABELS[detailQ.data.status]?.tone ?? "neutral"}>{STATUS_LABELS[detailQ.data.status]?.label}</StatusBadge>
@@ -780,6 +770,7 @@ export default function CardTerminalOperationsManager() {
                   <div><p className="text-xs text-muted-foreground">Vinculado por</p><p>{detailQ.data.linkedBy}</p></div>
                 )}
               </div>
+              </FormSection>
               {detailQ.data.incidentReason && (
                 <div className="bg-danger/10 border border-danger/40 rounded p-3">
                   <p className="text-xs text-danger font-medium mb-1">Motivo incidencia</p>

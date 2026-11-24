@@ -1,15 +1,14 @@
 import { useState, useRef, useCallback } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelLoading, PanelEmpty } from "@/components/admin/PanelStates";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import FinanceSyncSetupBanner from "@/components/finance/FinanceSyncSetupBanner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -26,8 +25,8 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  Upload, Trash2, Search, Eye, TrendingUp, TrendingDown,
-  FileSpreadsheet, RefreshCw, X, ChevronLeft, ChevronRight,
+  Upload, Trash2, Eye, TrendingUp, TrendingDown,
+  FileSpreadsheet, RefreshCw, ChevronLeft, ChevronRight,
   CheckCircle, MinusCircle, AlertCircle, Link2, Link2Off,
   Sparkles, ThumbsDown, Info,
 } from "lucide-react";
@@ -346,6 +345,112 @@ export default function BankMovementsManager() {
   const isConciliated = selectedMovement?.conciliationStatus === "conciliado";
   const isPositive = selectedMovement ? parseFloat(selectedMovement.importe) > 0 : false;
 
+  const sinConciliar = movements.filter((m) => m.status === "pendiente" && m.conciliationStatus !== "conciliado").length;
+  const dateChip = (v: string) => new Date(`${v}T00:00:00`).toLocaleDateString("es-ES");
+  const clearMovFilters = () => {
+    setSearch(""); setFilterStatus("todos"); setFilterImportId(undefined);
+    setFilterFechaFrom(""); setFilterFechaTo(""); setPage(1);
+  };
+  const movChips: FilterChip[] = [
+    ...(search ? [{ id: "q", label: `Búsqueda: ${search}`, onRemove: () => { setSearch(""); setPage(1); } }] : []),
+    ...(filterStatus !== "todos" ? [{ id: "status", label: `Estado: ${STATUS_BADGE[filterStatus].label}`, onRemove: () => { setFilterStatus("todos"); setPage(1); } }] : []),
+    ...(filterImportId ? [{ id: "import", label: `Importación: ${imports.find((i) => i.id === filterImportId)?.fileName ?? `#${filterImportId}`}`, onRemove: () => { setFilterImportId(undefined); setPage(1); } }] : []),
+    ...(filterFechaFrom ? [{ id: "from", label: `Desde ${dateChip(filterFechaFrom)}`, onRemove: () => { setFilterFechaFrom(""); setPage(1); } }] : []),
+    ...(filterFechaTo ? [{ id: "to", label: `Hasta ${dateChip(filterFechaTo)}`, onRemove: () => { setFilterFechaTo(""); setPage(1); } }] : []),
+  ];
+
+  const movColumns: EconomyColumn<BankMovement>[] = [
+    {
+      key: "fecha",
+      header: "Fecha",
+      mobile: "title",
+      cell: (mv) => (
+        <>
+          <span className="font-mono text-xs text-foreground">{fmtDate(mv.fecha)}</span>
+          <span className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-foreground @2xl:hidden">{mv.movimiento || "–"}</span>
+        </>
+      ),
+    },
+    { key: "valor", header: "F. valor", priority: "xl", cell: (mv) => <span className="font-mono text-xs text-muted-foreground">{fmtDate(mv.fechaValor)}</span> },
+    {
+      key: "mov",
+      header: "Movimiento",
+      mobile: "hidden",
+      className: "max-w-[14rem]",
+      cell: (mv) => (
+        <>
+          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-foreground" title={mv.movimiento ?? undefined}>{mv.movimiento || "–"}</span>
+          {mv.masDatos && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground @5xl:hidden">{mv.masDatos}</span>}
+        </>
+      ),
+    },
+    {
+      key: "mas",
+      header: "Más datos",
+      priority: "lg",
+      mobile: "hidden",
+      className: "max-w-[14rem]",
+      cell: (mv) => <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground" title={mv.masDatos ?? undefined}>{mv.masDatos || "–"}</span>,
+    },
+    {
+      key: "importe",
+      header: "Importe",
+      align: "right",
+      num: true,
+      mobile: "amount",
+      cell: (mv) => <span className={`font-semibold ${parseFloat(mv.importe) >= 0 ? "text-success" : "text-danger"}`}>{fmtAmount(mv.importe)}</span>,
+    },
+    { key: "saldo", header: "Saldo", align: "right", num: true, priority: "lg", cell: (mv) => <span className="text-xs text-muted-foreground">{fmtAmount(mv.saldo)}</span> },
+    {
+      key: "status",
+      header: "Estado",
+      priority: "md",
+      cell: (mv) => <StatusBadge tone={mv.status === "ignorado" ? "neutral" : "warning"}>{STATUS_BADGE[mv.status].label}</StatusBadge>,
+    },
+    {
+      key: "conc",
+      header: "Conciliación",
+      cell: (mv) =>
+        parseFloat(mv.importe) >= 0 ? (
+          <StatusBadge tone={mv.conciliationStatus === "conciliado" ? "success" : "warning"}>{CONCILIATION_BADGE[mv.conciliationStatus ?? "pendiente"].label}</StatusBadge>
+        ) : mv.conciliationStatus === "conciliado" ? (
+          <StatusBadge tone="success">{EXPENSE_CONCILIATION_BADGE.label}</StatusBadge>
+        ) : (
+          <span className="text-xs text-muted-foreground">–</span>
+        ),
+    },
+  ];
+
+  const importColumns: EconomyColumn<BankImport>[] = [
+    {
+      key: "file",
+      header: "Fichero",
+      mobile: "title",
+      cell: (imp) => (
+        <>
+          <div className="flex items-center gap-2 font-medium text-foreground">
+            <FileSpreadsheet className="h-4 w-4 shrink-0 text-success" />
+            <span className="break-all">{imp.fileName}</span>
+          </div>
+          {imp.errorMessage && (
+            <div className="mt-1 flex items-center gap-1 text-xs font-normal text-danger">
+              <AlertCircle className="h-3 w-3 shrink-0" /> {imp.errorMessage}
+            </div>
+          )}
+        </>
+      ),
+    },
+    { key: "type", header: "Tipo", priority: "md", cell: (imp) => <span className="font-mono text-xs uppercase text-muted-foreground">{imp.fileType}</span> },
+    { key: "rows", header: "Importados", align: "right", num: true, cell: (imp) => <span className="font-semibold text-info">{imp.importedRows}</span> },
+    { key: "dups", header: "Duplicados", align: "right", num: true, priority: "md", cell: (imp) => <span className="text-muted-foreground">{imp.duplicatesSkipped}</span> },
+    {
+      key: "status",
+      header: "Estado",
+      cell: (imp) => <StatusBadge tone={imp.status === "ok" ? "success" : imp.status === "error" ? "danger" : "warning"}>{IMPORT_STATUS_BADGE[imp.status].label}</StatusBadge>,
+    },
+    { key: "date", header: "Fecha", priority: "md", cell: (imp) => <span className="text-xs text-muted-foreground">{new Date(imp.createdAt).toLocaleString("es-ES")}</span> },
+  ];
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -373,20 +478,21 @@ export default function BankMovementsManager() {
           }
         />
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <MetricCard icon={<FileSpreadsheet />} tone="info" label="Total movimientos" value={totalMovs} />
-          <MetricCard icon={<TrendingUp />} tone="success" label="Total ingresado" value={fmtAmount(totalIngresado)} />
-          <MetricCard icon={<TrendingDown />} tone="danger" label="Total cargado" value={fmtAmount(totalCargado)} />
-        </div>
+        {/* Resumen */}
+        <EconomySummary>
+          <MetricCard icon={<FileSpreadsheet />} tone="info" label="Total movimientos" value={totalMovs} detail={`${imports.length} ${imports.length === 1 ? "importación" : "importaciones"}`} />
+          <MetricCard icon={<TrendingUp />} tone="success" label="Total ingresado" value={fmtAmount(totalIngresado)} detail="abonos del filtro actual" />
+          <MetricCard icon={<TrendingDown />} tone="danger" label="Total cargado" value={fmtAmount(totalCargado)} detail="cargos del filtro actual" />
+          <MetricCard icon={<AlertCircle />} tone={sinConciliar > 0 ? "warning" : "success"} label="Sin conciliar (página)" value={sinConciliar} detail={`de ${movements.length} mostrados`} />
+        </EconomySummary>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-border">
+        <div className="flex gap-1 overflow-x-auto border-b border-border">
           {(["movimientos", "importaciones"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
                 tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -398,190 +504,110 @@ export default function BankMovementsManager() {
         {/* ── TAB: Movimientos ── */}
         {tab === "movimientos" && (
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-3">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar movimiento o concepto..."
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                  className="pl-9"
-                />
-              </div>
-              <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v as any); setPage(1); }}>
-                <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="ignorado">Ignorado</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={filterImportId ? String(filterImportId) : "todos"}
-                onValueChange={(v) => { setFilterImportId(v === "todos" ? undefined : Number(v)); setPage(1); }}
-              >
-                <SelectTrigger className="w-52"><SelectValue placeholder="Todas las importaciones" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todas las importaciones</SelectItem>
-                  {imports.map((imp) => (
-                    <SelectItem key={imp.id} value={String(imp.id)}>{imp.fileName}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input type="date" className="w-36" value={filterFechaFrom} onChange={(e) => { setFilterFechaFrom(e.target.value); setPage(1); }} />
-              <Input type="date" className="w-36" value={filterFechaTo} onChange={(e) => { setFilterFechaTo(e.target.value); setPage(1); }} />
-              {(search || filterStatus !== "todos" || filterImportId || filterFechaFrom || filterFechaTo) && (
-                <Button variant="ghost" size="sm" onClick={() => {
-                  setSearch(""); setFilterStatus("todos"); setFilterImportId(undefined);
-                  setFilterFechaFrom(""); setFilterFechaTo(""); setPage(1);
-                }}>
-                  <X className="w-4 h-4 mr-1" /> Limpiar
-                </Button>
+            <EconomyFilterBar
+              search={{ value: search, onChange: (v) => { setSearch(v); setPage(1); }, placeholder: "Buscar movimiento o concepto..." }}
+              primary={
+                <>
+                  <FilterField label="Estado" className="w-full sm:w-40">
+                    <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v as any); setPage(1); }}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos</SelectItem>
+                        <SelectItem value="pendiente">Pendiente</SelectItem>
+                        <SelectItem value="ignorado">Ignorado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FilterField>
+                  <FilterField label="Desde" className="w-[calc(50%-0.375rem)] sm:w-40">
+                    <Input type="date" value={filterFechaFrom} onChange={(e) => { setFilterFechaFrom(e.target.value); setPage(1); }} />
+                  </FilterField>
+                  <FilterField label="Hasta" className="w-[calc(50%-0.375rem)] sm:w-40">
+                    <Input type="date" value={filterFechaTo} onChange={(e) => { setFilterFechaTo(e.target.value); setPage(1); }} />
+                  </FilterField>
+                </>
+              }
+              more={
+                <FilterField label="Importación">
+                  <Select
+                    value={filterImportId ? String(filterImportId) : "todos"}
+                    onValueChange={(v) => { setFilterImportId(v === "todos" ? undefined : Number(v)); setPage(1); }}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Todas las importaciones" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todas las importaciones</SelectItem>
+                      {imports.map((imp) => (
+                        <SelectItem key={imp.id} value={String(imp.id)}>{imp.fileName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FilterField>
+              }
+              chips={movChips}
+              onClear={clearMovFilters}
+              summary={`${totalMovs} ${totalMovs === 1 ? "movimiento" : "movimientos"}`}
+            />
+
+            <EconomyTable
+              rows={movements}
+              columns={movColumns}
+              rowKey={(mv) => mv.id}
+              caption="Movimientos bancarios"
+              loading={movementsQ.isLoading}
+              error={movementsQ.error}
+              errorTitle="No se han podido cargar los movimientos"
+              onRetry={() => void movementsQ.refetch()}
+              emptyTitle="No hay movimientos con los filtros seleccionados"
+              emptyDescription="Cambia o quita algún filtro, o importa el extracto de tu banco."
+              emptyAction={movChips.length > 0 ? <Button variant="outline" size="sm" onClick={clearMovFilters}>Limpiar filtros</Button> : undefined}
+              rowClassName={(mv) => (mv.status === "ignorado" ? "opacity-60" : undefined)}
+              onRowClick={openDetail}
+              actions={(mv) => (
+                <RowActions label={mv.movimiento || fmtDate(mv.fecha)} primary={{ label: "Revisar", icon: <Eye className="h-4 w-4" />, onSelect: () => openDetail(mv) }} />
               )}
-            </div>
-
-            <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b border-border">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">Fecha</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">F. Valor</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Movimiento</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Más datos</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground w-32">Importe</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground w-32">Saldo</th>
-                    <th className="px-4 py-3 text-center font-medium text-muted-foreground w-24">Estado</th>
-                    <th className="px-4 py-3 text-center font-medium text-muted-foreground w-32">Conciliación</th>
-                    <th className="px-4 py-3 text-center font-medium text-muted-foreground w-16"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movementsQ.isLoading ? (
-                    <tr><td colSpan={9}><PanelLoading className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg" /></td></tr>
-                  ) : movements.length === 0 ? (
-                    <tr><td colSpan={9} className="p-2"><PanelEmpty title="No hay movimientos con los filtros seleccionados" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
-                  ) : movements.map((mv) => {
-                    const amount = parseFloat(mv.importe);
-                    const isPos = amount >= 0;
-                    const concBadge = CONCILIATION_BADGE[mv.conciliationStatus ?? "pendiente"];
-                    return (
-                      <tr
-                        key={mv.id}
-                        className={`border-b border-white/[0.06] hover:bg-white/[0.04] transition-colors ${mv.status === "ignorado" ? "opacity-40" : ""}`}
-                      >
-                        <td className="px-4 py-3 font-mono text-xs text-foreground">{fmtDate(mv.fecha)}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{fmtDate(mv.fechaValor)}</td>
-                        <td className="px-4 py-3 text-foreground max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento || "–"}</td>
-                        <td className="px-4 py-3 text-muted-foreground max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap text-xs">{mv.masDatos || "–"}</td>
-                        <td className={`px-4 py-3 text-right font-semibold font-mono ${isPos ? "text-success" : "text-danger"}`}>
-                          {fmtAmount(mv.importe)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">{fmtAmount(mv.saldo)}</td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge className={STATUS_BADGE[mv.status].cls}>{STATUS_BADGE[mv.status].label}</Badge>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {isPos ? (
-                            <Badge className={concBadge.cls}>{concBadge.label}</Badge>
-                          ) : mv.conciliationStatus === "conciliado" ? (
-                            <Badge className={EXPENSE_CONCILIATION_BADGE.cls}>{EXPENSE_CONCILIATION_BADGE.label}</Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">–</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <Button variant="ghost" size="sm" onClick={() => openDetail(mv)}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{totalMovs} registros · página {page}/{totalPages}</span>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)}>
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
+              footer={totalPages > 1 ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  <span className="tabular-nums">{totalMovs} registros · página {page}/{totalPages}</span>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)} aria-label="Página anterior">
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)} aria-label="Página siguiente">
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : undefined}
+            />
           </div>
         )}
 
         {/* ── TAB: Importaciones ── */}
         {tab === "importaciones" && (
-          <div className="space-y-3">
-            {importsQ.isLoading ? (
-              <PanelLoading />
-            ) : imports.length === 0 ? (
-              <PanelEmpty
-                icon={<FileSpreadsheet className="w-5 h-5" />}
-                title="No hay importaciones todavía"
-                description='Usa el botón "Importar fichero" para cargar el extracto de tu banco (Norma 43, Excel o CSV)'
+          <EconomyTable
+            rows={imports}
+            columns={importColumns}
+            rowKey={(imp) => imp.id}
+            caption="Importaciones de extractos"
+            loading={importsQ.isLoading}
+            error={importsQ.error}
+            onRetry={() => void importsQ.refetch()}
+            emptyTitle="No hay importaciones todavía"
+            emptyDescription='Usa el botón "Importar fichero" para cargar el extracto de tu banco (Norma 43, Excel o CSV)'
+            actions={(imp) => (
+              <RowActions
+                label={imp.fileName}
+                menu={[{
+                  label: "Eliminar importación",
+                  icon: <Trash2 />,
+                  destructive: true,
+                  onSelect: async () => {
+                    if (!(await confirmAction({ description: `¿Eliminar importación "${imp.fileName}" y todos sus movimientos?`, destructive: true }))) return;
+                    deleteImportMut.mutate({ id: imp.id });
+                  },
+                }]}
               />
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b border-border">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Fichero</th>
-                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-20">Tipo</th>
-                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-28">Importados</th>
-                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-28">Duplicados</th>
-                      <th className="px-4 py-3 text-center font-medium text-muted-foreground w-24">Estado</th>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground w-40">Fecha</th>
-                      <th className="px-4 py-3 w-16"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {imports.map((imp) => (
-                      <tr key={imp.id} className="border-b border-white/[0.06] hover:bg-white/[0.04]">
-                        <td className="px-4 py-3 font-medium text-foreground">
-                          <div className="flex items-center gap-2">
-                            <FileSpreadsheet className="w-4 h-4 text-success" />
-                            {imp.fileName}
-                          </div>
-                          {imp.errorMessage && (
-                            <div className="text-xs text-danger mt-1 flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3" /> {imp.errorMessage}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center font-mono text-xs uppercase text-muted-foreground">{imp.fileType}</td>
-                        <td className="px-4 py-3 text-center font-semibold text-info">{imp.importedRows}</td>
-                        <td className="px-4 py-3 text-center text-muted-foreground">{imp.duplicatesSkipped}</td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge className={IMPORT_STATUS_BADGE[imp.status].cls}>{IMPORT_STATUS_BADGE[imp.status].label}</Badge>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(imp.createdAt).toLocaleString("es-ES")}</td>
-                        <td className="px-4 py-3 text-center">
-                          <Button
-                            variant="ghost" size="sm"
-                            className="text-danger hover:text-danger"
-                            onClick={async () => {
-                              if (!(await confirmAction({ description: `¿Eliminar importación "${imp.fileName}" y todos sus movimientos?`, destructive: true }))) return;
-                              deleteImportMut.mutate({ id: imp.id });
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             )}
-          </div>
+          />
         )}
       </div>
 
@@ -607,6 +633,7 @@ export default function BankMovementsManager() {
           {selectedMovement && (
             <div className="space-y-5">
               {/* Datos del movimiento */}
+              <FormSection title="Datos del movimiento">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Fecha</div>
@@ -639,8 +666,7 @@ export default function BankMovementsManager() {
                   </div>
                 )}
               </div>
-
-              <hr />
+              </FormSection>
 
               {/* ── Sección conciliación (solo ingresos) ── */}
               {isPositive && (
@@ -935,10 +961,8 @@ export default function BankMovementsManager() {
                 </div>
               )}
 
-              <hr />
-
               {/* Estado y notas */}
-              <div className="space-y-3">
+              <FormSection title="Estado y notas">
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Estado</label>
                   <Select value={editStatus} onValueChange={(v) => setEditStatus(v as "pendiente" | "ignorado")}>
@@ -958,14 +982,14 @@ export default function BankMovementsManager() {
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Notas internas</label>
                   <textarea
-                    className="w-full text-sm border border-border rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-info/40"
+                    className="w-full resize-none rounded-md border border-border bg-background p-2 text-sm focus:outline-none focus:ring-1 focus:ring-info/40"
                     rows={3}
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
                     placeholder="Notas opcionales sobre este movimiento..."
                   />
                 </div>
-              </div>
+              </FormSection>
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setSelectedMovement(null)}>Cancelar</Button>
