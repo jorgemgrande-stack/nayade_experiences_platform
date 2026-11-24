@@ -16,6 +16,7 @@ import { toastError } from "@/lib/errorMessage";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { computeDirectInvoice, convertUnitPrice, DIRECT_INVOICE_TAX_RATES, EXEMPTION_REASON_SUGGESTIONS, parseAmount, validateNewInvoice, type DirectInvoiceTaxRate, type InvoiceClientDraft as ClientDraft, type InvoiceFormErrors as Errors, type InvoiceLineDraft as LineDraft } from "@shared/directInvoice";
 import { normalizeTaxId } from "@shared/formValidation";
+import { BSection } from "./shared/ui/bCrmUi";
 
 
 import { useI18n } from "@/i18n/I18nProvider";
@@ -93,21 +94,21 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
   };
 
   const setLine = (i: number, patch: Partial<LineDraft>) => setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)));
-  const err = (k: string) => (errors[k] ? <p className="text-xs text-red-400 mt-1">{errors[k]}</p> : null);
-  const fieldClass = "bg-foreground/[0.05] border-foreground/[0.15] text-white";
+  const err = (k: string) => (errors[k] ? <p className="text-xs text-danger mt-1" role="alert">{errors[k]}</p> : null);
+  const fieldClass = "bg-background";
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-white">{t("crmInvoices.nuevaFactura")}</DialogTitle>
+          <DialogTitle>{t("crmInvoices.nuevaFactura")}</DialogTitle>
         </DialogHeader>
 
-        <section className="space-y-3">
+        <BSection title={t("crmShared.cliente")}>
           <div className="flex gap-2">
             {(["existing", "new"] as const).map((m) => (
               <button key={m} type="button" onClick={() => { setMode(m); setErrors({}); }}
-                className={`px-3 py-1 rounded-full text-xs font-medium border ${mode === m ? "bg-orange-600 text-white border-orange-600" : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12]"}`}>
+                className={`px-3 py-1 rounded-full text-xs font-medium border ${mode === m ? "bg-primary text-primary-foreground border-primary" : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12]"}`}>
                 {m === "existing" ? t("crmInvoices.clienteGuardado") : t("crmInvoices.clienteNuevo")}
               </button>
             ))}
@@ -122,7 +123,7 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
                 {!clientsQuery.isLoading && clientOptions.length === 0 && <p className="p-2 text-xs text-foreground/50">{t("crmInvoices.noHayClientesCon")}</p>}
                 {clientOptions.map((c) => (
                   <button key={c.id} type="button" onClick={() => { setClientId(c.id); setErrors((e) => ({ ...e, clientId: "" })); }}
-                    className={`w-full text-left px-3 py-2 text-sm ${clientId === c.id ? "bg-orange-600/30" : "hover:bg-foreground/[0.06]"}`}>
+                    className={`w-full text-left px-3 py-2 text-sm ${clientId === c.id ? "bg-primary/15" : "hover:bg-foreground/[0.06]"}`}>
                     <span className="font-medium">{c.company || c.name}</span>
                     <span className="text-foreground/50 text-xs ml-2">{[c.nif, c.email].filter(Boolean).join(" · ")}</span>
                   </button>
@@ -158,15 +159,15 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
               </div>
             </div>
           )}
-        </section>
+        </BSection>
 
-        <section className="space-y-2 mt-4">
+        <BSection title={t("crmShared.lineas")} className="mt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-foreground/80">{t("crmInvoices.conceptos")}</h3>
+            <span className="text-sm font-medium text-foreground">{t("crmInvoices.conceptos")}</span>
             <div className="flex gap-2" role="radiogroup" aria-label={t("crmInvoices.comoEscribesLosPrecios")}>
               {([true, false] as const).map((inc) => (
                 <button key={String(inc)} type="button" role="radio" aria-checked={pricesIncludeTax === inc} onClick={() => switchPrices(inc)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border ${pricesIncludeTax === inc ? "bg-orange-600 text-white border-orange-600" : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12]"}`}>
+                  className={`px-3 py-1 rounded-full text-xs font-medium border ${pricesIncludeTax === inc ? "bg-primary text-primary-foreground border-primary" : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12]"}`}>
                   {inc ? t("crmInvoices.preciosConIvaIncluido") : t("crmInvoices.preciosSinIva")}
                 </button>
               ))}
@@ -194,7 +195,7 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
               </div>
               <div className="col-span-3 sm:col-span-2">
                 <Label htmlFor={`ni-tax-${i}`} className="text-xs text-foreground/60">{t("crmInvoices.iva3")}</Label>
-                <select id={`ni-tax-${i}`} className="w-full h-9 rounded-md px-2 text-sm bg-[#0d1526] border border-foreground/[0.15] text-white"
+                <select id={`ni-tax-${i}`} className="w-full h-9 rounded-md px-2 text-sm bg-background border border-input text-foreground"
                   value={l.taxRate} onChange={(e) => setLine(i, { taxRate: Number(e.target.value) as DirectInvoiceTaxRate })}>
                   {DIRECT_INVOICE_TAX_RATES.map((r) => <option key={r} value={r}>{r} %</option>)}
                 </select>
@@ -217,9 +218,9 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
           {err("lines")}
           <Button type="button" variant="outline" size="sm" onClick={() => setLines((ls) => [...ls, emptyLine()])} className="border-foreground/[0.15] text-foreground/70">
             <Plus className="w-4 h-4 mr-1" />{" "}{t("crmInvoices.anadirLinea")}</Button>
-        </section>
+        </BSection>
 
-        <section className="mt-4 ml-auto w-full sm:w-72 text-sm space-y-1">
+        <BSection title={t("crmShared.importes")} className="mt-4 ml-auto w-full text-sm sm:w-80">
           {amounts.taxBreakdown.map((b) => (
             <div key={b.rate} className="flex justify-between text-foreground/70">
               <span>{t("crmInvoices.baseIva", { rate: b.rate, money: money(b.amount) })}</span>
@@ -228,12 +229,12 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
           ))}
           <div className="flex justify-between text-foreground/70"><span>{t("crmInvoices.baseImponible")}</span><span>{money(amounts.subtotal)}</span></div>
           <div className="flex justify-between text-foreground/70"><span>{t("crmInvoices.iva3")}</span><span>{money(amounts.taxAmount)}</span></div>
-          <div className="flex justify-between font-semibold text-white border-t border-foreground/[0.12] pt-1"><span>{t("crmInvoices.total")}</span><span>{money(amounts.total)}</span></div>
-        </section>
+          <div className="flex justify-between font-semibold text-foreground border-t border-foreground/[0.12] pt-1"><span>{t("crmInvoices.total")}</span><span>{money(amounts.total)}</span></div>
+        </BSection>
 
         <p className="text-xs text-foreground/50 mt-2">{t("crmInvoices.alEmitirlaLaFactura")}</p>
 
-        <DialogFooter>
+        <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 border-t border-border bg-card px-6 py-3">
           <Button variant="outline" size="sm" onClick={() => { reset(); onOpenChange(false); }} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
           <Button size="sm" onClick={submit} disabled={create.isPending}>
             {create.isPending && <RefreshCw className="w-4 h-4 animate-spin mr-1" />}{t("crmInvoices.emitirFactura")}</Button>
