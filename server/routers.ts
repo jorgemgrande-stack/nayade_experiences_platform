@@ -677,6 +677,8 @@ export const appRouter = router({
           page: z.string().max(200).optional(),
           variantId: z.number().int().positive().optional(),
           lang: z.string().max(5).optional(),
+          /** Fecha de inicio deseada (YYYY-MM-DD) de un producto sin convocatoria; el servidor la valida contra el periodo del producto */
+          startDate: z.string().max(10).optional(),
         }).optional(),
         studioForm: z.object({
           slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
@@ -1715,6 +1717,10 @@ export const appRouter = router({
         /** El administrador ha revisado los avisos de preparación y autoriza pasar a precio fijo. */
         confirmReadiness: z.boolean().optional(),
         requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
+        /** Migración 0088: duración como dato y periodo de peticiones de fecha de inicio (YYYY-MM-DD; null = sin calendario) */
+        durationDays: z.number().int().min(1).max(366).nullable().optional(),
+        requestDatesFrom: z.string().regex(/^d{4}-d{2}-d{2}$/).nullable().optional(),
+        requestDatesUntil: z.string().regex(/^d{4}-d{2}-d{2}$/).nullable().optional(),
         isFeatured: z.boolean().optional(),
         isActive: z.boolean().optional(),
         image1: z.string().optional(),
