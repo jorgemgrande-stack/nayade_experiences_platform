@@ -24,7 +24,16 @@ export default {
   introBefore:
     "Optional. Deine Bestätigungen, Rechnungen und Benachrichtigungen werden über dein eigenes Postmark-Konto mit deiner Domain versendet, und im Profil jedes Kunden siehst du, ob sie angekommen sind. Solange du es nicht aktivierst, werden sie weiterhin über den E-Mail-Dienst von Elephant Source gesendet. Werbekampagnen laufen nicht über Postmark: Sie werden mit ",
   introLink: "Brevo Marketing",
+  stepDone: "Abgeschlossen",
+  stepPending: "Offen",
+  progress: "{done} von {total} Schritten abgeschlossen",
+  saving: "Wird gespeichert…",
+  unsaved: "Es gibt ungespeicherte Änderungen.",
   routes: {
+    inUse: "In Nutzung",
+    cardPostmark: "Dieser Bildschirm. Nur für Transaktions-E-Mails; Postmark rechnet direkt mit dir ab.",
+    cardSmtp: "Dein eigener SMTP-Server, unter",
+    cardElephant: "Falls du keinen anderen Weg einrichtest, und als Ersatz, wenn Postmark dein Konto ablehnt. Es gelten die Grenzen des Dienstes.",
     title: "So werden deine E-Mails versendet",
     included: "Ist in deinem Tarif enthalten (Essential, Business und Enterprise), ohne Zusatzkosten bei Elephant Source. Du kannst einen dieser drei Wege nutzen:",
     postmarkLead: "Dein Postmark-Konto",
