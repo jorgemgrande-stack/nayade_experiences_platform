@@ -298,8 +298,27 @@ export default function SubscriptionPage() {
                     <h3 className="mb-1 font-semibold text-foreground">{t("subscription.page.featuresTitle")}</h3>
                     <p className="mb-4 text-sm text-muted-foreground">{t("subscription.page.featuresText")}</p>
                     {data.capabilities.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">{t("subscription.page.featuresEmpty")}</p>
+                      <p className="rounded-xl border border-dashed border-border bg-background/40 p-6 text-center text-sm text-muted-foreground">{t("subscription.page.featuresEmpty")}</p>
                     ) : (
+                      <>
+                      <ul className="mb-4 flex flex-wrap gap-2" aria-label={t("subscription.page.featuresTitle")}>
+                        {Object.entries(
+                          data.capabilities.reduce<Record<string, number>>((acc, cap) => {
+                            const k = cap.status === "expired" && !expiredCanConsult(data.consultation) ? "expiredNoRead" : cap.status;
+                            acc[k] = (acc[k] ?? 0) + 1;
+                            return acc;
+                          }, {}),
+                        ).map(([k, n]) => {
+                          const meta = k === "expiredNoRead" ? expiredNoRead(t) : (CAP_STATUS[k] ?? CAP_STATUS.contracted);
+                          const SIcon = meta.icon;
+                          return (
+                            <li key={k} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 py-1 text-xs font-medium text-foreground">
+                              <SIcon className={cn("h-3.5 w-3.5", meta.tone)} aria-hidden="true" />
+                              <strong className="font-semibold">{n}</strong> {meta.label}
+                            </li>
+                          );
+                        })}
+                      </ul>
                       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         {Object.entries(
                           data.capabilities.reduce<Record<string, typeof data.capabilities>>((acc, cap) => {
@@ -308,7 +327,10 @@ export default function SubscriptionPage() {
                           }, {}),
                         ).map(([group, caps]) => (
                           <div key={group} className="min-w-0 rounded-xl border border-border bg-background/40 p-4">
-                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{GROUP_LABELS[group] ?? group}</h4>
+                            <h4 className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              <span className="min-w-0 break-words">{GROUP_LABELS[group] ?? group}</span>
+                              <span className="rounded-full bg-muted px-2 py-0.5 tabular-nums text-foreground">{caps.length}</span>
+                            </h4>
                             <ul className="space-y-1.5">
                               {caps.map((cap) => {
                                 // «Caducada (solo lectura)» solo si hoy se puede consultar (subscription.overview.consultation)
@@ -317,7 +339,7 @@ export default function SubscriptionPage() {
                                 return (
                                   <li key={cap.id} className="flex flex-wrap items-start gap-2 text-sm">
                                     <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", meta.tone)} aria-hidden="true" />
-                                    <span className="min-w-0 flex-1 break-words text-foreground">{cap.name}</span>
+                                    <span className="min-w-[8rem] flex-1 break-words text-foreground">{cap.name}</span>
                                     {cap.status !== "active" && (
                                       <Badge variant="outline" className="text-xs">
                                         {meta.label}
@@ -331,6 +353,7 @@ export default function SubscriptionPage() {
                           </div>
                         ))}
                       </div>
+                      </>
                     )}
                   </TabsContent>
 
@@ -369,6 +392,11 @@ export default function SubscriptionPage() {
                                     <td className={cn("py-2.5", over ? "font-medium text-warning" : "text-foreground")}>
                                       {l.used === null ? <span className="text-muted-foreground">{t("subscription.page.limitsUnavailable")}</span> : l.used}
                                       {over && t("subscription.page.limitsOver")}
+                                      {l.included !== null && l.included > 0 && l.used !== null && (
+                                        <div aria-hidden="true" className="mt-1.5 h-1.5 w-full min-w-24 max-w-48 overflow-hidden rounded-full bg-muted">
+                                          <div className={cn("h-full rounded-full", over ? "bg-warning" : l.used / l.included >= 0.8 ? "bg-warning/70" : "bg-primary")} style={{ width: `${Math.min(100, Math.round((l.used / l.included) * 100))}%` }} />
+                                        </div>
+                                      )}
                                     </td>
                                   </tr>
                                 );
