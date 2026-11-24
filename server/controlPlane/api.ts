@@ -3170,6 +3170,40 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         res.json({ run, sent: results.length, results });
       }),
     );
+
+    // Prueba CONTROLADA de los avisos internos de contratación y cobro a Dirección: un evento SINTÉTICO, claramente marcado como
+    // prueba (sin contrato, cobro ni operación real), enviado dos veces con la misma clave para comprobar la idempotencia.
+    // Mismo camino que los avisos reales (PlatformMailer.billingNotice → bandeja → proveedor).
+    router.post(
+      "/billing-notices/test",
+      requireScope("ops:write"),
+      wrap(async (req, res) => {
+        z.object({}).strict().parse(req.body ?? {});
+        if (mailer.policy.mode === "off") return void res.status(409).json({ error: "mail_off", message: "El correo de la plataforma está desactivado (MAIL_MODE=off)" });
+        const run = Date.now().toString(36);
+        const when = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" }).format(new Date());
+        const title = "[PRUEBA] Aviso de cobro sintético · sin contrato ni cobro reales";
+        const lines = [
+          "PRUEBA CONTROLADA del servicio de avisos a Dirección. Este evento es SINTÉTICO: no corresponde a ningún contrato, cobro ni operación real y no requiere ninguna acción.",
+          "Acontecimiento: Primer cobro real confirmado (SIMULADO).",
+          `Fecha y hora (España): ${when}.`,
+          "Empresa: EMPRESA DE PRUEBA (n.º 0). Contrato: CT-PRUEBA · Suscripción: SUB-PRUEBA.",
+          "Plan y servicios: Plan de prueba. Cuota contratada: 0,00 € + IVA 0,00 € = 0,00 € (simulada).",
+          "Importe efectivamente cobrado: 0,00 € (sintético; ningún cargo real).",
+          "Estado de la suscripción: ficticio. Estado de la plataforma: ficticio.",
+          "Acción requerida: ninguna.",
+          `Identificador de la prueba: ${run}`,
+        ];
+        const key = `test:${run}`;
+        const first = await mailer.billingNotice(key, title, lines);
+        const second = await mailer.billingNotice(key, title, lines);
+        // Entrega inmediata; el resultado del proveedor queda en la bandeja de salida (CRM → Comunicaciones)
+        await mailer.service.drain(5).catch(() => undefined);
+        const pick = (r: typeof first) => (r ? { status: r.status, reason: r.reason ?? null, outboxId: r.id ?? null, duplicate: r.duplicate ?? false } : null);
+        opsLog("info", "Mail", "billing_notice_test", { run, by: getAuth(req)?.tokenId ?? "operador" });
+        res.json({ run, key: `billing-notice:${key}`, first: pick(first), secondSameKey: pick(second), idempotent: !!second && (second.duplicate === true || second.id === first?.id) });
+      }),
+    );
   }
 
   // Trazabilidad de los avisos de plataforma: qué se envió, a quién (enmascarado), por qué evento, cuándo, estado,

@@ -175,6 +175,11 @@ async function deliver(w: World) {
   for (const ev of gw.events.slice().reverse()) await stripeStore.recordEvent({ eventId: ev.id, type: ev.type, apiVersion: ev.apiVersion, objectType: ev.objectType, objectId: ev.objectId, stripeCreated: ev.created, source: "webhook", now: clock });
   return w.processor.processDue(200);
 }
+/** Como `deliver`, pero registrando los eventos en el orden contrario (los más recientes primero): webhooks fuera de orden. */
+async function deliverOutOfOrder(w: World) {
+  for (const ev of gw.events.slice()) await stripeStore.recordEvent({ eventId: ev.id, type: ev.type, apiVersion: ev.apiVersion, objectType: ev.objectType, objectId: ev.objectId, stripeCreated: ev.created, source: "webhook", now: clock });
+  return w.processor.processDue(200);
+}
 /** Puesta en cobro completa: el operador la inicia, el cliente paga en Stripe y llegan los webhooks. */
 async function started(w: World, subId: number) {
   const s = await w.neg.start(subId, A);
@@ -598,6 +603,44 @@ describe("estado de pago por los webhooks: mismas reglas que el cobro ordinario"
     await w.reconciler.tick();
     expect(notices.filter((n) => n.kind === "recurring_charge")).toHaveLength(1);
     expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
+  });
+
+  it("avisos a Dirección con webhooks fuera de orden: el mismo resultado, un aviso por hecho y el estado final correcto", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const s = await w.neg.start(a.subId, A);
+    const stripeId = gw.completeNegotiatedSession((s as { sessionId: string }).sessionId);
+    await deliverOutOfOrder(w);
+    expect(await row(a.subId)).toMatchObject({ status: "active", stripeSubscriptionId: stripeId });
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
+    clock = (await subs.must(a.subId)).currentPeriodEnd + 60_000;
+    const inv = gw.chargeNegotiatedPeriod(stripeId);
+    await deliverOutOfOrder(w);
+    // El evento de la factura anterior llega tarde y repetido: no retrocede el estado ni duplica avisos
+    await deliverOutOfOrder(w);
+    expect(await row(a.subId)).toMatchObject({ status: "active", lastPaidInvoiceId: inv });
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
+    expect(notices.filter((n) => n.kind === "recurring_charge")).toHaveLength(1);
+    expect(notices.some((n) => n.kind === "payment_failed")).toBe(false);
+  });
+
+  it("avisos a Dirección: aislamiento multiempresa (cada aviso lleva su suscripción; el fallo de una no toca a la otra)", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const b = await agreed(2);
+    const sa = await started(w, a.subId);
+    await started(w, b.subId);
+    const firsts = notices.filter((n) => n.kind === "first_charge");
+    expect(firsts.map((n) => n.subscriptionId).sort()).toEqual([a.subId, b.subId].sort());
+    expect(new Set(firsts.map((n) => n.key)).size).toBe(2);
+    clock = Math.max((await subs.must(a.subId)).currentPeriodEnd, (await subs.must(b.subId)).currentPeriodEnd) + 60_000;
+    gw.chargeNegotiatedPeriod(sa.stripeId, "open");
+    await deliver(w);
+    const failed = notices.filter((n) => n.kind === "payment_failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0].subscriptionId).toBe(a.subId);
+    expect(await row(b.subId)).toMatchObject({ status: "active" });
+    expect(await row(a.subId)).toMatchObject({ status: "past_due" });
   });
 
   it("avisos a Dirección: pago fallido una sola vez, sin repetirlo en cada lectura", async () => {
