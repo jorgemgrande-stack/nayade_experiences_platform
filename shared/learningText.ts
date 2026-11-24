@@ -19,6 +19,10 @@ const T = {
     pending: "Dieses Material wird bald bereitgestellt.", download: "Herunterladen", open: "Öffnen", external: "Externer Link (öffnet in neuem Tab)",
     exercise: "Übung", meditation: "Meditation", noAccess: "Für diese Lektion hast du keinen Zugang.",
     resumeNote: "Du kannst jederzeit dort weitermachen, wo du aufgehört hast.",
+    unlocksOn: "Wird freigeschaltet am {date}", accessUntilOn: "Zugang bis {date}", accessEndedOn: "Zugang beendet am {date}", accessEnded: "Zugang beendet",
+    endsSoon: "Dein Zugang zu diesem Modul endet bald: noch {n} Tage.", endsSoonOne: "Dein Zugang zu diesem Modul endet bald: noch 1 Tag.",
+    extendModule: "Dieses Modul verlängern", extendTitle: "Zugang zu diesem Modul verlängern", extend30: "+1 Monat (30 Tage)", extend60: "+2 Monate (60 Tage)",
+    extendPay: "Bezahlen und verlängern", extendNote: "Der Zugang wird verlängert, sobald die Zahlung bestätigt ist. Dein Fortschritt bleibt erhalten.", extendClose: "Schließen", extendFail: "Die Verlängerung konnte nicht gestartet werden.",
     activateTitle: "Konto aktivieren", activateText: "Lege dein Passwort fest, um deinen Kurs zu öffnen.", pw: "Passwort", pw2: "Passwort wiederholen", activate: "Aktivieren",
     pwShort: "Das Passwort muss mindestens 8 Zeichen haben.", pwDiff: "Die Passwörter stimmen nicht überein.", badLink: "Der Link ist ungültig. Verwende den Link aus der Einladungs-E-Mail.",
     activateFail: "Das Passwort konnte nicht festgelegt werden. Der Link ist möglicherweise abgelaufen.",
@@ -41,6 +45,10 @@ const T = {
     pending: "Este material estará disponible próximamente.", download: "Descargar", open: "Abrir", external: "Enlace externo (se abre en otra pestaña)",
     exercise: "Ejercicio", meditation: "Meditación", noAccess: "No tienes acceso a esta lección.",
     resumeNote: "Puedes retomar cuando quieras donde lo dejaste.",
+    unlocksOn: "Se desbloquea el {date}", accessUntilOn: "Acceso hasta {date}", accessEndedOn: "Acceso finalizado el {date}", accessEnded: "Acceso finalizado",
+    endsSoon: "Tu acceso a este módulo termina pronto: quedan {n} días.", endsSoonOne: "Tu acceso a este módulo termina pronto: queda 1 día.",
+    extendModule: "Ampliar este módulo", extendTitle: "Ampliar el acceso a este módulo", extend30: "+1 mes (30 días)", extend60: "+2 meses (60 días)",
+    extendPay: "Pagar y ampliar", extendNote: "El acceso se amplía cuando se confirma el pago. Tu progreso se conserva.", extendClose: "Cerrar", extendFail: "No se ha podido iniciar la ampliación.",
     activateTitle: "Activar tu cuenta", activateText: "Crea tu contraseña para entrar en tu curso.", pw: "Contraseña", pw2: "Repite la contraseña", activate: "Activar",
     pwShort: "La contraseña debe tener al menos 8 caracteres.", pwDiff: "Las contraseñas no coinciden.", badLink: "El enlace no es válido. Usa el enlace del correo de invitación.",
     activateFail: "No se ha podido crear la contraseña. El enlace puede haber caducado.",
@@ -89,4 +97,14 @@ export function contentNotice(courseLanguage: string | null | undefined, ui: Aul
 /** Fecha corta del acceso, en el idioma del aula y en hora de Madrid. */
 export function formatAccessDate(ms: number, l: AulaLocale): string {
   return new Intl.DateTimeFormat(l === "de" ? "de-DE" : "es-ES", { timeZone: "Europe/Madrid", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(ms));
+}
+
+/** Rellena `{clave}` de un texto del aula. */
+export function fillAula(text: string, vars: Record<string, string | number>): string {
+  return text.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+}
+
+/** Importe en euros según el idioma del aula. */
+export function formatAulaPrice(cents: number, l: AulaLocale): string {
+  return new Intl.NumberFormat(l === "de" ? "de-DE" : "es-ES", { style: "currency", currency: "EUR" }).format(cents / 100);
 }
