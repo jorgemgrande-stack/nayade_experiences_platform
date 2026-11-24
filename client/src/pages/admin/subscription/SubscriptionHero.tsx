@@ -4,13 +4,13 @@
  * Todo el contenido sale de shared/subscriptionHeader.ts (estado real del servidor); aquí solo se pinta.
  */
 import { Link } from "wouter";
-import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, CreditCard, Hourglass, Layers, Rocket, ShieldCheck, TrendingUp, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, BadgeCheck, Building2, CalendarClock, CreditCard, Hourglass, Layers, Rocket, ShieldCheck, TrendingUp, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
 import { usePanelText } from "@/i18n/usePanelText";
 import { planPresentation, type PlanIconKey } from "@shared/planPresentation";
-import type { HeaderAction, HeaderFact, SubscriptionHeaderModel } from "@shared/subscriptionHeader";
+import type { ContractedPanel, HeaderAction, HeaderFact, SubscriptionHeaderModel } from "@shared/subscriptionHeader";
 
 const PLAN_ICONS: Record<PlanIconKey, LucideIcon> = { rocket: Rocket, trending: TrendingUp, building: Building2, layers: Layers };
 const FACT_ICONS: Record<HeaderFact["id"], LucideIcon> = { trial: Hourglass, renewal: CalendarClock, end: CalendarClock, amount: CreditCard, payment: CreditCard, grace: AlertTriangle };
@@ -86,6 +86,8 @@ export function SubscriptionHero({
               )}
             </div>
 
+            {model.contracted && <ContractedBlock c={model.contracted} />}
+
             {(model.dataNote || model.restriction) && (
               <div className="mt-4 space-y-1.5 border-t border-white/10 pt-3 text-sm">
                 {model.dataNote && <p className="text-white/90">{px(model.dataNote)}</p>}
@@ -101,6 +103,53 @@ export function SubscriptionHero({
         )}
       </div>
     </header>
+  );
+}
+
+/** Contratación ya formalizada durante la prueba: separada del plan de prueba en uso. */
+function ContractedBlock({ c }: { c: ContractedPanel }) {
+  const px = usePanelText();
+  return (
+    <div data-testid="contracted-panel" className="mt-4 space-y-3 rounded-xl border border-white/15 bg-white/5 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <BadgeCheck className="h-5 w-5 text-success" aria-hidden="true" />
+        <h3 className="text-base font-bold text-white">{px(c.title)}</h3>
+        {c.planName && <span className="rounded-full bg-white/15 px-3 py-0.5 text-sm font-semibold text-white">{c.planName}</span>}
+      </div>
+      {c.extensions.length > 0 && (
+        <p className="text-sm text-white/85">
+          <span className="text-white/70">{px("Extensiones incluidas")}: </span>
+          <span className="font-semibold text-white">{c.extensions.join(" · ")}</span>
+        </p>
+      )}
+      <ul className="space-y-1 text-sm">
+        {c.confirmations.map((x) => (
+          <li key={x.id} className="flex items-start gap-1.5 text-white/90">
+            {x.tone === "success" ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />}
+            <span className="min-w-0">{px(x.label)}</span>
+          </li>
+        ))}
+      </ul>
+      <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+        {c.fee && (
+          <div>
+            <dt className="text-white/70">{px(c.fee.label)}</dt>
+            <dd className="font-semibold text-white">{c.fee.value}</dd>
+          </div>
+        )}
+        {c.firstCharge && (
+          <div>
+            <dt className="text-white/70">{px(c.firstCharge.label)}</dt>
+            <dd className="font-semibold text-white">{c.firstCharge.value}</dd>
+            <dd className="text-xs text-white/70">{px(c.firstCharge.note)}</dd>
+          </div>
+        )}
+      </dl>
+      <p className="border-t border-white/10 pt-2 text-sm text-white/90">
+        <span className="font-semibold text-white">{px("Qué pasa al terminar la prueba")}: </span>
+        {c.afterTrial}
+      </p>
+    </div>
   );
 }
 
