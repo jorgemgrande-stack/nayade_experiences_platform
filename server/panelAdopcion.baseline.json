@@ -65,10 +65,6 @@
     "coloresFijos": 6,
     "textoMinusculo": 3
   },
-  "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
-    "coloresFijos": 44,
-    "textoMinusculo": 11
-  },
   "pages/admin/commercial/CommunicationsMap.tsx": {
     "coloresFijos": 30,
     "textoMinusculo": 11
@@ -241,7 +237,7 @@
     "textoMinusculo": 1
   },
   "pages/admin/operations/CalendarView.tsx": {
-    "textoMinusculo": 20
+    "textoMinusculo": 14
   },
   "pages/admin/operations/DailyActivities.tsx": {
     "textoMinusculo": 24

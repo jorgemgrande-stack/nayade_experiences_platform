@@ -25,6 +25,11 @@ export default {
   title: "Atención Comercial",
   subtitle: "Seguimiento de presupuestos no convertidos",
   loadError: "No se ha podido cargar el seguimiento comercial",
+  tabsLabel: "Secciones de atención comercial",
+  section: { quotes: "Estado de los presupuestos", channels: "Canales de entrada" },
+  remindersCount: "{n, plural, one {# recordatorio} other {# recordatorios}}",
+  noNext: "Sin envío programado",
+  moreActions: "Más acciones",
   kpi: {
     needsAttention: "Necesitan atención", activeQuotes: "presupuestos activos", notViewed: "No vistos", viewedUnpaid: "Vistos sin pagar",
     paused: "Pausados", sentToday: "Enviados hoy", autoReminders: "recordatorios automáticos", cold: "Fríos (+7 días)",
@@ -34,15 +39,16 @@ export default {
   },
   notif: {
     title: "Notificaciones WhatsApp — ventana emergente",
+    hint: "Estas preferencias se guardan solo en este navegador.",
     popupOff: "Ventana emergente desactivada",
     popupOn: "Ventana emergente activada",
     soundOff: "Sonido desactivado",
     soundOn: "Sonido activado",
   },
-  attention: { title: "Presupuestos que requieren atención", seeAll: "Ver todos", empty: "Sin presupuestos pendientes" },
+  attention: { title: "Presupuestos que requieren atención", seeAll: "Ver todos", empty: "Sin presupuestos pendientes", emptyHint: "Cuando un presupuesto enviado necesite seguimiento, aparecerá aquí." },
   col: {
     quote: "Presupuesto", client: "Cliente", sent: "Enviado", amount: "Importe", status: "Estado", seen: "Visto", recs: "Recs.",
-    nextSend: "Próximo envío", actions: "Acciones", date: "Fecha", type: "Tipo", subject: "Asunto",
+    followup: "Seguimiento", nextSend: "Próximo envío", actions: "Acciones", date: "Fecha", type: "Tipo", subject: "Asunto",
   },
   open: {
     search: "Buscar cliente, email, nº presupuesto...",
@@ -53,10 +59,12 @@ export default {
     notViewed: "No vistos",
     count: "{n, plural, one {# presupuesto} other {# presupuestos}}",
     empty: "Sin resultados",
+    emptyHint: "Prueba con otros filtros o con otra búsqueda.",
   },
   history: {
     count: "{n, plural, one {# comunicación} other {# comunicaciones}}",
     empty: "Sin historial",
+    emptyHint: "Aquí se registrarán los recordatorios, las notas y los cambios de estado.",
     typeAuto: "Auto",
     typeManual: "Manual",
     typeNote: "Nota",

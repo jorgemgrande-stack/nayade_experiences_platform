@@ -10,6 +10,8 @@ import { productEditionsHref } from "@shared/leadWebRequest";
 import { useI18n } from "@/i18n/I18nProvider";
 import AdminLayout from "@/components/AdminLayout";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import {
   Calendar, CalendarDays, ChevronLeft, ChevronRight,
   Waves, Utensils, RefreshCw, AlertTriangle, Users,
@@ -74,7 +76,7 @@ function ReservationPill({ ev, onClick }: { ev: any; onClick: () => void }) {
     return (
       <button
         onClick={(e) => { e.stopPropagation(); onClick(); }}
-        className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border overflow-hidden text-ellipsis whitespace-nowrap
+        className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-xs border overflow-hidden text-ellipsis whitespace-nowrap
           bg-success/15 text-success border-success/30 hover:bg-success/25 transition-colors text-left"
       >
         <Utensils className="w-2.5 h-2.5 shrink-0" />
@@ -87,7 +89,7 @@ function ReservationPill({ ev, onClick }: { ev: any; onClick: () => void }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border-l-2 border border-border overflow-hidden text-ellipsis whitespace-nowrap
+      className={`w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-xs border-l-2 border border-border overflow-hidden text-ellipsis whitespace-nowrap
         bg-muted/80 hover:bg-muted transition-colors text-left ${cfg.border}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
@@ -124,7 +126,7 @@ function SessionPill({ s, onClick }: { s: SessionEvent; onClick: () => void }) {
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       data-testid="sesion-convocatoria"
-      className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border border-dashed overflow-hidden text-ellipsis whitespace-nowrap
+      className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-xs border border-dashed overflow-hidden text-ellipsis whitespace-nowrap
         bg-primary/15 text-primary border-primary/40 hover:bg-primary/25 transition-colors text-left"
     >
       <Layers className="w-2.5 h-2.5 shrink-0" />
@@ -154,7 +156,7 @@ function SessionModal({ s, onClose }: { s: SessionEvent; onClose: () => void }) 
             <p className="text-foreground/80">{s.editionLabel}{s.title ? ` · ${s.title}` : ""}</p>
             <p className="text-primary text-xs">{t("opsCalendar.session.indexOf", { index: s.index, total: s.total })}{s.status === "done" ? t("opsCalendar.session.done") : ""}{s.editionStatus === "draft" ? t("opsCalendar.session.draft") : ""}</p>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {[
               { label: t("opsCalendar.session.day"), value: day },
               { label: t("opsCalendar.session.time"), value: s.startTime ? `${s.startTime} h` : t("opsCalendar.session.toConfirm") },
@@ -280,7 +282,7 @@ function ReservationModal({
           </div>
 
           {/* Resumen operativo general */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {[
               { label: t("opsCalendar.res.monitor"), value: ev.monitorName || t("opsCalendar.res.unassigned"), icon: <User className="w-3 h-3" />, ok: !!ev.monitorId },
               { label: t("opsCalendar.res.arrival"), value: ev.arrivalTime || t("opsCalendar.res.notAssigned"), icon: <Clock className="w-3 h-3" />, ok: !!ev.arrivalTime },
@@ -368,7 +370,7 @@ function ReservationModal({
           </div>
 
           {/* Acciones */}
-          <div className="flex gap-2 pt-2 border-t border-border">
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
             <Button variant="outline" size="sm" onClick={onClose} className="border-border text-foreground/80">
               {t("opsCalendar.close")}
             </Button>
@@ -379,7 +381,7 @@ function ReservationModal({
             </Button>
             <Button size="sm"
               onClick={() => { onGoToActivities(scheduledDate); onClose(); }}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground ml-auto gap-1">
+              className="ml-auto gap-1">
               <CalendarDays className="w-3.5 h-3.5" /> {t("opsCalendar.res.viewDayActivities")}
             </Button>
           </div>
@@ -413,14 +415,14 @@ function DayDetailModal({
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-foreground capitalize flex items-center gap-2">
+          <DialogTitle className="text-foreground first-letter:uppercase flex items-center gap-2">
             <CalendarDays className="w-5 h-5 text-info" />
             {label}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 mt-2">
           {/* KPIs */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               { label: t("opsCalendar.day.reservations"), value: events.length, color: "text-foreground" },
               { label: t("opsCalendar.paxTotal"), value: totalPax, color: "text-info" },
@@ -528,6 +530,78 @@ function DayDetailModal({
   );
 }
 
+// ─── Vista agenda: lista por día, la forma de leer el mes cuando la cuadrícula no cabe ──────────────────
+function AgendaList({ days, eventsByDay, sessionsByDay, today, onDay, onReservation, onSession }: {
+  days: Date[];
+  eventsByDay: Record<string, any[]>;
+  sessionsByDay: Record<string, SessionEvent[]>;
+  today: string;
+  onDay: (d: Date) => void;
+  onReservation: (ev: any) => void;
+  onSession: (s: SessionEvent) => void;
+}) {
+  const { t, format: f } = useI18n();
+  return (
+    <ol className="space-y-3" aria-label={t("opsCalendar.agenda.label")}>
+      {days.map((day) => {
+        const key = formatDate(day);
+        const evs = eventsByDay[key] || [];
+        const sess = sessionsByDay[key] || [];
+        const alerts = evs.filter((e) => e.eventType === "activity" && (!e.monitorId || e.opStatus === "incidencia")).length;
+        const isToday = key === today;
+        return (
+          <li key={key} className={`overflow-hidden rounded-xl border bg-card ${isToday ? "border-primary/60" : "border-border"}`}>
+            <button
+              type="button"
+              onClick={() => onDay(day)}
+              className="flex min-h-11 w-full items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-left hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-primary text-primary-foreground" : "bg-background text-foreground"}`}>{day.getDate()}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium first-letter:uppercase text-foreground">{f.date(day, { weekday: "long", day: "numeric", month: "long" })}</span>
+                <span className="block text-xs text-muted-foreground">{t("opsCalendar.agenda.dayCount", { n: evs.length + sess.length })}</span>
+              </span>
+              {alerts > 0 && <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-label={t("opsCalendar.day.noMonitorAlert", { n: alerts })} />}
+            </button>
+            <ul className="divide-y divide-border">
+              {evs.map((ev, i) => {
+                const op = ev.eventType === "activity" ? getOpStatus(ev) : "completa";
+                const cfg = OP_STATUS_CONFIG[op];
+                return (
+                  <li key={`e${i}`}>
+                    <button type="button" onClick={() => onReservation(ev)} className="flex min-h-11 w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {ev.eventType === "restaurant"
+                        ? <Utensils className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                        : <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${cfg.dot}`} aria-hidden="true" />}
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words text-sm font-medium text-foreground">{ev.clientName}</span>
+                        <span className="block break-words text-xs text-muted-foreground">{ev.activityTitle}{ev.eventType === "activity" ? ` · ${t(cfg.label)}` : ""}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Users className="h-3 w-3" aria-hidden="true" />{ev.numberOfPersons}</span>
+                    </button>
+                  </li>
+                );
+              })}
+              {sess.map((s) => (
+                <li key={`s${s.sessionId}`}>
+                  <button type="button" onClick={() => onSession(s)} className="flex min-h-11 w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Layers className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words text-sm font-medium text-foreground">{s.productTitle}</span>
+                      <span className="block break-words text-xs text-muted-foreground">{s.startTime ?? t("opsCalendar.session.timeTbc")} · {t("opsCalendar.session.indexOf", { index: s.index, total: s.total })}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Users className="h-3 w-3" aria-hidden="true" />{s.participants}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function CalendarView() {
   const [, navigate] = useLocation();
@@ -536,6 +610,8 @@ export default function CalendarView() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedReservation, setSelectedReservation] = useState<any>(null);
   const [selectedSession, setSelectedSession] = useState<SessionEvent | null>(null);
+  // En escritorio se elige cuadrícula o agenda; en móvil la cuadrícula no cabe y siempre se ve la agenda
+  const [view, setView] = useState<"grid" | "agenda">("grid");
 
   const monthStart = useMemo(() => getMonthStart(currentDate), [currentDate]);
   const monthEnd = useMemo(() => getMonthEnd(currentDate), [currentDate]);
@@ -544,7 +620,7 @@ export default function CalendarView() {
   const fromDate = formatDate(grid[0]);
   const toDate = formatDate(grid[grid.length - 1]);
 
-  const { data, isLoading, refetch } = trpc.operations.calendar.getEvents.useQuery(
+  const { data, isLoading, isError, error, refetch } = trpc.operations.calendar.getEvents.useQuery(
     { from: fromDate + "T00:00:00", to: toDate + "T23:59:59" },
     { refetchOnWindowFocus: false }
   );
@@ -586,137 +662,154 @@ export default function CalendarView() {
   const monthActivities = allEvents.filter(e => e.eventType === "activity");
   const monthPax = monthActivities.reduce((s, e) => s + (e.numberOfPersons || 0), 0);
   const sinMonitorTotal = monthActivities.filter(e => !e.monitorId).length;
+  const monthRestaurants = allEvents.filter(e => e.eventType === "restaurant").length;
+  // Días del mes con algo programado (reservas o sesiones), para la agenda
+  const agendaDays = grid.filter((d) => d.getMonth() === currentDate.getMonth() && ((eventsByDay[formatDate(d)] || []).length > 0 || (sessionsByDay[formatDate(d)] || []).length > 0));
 
   return (
     <AdminLayout title={t("opsCalendar.pageTitle")}>
-      <div className="min-h-screen bg-background text-foreground p-6 -m-6">
-        {/* Header */}
+      <div className="text-foreground">
         <PanelPageHeader
-          className="mb-4"
           icon={<Calendar />}
           title={t("opsCalendar.heading")}
           description={t("opsCalendar.subtitle")}
           actions={
             <Button variant="outline" size="icon" onClick={() => refetch()} aria-label={t("panelStates.retry")}>
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4" aria-hidden="true" />
             </Button>
           }
         />
 
         {/* Resumen del mes */}
-        {!isLoading && (
-          <div className="grid grid-cols-4 gap-3 mb-4">
-            {[
-              { label: t("opsCalendar.month.reservations"), value: monthActivities.length, color: "text-info" },
-              { label: t("opsCalendar.paxTotal"), value: monthPax, color: "text-foreground" },
-              { label: t("opsCalendar.noMonitor"), value: sinMonitorTotal, color: sinMonitorTotal > 0 ? "text-danger" : "text-success" },
-              { label: t("opsCalendar.month.restaurant"), value: allEvents.filter(e => e.eventType === "restaurant").length, color: "text-success" },
-            ].map(k => (
-              <div key={k.label} className="bg-card rounded-lg p-3 border border-border">
-                <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
-                <div className="text-muted-foreground text-xs mt-0.5">{k.label}</div>
-              </div>
-            ))}
+        {!isLoading && !isError && (
+          <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <MetricCard tone="info" icon={<CalendarDays />} label={t("opsCalendar.month.reservations")} value={monthActivities.length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone="brand" icon={<Users />} label={t("opsCalendar.paxTotal")} value={monthPax} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone={sinMonitorTotal > 0 ? "danger" : "success"} icon={sinMonitorTotal > 0 ? <AlertTriangle /> : <CheckCircle />} label={t("opsCalendar.noMonitor")} value={sinMonitorTotal} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone="success" icon={<Utensils />} label={t("opsCalendar.month.restaurant")} value={monthRestaurants} className="bg-gradient-to-br from-primary/5 to-card" />
           </div>
         )}
 
-        {/* Month Navigation */}
-        <div className="flex items-center gap-3 mb-4">
-          <Button variant="outline" size="icon"
-            onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-            className="border-border text-foreground/80 hover:bg-muted w-8 h-8">
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <Button variant="outline" size="sm"
-            onClick={() => setCurrentDate(new Date())}
-            className="border-border text-foreground/80 hover:bg-muted text-xs">
-            {t("opsCalendar.today")}
-          </Button>
-          <Button variant="outline" size="icon"
-            onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-            className="border-border text-foreground/80 hover:bg-muted w-8 h-8">
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-          <h2 className="text-xl font-semibold text-foreground capitalize">{monthLabel}</h2>
-          <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" />{t("opsCalendar.legend.complete")}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning inline-block" />{t("opsCalendar.legend.noTime")}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-danger inline-block" />{t("opsCalendar.noMonitor")}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning inline-block" />{t("opsCalendar.op.incidencia")}</span>
-            <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5 text-primary" />{t("opsCalendar.session.title")}</span>
+        {/* Navegación del mes */}
+        <div className="mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" aria-label={t("opsCalendar.prevMonth")}
+              onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+              className="h-10 w-10">
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+            </Button>
+            <Button variant="outline" onClick={() => setCurrentDate(new Date())} className="h-10">
+              {t("opsCalendar.today")}
+            </Button>
+            <Button variant="outline" size="icon" aria-label={t("opsCalendar.nextMonth")}
+              onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+              className="h-10 w-10">
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            </Button>
           </div>
+          <h2 className="min-w-0 flex-1 text-xl font-semibold first-letter:uppercase text-foreground" aria-live="polite">{monthLabel}</h2>
+          <SegmentedTabs
+            className="hidden md:inline-flex"
+            label={t("opsCalendar.viewLabel")}
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "grid", label: t("opsCalendar.viewGrid") },
+              { value: "agenda", label: t("opsCalendar.viewAgenda") },
+            ]}
+          />
         </div>
 
+        {/* Leyenda */}
+        <ul className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label={t("opsCalendar.legendLabel")}>
+          <li className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-success" aria-hidden="true" />{t("opsCalendar.legend.complete")}</li>
+          <li className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-warning" aria-hidden="true" />{t("opsCalendar.legend.noTime")}</li>
+          <li className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-danger" aria-hidden="true" />{t("opsCalendar.noMonitor")}</li>
+          <li className="flex items-center gap-1.5"><AlertTriangle className="h-3 w-3 text-warning" aria-hidden="true" />{t("opsCalendar.op.incidencia")}</li>
+          <li className="flex items-center gap-1.5"><Layers className="h-3 w-3 text-primary" aria-hidden="true" />{t("opsCalendar.session.title")}</li>
+        </ul>
+
         {isLoading ? (
-          <div className="flex items-center justify-center h-64 text-muted-foreground">
-            <RefreshCw className="w-6 h-6 animate-spin mr-2" />{t("opsCalendar.loading")}
-          </div>
+          <PanelLoading label={t("opsCalendar.loading")} />
+        ) : isError ? (
+          <PanelError error={error} onRetry={() => refetch()} title={t("opsCalendar.loadError")} />
         ) : (
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            {/* Day-of-week header */}
-            <div className="grid grid-cols-7 border-b border-border">
-              {DOW_LABELS.map(d => (
-                <div key={d} className="py-2 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">{d}</div>
-              ))}
+          <>
+            {/* Agenda: siempre en móvil, y a elección en escritorio */}
+            <div className={view === "agenda" ? "block" : "md:hidden"}>
+              {agendaDays.length === 0 ? (
+                <PanelEmpty icon={<CalendarDays />} title={t("opsCalendar.agenda.emptyTitle")} description={t("opsCalendar.agenda.emptyText")} />
+              ) : (
+                <AgendaList
+                  days={agendaDays}
+                  eventsByDay={eventsByDay}
+                  sessionsByDay={sessionsByDay}
+                  today={today}
+                  onDay={(d) => setSelectedDay(d)}
+                  onReservation={(ev) => setSelectedReservation(ev)}
+                  onSession={(s) => setSelectedSession(s)}
+                />
+              )}
             </div>
 
-            {/* Calendar grid */}
-            <div className="grid grid-cols-7">
-              {grid.map((day, idx) => {
-                const key = formatDate(day);
-                const isCurrentMonth = day.getMonth() === currentDate.getMonth();
-                const isToday = key === today;
-                const dayEvents = eventsByDay[key] || [];
-                const acts = dayEvents.filter(e => e.eventType === "activity");
-                const hasAlert = acts.some(e => !e.monitorId || e.opStatus === "incidencia");
-                const isLastRow = idx >= grid.length - 7;
+            {/* Cuadrícula mensual: desde 768 px */}
+            <div className={view === "grid" ? "hidden md:block" : "hidden"}>
+              <div className="overflow-hidden rounded-xl border border-border bg-card">
+                <div className="grid grid-cols-7 border-b border-border bg-muted/40">
+                  {DOW_LABELS.map(d => (
+                    <div key={d} className="py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {grid.map((day, idx) => {
+                    const key = formatDate(day);
+                    const isCurrentMonth = day.getMonth() === currentDate.getMonth();
+                    const isToday = key === today;
+                    const dayEvents = eventsByDay[key] || [];
+                    const acts = dayEvents.filter(e => e.eventType === "activity");
+                    const hasAlert = acts.some(e => !e.monitorId || e.opStatus === "incidencia");
+                    const isLastRow = idx >= grid.length - 7;
+                    const clickable = dayEvents.length > 0;
 
-                return (
-                  <div
-                    key={key}
-                    onClick={() => dayEvents.length > 0 && setSelectedDay(day)}
-                    className={`
-                      min-h-[110px] p-1.5 border-b border-r border-border
-                      ${dayEvents.length > 0 ? "cursor-pointer hover:bg-muted transition-colors" : ""}
-                      ${!isCurrentMonth ? "opacity-35" : ""}
-                      ${isLastRow ? "border-b-0" : ""}
-                      ${(idx + 1) % 7 === 0 ? "border-r-0" : ""}
-                    `}
-                  >
-                    {/* Day number */}
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={`text-sm font-semibold w-6 h-6 flex items-center justify-center rounded-full
-                        ${isToday ? "bg-primary text-primary-foreground" : "text-foreground/80"}`}>
-                        {day.getDate()}
-                      </span>
-                      {hasAlert && <AlertTriangle className="w-3 h-3 text-warning" />}
-                    </div>
-
-                    {/* Reservation pills — click individual */}
-                    <div className="space-y-0.5">
-                      {dayEvents.slice(0, 3).map((ev, i) => (
-                        <ReservationPill key={i} ev={ev} onClick={() => setSelectedReservation(ev)} />
-                      ))}
-                      {(sessionsByDay[key] || []).slice(0, 2).map((s) => (
-                        <SessionPill key={`s${s.sessionId}`} s={s} onClick={() => setSelectedSession(s)} />
-                      ))}
-                      {(sessionsByDay[key] || []).length > 2 && (
-                        <p className="text-[10px] text-primary/70 pl-1">{t("opsCalendar.moreSessions", { n: (sessionsByDay[key] || []).length - 2 })}</p>
-                      )}
-                      {dayEvents.length > 3 && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedDay(day); }}
-                          className="text-[10px] text-muted-foreground pl-1 hover:text-foreground/80 transition-colors w-full text-left"
-                        >
-                          {t("opsCalendar.more", { n: dayEvents.length - 3 })}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                    return (
+                      <div
+                        key={key}
+                        onClick={() => clickable && setSelectedDay(day)}
+                        className={`min-h-[110px] border-b border-r border-border p-1.5 ${clickable ? "cursor-pointer transition-colors hover:bg-muted/60" : ""} ${!isCurrentMonth ? "opacity-40" : ""} ${isToday ? "bg-primary/5" : ""} ${isLastRow ? "border-b-0" : ""} ${(idx + 1) % 7 === 0 ? "border-r-0" : ""}`}
+                      >
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className={`flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-primary text-primary-foreground" : "text-foreground/80"}`}>
+                            {day.getDate()}
+                          </span>
+                          {hasAlert && <AlertTriangle className="h-3 w-3 text-warning" aria-label={t("opsCalendar.op.incidencia")} />}
+                        </div>
+                        <div className="space-y-0.5">
+                          {dayEvents.slice(0, 3).map((ev, i) => (
+                            <ReservationPill key={i} ev={ev} onClick={() => setSelectedReservation(ev)} />
+                          ))}
+                          {(sessionsByDay[key] || []).slice(0, 2).map((s) => (
+                            <SessionPill key={`s${s.sessionId}`} s={s} onClick={() => setSelectedSession(s)} />
+                          ))}
+                          {(sessionsByDay[key] || []).length > 2 && (
+                            <p className="pl-1 text-xs text-primary">{t("opsCalendar.moreSessions", { n: (sessionsByDay[key] || []).length - 2 })}</p>
+                          )}
+                          {dayEvents.length > 3 && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setSelectedDay(day); }}
+                              className="w-full pl-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              {t("opsCalendar.more", { n: dayEvents.length - 3 })}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 
