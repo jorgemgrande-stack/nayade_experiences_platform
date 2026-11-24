@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { BedDouble, ArrowLeft, Ban, ChefHat, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Wallet } from "lucide-react";
+import { BedDouble, ArrowLeft, Ban, ChefHat, Link2, Minus, Plus, Receipt, Search, Trash2, Unlink, Users, Utensils, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { RoomChargeDialog } from "@/components/hotel/RoomChargeDialog";
@@ -20,6 +20,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { HeroCard } from "@/components/admin/PanelVisual";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TONE_BADGE } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import {
@@ -37,12 +39,13 @@ import {
 } from "@shared/restaurantNet";
 import { KITCHEN_STATUS_LABELS } from "@shared/restaurantKds";
 import { cashSaleDocument, exceedsSimplifiedInvoiceLimit, SIMPLIFIED_INVOICE_LIMIT_EUR, type TicketInvoiceRecipient } from "@shared/ticketInvoice";
-import { CARTA_PATH, SALA_PATH, useRestaurantNetWrite } from "./RestaurantNetParts";
+import { CARTA_PATH, PillTabs, SALA_PATH, useRestaurantNetWrite } from "./RestaurantNetParts";
 
 const ALL = "__todas";
 const STATUS_TONE: Record<OrderStatus, keyof typeof TONE_BADGE> = { open: "warning", bill_requested: "info", paying: "info", paid: "success", room_charged: "brand", cancelled: "neutral" };
 
 export default function Comanda() {
+  const { t } = useI18n();
   const params = useParams<{ id: string }>();
   const orderId = Number(params.id);
   const [, navigate] = useLocation();
@@ -122,57 +125,68 @@ export default function Comanda() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-7xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button asChild variant="ghost" size="sm"><Link href={SALA_PATH}><ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />Sala</Link></Button>
-            <h1 className="break-words text-xl font-bold text-foreground sm:text-2xl">{table ? `Mesa ${table.code}` : `Comanda ${order.id}`}</h1>
-            {table?.merged.map((m) => (
-              <Badge key={m.id} variant="outline" className="gap-1">
-                <Link2 className="h-3 w-3" aria-hidden="true" />{m.code}
-                {editable && (
-                  <button type="button" aria-label={`Separar la mesa ${m.code}`} className="ml-0.5" onClick={() => unmerge.mutate({ tableId: m.id })}>
-                    <Unlink className="h-3 w-3" aria-hidden="true" />
-                  </button>
+        <HeroCard>
+          <div className="space-y-3 p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <Button asChild variant="outline" size="sm" className="h-10"><Link href={SALA_PATH}><ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />Sala</Link></Button>
+                <h1 className="break-words text-2xl font-bold text-foreground sm:text-3xl">{table ? `Mesa ${table.code}` : `Comanda ${order.id}`}</h1>
+                {table?.merged.map((m) => (
+                  <Badge key={m.id} variant="outline" className="gap-1">
+                    <Link2 className="h-3 w-3" aria-hidden="true" />{m.code}
+                    {editable && (
+                      <button type="button" aria-label={`Separar la mesa ${m.code}`} className="ml-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-muted" onClick={() => unmerge.mutate({ tableId: m.id })}>
+                        <Unlink className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    )}
+                  </Badge>
+                ))}
+                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", TONE_BADGE[STATUS_TONE[status] ?? "neutral"])}>{ORDER_STATUS_LABELS[status] ?? status}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5" aria-label={t("restaurantNet.comanda.progress")}>
+                <span className="rounded-full border border-border bg-card/70 px-2.5 py-1 text-xs font-medium tabular-nums text-foreground">{t("restaurantNet.comanda.dishes", { count: totals.units })}</span>
+                {pendingCount > 0 && <span className={cn("rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums", TONE_BADGE.warning)}>{t("restaurantNet.comanda.toFire", { count: pendingCount })}</span>}
+                {readyCount > 0 && <span className={cn("rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums", TONE_BADGE.success)}>{t("restaurantNet.comanda.readyChip", { count: readyCount })}</span>}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-2">
+                <Users className="h-4 w-4" aria-hidden="true" />
+                {editable ? (
+                  <Input
+                    aria-label="Comensales"
+                    type="number"
+                    min={1}
+                    max={50}
+                    defaultValue={order.guests}
+                    className="h-10 w-20 bg-card"
+                    onBlur={(e) => { const g = Number(e.target.value); if (Number.isInteger(g) && g >= 1 && g <= 50 && g !== order.guests) updateOrder.mutate({ orderId, guests: g }); }}
+                  />
+                ) : (
+                  <span className="font-medium text-foreground">{order.guests}</span>
                 )}
-              </Badge>
-            ))}
-            <span className={cn("rounded-full border px-2 py-0.5 text-xs font-medium", TONE_BADGE[STATUS_TONE[status] ?? "neutral"])}>{ORDER_STATUS_LABELS[status] ?? status}</span>
+                <span>comensales</span>
+              </span>
+              {order.customerName && <span className="break-words">{order.customerName}</span>}
+              {editable && (waiters.data ?? []).length > 0 ? (
+                <Select value={detail.data.waiter ? String(detail.data.waiter.id) : "__nadie"} onValueChange={(v) => assignWaiter.mutate({ orderId, userId: v === "__nadie" ? null : Number(v) })}>
+                  <SelectTrigger className="h-10 w-48 bg-card" aria-label="Camarero"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__nadie">Sin camarero</SelectItem>
+                    {(waiters.data ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name ?? `Usuario ${w.id}`}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                detail.data.waiter && <span className="break-words">{detail.data.waiter.name}</span>
+              )}
+              {booking && <Badge variant="secondary">Reserva {booking.locator} · {booking.time}</Badge>}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <Users className="h-4 w-4" aria-hidden="true" />
-            {editable ? (
-              <Input
-                aria-label="Comensales"
-                type="number"
-                min={1}
-                max={50}
-                defaultValue={order.guests}
-                className="h-8 w-16"
-                onBlur={(e) => { const g = Number(e.target.value); if (Number.isInteger(g) && g >= 1 && g <= 50 && g !== order.guests) updateOrder.mutate({ orderId, guests: g }); }}
-              />
-            ) : (
-              <span>{order.guests}</span>
-            )}
-            <span>comensales</span>
-            {order.customerName && <span className="break-words">· {order.customerName}</span>}
-            {editable && (waiters.data ?? []).length > 0 ? (
-              <Select value={detail.data.waiter ? String(detail.data.waiter.id) : "__nadie"} onValueChange={(v) => assignWaiter.mutate({ orderId, userId: v === "__nadie" ? null : Number(v) })}>
-                <SelectTrigger className="h-8 w-44" aria-label="Camarero"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__nadie">Sin camarero</SelectItem>
-                  {(waiters.data ?? []).map((w) => <SelectItem key={w.id} value={String(w.id)}>{w.name ?? `Usuario ${w.id}`}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : (
-              detail.data.waiter && <span className="break-words">· {detail.data.waiter.name}</span>
-            )}
-            {booking && <Badge variant="secondary">Reserva {booking.locator} · {booking.time}</Badge>}
-          </div>
-        </div>
+        </HeroCard>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
           {/* Carta */}
-          <section className="min-w-0 space-y-3 rounded-2xl border border-border bg-card p-3 sm:p-4" aria-label="Carta">
+          <section id="rnet-carta" className="min-w-0 scroll-mt-4 space-y-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4" aria-label="Carta">
             {!editable ? (
               <p className="text-sm text-muted-foreground">{status === "paying" ? "Se está cobrando esta comanda." : status === "paid" || status === "cancelled" ? "La comanda está cerrada." : "Tu plan está en solo lectura."}</p>
             ) : items.length === 0 ? (
@@ -183,39 +197,26 @@ export default function Comanda() {
                   <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <Input aria-label="Buscar plato" placeholder="Buscar plato" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Pase de los platos que añades">
-                  <span className="text-xs text-muted-foreground">Pase</span>
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Pase de los platos que añades">
+                  <span className="text-sm text-muted-foreground">Pase</span>
                   {[1, 2, 3].map((c) => (
-                    <Button key={c} size="sm" variant={course === c ? "secondary" : "ghost"} aria-pressed={course === c} className="h-7 px-2.5" onClick={() => setCourse(c)}>{c}</Button>
+                    <Button key={c} variant={course === c ? "default" : "outline"} aria-pressed={course === c} className="h-11 w-11 p-0 text-base" onClick={() => setCourse(c)}>{c}</Button>
                   ))}
                 </div>
-                <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]" role="tablist" aria-label="Categorías">
-                  {[ALL, ...categories].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      role="tab"
-                      aria-selected={cat === c}
-                      onClick={() => setCat(c)}
-                      className={cn("shrink-0 rounded-full border px-3 py-1 text-sm", cat === c ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground hover:bg-muted")}
-                    >
-                      {c === ALL ? "Todas" : c}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+                <PillTabs scroll label="Categorías" value={cat} onChange={setCat} options={[ALL, ...categories].map((c) => ({ value: c, label: c === ALL ? "Todas" : c }))} />
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-4">
                   {shownMenu.map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       disabled={busy}
                       onClick={() => addItem.mutate({ orderId, menuItemId: m.id, quantity: 1, course })}
-                      className="flex min-h-[76px] min-w-0 flex-col justify-between rounded-xl border border-border bg-background p-2.5 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                      className="flex min-h-[92px] min-w-0 flex-col justify-between rounded-lg border border-border bg-background p-3 text-left shadow-sm transition hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] disabled:opacity-60"
                     >
-                      <span className="break-words text-sm font-medium leading-tight text-foreground">{m.name}</span>
+                      <span className="break-words text-base font-medium leading-tight text-foreground">{m.name}</span>
                       <span className="mt-1 flex items-end justify-between gap-1">
-                        <span className="text-[11px] text-muted-foreground">{m.allergens.length ? m.allergens.map((a) => ALLERGEN_LABEL[a]).join(", ") : ""}</span>
-                        <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{formatEur(m.price)}</span>
+                        <span className="text-xs text-muted-foreground">{m.allergens.length ? m.allergens.map((a) => ALLERGEN_LABEL[a]).join(", ") : ""}</span>
+                        <span className="shrink-0 text-base font-semibold tabular-nums text-primary">{formatEur(m.price)}</span>
                       </span>
                     </button>
                   ))}
@@ -226,90 +227,96 @@ export default function Comanda() {
           </section>
 
           {/* Ticket de la comanda */}
-          <section className="order-first flex min-w-0 flex-col rounded-2xl border border-border bg-card lg:order-none" aria-label="Comanda">
-            <ul className="max-h-[50vh] flex-1 divide-y divide-border overflow-y-auto">
-              {lines.length === 0 && <li className="p-4 text-sm text-muted-foreground">Aún no hay platos. Toca un plato de la carta para añadirlo.</li>}
+          <section className="order-first flex min-w-0 flex-col self-start rounded-xl border border-border bg-card shadow-sm lg:sticky lg:top-4 lg:order-none" aria-label="Comanda">
+            <ul className="max-h-[50vh] flex-1 divide-y divide-border overflow-y-auto lg:max-h-[calc(100vh-26rem)] lg:min-h-40">
+              {lines.length === 0 && <li className="flex flex-col items-center gap-1 px-4 py-8 text-center text-sm text-muted-foreground"><Utensils className="h-6 w-6" aria-hidden="true" />Aún no hay platos. Toca un plato de la carta para añadirlo.</li>}
               {lines.map((l) => {
                 const isVoid = l.status === "void";
                 return (
-                  <li key={l.id} className="flex items-start gap-2 px-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className={cn("break-words text-sm text-foreground", isVoid && "text-muted-foreground line-through")}>{l.name}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {formatEur(l.unitPrice)} · IVA {l.taxRate.toLocaleString("es-ES")} %{l.station ? ` · ${l.station}` : ""}
-                        {l.notes ? ` · ${l.notes}` : ""}
-                      </p>
-                      {isVoid ? (
-                        <p className="text-[11px] text-danger">Anulada: {l.voidReason}</p>
-                      ) : (
-                        <p className={cn("text-[11px]", l.status === "ready" ? "font-semibold text-success" : l.status === "pending" ? "text-muted-foreground" : "text-foreground")}>
+                  <li key={l.id} className="space-y-1 px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className={cn("min-w-0 break-words text-base font-medium text-foreground", isVoid && "text-muted-foreground line-through")}>{l.name}</p>
+                      <span className={cn("shrink-0 text-base font-semibold tabular-nums text-foreground", isVoid && "text-muted-foreground line-through")}>{formatEur(lineAmount(l))}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {formatEur(l.unitPrice)} · IVA {l.taxRate.toLocaleString("es-ES")} %{l.station ? ` · ${l.station}` : ""}
+                      {l.notes ? ` · ${l.notes}` : ""}
+                      {isVoid ? null : (
+                        <span className={cn("ml-1.5 rounded-full border px-2 py-0.5 text-xs font-medium", l.status === "ready" ? TONE_BADGE.success : l.status === "pending" ? TONE_BADGE.neutral : l.status === "preparing" ? TONE_BADGE.warning : TONE_BADGE.info)}>
                           {KITCHEN_STATUS_LABELS[l.status] ?? l.status}{l.course > 1 ? ` · pase ${l.course}` : ""}
-                        </p>
+                        </span>
+                      )}
+                    </p>
+                    {isVoid && <p className="text-xs text-danger">Anulada: {l.voidReason}</p>}
+                    <div className="flex items-center justify-between gap-2">
+                      {editable && !isVoid && l.status === "pending" ? (
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Button size="icon" variant="outline" className="h-11 w-11" aria-label={`Una menos de ${l.name}`} disabled={busy || l.quantity <= 1} onClick={() => setQty.mutate({ itemId: l.id, quantity: l.quantity - 1 })}><Minus className="h-4 w-4" aria-hidden="true" /></Button>
+                          <span className="w-8 text-center text-base font-semibold tabular-nums text-foreground">{l.quantity}</span>
+                          <Button size="icon" variant="outline" className="h-11 w-11" aria-label={`Una más de ${l.name}`} disabled={busy || l.quantity >= 99} onClick={() => setQty.mutate({ itemId: l.id, quantity: l.quantity + 1 })}><Plus className="h-4 w-4" aria-hidden="true" /></Button>
+                        </div>
+                      ) : (
+                        <span className="shrink-0 text-sm font-medium tabular-nums text-muted-foreground">×{l.quantity}</span>
+                      )}
+                      {editable && !isVoid && (
+                        <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0 text-muted-foreground hover:text-danger" aria-label={`Anular ${l.name}`} onClick={() => { setVoidReason(""); setVoiding({ id: l.id, name: l.name }); }}>
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
                       )}
                     </div>
-                    {editable && !isVoid && l.status === "pending" ? (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button size="icon" variant="outline" className="h-7 w-7" aria-label={`Una menos de ${l.name}`} disabled={busy || l.quantity <= 1} onClick={() => setQty.mutate({ itemId: l.id, quantity: l.quantity - 1 })}><Minus className="h-3.5 w-3.5" aria-hidden="true" /></Button>
-                        <span className="w-6 text-center text-sm tabular-nums text-foreground">{l.quantity}</span>
-                        <Button size="icon" variant="outline" className="h-7 w-7" aria-label={`Una más de ${l.name}`} disabled={busy || l.quantity >= 99} onClick={() => setQty.mutate({ itemId: l.id, quantity: l.quantity + 1 })}><Plus className="h-3.5 w-3.5" aria-hidden="true" /></Button>
-                      </div>
-                    ) : (
-                      <span className="shrink-0 text-sm tabular-nums text-muted-foreground">×{l.quantity}</span>
-                    )}
-                    <span className={cn("w-16 shrink-0 text-right text-sm font-medium tabular-nums text-foreground", isVoid && "text-muted-foreground line-through")}>{formatEur(lineAmount(l))}</span>
-                    {editable && !isVoid && (
-                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" aria-label={`Anular ${l.name}`} onClick={() => { setVoidReason(""); setVoiding({ id: l.id, name: l.name }); }}>
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      </Button>
-                    )}
                   </li>
                 );
               })}
             </ul>
-            <div className="space-y-1 border-t border-border px-3 py-3 text-sm">
+            {editable && items.length > 0 && (
+              <div className="border-t border-border p-3 lg:hidden">
+                <Button variant="outline" className="h-11 w-full" onClick={() => document.getElementById("rnet-carta")?.scrollIntoView({ behavior: "smooth", block: "start" })}><Utensils className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("restaurantNet.comanda.addDishes")}</Button>
+              </div>
+            )}
+            <div className="space-y-1 border-t border-border bg-muted/30 px-3 py-3 text-sm">
               {totals.taxBreakdown.map((t) => (
                 <p key={t.rate} className="flex justify-between text-xs text-muted-foreground">
                   <span>Base {t.rate.toLocaleString("es-ES")} % · IVA</span>
                   <span className="tabular-nums">{formatEur(t.base)} · {formatEur(t.amount)}</span>
                 </p>
               ))}
-              <p className="flex justify-between text-lg font-bold text-foreground"><span>Total</span><span className="tabular-nums">{formatEur(totals.total)}</span></p>
-              <p className="text-[11px] text-muted-foreground">IVA incluido</p>
+              <p className="flex justify-between text-2xl font-bold text-foreground"><span>Total</span><span className="tabular-nums">{formatEur(totals.total)}</span></p>
+              <p className="text-xs text-muted-foreground">IVA incluido</p>
             </div>
             {editable && (pendingCount > 0 || readyCount > 0) && (
               <div className="flex flex-wrap gap-2 border-t border-border p-3">
                 {pendingCount > 0 && (
-                  <Button className="flex-1" disabled={fire.isPending} onClick={() => fire.mutate({ orderId })}>
+                  <Button className="h-12 flex-1" disabled={fire.isPending} onClick={() => fire.mutate({ orderId })}>
                     <ChefHat className="mr-1.5 h-4 w-4" aria-hidden="true" />Marchar {pendingCount === 1 ? "1 plato" : `${pendingCount} platos`}
                   </Button>
                 )}
                 {pendingCourses.length > 1 && pendingCourses.map((c) => (
-                  <Button key={c} variant="outline" size="sm" disabled={fire.isPending} onClick={() => fire.mutate({ orderId, course: c })}>Marchar pase {c}</Button>
+                  <Button key={c} variant="outline" className="h-12" disabled={fire.isPending} onClick={() => fire.mutate({ orderId, course: c })}>Marchar pase {c}</Button>
                 ))}
                 {readyCount > 0 && (
-                  <Button variant="outline" className="flex-1" disabled={serveReady.isPending} onClick={() => serveReady.mutate({ orderId })}>Servir {readyCount === 1 ? "1 lista" : `${readyCount} listas`}</Button>
+                  <Button variant="outline" className="h-12 flex-1" disabled={serveReady.isPending} onClick={() => serveReady.mutate({ orderId })}>Servir {readyCount === 1 ? "1 lista" : `${readyCount} listas`}</Button>
                 )}
               </div>
             )}
             <div className="grid grid-cols-2 gap-2 border-t border-border p-3">
               {status === "paid" && order.tpvSaleId ? (
                 <>
-                  <Button className="col-span-2" onClick={() => setTicketSaleId(order.tpvSaleId)}><Receipt className="mr-1.5 h-4 w-4" aria-hidden="true" />Ver ticket</Button>
+                  <Button className="col-span-2 h-12" onClick={() => setTicketSaleId(order.tpvSaleId)}><Receipt className="mr-1.5 h-4 w-4" aria-hidden="true" />Ver ticket</Button>
                   <Button asChild variant="outline" className="col-span-2"><Link href={SALA_PATH}>Volver a la sala</Link></Button>
                 </>
               ) : editable ? (
                 <>
                   {status === "open" ? (
-                    <Button variant="outline" disabled={totals.units === 0 || requestBill.isPending} onClick={() => requestBill.mutate({ orderId })}><Receipt className="mr-1.5 h-4 w-4" aria-hidden="true" />Pedir cuenta</Button>
+                    <Button variant="outline" className="h-12" disabled={totals.units === 0 || requestBill.isPending} onClick={() => requestBill.mutate({ orderId })}><Receipt className="mr-1.5 h-4 w-4" aria-hidden="true" />Pedir cuenta</Button>
                   ) : (
-                    <Button variant="outline" disabled={reopen.isPending} onClick={() => reopen.mutate({ orderId })}>Siguen pidiendo</Button>
+                    <Button variant="outline" className="h-12" disabled={reopen.isPending} onClick={() => reopen.mutate({ orderId })}>Siguen pidiendo</Button>
                   )}
-                  <Button disabled={totals.total <= 0} onClick={() => setPaying(true)}><Wallet className="mr-1.5 h-4 w-4" aria-hidden="true" />Cobrar</Button>
+                  <Button className="h-12" disabled={totals.total <= 0} onClick={() => setPaying(true)}><Wallet className="mr-1.5 h-4 w-4" aria-hidden="true" />Cobrar</Button>
                   {roomGuests.data?.available && (
-                    <Button variant="outline" className="col-span-2" disabled={totals.total <= 0} onClick={() => setToRoom(true)}><BedDouble className="mr-1.5 h-4 w-4" aria-hidden="true" />Cargar a la habitación</Button>
+                    <Button variant="outline" className="col-span-2 h-11" disabled={totals.total <= 0} onClick={() => setToRoom(true)}><BedDouble className="mr-1.5 h-4 w-4" aria-hidden="true" />Cargar a la habitación</Button>
                   )}
-                  <Button variant="ghost" size="sm" disabled={!table} onClick={() => { setMergeTable(""); setMerging(true); }}><Link2 className="mr-1 h-4 w-4" aria-hidden="true" />Unir mesa</Button>
-                  <Button variant="ghost" size="sm" onClick={() => { setReleaseReason(""); setReleasing(true); }}><Ban className="mr-1 h-4 w-4" aria-hidden="true" />Liberar mesa</Button>
+                  <Button variant="ghost" className="h-11" disabled={!table} onClick={() => { setMergeTable(""); setMerging(true); }}><Link2 className="mr-1 h-4 w-4" aria-hidden="true" />Unir mesa</Button>
+                  <Button variant="ghost" className="h-11" onClick={() => { setReleaseReason(""); setReleasing(true); }}><Ban className="mr-1 h-4 w-4" aria-hidden="true" />Liberar mesa</Button>
                 </>
               ) : (
                 <Button asChild variant="outline" className="col-span-2"><Link href={SALA_PATH}>Volver a la sala</Link></Button>

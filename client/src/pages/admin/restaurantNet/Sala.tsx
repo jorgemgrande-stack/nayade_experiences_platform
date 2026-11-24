@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { CalendarClock, LayoutGrid, List, Map as MapIcon, Settings2 } from "lucide-react";
+import { Armchair, CalendarClock, LayoutGrid, Receipt, Settings2, UtensilsCrossed, Users } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -16,7 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
-import { cn } from "@/lib/utils";
+import { MetricCard, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TABLE_STATE_LABELS, tableStates } from "@shared/restaurantNet";
 import {
   CARTA_PATH,
@@ -24,8 +25,8 @@ import {
   FloorPlan,
   NoRestaurants,
   PageHeader,
+  PillTabs,
   RestaurantPicker,
-  StateLegend,
   TableGrid,
   comandaPath,
   useRestaurantChoice,
@@ -38,6 +39,7 @@ import { TableRequestsPanel } from "./CartaQr";
 const VIEW_KEY = "rnet.salaView";
 
 export default function Sala() {
+  const { t } = useI18n();
   const choice = useRestaurantChoice();
   const { canWrite, isAdmin } = useRestaurantNetWrite();
   const [, navigate] = useLocation();
@@ -88,7 +90,14 @@ export default function Sala() {
     return m;
   }, [tables, states, orderById]);
   const counts = { libre: 0, ocupada: 0, cuenta: 0 };
-  for (const t of tables) counts[badges.get(t.id)?.state ?? "libre"]++;
+  let readyDishes = 0;
+  for (const tb of tables) {
+    const b = badges.get(tb.id);
+    counts[b?.state ?? "libre"]++;
+    readyDishes += b?.ready ?? 0;
+  }
+  const dayBookings = bookings.data ?? [];
+  const toSeat = dayBookings.filter((b) => !(b.hospoOrderId != null && b.seatedAt != null) && b.status !== "completed" && b.status !== "no_show").length;
 
   const openOrder = trpc.restaurantNet.openOrder.useMutation({
     onSuccess: (r) => { setOpening(null); navigate(comandaPath(r.id)); },
@@ -116,6 +125,7 @@ export default function Sala() {
     <AdminLayout>
       <div className="mx-auto max-w-7xl space-y-4">
         <PageHeader
+          icon={<UtensilsCrossed />}
           title="Sala y comandas"
           description="Toca una mesa libre para abrir su comanda o una ocupada para seguir con ella. El cobro se registra en el TPV con su ticket."
           actions={<RestaurantPicker choice={choice} />}
@@ -149,29 +159,15 @@ export default function Sala() {
                   La carta está vacía: <Link href={CARTA_PATH} className="font-medium underline">añade platos</Link> para poder tomar comandas.
                 </div>
               )}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-2" role="tablist" aria-label="Salas">
-                  {rooms.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={roomTab === r.id}
-                      onClick={() => setRoomTab(r.id)}
-                      className={cn("rounded-lg border px-3 py-1.5 text-sm", roomTab === r.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-muted")}
-                    >
-                      {r.name}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
-                  <Button size="sm" variant={view === "plano" ? "secondary" : "ghost"} aria-pressed={view === "plano"} onClick={() => setViewSaved("plano")}><MapIcon className="mr-1 h-4 w-4" aria-hidden="true" />Plano</Button>
-                  <Button size="sm" variant={view === "lista" ? "secondary" : "ghost"} aria-pressed={view === "lista"} onClick={() => setViewSaved("lista")}><List className="mr-1 h-4 w-4" aria-hidden="true" />Lista</Button>
-                </div>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" role="group" aria-label={t("restaurantNet.sala.summary")}>
+                <MetricCard compact tone="success" icon={<Armchair />} label={t("restaurantNet.sala.free")} value={counts.libre} detail={t("restaurantNet.sala.ofTables", { count: tables.length })} />
+                <MetricCard compact tone="warning" icon={<Users />} label={t("restaurantNet.sala.busy")} value={counts.ocupada} detail={readyDishes > 0 ? t("restaurantNet.sala.readyToServe", { count: readyDishes }) : t("restaurantNet.sala.withOrder")} />
+                <MetricCard compact tone="info" icon={<Receipt />} label={t("restaurantNet.sala.bill")} value={counts.cuenta} detail={t("restaurantNet.sala.billHint")} />
+                <MetricCard compact tone="brand" icon={<CalendarClock />} label={t("restaurantNet.sala.toSeat")} value={toSeat} detail={t("restaurantNet.sala.bookingsToday", { count: dayBookings.length })} />
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <StateLegend />
-                <p className="text-xs text-muted-foreground">{counts.libre} libres · {counts.ocupada} ocupadas · {counts.cuenta} piden la cuenta</p>
+                <PillTabs scroll className="min-w-0 max-w-full" label="Salas" value={roomTab ?? -1} onChange={(v) => setRoomTab(v)} options={rooms.map((r) => ({ value: r.id, label: r.name, count: tables.filter((tb) => tb.roomId === r.id).length }))} />
+                <SegmentedTabs label="Vista" value={view} onChange={setViewSaved} options={[{ value: "plano", label: t("restaurantNet.sala.viewPlan") }, { value: "lista", label: t("restaurantNet.sala.viewList") }]} />
               </div>
               {roomTables.length === 0 ? (
                 <PanelEmpty icon={<LayoutGrid className="h-5 w-5" />} title="Esta sala no tiene mesas" description="Añádelas en la configuración de salas y mesas.">
@@ -184,9 +180,10 @@ export default function Sala() {
               )}
             </section>
 
-            <aside className="min-w-0 space-y-3 rounded-2xl border border-border bg-card p-4" aria-labelledby="rnet-bookings-t">
+            <aside className="min-w-0 space-y-3 self-start rounded-xl border border-border bg-card p-4 shadow-sm lg:sticky lg:top-4" aria-labelledby="rnet-bookings-t">
               <h2 id="rnet-bookings-t" className="flex items-center gap-2 text-base font-bold text-foreground">
-                <CalendarClock className="h-4 w-4" aria-hidden="true" />Reservas de hoy
+                <CalendarClock className="h-4 w-4 text-primary" aria-hidden="true" />Reservas de hoy
+                {dayBookings.length > 0 && <span className="rounded-full bg-muted px-2 text-xs font-medium tabular-nums text-muted-foreground">{dayBookings.length}</span>}
               </h2>
               {bookings.isLoading ? (
                 <PanelLoading label="Cargando las reservas…" className="py-4" />
@@ -197,7 +194,7 @@ export default function Sala() {
               ) : (
                 <ul className="space-y-2">
                   {(bookings.data ?? []).map((b) => (
-                    <li key={b.id} className="rounded-xl border border-border p-3">
+                    <li key={b.id} className="rounded-lg border border-border bg-background p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="break-words text-sm font-semibold text-foreground">{b.time} · {b.guestName || b.locator}</p>
@@ -209,9 +206,9 @@ export default function Sala() {
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {b.tables.map((t) => <Badge key={t.tableId} variant="secondary">Mesa {t.code}</Badge>)}
                         {b.hospoOrderId != null && b.seatedAt != null ? (
-                          <Button size="sm" variant="outline" onClick={() => navigate(comandaPath(b.hospoOrderId!))}>Ver comanda</Button>
+                          <Button size="sm" variant="outline" className="h-10" onClick={() => navigate(comandaPath(b.hospoOrderId!))}>Ver comanda</Button>
                         ) : canWrite && b.status !== "completed" && b.status !== "no_show" ? (
-                          <Button size="sm" onClick={() => { setSeating(b.id); setSeatTable(b.tables[0] ? String(b.tables[0].tableId) : ""); }}>Sentar</Button>
+                          <Button size="sm" className="h-10 px-4" onClick={() => { setSeating(b.id); setSeatTable(b.tables[0] ? String(b.tables[0].tableId) : ""); }}>Sentar</Button>
                         ) : (
                           <span className="text-xs text-muted-foreground">{b.status === "completed" ? "Completada" : b.status === "no_show" ? "No se presentó" : ""}</span>
                         )}
