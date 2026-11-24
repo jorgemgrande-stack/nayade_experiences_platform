@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Users, FileText, CalendarCheck, Calendar, Search, Plus, Send, CheckCircle, XCircle, Clock, Star, AlertTriangle, Filter, Banknote, Receipt, CreditCard, ExternalLink, FilePlus, Gift, AlertCircle, Archive, X, ChevronDown, ChevronUp } from "lucide-react";
 import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { CrmSummary, CrmSummaryCard, CrmFilterBar, CrmFilterField, type CrmFilterChip } from "./shared/ui/CrmUi";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Tab, ConfirmDialog, CHANNEL_META } from "./shared/crmCommon";
 import { BonosManager } from "./tabs/BonosTab";
@@ -300,9 +302,149 @@ export default function CRMDashboard() {
     window.history.replaceState({}, "", url.toString());
   }, [searchStr]);
 
+  // ─── Oportunidades y Presupuestos: cabecera, resumen y filtros unificados (C4a) ───
+  const unified: boolean = tab === "leads" || tab === "quotes";
+  const toggleStatus = (status: string) => setFilterStatus((cur) => (cur === status ? "all" : status));
+  const moneyShort = (v: number | string | null | undefined) => format.currency(Number(v) || 0, "EUR", { maximumFractionDigits: 0 });
+  const tabsNode = (
+        <div className="px-4 sm:px-6">
+          <div className="-mx-1 overflow-x-auto px-1 pb-1 sm:overflow-visible">
+          <div className="flex min-w-max gap-1 rounded-xl border border-border bg-muted/50 p-1 sm:min-w-0 sm:flex-wrap">
+            {([
+              { key: "leads", label: voc.leads, icon: Users, count: leadCounters?.total },
+              { key: "quotes", label: voc.quotes, icon: FileText, count: quoteCounters?.enviado },
+              { key: "reservations", label: voc.orders, icon: CalendarCheck, count: resCounters?.confirmadas },
+              { key: "invoices", label: voc.invoices, icon: Receipt, count: undefined },
+              { key: "anulaciones", label: voc.cancellations, icon: AlertTriangle, count: anulCounters?.pending },
+              { key: "bonos", label: voc.coupons, icon: Gift, count: undefined },
+              { key: "pagos_pendientes", label: voc.pendingPayments, icon: Clock, count: undefined },
+            ] as const).filter(({ key }) => visibleTabs.includes(key)).map(({ key, label, icon: Icon, count }) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={tab === key}
+                onClick={() => handleTabChange(key)}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                  ${tab === key ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground"}`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {count !== undefined && count > 0 && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${tab === key ? "bg-primary-foreground/20 text-primary-foreground" : "bg-foreground/[0.08] text-foreground/70"}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          </div>
+        </div>
+  );
+  const leadStatusLabel: Record<string, string> = { nueva: t("crmLeads.nueva"), enviada: t("crmLeads.enviada"), ganada: t("crmLeads.ganada"), perdida: t("crmLeads.perdida") };
+  const quoteStatusLabel: Record<string, string> = {
+    borrador: t("crmQuotes.borrador"), enviado: t("crmQuotes.enviado"), visualizado: t("crmQuotes.visualizado"), convertido_carrito: t("crmQuotes.pagoIniciado"),
+    pago_fallido: t("crmQuotes.pagoFallido"), aceptado: t("crmQuotes.aceptado"), rechazado: t("crmQuotes.rechazado"), expirado: t("crmQuotes.expirado"), perdido: t("crmQuotes.perdido"),
+  };
+  const statusLabels = tab === "leads" ? leadStatusLabel : quoteStatusLabel;
+  const sourceLabel = leadSourceFilter === "web"
+    ? t("crmDashboard.solicitudesWeb")
+    : typeof leadSourceFilter === "number" ? ((leadSourcesData ?? []) as any[]).find((s) => s.id === leadSourceFilter)?.name ?? String(leadSourceFilter) : "";
+  const filterChips: CrmFilterChip[] = [
+    ...(filterStatus !== "all" ? [{ id: "estado", label: `${t("crmOpps.estado")}: ${statusLabels[filterStatus] ?? filterStatus}`, onRemove: () => setFilterStatus("all") }] : []),
+    ...(tab === "leads" && leadSourceFilter !== "all" ? [{ id: "origen", label: `${t("crmOpps.origen")}: ${sourceLabel}`, onRemove: () => setLeadSourceFilter("all") }] : []),
+    ...(search.trim() ? [{ id: "busqueda", label: t("crmOpps.busqueda", { text: search.trim() }), onRemove: () => setSearch("") }] : []),
+  ];
+  const clearAllFilters = () => { setFilterStatus("all"); setSearch(""); if (tab === "leads") setLeadSourceFilter("all"); };
+  const activeTotal = tab === "leads" ? leads.leadsData?.total : quotes.quotesData?.total;
+  const leadsConversion = leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0;
+  const withAmount = (text: string, amount: number | string | null | undefined) => (Number(amount) > 0 ? `${text} · ${moneyShort(amount)}` : text);
+  const summaryNode = tab === "leads" ? (
+    <CrmSummary label={t("crmOpps.resumen")}>
+      <CrmSummaryCard tone="info" icon={<Users />} label={t("crmOpps.leadsNuevas")} value={leadCounters?.nueva ?? 0}
+        detail={withAmount((leadCounters?.sinLeer ?? 0) > 0 ? t("crmOpps.leadsSinLeer", { count: leadCounters?.sinLeer ?? 0 }) : t("crmOpps.leadsNuevasDetalle"), leadCounters?.valorNueva)}
+        active={filterStatus === "nueva"} onClick={() => toggleStatus("nueva")} />
+      <CrmSummaryCard tone="warning" icon={<Send />} label={t("crmOpps.leadsSeguimiento")} value={leadCounters?.enviada ?? 0}
+        detail={withAmount(t("crmOpps.leadsSeguimientoDetalle"), leadCounters?.valorEnviada)} active={filterStatus === "enviada"} onClick={() => toggleStatus("enviada")} />
+      <CrmSummaryCard tone="success" icon={<Star />} label={t("crmOpps.leadsGanadas")} value={leadCounters?.ganada ?? 0}
+        detail={withAmount(t("crmOpps.leadsGanadasDetalle", { pct: leadsConversion }), leadCounters?.valorGanada)} active={filterStatus === "ganada"} onClick={() => toggleStatus("ganada")} />
+      <CrmSummaryCard tone="danger" icon={<XCircle />} label={t("crmOpps.leadsPerdidas")} value={leadCounters?.perdida ?? 0}
+        detail={t("crmOpps.leadsPerdidasDetalle")} active={filterStatus === "perdida"} onClick={() => toggleStatus("perdida")} />
+    </CrmSummary>
+  ) : (
+    <CrmSummary label={t("crmOpps.resumen")}>
+      <CrmSummaryCard tone="brand" icon={<Clock />} label={t("crmOpps.quotesPendiente")} value={moneyShort(quoteCounters?.importeEnviado)}
+        detail={t("crmOpps.quotesPendienteDetalle", { count: quoteCounters?.enviado ?? 0 })} active={filterStatus === "enviado"} onClick={() => toggleStatus("enviado")} />
+      <CrmSummaryCard tone="neutral" icon={<FileText />} label={t("crmOpps.quotesBorradores")} value={quoteCounters?.borrador ?? 0}
+        detail={withAmount(t("crmOpps.quotesBorradoresDetalle"), quoteCounters?.importeBorrador)} active={filterStatus === "borrador"} onClick={() => toggleStatus("borrador")} />
+      <CrmSummaryCard tone="success" icon={<CheckCircle />} label={t("crmOpps.quotesAceptados")} value={quoteCounters?.ganado ?? 0}
+        detail={withAmount(t("crmOpps.quotesAceptadosDetalle", { count: quoteCounters?.ganado ?? 0 }), quoteCounters?.importeTotal)} active={filterStatus === "aceptado"} onClick={() => toggleStatus("aceptado")} />
+      {(quoteCounters?.pagoFallido ?? 0) > 0 && (
+        <CrmSummaryCard tone="danger" icon={<XCircle />} label={t("crmOpps.quotesPagoFallido")} value={quoteCounters?.pagoFallido ?? 0}
+          detail={withAmount(t("crmOpps.quotesPagoFallidoDetalle"), quoteCounters?.importePagoFallido)} active={filterStatus === "pago_fallido"} onClick={() => toggleStatus("pago_fallido")} />
+      )}
+    </CrmSummary>
+  );
+  const statusOptions = tab === "leads" ? ["nueva", "enviada", "ganada", "perdida"] : ["borrador", "enviado", "visualizado", "convertido_carrito", "pago_fallido", "aceptado", "rechazado", "expirado", "perdido"];
+  const headerIcon = tab === "leads" ? <Users /> : <FileText />;
+  const newButton = tab === "leads" ? (
+    <Button onClick={() => setShowNewLeadModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.newLead}</Button>
+  ) : (
+    <Button onClick={() => setShowDirectQuoteModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.licensed ? t("crmDashboard.nuevoPresupuesto") : t("crmDashboard.nuevoPresupuesto2")}</Button>
+  );
+  const filterBarNode = (
+    <CrmFilterBar
+      search={{ value: search, onChange: setSearch, placeholder: tab === "leads" ? t("crmEmpty.search.leads", { leadsLower: voc.leadsLower }) : t("crmEmpty.search.quotes") }}
+      primary={(
+        <CrmFilterField label={t("crmOpps.estado")} className="w-full sm:w-48">
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="h-9 w-full text-sm" aria-label={t("crmOpps.estado")}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("crmOpps.todosLosEstados")}</SelectItem>
+              {statusOptions.map((s) => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </CrmFilterField>
+      )}
+      more={tab === "leads" ? (
+        <CrmFilterField label={t("crmOpps.origen")}>
+          <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" || v === "web" ? v : Number(v))}>
+            <SelectTrigger className="h-9 w-full text-sm" aria-label={t("crmOpps.origen")}><SelectValue placeholder={t("crmDashboard.origen")} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("crmDashboard.todosLosOrigenes")}</SelectItem>
+              <SelectItem value="web">{t("crmDashboard.solicitudesWeb")}</SelectItem>
+              {(leadSourcesData ?? []).map((src: any) => (
+                <SelectItem key={src.id} value={String(src.id)}><span style={{ color: src.color ?? undefined }}>{src.name}</span></SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CrmFilterField>
+      ) : undefined}
+      chips={filterChips}
+      onClear={clearAllFilters}
+      summary={filterChips.length > 0 && activeTotal !== undefined ? t("crmOpps.resultados", { count: activeTotal }) : undefined}
+    />
+  );
+
   return (
     <AdminLayout title={voc.crmTitle}>
       <div className="flex min-h-screen flex-col bg-background text-foreground dark:bg-[#080e1c]">
+        {unified && (
+          <>
+            {tabsNode}
+            <div className="px-4 pt-4 sm:px-6 sm:pt-5">
+              <PanelPageHeader
+                className="mb-4 border-b-0 pb-0"
+                icon={headerIcon}
+                title={tab === "leads" ? voc.leads : voc.quotes}
+                description={tab === "leads" ? t("crmOpps.leadsDescripcion") : t("crmOpps.quotesDescripcion")}
+                actions={newButton}
+              />
+              {summaryNode}
+            </div>
+          </>
+        )}
+        {!unified && (
+        <>
         {/* Header compacto: el trabajo va primero; la franja «Amplía tu empresa» pasa al final */}
         <div className="px-4 sm:px-6 pt-3 sm:pt-4 pb-3 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between mb-1">
@@ -313,6 +455,8 @@ export default function CRMDashboard() {
             </div>
           </div>
         </div>
+        </>
+        )}
         <div className="order-last px-4 sm:px-6 pb-6">
           <WorkplaceLocks place="crm" className="mt-3" />
         </div>
@@ -354,7 +498,7 @@ export default function CRMDashboard() {
           >
             <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap gap-y-1">
               {/* Pills resumen cuando está colapsado */}
-              {!kpisExpanded && (
+              {!kpisExpanded && !unified && (
                 <>
                   {(leadCounters?.ganada ?? 0) > 0 && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-medium">
@@ -380,7 +524,7 @@ export default function CRMDashboard() {
                   )}
                 </>
               )}
-              {kpisExpanded && (
+              {(kpisExpanded || unified) && (
                 <span className="text-xs text-foreground/40 font-medium">{t("crmDashboard.panelDeIndicadores")}</span>
               )}
             </div>
@@ -939,42 +1083,13 @@ export default function CRMDashboard() {
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="px-4 sm:px-6">
-          <div className="overflow-x-auto -mx-1 px-1 pb-1">
-          <div className="flex gap-1 bg-foreground/[0.05] rounded-xl p-1 min-w-max">
-            {([
-              { key: "leads", label: voc.leads, icon: Users, count: leadCounters?.total },
-              { key: "quotes", label: voc.quotes, icon: FileText, count: quoteCounters?.enviado },
-              { key: "reservations", label: voc.orders, icon: CalendarCheck, count: resCounters?.confirmadas },
-              { key: "invoices", label: voc.invoices, icon: Receipt, count: undefined },
-              { key: "anulaciones", label: voc.cancellations, icon: AlertTriangle, count: anulCounters?.pending },
-              { key: "bonos", label: voc.coupons, icon: Gift, count: undefined },
-              { key: "pagos_pendientes", label: voc.pendingPayments, icon: Clock, count: undefined },
-            ] as const).filter(({ key }) => visibleTabs.includes(key)).map(({ key, label, icon: Icon, count }) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={tab === key}
-                onClick={() => handleTabChange(key)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-                  ${tab === key ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/60 hover:text-foreground hover:bg-foreground/[0.05]"}`}
-              >
-                <Icon className="w-4 h-4" />
-                {label}
-                {count !== undefined && count > 0 && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${tab === key ? "bg-foreground/[0.15] text-white" : "bg-foreground/[0.08] text-foreground/65"}`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          </div>
-        </div>
+        {!unified && tabsNode}
 
         {/* Search & filter */}
-        {tab !== "anulaciones" && tab !== "bonos" && (
+        {unified && (
+          <div className="px-4 sm:px-6 py-3 sm:py-4">{filterBarNode}</div>
+        )}
+        {!unified && tab !== "anulaciones" && tab !== "bonos" && (
         <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />

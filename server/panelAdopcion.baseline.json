@@ -243,16 +243,11 @@
     "textoMinusculo": 4,
     "geometriaAjena": 1
   },
-  "pages/admin/crm/tabs/LeadsTab.tsx": {
-    "hexEnClases": 1,
-    "textoMinusculo": 3
-  },
   "pages/admin/crm/tabs/PendingPaymentsTab.tsx": {
     "hexEnClases": 5
   },
   "pages/admin/crm/tabs/QuotesTab.tsx": {
-    "hexEnClases": 7,
-    "textoMinusculo": 7
+    "hexEnClases": 4
   },
   "pages/admin/crm/tabs/ReservationsTab.tsx": {
     "hexEnClases": 3,
