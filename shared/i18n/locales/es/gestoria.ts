@@ -183,7 +183,7 @@ export default {
     obligation: "Obligación a aplazar",
     obligationPlaceholder: "Selecciona una obligación…",
     noneDeferrable: "No hay obligaciones aplazables en este ejercicio.",
-    principal: "Importe a aplazar (€)",
+    principal: "Importe (€)",
     installments: "Nº de cuotas",
     interest: "Interés (%)",
     firstDue: "Fecha 1.ª cuota",

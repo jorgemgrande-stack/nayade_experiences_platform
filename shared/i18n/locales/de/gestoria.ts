@@ -186,7 +186,7 @@ export default {
     obligation: "Zu stundende Verpflichtung",
     obligationPlaceholder: "Verpflichtung auswählen…",
     noneDeferrable: "In diesem Steuerjahr gibt es keine stundbaren Verpflichtungen.",
-    principal: "Zu stundender Betrag (€)",
+    principal: "Betrag (€)",
     installments: "Anzahl der Raten",
     interest: "Zinsen (%)",
     firstDue: "Datum 1. Rate",
