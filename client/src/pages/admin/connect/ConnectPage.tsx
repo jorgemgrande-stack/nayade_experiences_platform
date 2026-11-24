@@ -160,7 +160,7 @@ export default function ConnectPage() {
           {catalog.isError && <PanelError error={catalog.error} onRetry={() => catalog.refetch()} title={t("connect.page.loadError")} />}
 
           {data && !data.available && (
-            <section className="space-y-2 rounded-xl border border-border bg-card p-6">
+            <section className="space-y-2 rounded-2xl border border-border bg-card p-6">
               <p className="text-sm text-muted-foreground">
                 {t("connect.page.unavailableLead")}{" "}
                 {data.supportEmail ? (
@@ -344,7 +344,7 @@ function connectSegments(items: ConnectCatalogItem[], t: (k: string) => string):
 function SectionHeader({ id, tone, icon, title, intro, action }: { id: string; tone: MarketTone; icon: ReactNode; title: string; intro?: string | null; action?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span aria-hidden="true" data-tone={tone} className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-lg shadow-black/20 sm:h-12 sm:w-12">
+      <span aria-hidden="true" data-tone={tone} className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-lg shadow-black/20 sm:h-12 sm:w-12">
         {icon}
       </span>
       <div className="min-w-[12rem] flex-1">

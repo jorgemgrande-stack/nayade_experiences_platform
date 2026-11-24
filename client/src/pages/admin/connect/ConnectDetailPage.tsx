@@ -160,7 +160,7 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
   );
   if (style === "image" && hero) {
     return (
-      <header id={SHEET_ANCHORS.description} className="cx-on-image relative scroll-mt-20 overflow-hidden rounded-xl border border-white/10 cx-night-bg shadow-lg shadow-black/30">
+      <header id={SHEET_ANCHORS.description} className="cx-on-image relative scroll-mt-20 overflow-hidden rounded-3xl border border-white/10 cx-night-bg shadow-2xl shadow-black/30">
         <picture>
           {hero.mobileSrc && <source media="(max-width: 767px)" srcSet={hero.mobileSrc} />}
           <ProductMedia item={item} image={hero} sizes="100vw" eager className="absolute inset-0" />
@@ -172,10 +172,10 @@ function Hero({ item, brand }: { item: ConnectCatalogItem; brand: string }) {
     );
   }
   return (
-    <header id={SHEET_ANCHORS.description} className="cx-glow relative grid scroll-mt-20 items-center gap-6 overflow-hidden rounded-xl border border-border bg-card p-6 sm:p-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+    <header id={SHEET_ANCHORS.description} className="cx-glow relative grid scroll-mt-20 items-center gap-6 overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
       {text}
       {style !== "plain" && (
-        <figure className="relative overflow-hidden rounded-xl border border-border shadow-lg shadow-black/10 dark:shadow-black/50">
+        <figure className="relative overflow-hidden rounded-2xl border border-border shadow-2xl shadow-black/10 dark:shadow-black/50">
           <div className="aspect-[16/10]">
             {hero ? (
               <picture>
@@ -206,7 +206,7 @@ function AnchorNav({ item }: { item: ConnectCatalogItem }) {
     { id: SHEET_ANCHORS.faq, label: t("connect.sheet.anchors.faq"), on: has.faq },
   ].filter((l) => l.on);
   return (
-    <nav aria-label={t("connect.sheet.navAria")} className="sticky top-0 z-20 -mx-1 rounded-xl border border-border bg-background/90 p-1.5 backdrop-blur">
+    <nav aria-label={t("connect.sheet.navAria")} className="sticky top-0 z-20 -mx-1 rounded-2xl border border-border bg-background/90 p-1.5 backdrop-blur">
       <ul className="flex gap-1 overflow-x-auto">
         {links.map((l) => (
           <li key={l.id} className="shrink-0">
@@ -322,7 +322,7 @@ function ContractPanel({
   const others = sortPrices(item.prices).slice(1);
   const conditions = [s.terms.commitment, s.terms.cancellation, s.terms.activation].filter((x): x is string => !!x);
   return (
-    <aside id={SHEET_ANCHORS.prices} aria-label={t("connect.sheet.panelAria")} className="cx-glow scroll-mt-20 space-y-5 rounded-xl border-2 border-primary/60 bg-card p-5 shadow-lg shadow-black/10 dark:shadow-black/50 sm:p-6 lg:sticky lg:top-16">
+    <aside id={SHEET_ANCHORS.prices} aria-label={t("connect.sheet.panelAria")} className="cx-glow scroll-mt-20 space-y-5 rounded-3xl border-2 border-primary/60 bg-card p-5 shadow-2xl shadow-black/10 dark:shadow-black/50 sm:p-6 lg:sticky lg:top-16">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 break-words text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.name}</p>
         <StateBadge state={item.state} />

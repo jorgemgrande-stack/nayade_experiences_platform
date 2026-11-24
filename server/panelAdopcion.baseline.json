@@ -98,6 +98,12 @@
     "textoMinusculo": 39,
     "geometriaAjena": 1
   },
+  "pages/admin/connect/ConnectDetailPage.tsx": {
+    "geometriaAjena": 5
+  },
+  "pages/admin/connect/ConnectPage.tsx": {
+    "geometriaAjena": 2
+  },
   "pages/admin/crm/CRMDashboard.tsx": {
     "coloresFijos": 18,
     "hexEnClases": 10,
