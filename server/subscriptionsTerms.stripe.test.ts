@@ -52,6 +52,8 @@ let caps: MemoryCapabilityStore;
 let alerts: FailureAlerts;
 let companies: Map<number, Record<string, unknown>>;
 const noContacts = new Set<number>();
+/** Avisos internos a Dirección emitidos por el servicio de cobro (se vacía en cada world()). */
+const notices: Array<import("./commercialTerms/billingNotices").BillingNoticeEvent> = [];
 let catalogPort: ReturnType<typeof catalogFromWebStore>;
 const P: Record<string, number> = {};
 /** Llamadas al circuito ORDINARIO (pedidos y orquestador): deben quedarse a cero con las contrataciones negociadas. */
@@ -112,6 +114,7 @@ interface World {
 }
 
 function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxPolicy | null; gateway?: StripeGateway; fiscal?: EligibilityConfig; orderBilled?: (id: number) => Promise<boolean> } = {}): World {
+  notices.length = 0;
   const mode = o.mode ?? "test";
   const gateway = o.gateway ?? gw;
   const enabled = o.enabled ?? true;
@@ -133,6 +136,7 @@ function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxP
     capabilities: { list: (t: string) => (capabilityCalls.push(`list:${t}`), caps.list(t)), apply: (t: string, c: never, m: never) => (capabilityCalls.push(`apply:${t}`), caps.apply(t, c, m)) },
     licences: { ensure: async (id: number) => void licenceCalls.push(id) },
     orderBilled: o.orderBilled,
+    notice: async (e) => void notices.push(e),
     urls: URLS,
     namespace: NS,
     mode,
@@ -576,6 +580,38 @@ describe("estado de pago por los webhooks: mismas reglas que el cobro ordinario"
     await grant("t-acme", "tpv.legacy", "acquired:tpv");
     return { ...a, stripeId, own };
   }
+
+  it("avisos a Dirección: primer cobro y renovación, una sola vez cada uno aunque Stripe repita el evento", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const first = notices.filter((n) => n.kind === "first_charge");
+    expect(first).toHaveLength(1);
+    expect(first[0].invoice!.amountPaidCents).toBeGreaterThan(0);
+    expect(notices.some((n) => n.kind === "method_confirmed")).toBe(false);
+    const period = (await subs.must(a.subId)).currentPeriodEnd;
+    clock = period + 60_000;
+    const inv = gw.chargeNegotiatedPeriod(stripeId);
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "recurring_charge")).toHaveLength(1);
+    await w.processor.process({ eventId: "rep-aviso", type: "invoice.paid", objectId: inv });
+    await w.reconciler.tick();
+    expect(notices.filter((n) => n.kind === "recurring_charge")).toHaveLength(1);
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
+  });
+
+  it("avisos a Dirección: pago fallido una sola vez, sin repetirlo en cada lectura", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    clock = (await subs.must(a.subId)).currentPeriodEnd + 60_000;
+    gw.chargeNegotiatedPeriod(stripeId, "open");
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "payment_failed")).toHaveLength(1);
+    await deliver(w);
+    await w.reconciler.tick();
+    expect(notices.filter((n) => n.kind === "payment_failed")).toHaveLength(1);
+  });
 
   it("renovación cobrada: factura registrada y el periodo interno avanza; repetir el evento no la duplica", async () => {
     const w = world();
@@ -1109,6 +1145,29 @@ describe("inicio del acuerdo y reloj de una contratación cobrada en Stripe", ()
     await deliver(w);
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
     expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
+  });
+
+  it("avisos a Dirección: la autorización de la tarjeta en prueba NO es un cobro; el primer cobro real llega después y se avisa una vez", async () => {
+    const w = world();
+    const D = T0 + 10 * DAY;
+    const a = await scheduled(1, D);
+    const s = await w.neg.start(a.subId, A);
+    const stripeId = gw.completeNegotiatedSession((s as { sessionId: string }).sessionId);
+    await deliver(w);
+    // Factura de 0 € pagada + método autorizado: aviso de método confirmado, jamás de cobro
+    expect(notices.filter((n) => n.kind === "method_confirmed")).toHaveLength(1);
+    expect(notices.filter((n) => n.kind === "first_charge" || n.kind === "recurring_charge")).toHaveLength(0);
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "method_confirmed")).toHaveLength(1);
+    clock = D + 60_000;
+    const charged = gw.chargeNegotiatedPeriod(stripeId);
+    await deliver(w);
+    const first = notices.filter((n) => n.kind === "first_charge");
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ key: `invoice:${charged}` });
+    expect(first[0].invoice!.amountPaidCents).toBeGreaterThan(0);
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
   });
 
   it("a menos de 48 h del inicio no se aplaza el primer cargo: se rechaza con la fecha y se pone a cobrar al llegar", async () => {
