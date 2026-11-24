@@ -41,6 +41,13 @@ import {
 
 type Row = Record<string, unknown>;
 
+/** Periodo en el que el producto admite pedir una fecha de inicio (dato del producto; null = sin calendario) */
+const requestDatesOf = (p: { requestDatesFrom?: unknown; requestDatesUntil?: unknown }): { from: string | null; until: string } | undefined => {
+  const until = typeof p.requestDatesUntil === "string" && /^d{4}-d{2}-d{2}/.test(p.requestDatesUntil) ? p.requestDatesUntil.slice(0, 10) : null;
+  if (!until) return undefined;
+  const from = typeof p.requestDatesFrom === "string" && /^d{4}-d{2}-d{2}/.test(p.requestDatesFrom) ? p.requestDatesFrom.slice(0, 10) : null;
+  return { from, until };
+};
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0) : []);
 
@@ -400,7 +407,7 @@ export default function ProductDetail() {
         )}
       </div>
 
-      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id }} open={requestOpen} onOpenChange={setRequestOpen} />}
+      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0] }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Opiniones reales del producto (sin cifras fijas) */}
       <section className="py-12 bg-muted border-t border-border">
