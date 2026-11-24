@@ -16,24 +16,24 @@ import { trpc } from "@/lib/trpc";
 import { VOICE_CALLS_PATH, type VoiceStep, type VoiceStepStatus } from "@shared/voiceSetup";
 
 const STATUS: Record<VoiceStepStatus, { icon: typeof Circle; className: string; label: string }> = {
-  done: { icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-400", label: "Hecho" },
+  done: { icon: CheckCircle2, className: "text-success ", label: "Hecho" },
   todo: { icon: Circle, className: "text-muted-foreground", label: "Pendiente" },
   blocked: { icon: Lock, className: "text-muted-foreground", label: "Necesita los pasos anteriores" },
-  attention: { icon: AlertTriangle, className: "text-red-600 dark:text-red-400", label: "Revisar" },
+  attention: { icon: AlertTriangle, className: "text-danger ", label: "Revisar" },
 };
 
 const fmt = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString("es-ES", { timeZone: "Europe/Madrid", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
 const errMsg = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 const btn = "h-10 px-4 rounded-lg text-sm font-medium disabled:opacity-50";
-const card = "bg-card border border-border/50 rounded-2xl overflow-hidden";
+const card = "bg-card border border-border/50 rounded-xl overflow-hidden";
 const cardHead = "px-5 py-3 bg-muted/30 border-b border-border/50";
 
 function StepItem({ s, index }: { s: VoiceStep; index: number }) {
   const st = STATUS[s.status];
   const Icon = st.icon;
   return (
-    <li className="bg-card border border-border/50 rounded-2xl p-4 sm:p-5">
+    <li className="bg-card border border-border/50 rounded-xl p-4 sm:p-5">
       <div className="flex items-start gap-3">
         <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${st.className}`} aria-hidden="true" />
         <div className="min-w-0 flex-1 space-y-1">
@@ -141,7 +141,7 @@ function ConnectCard({ ready, current, onChanged }: { ready: boolean; current: {
           </p>
         ) : res.isError ? (
           <div className="space-y-2">
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            <p role="alert" className="text-sm text-danger ">
               {res.error.message}
             </p>
             <button type="button" className={`${btn} border border-border/60`} onClick={() => res.refetch()}>
@@ -219,8 +219,8 @@ function ConnectCard({ ready, current, onChanged }: { ready: boolean; current: {
               </select>
             </label>
             {warnings.length > 0 && (
-              <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/[0.06] p-3 space-y-2">
-                <ul className="list-disc pl-5 text-sm text-amber-900 dark:text-amber-200 space-y-1">
+              <div role="alert" className="rounded-xl border border-warning/40 bg-warning/[0.06] p-3 space-y-2">
+                <ul className="list-disc pl-5 text-sm text-warning space-y-1">
                   {warnings.map((w) => (
                     <li key={w} className="break-words">
                       {w}
@@ -271,11 +271,11 @@ export default function VoiceSetup() {
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : q.isError || !d ? (
-          <div role="alert" className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-red-600 dark:text-red-400">
+          <div role="alert" className="bg-card border border-border/50 rounded-xl p-5 text-sm text-danger ">
             {q.error?.message || "No se pudo cargar la puesta en marcha. Recarga la página para intentarlo de nuevo."}
           </div>
         ) : !d.multi ? (
-          <div className="bg-card border border-border/50 rounded-2xl p-5 text-sm text-muted-foreground">
+          <div className="bg-card border border-border/50 rounded-xl p-5 text-sm text-muted-foreground">
             En esta instalación la cuenta de Vapi la configura el equipo técnico, desde{" "}
             <Link href={VOICE_CALLS_PATH} className="underline">
               Llamadas IA › Configuración
@@ -284,7 +284,7 @@ export default function VoiceSetup() {
           </div>
         ) : (
           <>
-            <div role="status" className={`rounded-2xl border p-4 sm:p-5 ${d.ready ? "border-emerald-500/40 bg-emerald-500/[0.06]" : "border-amber-500/40 bg-amber-500/[0.06]"}`}>
+            <div role="status" className={`rounded-xl border p-4 sm:p-5 ${d.ready ? "border-success/40 bg-success/[0.06]" : "border-warning/40 bg-warning/[0.06]"}`}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-sm font-semibold">{d.ready ? "Llamadas IA está funcionando" : "Aún falta algo para empezar"}</p>
                 <span className="text-xs text-muted-foreground">
@@ -335,7 +335,7 @@ export default function VoiceSetup() {
                 <div className="min-w-0">
                   <dt className="text-xs text-muted-foreground">Clave de verificación</dt>
                   <dd className="flex items-center gap-1">
-                    <ShieldCheck className={`w-4 h-4 ${d.secret.usable ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} aria-hidden="true" />
+                    <ShieldCheck className={`w-4 h-4 ${d.secret.usable ? "text-success " : "text-muted-foreground"}`} aria-hidden="true" />
                     {d.secret.usable ? "Configurada (no se muestra)" : d.secret.tooShort ? "Demasiado corta: se renovará al conectar" : "Se genera al conectar"}
                   </dd>
                 </div>
@@ -366,7 +366,7 @@ export default function VoiceSetup() {
                   </Link>
                 </div>
                 {verifyOn && verify.data && (
-                  <div role="status" className={`text-sm ${verify.data.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  <div role="status" className={`text-sm ${verify.data.ok ? "text-success " : "text-danger "}`}>
                     {verify.data.ok ? "Todo correcto en Vapi: el asistente envía sus avisos a tu panel y el número lo tiene asignado." : (
                       <ul className="list-disc pl-5">
                         {verify.data.problems.map((m) => (
@@ -377,7 +377,7 @@ export default function VoiceSetup() {
                   </div>
                 )}
                 {verifyOn && verify.isError && (
-                  <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                  <p role="alert" className="text-sm text-danger ">
                     {verify.error.message}
                   </p>
                 )}
@@ -402,7 +402,7 @@ export default function VoiceSetup() {
                 <button
                   type="button"
                   disabled={disconnect.isPending}
-                  className={`${btn} border border-red-500/50 text-red-700 dark:text-red-300`}
+                  className={`${btn} border border-danger/50 text-danger `}
                   onClick={async () => {
                     if (!(await confirmAction({ description: "¿Desconectar Vapi de tu panel? Las llamadas dejarán de registrarse.", destructive: true }))) return;
                     try {

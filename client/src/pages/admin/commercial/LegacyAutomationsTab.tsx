@@ -81,9 +81,9 @@ const CRONS: CronCard[] = [
 ];
 
 const STATUS_COLORS: Record<CronCard["status"], string> = {
-  active_no_flag: "bg-yellow-900/40 text-yellow-300 border border-yellow-700",
-  active_with_flag: "bg-green-900/40 text-green-300 border border-green-700",
-  superseded: "bg-orange-900/40 text-orange-300 border border-orange-700",
+  active_no_flag: "bg-warning/15 text-warning border border-warning",
+  active_with_flag: "bg-success/15 text-success border border-success",
+  superseded: "bg-warning/15 text-warning border border-warning",
 };
 
 const RECIPIENT_LABELS: Record<CronCard["recipient"], string> = {
@@ -93,9 +93,9 @@ const RECIPIENT_LABELS: Record<CronCard["recipient"], string> = {
 };
 
 const RECIPIENT_COLORS: Record<CronCard["recipient"], string> = {
-  client: "bg-blue-900/40 text-blue-300",
-  admin: "bg-purple-900/40 text-purple-300",
-  both: "bg-teal-900/40 text-teal-300",
+  client: "bg-info/15 text-info",
+  admin: "bg-primary/15 text-primary",
+  both: "bg-success/15 text-success",
 };
 
 const REC_COLORS: Record<CronCard["recommendationType"], string> = {
@@ -113,8 +113,8 @@ const REC_ICONS: Record<CronCard["recommendationType"], string> = {
 function CronDetail({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2 text-xs">
-      <span className="text-gray-500 shrink-0">{label}:</span>
-      <span className="text-gray-300 font-mono">{value}</span>
+      <span className="text-muted-foreground shrink-0">{label}:</span>
+      <span className="text-foreground/70 font-mono">{value}</span>
     </div>
   );
 }
@@ -123,13 +123,13 @@ function CronJobCard({ cron }: { cron: CronCard }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-hidden">
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-[#2a2a2a]">
+      <div className="p-4 border-b border-border">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm font-semibold text-white">{cron.name}</span>
+              <span className="font-mono text-sm font-semibold text-foreground">{cron.name}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[cron.status]}`}>
                 {cron.statusLabel}
               </span>
@@ -137,11 +137,11 @@ function CronJobCard({ cron }: { cron: CronCard }) {
                 {RECIPIENT_LABELS[cron.recipient]}
               </span>
             </div>
-            <div className="mt-1 text-xs text-gray-500 font-mono">{cron.file}</div>
+            <div className="mt-1 text-xs text-muted-foreground font-mono">{cron.file}</div>
           </div>
           <button
             onClick={() => setExpanded((e) => !e)}
-            className="text-gray-500 hover:text-white transition-colors shrink-0 text-xs"
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 text-xs"
           >
             {expanded ? "▲ Colapsar" : "▼ Expandir"}
           </button>
@@ -149,17 +149,17 @@ function CronJobCard({ cron }: { cron: CronCard }) {
 
         {/* Schedule + flag */}
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="bg-[#111] rounded p-2">
-            <div className="text-xs text-gray-500 mb-1">Frecuencia</div>
-            <div className="font-mono text-xs text-amber-400">{cron.schedule}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{cron.scheduleHuman}</div>
+          <div className="bg-muted rounded p-2">
+            <div className="text-xs text-muted-foreground mb-1">Frecuencia</div>
+            <div className="font-mono text-xs text-warning">{cron.schedule}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{cron.scheduleHuman}</div>
           </div>
-          <div className="bg-[#111] rounded p-2">
-            <div className="text-xs text-gray-500 mb-1">Feature flag</div>
+          <div className="bg-muted rounded p-2">
+            <div className="text-xs text-muted-foreground mb-1">Feature flag</div>
             {cron.featureFlag ? (
-              <div className="font-mono text-xs text-green-400 break-all">{cron.featureFlag}</div>
+              <div className="font-mono text-xs text-success break-all">{cron.featureFlag}</div>
             ) : (
-              <div className="text-xs text-red-400">Sin flag — siempre activo</div>
+              <div className="text-xs text-danger">Sin flag — siempre activo</div>
             )}
           </div>
         </div>
@@ -169,16 +169,16 @@ function CronJobCard({ cron }: { cron: CronCard }) {
       <div className="p-4 space-y-3">
         {/* Condition */}
         <div>
-          <div className="text-xs text-gray-500 mb-1">Condición de disparo</div>
-          <div className="text-xs text-gray-300 bg-[#111] rounded p-2 leading-relaxed">{cron.condition}</div>
+          <div className="text-xs text-muted-foreground mb-1">Condición de disparo</div>
+          <div className="text-xs text-foreground/70 bg-muted rounded p-2 leading-relaxed">{cron.condition}</div>
         </div>
 
         {/* Templates */}
         <div>
-          <div className="text-xs text-gray-500 mb-1">Template(s) usado(s)</div>
+          <div className="text-xs text-muted-foreground mb-1">Template(s) usado(s)</div>
           <div className="space-y-1">
             {cron.templates.map((t) => (
-              <div key={t} className="font-mono text-xs text-blue-300 bg-blue-950/20 rounded px-2 py-1">
+              <div key={t} className="font-mono text-xs text-info bg-info/20 rounded px-2 py-1">
                 {t}
               </div>
             ))}
@@ -187,14 +187,14 @@ function CronJobCard({ cron }: { cron: CronCard }) {
 
         {/* Subject */}
         <div>
-          <div className="text-xs text-gray-500 mb-1">Subject del email</div>
-          <div className="text-xs text-gray-300 font-mono bg-[#111] rounded px-2 py-1 break-all">{cron.subject}</div>
+          <div className="text-xs text-muted-foreground mb-1">Subject del email</div>
+          <div className="text-xs text-foreground/70 font-mono bg-muted rounded px-2 py-1 break-all">{cron.subject}</div>
         </div>
 
         {/* Recommendation */}
         <div className={`border-l-4 pl-3 py-1 ${REC_COLORS[cron.recommendationType]}`}>
-          <div className="text-xs text-gray-500 mb-0.5">Recomendación</div>
-          <div className="text-xs text-gray-200">
+          <div className="text-xs text-muted-foreground mb-0.5">Recomendación</div>
+          <div className="text-xs text-foreground/70">
             <span className="mr-1">{REC_ICONS[cron.recommendationType]}</span>
             {cron.recommendation}
           </div>
@@ -203,9 +203,9 @@ function CronJobCard({ cron }: { cron: CronCard }) {
 
       {/* Expanded details */}
       {expanded && (
-        <div className="px-4 pb-4 border-t border-[#2a2a2a] pt-4">
-          <div className="text-xs text-gray-500 mb-2">Detalles técnicos</div>
-          <div className="space-y-1.5 bg-[#111] rounded p-3">
+        <div className="px-4 pb-4 border-t border-border pt-4">
+          <div className="text-xs text-muted-foreground mb-2">Detalles técnicos</div>
+          <div className="space-y-1.5 bg-muted rounded p-3">
             {cron.maxPerRun !== null && (
               <CronDetail label="Límite por ejecución" value={`${cron.maxPerRun} registros`} />
             )}
@@ -228,8 +228,8 @@ export default function LegacyAutomationsTab() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Automatizaciones activas</h2>
-          <p className="text-sm text-gray-400 mt-1">
+          <h2 className="text-lg font-semibold text-foreground">Automatizaciones activas</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Los 3 cron jobs actuales del sistema. Esta vista es de solo lectura — para modificar la configuración
             edita los archivos de servidor directamente.
           </p>
@@ -237,7 +237,7 @@ export default function LegacyAutomationsTab() {
       </div>
 
       {/* Info banner */}
-      <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-3 flex gap-2 text-xs text-blue-300">
+      <div className="bg-info/20 border border-info/40 rounded-lg p-3 flex gap-2 text-xs text-info">
         <span className="shrink-0">ℹ</span>
         <span>
           <strong>commercialFollowupJob</strong> es el sistema de seguimiento de presupuestos — no duplicar con emailAutomationJob.
@@ -249,17 +249,17 @@ export default function LegacyAutomationsTab() {
 
       {/* Summary row */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-white">4</div>
-          <div className="text-xs text-gray-500 mt-1">Cron jobs totales</div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-foreground">4</div>
+          <div className="text-xs text-muted-foreground mt-1">Cron jobs totales</div>
         </div>
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-yellow-400">2</div>
-          <div className="text-xs text-gray-500 mt-1">Sin feature flag (legacy)</div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-warning">2</div>
+          <div className="text-xs text-muted-foreground mt-1">Sin feature flag (legacy)</div>
         </div>
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-green-400">4</div>
-          <div className="text-xs text-gray-500 mt-1">Recomendados mantener</div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-success">4</div>
+          <div className="text-xs text-muted-foreground mt-1">Recomendados mantener</div>
         </div>
       </div>
 
@@ -271,20 +271,20 @@ export default function LegacyAutomationsTab() {
       </div>
 
       {/* Legend */}
-      <div className="border border-[#2a2a2a] rounded-lg p-3">
-        <div className="text-xs text-gray-500 mb-2">Leyenda de estados</div>
+      <div className="border border-border rounded-lg p-3">
+        <div className="text-xs text-muted-foreground mb-2">Leyenda de estados</div>
         <div className="flex flex-wrap gap-3 text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-green-500 inline-block" />
-            <span className="text-gray-400">Activo con feature flag — controlado</span>
+            <span className="w-3 h-3 rounded-full bg-success inline-block" />
+            <span className="text-muted-foreground">Activo con feature flag — controlado</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" />
-            <span className="text-gray-400">Activo sin flag — siempre corre</span>
+            <span className="w-3 h-3 rounded-full bg-warning inline-block" />
+            <span className="text-muted-foreground">Activo sin flag — siempre corre</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-orange-500 inline-block" />
-            <span className="text-gray-400">Supersedido — funcionalidad reemplazada</span>
+            <span className="w-3 h-3 rounded-full bg-warning inline-block" />
+            <span className="text-muted-foreground">Supersedido — funcionalidad reemplazada</span>
           </div>
         </div>
       </div>

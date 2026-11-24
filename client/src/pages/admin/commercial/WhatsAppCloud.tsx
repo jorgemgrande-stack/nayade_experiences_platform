@@ -159,7 +159,7 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
           <div key={m.id} className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.direction === "out" ? "bg-primary text-primary-foreground" : "bg-card text-foreground border border-border"}`}>
               <p className="whitespace-pre-wrap break-words">{m.body}</p>
-              <p className={`mt-1 text-[11px] ${m.direction === "out" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+              <p className={`mt-1 text-xs ${m.direction === "out" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                 {fmt(m.createdAt)}
                 {m.direction === "out" && ` · ${MESSAGE_ORIGIN_LABELS[m.origin as MessageOrigin]}${m.templateName ? " · plantilla" : ""} · ${MESSAGE_STATUS_LABELS[m.status as MessageStatus]}`}
                 {m.status === "failed" && m.errorTitle ? ` (${m.errorTitle})` : ""}
@@ -215,7 +215,7 @@ function Inbox() {
     <div className="space-y-4">
       {status.data && (!status.data.ready || !status.data.webhookReady) && (
         <section className={sectionClass}>
-          <p className="text-sm text-amber-700 dark:text-amber-300">{status.data.webhookReady ? "Ya recibes los mensajes, pero aún no puedes responder desde aquí." : "Tu número de WhatsApp Business aún no está conectado."}</p>
+          <p className="text-sm text-warning ">{status.data.webhookReady ? "Ya recibes los mensajes, pero aún no puedes responder desde aquí." : "Tu número de WhatsApp Business aún no está conectado."}</p>
           <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{status.data.problems.map((p) => <li key={p}>{p}</li>)}</ul>
         </section>
       )}
@@ -241,10 +241,10 @@ function Inbox() {
                       {c.unreadCount > 0 && <Badge>{c.unreadCount}</Badge>}
                     </div>
                     <p className="line-clamp-1 break-words text-xs text-muted-foreground">{c.lastPreview ?? ""}</p>
-                    <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-muted-foreground">
+                    <div className="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
                       <span>{fmt(c.lastMessageAt)}</span>
-                      {c.needsHuman && <Badge variant="destructive" className="text-[10px]">Espera a una persona</Badge>}
-                      {!c.windowOpen && <Badge variant="outline" className="text-[10px]">Solo plantillas</Badge>}
+                      {c.needsHuman && <Badge variant="destructive" className="text-xs">Espera a una persona</Badge>}
+                      {!c.windowOpen && <Badge variant="outline" className="text-xs">Solo plantillas</Badge>}
                     </div>
                   </button>
                 </li>
@@ -283,14 +283,14 @@ function ConnectionTab() {
         <ul className="space-y-1 text-sm">
           {items.map(([label, ok]) => (
             <li key={label} className="flex items-center gap-2">
-              {ok ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <span className="inline-block h-4 w-4 rounded-full border border-muted-foreground/40" />}
+              {ok ? <CheckCircle2 className="h-4 w-4 text-success" /> : <span className="inline-block h-4 w-4 rounded-full border border-muted-foreground/40" />}
               <span className={ok ? "text-foreground" : "text-muted-foreground"}>{label}</span>
             </li>
           ))}
         </ul>
         <Button variant="outline" onClick={() => verify.mutate()} disabled={!s.ready || verify.isPending}><RefreshCw className="mr-2 h-4 w-4" />Comprobar la conexión con Meta</Button>
         {verify.data && (
-          <p className="text-sm text-emerald-700 dark:text-emerald-300">
+          <p className="text-sm text-success ">
             Conexión correcta: {[verify.data.displayPhoneNumber, verify.data.verifiedName, verify.data.accountName].filter(Boolean).join(" · ")}
             {verify.data.qualityRating ? ` · calidad ${verify.data.qualityRating.toLowerCase()}` : ""}
           </p>
@@ -302,7 +302,7 @@ function ConnectionTab() {
         <Field label="Dirección para Meta">
           <div className="flex gap-2"><Input readOnly value={s.webhookUrl} /><Button variant="outline" onClick={() => copy(s.webhookUrl)}><Copy className="mr-2 h-4 w-4" />Copiar</Button></div>
         </Field>
-        {s.webhookReady ? <p className="text-sm text-emerald-700 dark:text-emerald-300">Lista para recibir mensajes: cada mensaje se comprueba con la clave secreta de tu app.</p> : <p className="text-sm text-amber-700 dark:text-amber-300">Aún no se aceptan mensajes: faltan la clave secreta de tu app o la clave de verificación (al menos 24 caracteres).</p>}
+        {s.webhookReady ? <p className="text-sm text-success ">Lista para recibir mensajes: cada mensaje se comprueba con la clave secreta de tu app.</p> : <p className="text-sm text-warning ">Aún no se aceptan mensajes: faltan la clave secreta de tu app o la clave de verificación (al menos 24 caracteres).</p>}
       </section>
       <p className="text-xs text-muted-foreground">Las conversaciones de WhatsApp las factura Meta a tu empresa según su tarifa; las plantillas las aprueba Meta.</p>
     </div>

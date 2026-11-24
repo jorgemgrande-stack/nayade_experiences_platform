@@ -40,22 +40,22 @@ import { useI18n } from "@/i18n/I18nProvider";
 type Tab = "dashboard" | "open" | "history" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
 
 const COMMERCIAL_STATUS_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
-  pending_followup: { color: "text-slate-300",   bg: "bg-slate-500/15",   border: "border-slate-500/30" },
-  reminder_1_sent:  { color: "text-purple-300",  bg: "bg-purple-500/15",  border: "border-purple-500/30" },
-  reminder_2_sent:  { color: "text-violet-300",  bg: "bg-violet-500/15",  border: "border-violet-500/30" },
-  reminder_3_sent:  { color: "text-indigo-300",  bg: "bg-indigo-500/15",  border: "border-indigo-500/30" },
-  interested:       { color: "text-emerald-300", bg: "bg-emerald-500/15", border: "border-emerald-500/30" },
-  paused:           { color: "text-amber-300",   bg: "bg-amber-500/15",   border: "border-amber-500/30" },
-  lost:             { color: "text-red-300",     bg: "bg-red-500/15",     border: "border-red-500/30" },
-  converted:        { color: "text-green-300",   bg: "bg-green-500/15",   border: "border-green-500/30" },
-  discarded:        { color: "text-zinc-400",    bg: "bg-zinc-500/15",    border: "border-zinc-500/30" },
+  pending_followup: { color: "text-foreground/70",   bg: "bg-muted/15",   border: "border-border" },
+  reminder_1_sent:  { color: "text-primary",  bg: "bg-primary/15",  border: "border-primary/30" },
+  reminder_2_sent:  { color: "text-primary",  bg: "bg-primary/15",  border: "border-primary/30" },
+  reminder_3_sent:  { color: "text-info",  bg: "bg-info/15",  border: "border-info/30" },
+  interested:       { color: "text-success", bg: "bg-success/15", border: "border-success/30" },
+  paused:           { color: "text-warning",   bg: "bg-warning/15",   border: "border-warning/30" },
+  lost:             { color: "text-danger",     bg: "bg-danger/15",     border: "border-danger/30" },
+  converted:        { color: "text-success",   bg: "bg-success/15",   border: "border-success/30" },
+  discarded:        { color: "text-muted-foreground",    bg: "bg-muted/15",    border: "border-border" },
 };
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
   const { t } = useI18n();
   const cfg = COMMERCIAL_STATUS_CONFIG[status ?? "pending_followup"] ?? COMMERCIAL_STATUS_CONFIG.pending_followup;
   return (
-    <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${cfg.color} ${cfg.bg} ${cfg.border}`}>
+    <span className={`inline-flex items-center text-xs font-bold px-1.5 py-0.5 rounded-full border ${cfg.color} ${cfg.bg} ${cfg.border}`}>
       {t(`crmFollowup.status.${COMMERCIAL_STATUS_CONFIG[status ?? "pending_followup"] ? (status ?? "pending_followup") : "pending_followup"}`)}
     </span>
   );
@@ -110,27 +110,27 @@ function QuoteActionRow({ quote, onAction }: {
   return (
     <tr className="border-b border-foreground/[0.05] hover:bg-foreground/[0.02] transition-colors">
       <td className="px-3 py-2.5">
-        <div className="font-mono text-xs text-orange-400 font-bold">{quote.quoteNumber}</div>
-        {quote.title && <div className="text-[10px] text-foreground/40 truncate max-w-[120px]">{quote.title}</div>}
+        <div className="font-mono text-xs text-warning font-bold">{quote.quoteNumber}</div>
+        {quote.title && <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.title}</div>}
       </td>
       <td className="px-3 py-2.5">
-        <div className="text-xs font-medium text-foreground/80 truncate max-w-[120px]">{quote.clientName ?? "—"}</div>
-        <div className="text-[10px] text-foreground/40 truncate max-w-[120px]">{quote.clientEmail ?? ""}</div>
+        <div className="text-xs font-medium text-foreground/80 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.clientName ?? "—"}</div>
+        <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.clientEmail ?? ""}</div>
       </td>
       <td className="px-3 py-2.5 hidden md:table-cell">
         <div className="text-xs text-foreground/60">{fmtDate(format, quote.sentAt)}</div>
-        {days !== null && <div className="text-[10px] text-foreground/35">{t("crmFollowup.daysAgo", { days })}</div>}
+        {days !== null && <div className="text-xs text-foreground/35">{t("crmFollowup.daysAgo", { days })}</div>}
       </td>
       <td className="px-3 py-2.5 hidden lg:table-cell">
-        <span className="text-xs font-bold text-orange-400">{format.currency(Number(quote.total ?? 0))}</span>
+        <span className="text-xs font-bold text-warning">{format.currency(Number(quote.total ?? 0))}</span>
       </td>
       <td className="px-3 py-2.5">
         <StatusBadge status={quote.commercialStatus} />
       </td>
       <td className="px-3 py-2.5 hidden xl:table-cell">
         {quote.viewedAt
-          ? <span className="inline-flex items-center gap-1 text-[10px] text-sky-400"><Eye className="w-3 h-3" /> {fmtDate(format, quote.viewedAt)}</span>
-          : <span className="inline-flex items-center gap-1 text-[10px] text-foreground/30"><EyeOff className="w-3 h-3" /> {t("crmFollowup.notSeen")}</span>
+          ? <span className="inline-flex items-center gap-1 text-xs text-info"><Eye className="w-3 h-3" /> {fmtDate(format, quote.viewedAt)}</span>
+          : <span className="inline-flex items-center gap-1 text-xs text-foreground/30"><EyeOff className="w-3 h-3" /> {t("crmFollowup.notSeen")}</span>
         }
       </td>
       <td className="px-3 py-2.5 hidden xl:table-cell">
@@ -139,47 +139,47 @@ function QuoteActionRow({ quote, onAction }: {
       <td className="px-3 py-2.5 hidden xl:table-cell">
         {quote.nextScheduledAt ? (
           <div>
-            <div className="text-[10px] text-foreground/70">{fmtDateTime(format, quote.nextScheduledAt)}</div>
+            <div className="text-xs text-foreground/70">{fmtDateTime(format, quote.nextScheduledAt)}</div>
             {quote.nextScheduledRule && (
-              <div className="text-[10px] text-foreground/40 truncate max-w-[120px]">{quote.nextScheduledRule}</div>
+              <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.nextScheduledRule}</div>
             )}
           </div>
         ) : (
-          <span className="text-[10px] text-foreground/30">—</span>
+          <span className="text-xs text-foreground/30">—</span>
         )}
       </td>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-0.5 justify-end">
           {quote.paymentLinkUrl && (
             <a href={quote.paymentLinkUrl} target="_blank" rel="noopener noreferrer"
-              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-sky-400 transition-colors" title={t("crmFollowup.viewQuote")}>
+              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-info transition-colors" title={t("crmFollowup.viewQuote")}>
               <Eye className="w-3.5 h-3.5" />
             </a>
           )}
           <button onClick={() => onAction("remind", quote)} title={t("crmFollowup.sendReminder")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-purple-400 transition-colors">
+            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-primary transition-colors">
             <Send className="w-3.5 h-3.5" />
           </button>
           <button onClick={() => onAction("note", quote)} title={t("crmFollowup.addNote")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-amber-400 transition-colors">
+            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-warning transition-colors">
             <StickyNote className="w-3.5 h-3.5" />
           </button>
           {quote.reminderPaused
             ? <button onClick={() => onAction("resume", quote)} title={t("crmFollowup.resume")}
-                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-amber-400 hover:text-emerald-400 transition-colors">
+                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-warning hover:text-success transition-colors">
                 <Play className="w-3.5 h-3.5" />
               </button>
             : <button onClick={() => onAction("pause", quote)} title={t("crmFollowup.pause")}
-                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-amber-400 transition-colors">
+                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-warning transition-colors">
                 <Pause className="w-3.5 h-3.5" />
               </button>
           }
           <button onClick={() => onAction("interested", quote)} title={t("crmFollowup.markInterested")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-emerald-400 transition-colors">
+            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-success transition-colors">
             <CheckCircle2 className="w-3.5 h-3.5" />
           </button>
           <button onClick={() => onAction("lost", quote)} title={t("crmFollowup.markLost")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-red-400 transition-colors">
+            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-danger transition-colors">
             <XCircle className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -365,15 +365,15 @@ export default function CommercialFollowupDashboard() {
             ) : (
               <>
                 {/* KPIs */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  <KpiCard label={t("crmFollowup.kpi.needsAttention")} value={kpis?.needsAttention ?? 0} color="text-orange-400" icon={AlertTriangle} sub={t("crmFollowup.kpi.activeQuotes")} />
-                  <KpiCard label={t("crmFollowup.kpi.notViewed")} value={kpis?.notViewed ?? 0} color="text-slate-400" icon={EyeOff} />
-                  <KpiCard label={t("crmFollowup.kpi.viewedUnpaid")} value={kpis?.viewed ?? 0} color="text-sky-400" icon={Eye} />
-                  <KpiCard label={t("crmFollowup.kpi.paused")} value={kpis?.paused ?? 0} color="text-amber-400" icon={Pause} />
-                  <KpiCard label={t("crmFollowup.kpi.sentToday")} value={kpis?.sentToday ?? 0} color="text-purple-400" icon={Send} sub={t("crmFollowup.kpi.autoReminders")} />
-                  <KpiCard label={t("crmFollowup.kpi.cold")} value={kpis?.cold ?? 0} color="text-zinc-400" icon={Clock} />
-                  <KpiCard label={t("crmFollowup.kpi.converted")} value={kpis?.converted ?? 0} color="text-emerald-400" icon={CheckCircle2} />
-                  <KpiCard label={t("crmFollowup.kpi.lost")} value={kpis?.lost ?? 0} color="text-red-400" icon={XCircle} />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <KpiCard label={t("crmFollowup.kpi.needsAttention")} value={kpis?.needsAttention ?? 0} color="text-warning" icon={AlertTriangle} sub={t("crmFollowup.kpi.activeQuotes")} />
+                  <KpiCard label={t("crmFollowup.kpi.notViewed")} value={kpis?.notViewed ?? 0} color="text-muted-foreground" icon={EyeOff} />
+                  <KpiCard label={t("crmFollowup.kpi.viewedUnpaid")} value={kpis?.viewed ?? 0} color="text-info" icon={Eye} />
+                  <KpiCard label={t("crmFollowup.kpi.paused")} value={kpis?.paused ?? 0} color="text-warning" icon={Pause} />
+                  <KpiCard label={t("crmFollowup.kpi.sentToday")} value={kpis?.sentToday ?? 0} color="text-primary" icon={Send} sub={t("crmFollowup.kpi.autoReminders")} />
+                  <KpiCard label={t("crmFollowup.kpi.cold")} value={kpis?.cold ?? 0} color="text-muted-foreground" icon={Clock} />
+                  <KpiCard label={t("crmFollowup.kpi.converted")} value={kpis?.converted ?? 0} color="text-success" icon={CheckCircle2} />
+                  <KpiCard label={t("crmFollowup.kpi.lost")} value={kpis?.lost ?? 0} color="text-danger" icon={XCircle} />
                 </div>
 
                 {/* ─── KPIs WhatsApp + llamadas (solo con su módulo contratado) ─ */}
@@ -401,13 +401,13 @@ export default function CommercialFollowupDashboard() {
                 {hasWhatsApp && (
                 <div className="rounded-xl border border-border/50 bg-card p-4">
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground/70">
-                    <Bell className="w-4 h-4 text-sky-400" />
+                    <Bell className="w-4 h-4 text-info" />
                     {t("crmFollowup.notif.title")}
                   </h3>
                   <div className="flex flex-wrap gap-4">
                     <label className="flex items-center gap-2.5 cursor-pointer select-none group">
                       <div
-                        className={`w-9 h-5 rounded-full transition-colors relative ${popupDisabled ? "bg-foreground/20" : "bg-sky-500"}`}
+                        className={`w-9 h-5 rounded-full transition-colors relative ${popupDisabled ? "bg-foreground/20" : "bg-info"}`}
                         onClick={() => setPopupDisabled(!popupDisabled)}
                       >
                         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${popupDisabled ? "left-0.5" : "left-4"}`} />
@@ -416,14 +416,14 @@ export default function CommercialFollowupDashboard() {
                         <div className="text-sm flex items-center gap-1.5">
                           {popupDisabled
                             ? <><BellOff className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">{t("crmFollowup.notif.popupOff")}</span></>
-                            : <><Bell className="w-3.5 h-3.5 text-sky-400" /> <span>{t("crmFollowup.notif.popupOn")}</span></>
+                            : <><Bell className="w-3.5 h-3.5 text-info" /> <span>{t("crmFollowup.notif.popupOn")}</span></>
                           }
                         </div>
                       </div>
                     </label>
                     <label className="flex items-center gap-2.5 cursor-pointer select-none">
                       <div
-                        className={`w-9 h-5 rounded-full transition-colors relative ${soundDisabled ? "bg-foreground/20" : "bg-emerald-500"}`}
+                        className={`w-9 h-5 rounded-full transition-colors relative ${soundDisabled ? "bg-foreground/20" : "bg-success"}`}
                         onClick={() => setSoundDisabled(!soundDisabled)}
                       >
                         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${soundDisabled ? "left-0.5" : "left-4"}`} />
@@ -432,7 +432,7 @@ export default function CommercialFollowupDashboard() {
                         <div className="text-sm flex items-center gap-1.5">
                           {soundDisabled
                             ? <><VolumeX className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">{t("crmFollowup.notif.soundOff")}</span></>
-                            : <><Volume2 className="w-3.5 h-3.5 text-emerald-400" /> <span>{t("crmFollowup.notif.soundOn")}</span></>
+                            : <><Volume2 className="w-3.5 h-3.5 text-success" /> <span>{t("crmFollowup.notif.soundOn")}</span></>
                           }
                         </div>
                       </div>
@@ -445,11 +445,11 @@ export default function CommercialFollowupDashboard() {
                 <div className="rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
                   <div className="px-4 py-3 border-b border-foreground/[0.08] flex items-center justify-between">
                     <h2 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      <AlertTriangle className="w-4 h-4 text-warning" />
                       {t("crmFollowup.attention.title")}
                     </h2>
                     <button onClick={() => setTab("open")}
-                      className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1">
+                      className="text-xs text-warning hover:text-warning flex items-center gap-1">
                       {t("crmFollowup.attention.seeAll")} <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
@@ -584,15 +584,15 @@ export default function CommercialFollowupDashboard() {
                       <tr key={c.id} className="border-b border-foreground/[0.05] hover:bg-foreground/[0.02]">
                         <td className="px-3 py-2.5 text-foreground/50">{fmtDateTime(format, c.sentAt)}</td>
                         <td className="px-3 py-2.5">
-                          <span className="font-mono text-orange-400 font-bold">{c.quoteNumber ?? `#${c.quoteId}`}</span>
+                          <span className="font-mono text-warning font-bold">{c.quoteNumber ?? `#${c.quoteId}`}</span>
                         </td>
                         <td className="px-3 py-2.5 hidden md:table-cell text-foreground/70">{c.clientName ?? c.customerEmail ?? "—"}</td>
                         <td className="px-3 py-2.5">
-                          <span className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
-                            c.type === "automatic_reminder" ? "text-purple-300 bg-purple-500/15 border-purple-500/30" :
-                            c.type === "manual_reminder" ? "text-sky-300 bg-sky-500/15 border-sky-500/30" :
-                            c.type === "internal_note" ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
-                            c.type === "lost_reason" ? "text-red-300 bg-red-500/15 border-red-500/30" :
+                          <span className={`inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full border ${
+                            c.type === "automatic_reminder" ? "text-primary bg-primary/15 border-primary/30" :
+                            c.type === "manual_reminder" ? "text-info bg-info/15 border-info/30" :
+                            c.type === "internal_note" ? "text-warning bg-warning/15 border-warning/30" :
+                            c.type === "lost_reason" ? "text-danger bg-danger/15 border-danger/30" :
                             "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
                           }`}>
                             {c.type === "automatic_reminder" ? t("crmFollowup.history.typeAuto") :
@@ -602,12 +602,12 @@ export default function CommercialFollowupDashboard() {
                              c.type}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 hidden lg:table-cell text-foreground/60 truncate max-w-[200px]">{c.subject ?? "—"}</td>
+                        <td className="px-3 py-2.5 hidden lg:table-cell text-foreground/60 overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px]">{c.subject ?? "—"}</td>
                         <td className="px-3 py-2.5">
-                          <span className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                            c.status === "sent" ? "text-emerald-300 bg-emerald-500/15" :
-                            c.status === "failed" ? "text-red-300 bg-red-500/15" :
-                            "text-zinc-300 bg-zinc-500/15"
+                          <span className={`inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full ${
+                            c.status === "sent" ? "text-success bg-success/15" :
+                            c.status === "failed" ? "text-danger bg-danger/15" :
+                            "text-foreground/70 bg-muted/15"
                           }`}>
                             {c.status === "sent" ? t("crmFollowup.history.sent") : c.status === "failed" ? t("crmFollowup.history.failed") : t("crmFollowup.history.skipped")}
                           </span>
@@ -651,7 +651,7 @@ export default function CommercialFollowupDashboard() {
           {remindQuote && (
             <div className="space-y-4">
               <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-orange-400">{remindQuote.quoteNumber}</span> · {remindQuote.clientName} · {remindQuote.clientEmail}
+                <span className="font-mono text-warning">{remindQuote.quoteNumber}</span> · {remindQuote.clientName} · {remindQuote.clientEmail}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t("crmFollowup.remind.subject")}</Label>
@@ -690,7 +690,7 @@ export default function CommercialFollowupDashboard() {
           {noteQuote && (
             <div className="space-y-4">
               <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-orange-400">{noteQuote.quoteNumber}</span> · {noteQuote.clientName}
+                <span className="font-mono text-warning">{noteQuote.quoteNumber}</span> · {noteQuote.clientName}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t("crmFollowup.note.channel")}</Label>
@@ -712,7 +712,7 @@ export default function CommercialFollowupDashboard() {
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setNoteQuote(null)}>{t("crmFollowup.note.cancel")}</Button>
-            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white"
+            <Button size="sm" className="bg-warning hover:bg-warning text-background"
               disabled={addNote.isPending || !noteText.trim()}
               onClick={() => addNote.mutate({ quoteId: noteQuote.id, note: noteText, channel: noteChannel })}>
               {t("crmFollowup.note.save")}
@@ -725,12 +725,12 @@ export default function CommercialFollowupDashboard() {
       <Dialog open={!!lostQuote} onOpenChange={() => setLostQuote(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-red-400">{t("crmFollowup.lost.title")}</DialogTitle>
+            <DialogTitle className="text-danger">{t("crmFollowup.lost.title")}</DialogTitle>
           </DialogHeader>
           {lostQuote && (
             <div className="space-y-4">
               <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-orange-400">{lostQuote.quoteNumber}</span> · {lostQuote.clientName}
+                <span className="font-mono text-warning">{lostQuote.quoteNumber}</span> · {lostQuote.clientName}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t("crmFollowup.lost.reason")}</Label>
@@ -759,7 +759,7 @@ export default function CommercialFollowupDashboard() {
           {pauseQuote && (
             <div className="space-y-4">
               <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-orange-400">{pauseQuote.quoteNumber}</span> · {pauseQuote.clientName}
+                <span className="font-mono text-warning">{pauseQuote.quoteNumber}</span> · {pauseQuote.clientName}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t("crmFollowup.pauseDialog.reason")}</Label>
@@ -770,7 +770,7 @@ export default function CommercialFollowupDashboard() {
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setPauseQuote(null)}>{t("crmFollowup.pauseDialog.cancel")}</Button>
-            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white"
+            <Button size="sm" className="bg-warning hover:bg-warning text-background"
               disabled={pauseReminders.isPending}
               onClick={() => pauseReminders.mutate({ quoteId: pauseQuote.id, reason: pauseReason || undefined })}>
               <Pause className="w-3.5 h-3.5 mr-1" /> {t("crmFollowup.pauseDialog.confirm")}

@@ -463,12 +463,12 @@ function VoiceTab() {
           <li>{s.assistantId ? `✓ Asistente sincronizado (${s.assistantId})` : "✗ Asistente aún no creado"}{s.syncedAt ? ` · ${fmtDate(s.syncedAt)}` : ""}</li>
         </ul>
         {s.problems.length > 0 && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning dark:border-warning dark:bg-warning/20 ">
             {s.problems.map((p) => <p key={p}>{p}</p>)}
             {(!s.hasApiKey || !s.hasWebhookSecret) && <p className="mt-1"><a className="underline" href="/admin/configuracion/integraciones">Ir a Integraciones</a></p>}
           </div>
         )}
-        {s.inSync === false && <p className="text-sm text-amber-700 dark:text-amber-300">Has cambiado la configuración o el conocimiento desde la última sincronización: vuelve a sincronizar para que el asistente lo use.</p>}
+        {s.inSync === false && <p className="text-sm text-warning ">Has cambiado la configuración o el conocimiento desde la última sincronización: vuelve a sincronizar para que el asistente lo use.</p>}
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => sync.mutate()} disabled={!s.ready || sync.isPending}><RefreshCw className="mr-2 h-4 w-4" />{sync.isPending ? "Sincronizando…" : s.assistantId ? "Sincronizar con Vapi" : "Crear el asistente en Vapi"}</Button>
           <Button variant="outline" onClick={() => setShow((x) => !x)}>{show ? "Ocultar instrucciones" : "Ver instrucciones del asistente"}</Button>
@@ -513,7 +513,7 @@ function ChatTab() {
     <section className={sectionClass}>
       <h2 className="text-base font-semibold text-foreground">Chat de la recepcionista en tu web</h2>
       {!d.settings.enabled || !d.settings.chatEnabled ? (
-        <p className="text-sm text-amber-700 dark:text-amber-300">El chat está desactivado: actívalo en «Configuración» (la recepcionista y el chat). Mientras tanto, el enlace muestra que el servicio no está disponible.</p>
+        <p className="text-sm text-warning ">El chat está desactivado: actívalo en «Configuración» (la recepcionista y el chat). Mientras tanto, el enlace muestra que el servicio no está disponible.</p>
       ) : (
         <p className="text-sm text-muted-foreground">Responde la IA de tu empresa con tu conocimiento y tu catálogo. Si el cliente quiere reservar o que le llaméis, deja sus datos y la solicitud entra en tu CRM.</p>
       )}

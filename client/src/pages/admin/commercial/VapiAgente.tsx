@@ -46,17 +46,17 @@ function fmtPhone(p: string | null | undefined): string {
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-  ended:       { label: "Finalizada",  color: "text-emerald-300", bg: "bg-emerald-500/15", icon: <PhoneCall className="w-3 h-3" /> },
-  "in-progress": { label: "En curso",  color: "text-sky-300",     bg: "bg-sky-500/15",     icon: <Phone className="w-3 h-3" /> },
-  queued:      { label: "En cola",     color: "text-amber-300",   bg: "bg-amber-500/15",   icon: <Clock className="w-3 h-3" /> },
-  ringing:     { label: "Llamando",    color: "text-blue-300",    bg: "bg-blue-500/15",    icon: <Phone className="w-3 h-3" /> },
-  forwarding:  { label: "Desviando",   color: "text-purple-300",  bg: "bg-purple-500/15",  icon: <Phone className="w-3 h-3" /> },
-  error:       { label: "Error",       color: "text-red-400",     bg: "bg-red-500/15",     icon: <PhoneOff className="w-3 h-3" /> },
+  ended:       { label: "Finalizada",  color: "text-success", bg: "bg-success/15", icon: <PhoneCall className="w-3 h-3" /> },
+  "in-progress": { label: "En curso",  color: "text-info",     bg: "bg-info/15",     icon: <Phone className="w-3 h-3" /> },
+  queued:      { label: "En cola",     color: "text-warning",   bg: "bg-warning/15",   icon: <Clock className="w-3 h-3" /> },
+  ringing:     { label: "Llamando",    color: "text-info",    bg: "bg-info/15",    icon: <Phone className="w-3 h-3" /> },
+  forwarding:  { label: "Desviando",   color: "text-primary",  bg: "bg-primary/15",  icon: <Phone className="w-3 h-3" /> },
+  error:       { label: "Error",       color: "text-danger",     bg: "bg-danger/15",     icon: <PhoneOff className="w-3 h-3" /> },
 };
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
   const s = status ?? "unknown";
-  const cfg = STATUS_STYLES[s] ?? { label: s, color: "text-zinc-400", bg: "bg-zinc-500/15", icon: <Phone className="w-3 h-3" /> };
+  const cfg = STATUS_STYLES[s] ?? { label: s, color: "text-muted-foreground", bg: "bg-muted/15", icon: <Phone className="w-3 h-3" /> };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${cfg.color} ${cfg.bg}`}>
       {cfg.icon}{cfg.label}
@@ -136,7 +136,7 @@ function CallModal({ callId, onClose, onLeadCreated, onReviewed }: {
     return (
       <Dialog open onOpenChange={onClose}>
         <DialogContent className="max-w-3xl">
-          <p className="text-sm text-red-400">Llamada no encontrada.</p>
+          <p className="text-sm text-danger">Llamada no encontrada.</p>
         </DialogContent>
       </Dialog>
     );
@@ -147,10 +147,10 @@ function CallModal({ callId, onClose, onLeadCreated, onReviewed }: {
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Bot className="w-5 h-5 text-sky-400" />
+            <Bot className="w-5 h-5 text-info" />
             Llamada — {fmtPhone(call.phoneNumber)}
             {call.reviewed && (
-              <span className="ml-2 px-2 py-0.5 text-xs rounded bg-emerald-500/15 text-emerald-300">Revisada</span>
+              <span className="ml-2 px-2 py-0.5 text-xs rounded bg-success/15 text-success">Revisada</span>
             )}
           </DialogTitle>
         </DialogHeader>
@@ -173,7 +173,7 @@ function CallModal({ callId, onClose, onLeadCreated, onReviewed }: {
           })().map(({ label, value }) => (
             <div key={label} className="rounded-lg border border-border/40 bg-foreground/3 px-3 py-2">
               <div className="text-xs text-foreground/50 mb-0.5">{label}</div>
-              <div className="text-sm font-medium truncate">{value}</div>
+              <div className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap">{value}</div>
             </div>
           ))}
         </div>
@@ -184,7 +184,7 @@ function CallModal({ callId, onClose, onLeadCreated, onReviewed }: {
             <span className="text-xs text-foreground/50">Motivo: {call.endedReason}</span>
           )}
           {call.linkedLeadId && (
-            <span className="text-xs text-emerald-400 flex items-center gap-1">
+            <span className="text-xs text-success flex items-center gap-1">
               <UserPlus className="w-3 h-3" /> Lead #{call.linkedLeadId}
             </span>
           )}
@@ -201,7 +201,7 @@ function CallModal({ callId, onClose, onLeadCreated, onReviewed }: {
               href={call.recordingUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-1 inline-flex items-center gap-1 text-xs text-sky-400 hover:underline"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-info hover:underline"
             >
               <ExternalLink className="w-3 h-3" /> Abrir en nueva pestaña
             </a>
@@ -257,7 +257,7 @@ function CallModal({ callId, onClose, onLeadCreated, onReviewed }: {
             Payload raw (debug)
           </button>
           {showRaw && (
-            <pre className="mt-1 text-xs bg-black/30 rounded-lg p-3 border border-border/30 whitespace-pre-wrap max-h-48 overflow-y-auto">
+            <pre className="mt-1 text-xs bg-muted/50 rounded-lg p-3 border border-border/30 whitespace-pre-wrap max-h-48 overflow-y-auto">
               {JSON.stringify(call.rawPayload, null, 2)}
             </pre>
           )}
@@ -368,8 +368,8 @@ export default function VapiAgente() {
         {/* Cabecera */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-sky-500/15">
-              <Bot className="w-6 h-6 text-sky-400" />
+            <div className="p-2 rounded-xl bg-info/15">
+              <Bot className="w-6 h-6 text-info" />
             </div>
             <div>
               <h1 className="text-xl font-semibold">Agente IA Vapi</h1>
@@ -412,17 +412,17 @@ export default function VapiAgente() {
         {showConfig && (
           <div className="rounded-xl border border-border/50 bg-card p-5 space-y-4">
             <h2 className="text-sm font-semibold flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-sky-400" /> Credenciales Vapi
+              <KeyRound className="w-4 h-4 text-info" /> Credenciales Vapi
             </h2>
 
             {/* Estado actual */}
             <div className="flex flex-wrap gap-4 text-xs">
-              <div className={`flex items-center gap-1.5 ${creds?.hasApiKey ? "text-emerald-400" : "text-red-400"}`}>
-                <span className={`w-2 h-2 rounded-full ${creds?.hasApiKey ? "bg-emerald-400" : "bg-red-400"}`} />
+              <div className={`flex items-center gap-1.5 ${creds?.hasApiKey ? "text-success" : "text-danger"}`}>
+                <span className={`w-2 h-2 rounded-full ${creds?.hasApiKey ? "bg-success" : "bg-danger"}`} />
                 {creds?.hasApiKey ? `API Key: ${creds.apiKeyMasked}` : "API Key no configurada"}
               </div>
-              <div className={`flex items-center gap-1.5 ${creds?.webhookSecret ? "text-emerald-400" : "text-amber-400"}`}>
-                <span className={`w-2 h-2 rounded-full ${creds?.webhookSecret ? "bg-emerald-400" : "bg-amber-400"}`} />
+              <div className={`flex items-center gap-1.5 ${creds?.webhookSecret ? "text-success" : "text-warning"}`}>
+                <span className={`w-2 h-2 rounded-full ${creds?.webhookSecret ? "bg-success" : "bg-warning"}`} />
                 {creds?.webhookSecret ? "Webhook secret configurado" : "Webhook secret no configurado (webhook abierto)"}
               </div>
             </div>
@@ -430,7 +430,7 @@ export default function VapiAgente() {
             {/* Formulario */}
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs">API Key de Vapi <span className="text-red-400">*</span></Label>
+                <Label className="text-xs">API Key de Vapi <span className="text-danger">*</span></Label>
                 <Input
                   type="password"
                   {...serviceSecretProps("vapi-api-key")}
@@ -480,7 +480,7 @@ export default function VapiAgente() {
                 <Webhook className="w-3 h-3" /> URL del webhook — pega esta URL en el panel de Vapi
               </div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-foreground/5 border border-border/40 rounded px-3 py-1.5 text-sky-300 min-w-0 break-all">
+                <code className="flex-1 text-xs bg-foreground/5 border border-border/40 rounded px-3 py-1.5 text-info min-w-0 break-all">
                   {webhookUrl}
                 </code>
                 <Button
@@ -501,12 +501,12 @@ export default function VapiAgente() {
 
         {/* KPIs */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <KpiCard label="Hoy" value={stats?.today ?? 0} icon={<Phone className="w-4 h-4 text-sky-400" />} />
-          <KpiCard label="Últimos 7 días" value={stats?.last7 ?? 0} icon={<BarChart3 className="w-4 h-4 text-violet-400" />} />
-          <KpiCard label="Finalizadas" value={stats?.ended ?? 0} icon={<PhoneCall className="w-4 h-4 text-emerald-400" />} color="text-emerald-400" />
-          <KpiCard label="Fallidas/Perdidas" value={stats?.failed ?? 0} icon={<PhoneMissed className="w-4 h-4 text-red-400" />} color="text-red-400" />
-          <KpiCard label="Sin revisar" value={stats?.unreviewed ?? 0} icon={<Eye className="w-4 h-4 text-amber-400" />} color="text-amber-400" />
-          <KpiCard label="Leads creados" value={stats?.withLead ?? 0} icon={<UserPlus className="w-4 h-4 text-purple-400" />} color="text-purple-400" />
+          <KpiCard label="Hoy" value={stats?.today ?? 0} icon={<Phone className="w-4 h-4 text-info" />} />
+          <KpiCard label="Últimos 7 días" value={stats?.last7 ?? 0} icon={<BarChart3 className="w-4 h-4 text-primary" />} />
+          <KpiCard label="Finalizadas" value={stats?.ended ?? 0} icon={<PhoneCall className="w-4 h-4 text-success" />} color="text-success" />
+          <KpiCard label="Fallidas/Perdidas" value={stats?.failed ?? 0} icon={<PhoneMissed className="w-4 h-4 text-danger" />} color="text-danger" />
+          <KpiCard label="Sin revisar" value={stats?.unreviewed ?? 0} icon={<Eye className="w-4 h-4 text-warning" />} color="text-warning" />
+          <KpiCard label="Leads creados" value={stats?.withLead ?? 0} icon={<UserPlus className="w-4 h-4 text-primary" />} color="text-primary" />
         </div>
 
         {/* Filtros y tabla */}
@@ -526,7 +526,7 @@ export default function VapiAgente() {
                 type="checkbox"
                 checked={onlyUnreviewed}
                 onChange={e => { setOnlyUnreviewed(e.target.checked); setPage(0); }}
-                className="accent-sky-500"
+                className="accent-info"
               />
               Solo sin revisar
             </label>
@@ -574,10 +574,10 @@ export default function VapiAgente() {
                     <td className="px-4 py-2.5 text-xs text-foreground/70 whitespace-nowrap">
                       {fmtDateTime(call.startedAt)}
                     </td>
-                    <td className="px-4 py-2.5 text-foreground/80 max-w-[140px] truncate">
+                    <td className="px-4 py-2.5 text-foreground/80 max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap">
                       {(() => { const sd: any = call.structuredData ?? {}; return call.customerName || sd.name || sd.customerName || sd.nombre || sd.fullName || "—"; })()}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-foreground/60 max-w-[160px] truncate">
+                    <td className="px-4 py-2.5 text-xs text-foreground/60 max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">
                       {(() => { const sd: any = call.structuredData ?? {}; return call.customerEmail || sd.email || sd.customerEmail || sd.correo || sd.emailAddress || "—"; })()}
                     </td>
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
@@ -589,12 +589,12 @@ export default function VapiAgente() {
                     <td className="px-4 py-2.5">
                       <StatusBadge status={call.status} />
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-foreground/60 max-w-[200px] truncate">
+                    <td className="px-4 py-2.5 text-xs text-foreground/60 max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">
                       {call.summary?.slice(0, 80) ?? (call.endedReason ? `(${call.endedReason})` : "—")}
                     </td>
                     <td className="px-4 py-2.5">
                       {call.reviewed ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <CheckCircle2 className="w-4 h-4 text-success" />
                       ) : (
                         <span className="w-4 h-4 rounded-full border border-foreground/20 inline-block" />
                       )}
