@@ -8,6 +8,7 @@
 import { useId, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft, ChevronRight, LifeBuoy, Mail, Search } from "lucide-react";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,10 +152,7 @@ function ArticleList() {
   const results = useMemo(() => searchHelp(q, locale), [q, locale]);
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-display font-bold text-foreground">{t("help.center.title")}</h1>
-        <p className="mt-1 text-muted-foreground">{t("help.center.subtitle")}</p>
-      </header>
+      <PanelPageHeader icon={<LifeBuoy />} title={t("help.center.title")} description={t("help.center.subtitle")} className="mb-0" />
       <div className="max-w-md">
         <Label htmlFor={searchId} className="mb-1.5 block text-sm">{t("help.center.searchLabel")}</Label>
         <div className="relative">
@@ -208,8 +206,7 @@ export default function HelpCenter() {
       <div className="max-w-4xl space-y-6">
         {params?.id && !article ? (
           <div className="space-y-3">
-            <h1 className="text-2xl font-display font-bold text-foreground">{t("help.center.notFoundTitle")}</h1>
-            <p className="text-muted-foreground">{t("help.center.notFoundText")}</p>
+            <PanelPageHeader icon={<LifeBuoy />} title={t("help.center.notFoundTitle")} description={t("help.center.notFoundText")} className="mb-0" />
             <Button asChild variant="outline">
               <Link href="/admin/ayuda">{t("help.center.seeAll")}</Link>
             </Button>

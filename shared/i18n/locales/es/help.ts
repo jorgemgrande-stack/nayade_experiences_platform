@@ -83,6 +83,8 @@ export default {
   },
   account: {
     title: "Mi cuenta",
+    subtitle: "Seguridad de tu acceso: el correo con el que entras y los dispositivos que ya has usado.",
+    loadError: "No se pudieron cargar los dispositivos",
     emailTitle: "Correo de acceso",
     currentEmail: "Correo actual:",
     pendingChange: "Cambio pendiente de confirmar a <b>{email}</b> (el enlace caduca el {date}).",

@@ -16,8 +16,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   AlertTriangle, Blocks, Briefcase, Building2, Check, CheckCircle2, ChevronLeft, ChevronRight, FileText, Globe, Hand, HelpCircle,
-  Landmark, Loader2, Mail, Package, Palette, PartyPopper, ShoppingCart, SkipForward, Star, UserPlus, Users,
+  Landmark, Mail, Package, Palette, PartyPopper, Rocket, ShoppingCart, SkipForward, Star, UserPlus, Users,
 } from "lucide-react";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
 import { useI18n } from "@/i18n/I18nProvider";
 import { activityInfo, configurationStepNumber, configurationSteps, nextOpenStep, type SetupStep } from "@shared/setupWizard";
@@ -87,17 +89,15 @@ export default function PrimerosPasos() {
   if (status.isLoading || (!current && !status.error)) {
     return (
       <AdminLayout title={t("setup.title")}>
-        <div className="flex items-center gap-2 p-8 text-muted-foreground" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {t("setup.loading")}
-        </div>
+        <PanelLoading label={t("setup.loading")} className="p-8" />
       </AdminLayout>
     );
   }
   if (status.error || !status.data || !current) {
     return (
       <AdminLayout title={t("setup.title")}>
-        <div role="alert" className="m-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
-          {t("setup.loadError", { message: status.error?.message ?? t("setup.retryHint") })}
+        <div className="p-6">
+          <PanelError error={status.error ?? undefined} onRetry={() => status.refetch()} />
         </div>
       </AdminLayout>
     );
@@ -146,15 +146,13 @@ export default function PrimerosPasos() {
   return (
     <AdminLayout title={t("setup.title")}>
       <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
-        <header className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-semibold text-foreground sm:text-2xl">{t("setup.heading")}</h1>
-              <p className="text-sm text-muted-foreground">
-                {t("setup.intro", { count: configCount })}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-3">
+          <PanelPageHeader
+            className="mb-0 border-b-0 pb-0"
+            icon={<Rocket />}
+            title={t("setup.heading")}
+            description={t("setup.intro", { count: configCount })}
+            actions={<>
               {planName && (
                 <p className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
                   {t("setup.planLabel")} <strong className="text-foreground">{planName}</strong>
@@ -164,8 +162,8 @@ export default function PrimerosPasos() {
               <Link href="/admin" className="rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
                 {t("setup.later")}
               </Link>
-            </div>
-          </div>
+            </>}
+          />
           <div className="flex items-center gap-3">
             <Progress value={d.plan.percent} className="h-2" aria-label={t("setup.progressAria")} aria-valuetext={t("setup.percentDone", { percent: d.plan.percent })} />
             <span className="w-12 text-right text-sm tabular-nums text-muted-foreground">{d.plan.percent}%</span>
@@ -176,7 +174,7 @@ export default function PrimerosPasos() {
               <p>{t("setup.readOnlyBanner")}</p>
             </div>
           )}
-        </header>
+        </div>
 
         {/* minmax(0,1fr): en móvil el índice de pasos (desplazable) no puede ensanchar la columna ni la página */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
