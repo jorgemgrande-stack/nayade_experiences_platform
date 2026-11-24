@@ -2532,6 +2532,8 @@ export const appRouter = router({
         // Sin pasarela configurada no se crea una pre-reserva que nunca podrá pagarse
         if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         // 1. Obtener el producto y validar que existe y tiene precio
+        // La ampliación de acceso de un módulo solo se compra desde el aula (pedido con la marca y el módulo del alumno)
+        if (input.productId === (await (await import("./learningExtensions")).extensionProductId())) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto solo se compra desde tu aula." });
         const { getExperienceById, getVariantsByExperience } = await import("./db");
         const product = await getExperienceById(input.productId);
         if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
@@ -2786,6 +2788,8 @@ export const appRouter = router({
         }> = [];
         const productNames: string[] = [];
         const cartRules = await activePricingRules();
+        const extensionProduct = await (await import("./learningExtensions")).extensionProductId();
+        if (extensionProduct != null && input.items.some((i) => i.productId === extensionProduct)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto solo se compra desde tu aula." });
         for (const item of input.items) {
           const product = await getExpById(item.productId);
           if (!product) {

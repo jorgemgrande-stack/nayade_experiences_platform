@@ -106,10 +106,6 @@
     "coloresFijos": 11,
     "geometriaAjena": 5
   },
-  "pages/admin/commercial/WhatsAppCloud.tsx": {
-    "coloresFijos": 4,
-    "textoMinusculo": 4
-  },
   "pages/admin/commercial/WhatsAppGHLInbox.tsx": {
     "coloresFijos": 66,
     "textoMinusculo": 39,
@@ -224,15 +220,9 @@
     "coloresFijos": 4,
     "geometriaAjena": 5
   },
-  "pages/admin/marketing/CuponesManager.tsx": {
-    "textoMinusculo": 1
-  },
   "pages/admin/marketing/MarketingSummary.tsx": {
     "coloresFijos": 6,
     "geometriaAjena": 2
-  },
-  "pages/admin/marketing/PlatformsManager.tsx": {
-    "textoMinusculo": 2
   },
   "pages/admin/marketing/SeoControl.tsx": {
     "coloresFijos": 3
