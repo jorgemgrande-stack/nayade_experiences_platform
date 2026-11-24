@@ -11,7 +11,9 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, MonitorSmartphone, Trash2 } from "lucide-react";
+import { Loader2, Mail, MonitorSmartphone, ShieldCheck, Trash2 } from "lucide-react";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -47,7 +49,7 @@ function EmailSection() {
         {t("help.account.currentEmail")} <span className="font-medium text-foreground">{user?.email ?? "—"}</span>
       </p>
       {pending && (
-        <p className="text-sm rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2" role="status">
+        <p className="text-sm rounded-lg bg-warning/10 border border-warning/40 text-foreground px-3 py-2" role="status">
           {rich(t("help.account.pendingChange", { email: pending.newEmail, date: fmt(pending.expiresAt) }))}
         </p>
       )}
@@ -103,11 +105,13 @@ function DevicesSection() {
       </div>
       <p className="text-sm text-muted-foreground">{t("help.account.devicesText")}</p>
       {devicesQ.isLoading ? (
-        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-label={t("help.account.loading")} /></div>
+        <PanelLoading label={t("help.account.loading")} className="py-6" />
+      ) : devicesQ.isError ? (
+        <PanelError error={devicesQ.error} onRetry={() => devicesQ.refetch()} title={t("help.account.loadError")} />
       ) : data?.available === false ? (
         <p className="text-sm text-muted-foreground">{t("help.account.devicesUnavailable")}</p>
       ) : !data?.devices.length ? (
-        <p className="text-sm text-muted-foreground">{t("help.account.devicesEmpty")}</p>
+        <PanelEmpty icon={<MonitorSmartphone />} title={t("help.account.devicesEmpty")} />
       ) : (
         <ul className="divide-y divide-border">
           {data.devices.map((d) => (
@@ -115,7 +119,7 @@ function DevicesSection() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">
                   {d.label}
-                  {d.current && <span className="ml-2 text-xs font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">{t("help.account.thisDevice")}</span>}
+                  {d.current && <StatusBadge tone="success" className="ml-2">{t("help.account.thisDevice")}</StatusBadge>}
                 </p>
                 <p className="text-xs text-muted-foreground">{t("help.account.seen", { first: fmt(d.firstSeenAt), last: fmt(d.lastSeenAt) })}</p>
               </div>
@@ -136,6 +140,7 @@ export default function MiCuenta() {
   return (
     <AdminLayout title={t("help.account.title")}>
       <div className="max-w-3xl space-y-6">
+        <PanelPageHeader icon={<ShieldCheck />} title={t("help.account.title")} description={t("help.account.subtitle")} />
         <EmailSection />
         <DevicesSection />
       </div>

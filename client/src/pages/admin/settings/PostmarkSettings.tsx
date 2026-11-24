@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 import { localizeIntegrationText } from "@shared/i18n/integrationsDe";
@@ -69,14 +70,7 @@ export default function PostmarkSettings() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("settingsPostmark.eyebrow")}</p>
-          <h1 className="text-2xl font-bold text-foreground">{t("settingsPostmark.title")}</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            {t("settingsPostmark.introBefore")}
-            <Link href="/admin/marketing/brevo" className="text-primary underline-offset-4 hover:underline">{t("settingsPostmark.introLink")}</Link>.
-          </p>
-        </header>
+        <PanelPageHeader icon={<Mail />} title={t("settingsPostmark.title")} description={<>{t("settingsPostmark.introBefore")}<Link href="/admin/marketing/brevo" className="text-primary underline-offset-4 hover:underline">{t("settingsPostmark.introLink")}</Link>.</>} />
 
         <section aria-labelledby="vias-correo" className="space-y-2 rounded-xl border border-border p-4 text-sm">
           <h2 id="vias-correo" className="font-semibold text-foreground">{t("settingsPostmark.routes.title")}</h2>

@@ -14,6 +14,8 @@ export default {
   emptyText: "Aktivitäten werden automatisch erstellt, sobald eine Zahlung bestätigt ist (Redsys, Überweisung oder Barzahlung)",
   col: { number: "Aktivitäts-Nr.", client: "Kunde", date: "Datum", persons: "Personen", total: "Gesamt", origin: "Herkunft", state: "Status" },
   manual: "Manuell",
+  summaryCount: "Angezeigte Aktivitäten",
+  loadError: "Die Aktivitäten konnten nicht geladen werden",
   confirm: "Bestätigen",
   complete: "Abschließen",
   cancel: "Stornieren",

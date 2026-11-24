@@ -1,6 +1,9 @@
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelError } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,11 +66,11 @@ const EMPTY_FORM: FormState = {
 };
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
+function DiscountStatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
-  if (status === "active") return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">{t("discounts.status.active")}</Badge>;
-  if (status === "inactive") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">{t("discounts.status.inactive")}</Badge>;
-  return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">{t("discounts.status.expired")}</Badge>;
+  if (status === "active") return <StatusBadge tone="success">{t("discounts.status.active")}</StatusBadge>;
+  if (status === "inactive") return <StatusBadge tone="warning">{t("discounts.status.inactive")}</StatusBadge>;
+  return <StatusBadge tone="danger">{t("discounts.status.expired")}</StatusBadge>;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -183,42 +186,23 @@ export default function DiscountCodesManager() {
   return (
     <AdminLayout title={t("discounts.title")}>
       <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
-              <Tag className="w-6 h-6 text-primary" />
-              {t("discounts.title")}
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {voc.licensed
-                ? t("discounts.descriptionLicensed")
-                : t("discounts.description")}
-            </p>
-          </div>
-          <Button onClick={openCreate} className="gap-2">
-            <Plus className="w-4 h-4" /> {t("discounts.newCode")}
-          </Button>
-        </div>
+        <PanelPageHeader
+          icon={<Tag />}
+          title={t("discounts.title")}
+          description={voc.licensed ? t("discounts.descriptionLicensed") : t("discounts.description")}
+          actions={
+            <Button onClick={openCreate} className="gap-2">
+              <Plus className="w-4 h-4" /> {t("discounts.newCode")}
+            </Button>
+          }
+        />
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: t("discounts.stats.total"), value: total, icon: Tag, color: "text-primary" },
-            { label: t("discounts.stats.active"), value: items.filter(i => i.status === "active").length, icon: ToggleRight, color: "text-green-400" },
-            { label: t("discounts.stats.inactive"), value: items.filter(i => i.status === "inactive").length, icon: ToggleLeft, color: "text-yellow-400" },
-            { label: t("discounts.stats.expired"), value: items.filter(i => i.status === "expired").length, icon: Calendar, color: "text-red-400" },
-          ].map((stat) => (
-            <Card key={stat.label} className="bg-card border-border">
-              <CardContent className="p-4 flex items-center gap-3">
-                <stat.icon className={`w-8 h-8 ${stat.color}`} />
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        {/* Resumen */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard tone="brand" icon={<Tag />} label={t("discounts.stats.total")} value={total} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone="success" icon={<ToggleRight />} label={t("discounts.stats.active")} value={items.filter((i) => i.status === "active").length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone="warning" icon={<ToggleLeft />} label={t("discounts.stats.inactive")} value={items.filter((i) => i.status === "inactive").length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone="danger" icon={<Calendar />} label={t("discounts.stats.expired")} value={items.filter((i) => i.status === "expired").length} className="bg-gradient-to-br from-primary/5 to-card" />
         </div>
 
         {/* Filters */}
@@ -253,17 +237,16 @@ export default function DiscountCodesManager() {
             {listError ? (
               <PanelError className="m-4" title={t("discounts.loadError")} error={listError} onRetry={() => void refetch()} />
             ) : isLoading ? (
-              <div className="p-8 text-center text-muted-foreground">{t("discounts.loading")}</div>
+              <PanelLoading />
             ) : items.length === 0 ? (
-              <div className="p-12 text-center">
-                <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-muted-foreground">{t("discounts.empty")}</p>
-                <Button onClick={openCreate} variant="outline" className="mt-4 gap-2">
+              <PanelEmpty className="m-4" icon={<Tag />} title={t("discounts.empty")}>
+                <Button onClick={openCreate} variant="outline" className="gap-2">
                   <Plus className="w-4 h-4" /> {t("discounts.createFirst")}
                 </Button>
-              </div>
+              </PanelEmpty>
             ) : (
-              <Table>
+              <div className="overflow-x-auto">
+              <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow className="border-border">
                     <TableHead>{t("discounts.col.code")}</TableHead>
@@ -287,12 +270,12 @@ export default function DiscountCodesManager() {
                         <div>
                           <p className="font-medium text-foreground text-sm">{item.name}</p>
                           {item.description && (
-                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">{item.description}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">{item.description}</p>
                           )}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className="font-bold text-emerald-400 text-lg">{item.discountPercent}%</span>
+                        <span className="font-bold text-success text-lg">{item.discountPercent}%</span>
                       </TableCell>
                       <TableCell className="text-center">
                         <span className="text-sm text-foreground">
@@ -310,7 +293,7 @@ export default function DiscountCodesManager() {
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <StatusBadge status={item.status} />
+                        <DiscountStatusBadge status={item.status} />
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -318,13 +301,13 @@ export default function DiscountCodesManager() {
                             variant="ghost" size="icon" title={t("discounts.action.viewUses")}
                             onClick={() => setShowUses(item.id)}
                           >
-                            <Eye className="w-4 h-4 text-blue-400" />
+                            <Eye className="w-4 h-4 text-info" />
                           </Button>
                           <Button
                             variant="ghost" size="icon" title={t("discounts.action.edit")}
                             onClick={() => openEdit(item)}
                           >
-                            <Edit2 className="w-4 h-4 text-yellow-400" />
+                            <Edit2 className="w-4 h-4 text-warning" />
                           </Button>
                           <Button
                             variant="ghost" size="icon" title={t("discounts.action.duplicate")}
@@ -338,19 +321,19 @@ export default function DiscountCodesManager() {
                             onClick={() => toggleMutation.mutate({ id: item.id, active: item.status !== "active" })}
                           >
                             {item.status === "active"
-                              ? <ToggleRight className="w-4 h-4 text-green-400" />
-                              : <ToggleLeft className="w-4 h-4 text-yellow-400" />
+                              ? <ToggleRight className="w-4 h-4 text-success" />
+                              : <ToggleLeft className="w-4 h-4 text-warning" />
                             }
                           </Button>
                           <Button
                             variant="ghost" size="icon" title={t("discounts.action.delete")}
-                            onClick={() => {
-                              if (confirm(t("discounts.confirmDelete", { code: item.code }))) {
+                            onClick={async () => {
+                              if (await confirmAction({ description: t("discounts.confirmDelete", { code: item.code }), destructive: true })) {
                                 deleteMutation.mutate({ id: item.id });
                               }
                             }}
                           >
-                            <Trash2 className="w-4 h-4 text-red-400" />
+                            <Trash2 className="w-4 h-4 text-danger" />
                           </Button>
                         </div>
                       </TableCell>
@@ -358,6 +341,7 @@ export default function DiscountCodesManager() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -381,7 +365,7 @@ export default function DiscountCodesManager() {
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>{t("discounts.form.code")} <span className="text-red-400">*</span></Label>
+                <Label>{t("discounts.form.code")} <span className="text-danger">*</span></Label>
                 <Input
                   placeholder="VERANO25"
                   value={form.code}
@@ -392,7 +376,7 @@ export default function DiscountCodesManager() {
                 <p className="text-xs text-muted-foreground">{t("discounts.form.codeHint")}</p>
               </div>
               <div className="space-y-1.5">
-                <Label>{t("discounts.form.percent")} <span className="text-red-400">*</span></Label>
+                <Label>{t("discounts.form.percent")} <span className="text-danger">*</span></Label>
                 <div className="relative">
                   <Input
                     type="number" min="1" max="100" step="0.5"
@@ -405,7 +389,7 @@ export default function DiscountCodesManager() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>{t("discounts.form.name")} <span className="text-red-400">*</span></Label>
+              <Label>{t("discounts.form.name")} <span className="text-danger">*</span></Label>
               <Input
                 placeholder={t("discounts.form.namePlaceholder")}
                 value={form.name}
@@ -468,7 +452,7 @@ export default function DiscountCodesManager() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-400" /> {t("discounts.uses.title")}
+              <Users className="w-5 h-5 text-info" /> {t("discounts.uses.title")}
             </DialogTitle>
           </DialogHeader>
           <div className="max-h-96 overflow-y-auto">
@@ -495,8 +479,8 @@ export default function DiscountCodesManager() {
                         <Badge variant="outline" className="text-xs capitalize">{use.channel}</Badge>
                       </TableCell>
                       <TableCell className="text-right text-sm">{f.currency(parseFloat(use.originalAmount as unknown as string))}</TableCell>
-                      <TableCell className="text-right text-sm text-red-400">-{f.currency(parseFloat(use.discountAmount as unknown as string))}</TableCell>
-                      <TableCell className="text-right text-sm font-bold text-green-400">{f.currency(parseFloat(use.finalAmount as unknown as string))}</TableCell>
+                      <TableCell className="text-right text-sm text-danger">-{f.currency(parseFloat(use.discountAmount as unknown as string))}</TableCell>
+                      <TableCell className="text-right text-sm font-bold text-success">{f.currency(parseFloat(use.finalAmount as unknown as string))}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

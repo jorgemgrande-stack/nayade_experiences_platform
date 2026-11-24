@@ -85,6 +85,8 @@ export default {
   },
   account: {
     title: "Mein Konto",
+    subtitle: "Sicherheit deines Zugangs: die E-Mail für die Anmeldung und die Geräte, die du schon genutzt hast.",
+    loadError: "Die Geräte konnten nicht geladen werden",
     emailTitle: "Anmelde-E-Mail",
     currentEmail: "Aktuelle E-Mail:",
     pendingChange: "Änderung auf <b>{email}</b> wartet auf Bestätigung (der Link läuft am {date} ab).",

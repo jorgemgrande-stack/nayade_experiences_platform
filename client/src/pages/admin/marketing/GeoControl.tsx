@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import {
   GEO_ASSISTED_DISCLAIMER,
@@ -647,11 +648,7 @@ export default function GeoControl() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">Visibilidad en IA (GEO Control)</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Sigue si tu marca aparece cuando un cliente pregunta a Google AI Overviews, ChatGPT, Perplexity, Copilot o Gemini, quién aparece en tu lugar y qué puedes hacer para mejorar.</p>
-        </header>
+        <PanelPageHeader icon={<Sparkles />} title="Visibilidad en IA (GEO Control)" description="Sigue si tu marca aparece cuando un cliente pregunta a Google AI Overviews, ChatGPT, Perplexity, Copilot o Gemini, quién aparece en tu lugar y qué puedes hacer para mejorar." />
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="panel">Panel</TabsTrigger>

@@ -12,6 +12,8 @@ export default {
   emptyText: "Las actividades se crean automáticamente cuando se confirma un pago (Redsys, transferencia o efectivo)",
   col: { number: "Nº Actividad", client: "Cliente", date: "Fecha", persons: "Personas", total: "Total", origin: "Origen", state: "Estado" },
   manual: "Manual",
+  summaryCount: "Actividades mostradas",
+  loadError: "No se pudieron cargar las actividades",
   confirm: "Confirmar",
   complete: "Completar",
   cancel: "Cancelar",

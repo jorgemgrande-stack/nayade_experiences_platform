@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import {
   ACTION_KINDS,
@@ -420,11 +421,7 @@ export default function Automatizaciones() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">Automatizaciones</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Reglas propias para que las tareas repetitivas no se olviden: cuando pasa algo en tu negocio, el sistema envía el correo, crea la tarea, avisa al equipo o mueve la oportunidad, con los retardos que elijas.</p>
-        </header>
+        <PanelPageHeader icon={<Workflow />} title="Automatizaciones" description="Reglas propias para que las tareas repetitivas no se olviden: cuando pasa algo en tu negocio, el sistema envía el correo, crea la tarea, avisa al equipo o mueve la oportunidad, con los retardos que elijas." />
         {q.isLoading ? <PanelLoading /> : q.error ? <PanelError error={q.error} onRetry={() => q.refetch()} /> : (
           <>
             {!q.data!.mail.ready && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">Los pasos de correo no saldrán todavía: {q.data!.mail.message ?? "el correo de tu empresa no está disponible."}</p>}

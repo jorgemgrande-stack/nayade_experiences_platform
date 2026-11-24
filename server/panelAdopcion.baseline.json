@@ -48,13 +48,6 @@
     "coloresFijos": 1,
     "geometriaAjena": 1
   },
-  "pages/admin/MiCuenta.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/ReviewsManager.tsx": {
-    "coloresFijos": 25,
-    "geometriaAjena": 1
-  },
   "pages/admin/accounting/CostCentersManager.tsx": {
     "coloresFijos": 4
   },
@@ -82,8 +75,8 @@
     "geometriaAjena": 1
   },
   "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
-    "coloresFijos": 76,
-    "textoMinusculo": 12
+    "coloresFijos": 44,
+    "textoMinusculo": 11
   },
   "pages/admin/commercial/CommunicationsMap.tsx": {
     "coloresFijos": 30,
@@ -353,8 +346,6 @@
     "geometriaAjena": 2
   },
   "pages/admin/marketing/CuponesManager.tsx": {
-    "coloresFijos": 92,
-    "hexEnClases": 15,
     "textoMinusculo": 1
   },
   "pages/admin/marketing/MarketingSummary.tsx": {
@@ -362,8 +353,6 @@
     "geometriaAjena": 2
   },
   "pages/admin/marketing/PlatformsManager.tsx": {
-    "coloresFijos": 66,
-    "hexEnClases": 8,
     "textoMinusculo": 2
   },
   "pages/admin/marketing/SeoControl.tsx": {
@@ -375,17 +364,10 @@
   "pages/admin/netReports/ReportParts.tsx": {
     "textoMinusculo": 1
   },
-  "pages/admin/operations/BookingsList.tsx": {
-    "coloresFijos": 10
-  },
   "pages/admin/operations/CalendarView.tsx": {
-    "coloresFijos": 47,
-    "hexEnClases": 6,
     "textoMinusculo": 20
   },
   "pages/admin/operations/DailyActivities.tsx": {
-    "coloresFijos": 57,
-    "hexEnClases": 7,
     "textoMinusculo": 24
   },
   "pages/admin/partners/PartnerBillingManager.tsx": {

@@ -10,6 +10,7 @@ import { CheckCircle2, ChevronRight, Circle, CircleDashed, Lock, Rocket } from "
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import type { MarketingModuleState, MarketingModuleView } from "@shared/marketingPack";
 
 const STATE_TONE: Record<MarketingModuleState, string> = {
@@ -104,17 +105,7 @@ export default function MarketingSummary() {
   return (
     <AdminLayout>
       <div className="max-w-4xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect · Paquete Marketing</p>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Rocket className="w-6 h-6 text-primary" aria-hidden="true" />
-            Marketing · Puesta en marcha y resumen
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Publicidad, campañas de correo, SEO y visibilidad en IA en una sola pantalla: qué tienes ya funcionando, qué falta y
-            dónde se hace. Cada estado se calcula con los datos reales de tu empresa.
-          </p>
-        </header>
+        <PanelPageHeader icon={<Rocket />} title="Marketing · Puesta en marcha y resumen" description="Publicidad, campañas de correo, SEO y visibilidad en IA en una sola pantalla: qué tienes ya funcionando, qué falta y dónde se hace. Cada estado se calcula con los datos reales de tu empresa." />
 
         {q.isLoading ? (
           <PanelLoading />

@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { localizeTemplateText } from "@shared/i18n/emailTemplatesDe";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -22,8 +24,8 @@ type Category = "all" | "reservas" | "presupuestos" | "anulaciones" | "tpv" | "t
 const CATEGORY_COLORS: Record<string, string> = {
   reservas: "bg-info/10 text-info", presupuestos: "bg-primary/10 text-primary",
   anulaciones: "bg-danger/10 text-danger", tpv: "bg-success/10 text-success",
-  ticketing: "bg-warning/10 text-warning", sistema: "bg-gray-100 text-gray-800",
-  general: "bg-slate-100 text-slate-800",
+  ticketing: "bg-warning/10 text-warning", sistema: "bg-muted text-foreground",
+  general: "bg-muted text-muted-foreground",
 };
 const RECIPIENT_COLORS: Record<string, string> = {
   cliente: "bg-success/10 text-success", admin: "bg-warning/10 text-warning",
@@ -73,7 +75,7 @@ export default function EmailTemplatesManager() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<string | null>(null);
 
-  const { data: templates, isLoading: loadingList } = trpc.emailTemplates.list.useQuery();
+  const { data: templates, isLoading: loadingList, error: listError, refetch: refetchList } = trpc.emailTemplates.list.useQuery();
   const { data: fullTemplate, isLoading: loadingFull } = trpc.emailTemplates.get.useQuery(
     { id: selectedId! }, { enabled: !!selectedId && mode === "edit" }
   );
@@ -154,31 +156,28 @@ export default function EmailTemplatesManager() {
   return (
     <AdminLayout>
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b bg-background px-6 py-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-            <Mail className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold">{t("emailTemplates.title")}</h1>
-            <p className="text-xs text-muted-foreground">{t("emailTemplates.subtitle", { count: templates?.length ?? 0 })}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder={t("emailTemplates.testEmailPlaceholder")} className="h-8 w-56 text-sm" />
-          <Button size="sm" variant="outline" onClick={() => sendAllMutation.mutate({ toEmail: testEmail })} disabled={sendAllMutation.isPending || !testEmail}>
-            {sendAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-            {t("emailTemplates.sendAll")}
-          </Button>
-          <Button size="sm" onClick={() => { setMode("create"); setSelectedId(null); setEditForm(null); }}>
-            <Plus className="h-4 w-4 mr-1" /> {t("emailTemplates.newTemplate")}
-          </Button>
-        </div>
+      <div className="shrink-0 border-b bg-background px-4 pt-4 sm:px-6">
+        <PanelPageHeader
+          className="mb-0 border-b-0 pb-4"
+          icon={<Mail />}
+          title={t("emailTemplates.title")}
+          description={t("emailTemplates.subtitle", { count: templates?.length ?? 0 })}
+          actions={<>
+            <Input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder={t("emailTemplates.testEmailPlaceholder")} className="h-8 w-full text-sm sm:w-56" />
+            <Button size="sm" variant="outline" onClick={() => sendAllMutation.mutate({ toEmail: testEmail })} disabled={sendAllMutation.isPending || !testEmail}>
+              {sendAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              {t("emailTemplates.sendAll")}
+            </Button>
+            <Button size="sm" onClick={() => { setMode("create"); setSelectedId(null); setEditForm(null); }}>
+              <Plus className="h-4 w-4 mr-1" /> {t("emailTemplates.newTemplate")}
+            </Button>
+          </>}
+        />
       </div>
-      <WorkplaceLocks place="comms" className="border-b bg-background px-6 py-3 shrink-0" />
+      <WorkplaceLocks place="comms" className="border-b bg-background px-4 py-3 shrink-0 sm:px-6" />
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex w-72 shrink-0 flex-col border-r bg-muted/20 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
+        <div className="flex max-h-72 w-full shrink-0 flex-col overflow-hidden border-b bg-muted/20 md:max-h-none md:w-72 md:border-b-0 md:border-r">
           <div className="flex flex-wrap gap-1 p-3 border-b shrink-0">
             {categories.map(cat => (
               <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
@@ -189,9 +188,11 @@ export default function EmailTemplatesManager() {
           </div>
           <div className="flex-1 overflow-y-auto">
             {loadingList ? (
-              <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              <PanelLoading />
+            ) : listError ? (
+              <PanelError className="m-3" error={listError} onRetry={() => void refetchList()} title={t("emailTemplates.loadError")} />
             ) : filtered.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">{t("emailTemplates.empty")}</p>
+              <PanelEmpty className="m-3" icon={<Mail />} title={t("emailTemplates.empty")} />
             ) : filtered.map(tpl => {
               const tplAny = tpl as Record<string, unknown>;
               return (
@@ -203,8 +204,8 @@ export default function EmailTemplatesManager() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{localizeTemplateText(tpl.description, locale)}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
-                    <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${RECIPIENT_COLORS[tpl.recipient] ?? "bg-gray-100 text-gray-700"}`}>{recipientLabels[tpl.recipient] ?? tpl.recipient}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-muted text-muted-foreground"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${RECIPIENT_COLORS[tpl.recipient] ?? "bg-muted text-muted-foreground"}`}>{recipientLabels[tpl.recipient] ?? tpl.recipient}</span>
                     {!(tplAny.isActive as boolean) && <span className="rounded-full bg-danger/10 px-1.5 py-0.5 text-xs font-medium text-danger">{t("emailTemplates.inactive")}</span>}
                   </div>
                 </button>
@@ -213,14 +214,15 @@ export default function EmailTemplatesManager() {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden md:min-h-0">
           {mode === "create" && (
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               <div className="flex items-center gap-3">
                 <Button variant="ghost" size="sm" onClick={() => setMode("view")}><ChevronLeft className="h-4 w-4 mr-1" /> {t("emailTemplates.create.back")}</Button>
                 <h2 className="text-base font-semibold">{t("emailTemplates.create.title")}</h2>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <h3 className="text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionIdentity")}</h3>
                 <div className="space-y-1">
                   <Label>{t("emailTemplates.create.uniqueId")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.idPlaceholder")} value={createForm.id} onChange={e => setCreateForm(f => ({ ...f, id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "_") }))} />
@@ -230,7 +232,7 @@ export default function EmailTemplatesManager() {
                   <Label>{t("emailTemplates.create.visibleName")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.namePlaceholder")} value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} />
                 </div>
-                <div className="space-y-1 col-span-2">
+                <div className="space-y-1 sm:col-span-2">
                   <Label>{t("emailTemplates.create.subject")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.subjectPlaceholder")} value={createForm.subject} onChange={e => setCreateForm(f => ({ ...f, subject: e.target.value }))} />
                 </div>
@@ -252,6 +254,7 @@ export default function EmailTemplatesManager() {
                     </SelectContent>
                   </Select>
                 </div>
+                <h3 className="border-t pt-4 text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionContent")}</h3>
                 <div className="space-y-1">
                   <Label>{t("emailTemplates.edit.headerTitle")}</Label>
                   <Input placeholder={t("emailTemplates.create.headerTitlePlaceholder")} value={createForm.headerTitle} onChange={e => setCreateForm(f => ({ ...f, headerTitle: e.target.value }))} />
@@ -260,11 +263,11 @@ export default function EmailTemplatesManager() {
                   <Label>{t("emailTemplates.edit.headerSubtitle")}</Label>
                   <Input placeholder={voc.licensed ? t("emailTemplates.create.headerSubtitleLicensed") : t("emailTemplates.create.headerSubtitleDefault")} value={createForm.headerSubtitle} onChange={e => setCreateForm(f => ({ ...f, headerSubtitle: e.target.value }))} />
                 </div>
-                <div className="space-y-1 col-span-2">
+                <div className="space-y-1 sm:col-span-2">
                   <Label>{t("emailTemplates.edit.description")}</Label>
                   <Input placeholder={t("emailTemplates.create.descriptionPlaceholder")} value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))} />
                 </div>
-                <div className="space-y-1 col-span-2">
+                <div className="space-y-1 sm:col-span-2">
                   <Label>{t("emailTemplates.create.bodyHtml")} <span className="text-danger">*</span></Label>
                   <Textarea className="font-mono text-xs min-h-[300px]" value={createForm.bodyHtml} onChange={e => setCreateForm(f => ({ ...f, bodyHtml: e.target.value }))} />
                 </div>
@@ -297,17 +300,19 @@ export default function EmailTemplatesManager() {
                 </div>
               </div>
               {loadingFull || !editForm ? (
-                <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                <PanelLoading />
               ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 col-span-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <h3 className="text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionIdentity")}</h3>
+                  <div className="space-y-1 sm:col-span-2">
                     <Label>{t("emailTemplates.edit.visibleName")}</Label>
                     <Input value={editForm.name} onChange={e => setEditForm(f => f ? { ...f, name: e.target.value } : f)} />
                   </div>
-                  <div className="space-y-1 col-span-2">
+                  <div className="space-y-1 sm:col-span-2">
                     <Label>{t("emailTemplates.edit.subject")}</Label>
                     <Input value={editForm.subject} onChange={e => setEditForm(f => f ? { ...f, subject: e.target.value } : f)} />
                   </div>
+                  <h3 className="border-t pt-4 text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionContent")}</h3>
                   <div className="space-y-1">
                     <Label>{t("emailTemplates.edit.headerTitle")}</Label>
                     <Input value={editForm.headerTitle} onChange={e => setEditForm(f => f ? { ...f, headerTitle: e.target.value } : f)} />
@@ -316,18 +321,18 @@ export default function EmailTemplatesManager() {
                     <Label>{t("emailTemplates.edit.headerSubtitle")}</Label>
                     <Input value={editForm.headerSubtitle} onChange={e => setEditForm(f => f ? { ...f, headerSubtitle: e.target.value } : f)} />
                   </div>
-                  <div className="space-y-1 col-span-2">
+                  <div className="space-y-1 sm:col-span-2">
                     <Label>{t("emailTemplates.edit.description")}</Label>
                     <Input value={editForm.description} onChange={e => setEditForm(f => f ? { ...f, description: e.target.value } : f)} />
                   </div>
-                  <div className="space-y-1 col-span-2">
+                  <div className="space-y-1 sm:col-span-2">
                     <div className="flex items-center justify-between mb-1">
                       <Label>{t("emailTemplates.edit.bodyHtml")}</Label>
                       <span className="text-xs text-muted-foreground">{t("emailTemplates.edit.fullEditor")}</span>
                     </div>
                     <Textarea className="font-mono text-xs min-h-[400px]" value={editForm.bodyHtml} onChange={e => setEditForm(f => f ? { ...f, bodyHtml: e.target.value } : f)} />
                   </div>
-                  <div className="flex items-center gap-2 col-span-2">
+                  <div className="flex items-center gap-2 sm:col-span-2">
                     <input type="checkbox" id="isActive" checked={editForm.isActive} onChange={e => setEditForm(f => f ? { ...f, isActive: e.target.checked } : f)} className="h-4 w-4" />
                     <Label htmlFor="isActive">{t("emailTemplates.edit.active")}</Label>
                   </div>
@@ -348,7 +353,7 @@ export default function EmailTemplatesManager() {
 
           {mode === "view" && selectedId && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex items-center justify-between border-b px-4 py-2 bg-background shrink-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 bg-background shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   {selectedTemplate && (
                     <>
@@ -359,7 +364,7 @@ export default function EmailTemplatesManager() {
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <div className="flex rounded-md border overflow-hidden">
                     <button onClick={() => setPreviewMode("desktop")} className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors ${previewMode === "desktop" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>
                       <Monitor className="h-3 w-3" /> {t("emailTemplates.view.desktop")}
@@ -397,7 +402,7 @@ export default function EmailTemplatesManager() {
                     <Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">{t("emailTemplates.view.loading")}</span>
                   </div>
                 ) : preview ? (
-                  <div className={`bg-white shadow-lg rounded-lg overflow-hidden transition-all ${previewMode === "mobile" ? "w-[390px]" : "w-full max-w-[680px]"}`}>
+                  <div className={`bg-white shadow-md rounded-lg overflow-hidden transition-all ${previewMode === "mobile" ? "w-full max-w-[390px]" : "w-full max-w-[680px]"}`}>
                     <iframe srcDoc={preview.html} title={t("emailTemplates.view.iframeTitle")} className="w-full border-0" style={{ minHeight: "600px" }}
                       onLoad={e => {
                         const iframe = e.target as HTMLIFrameElement;

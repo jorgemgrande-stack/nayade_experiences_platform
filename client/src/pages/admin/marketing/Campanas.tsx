@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { CAMPAIGN_STATUS_LABEL, type CampaignBlock, type CampaignStatus } from "@shared/connectCampaigns";
 
@@ -471,11 +472,7 @@ export default function Campanas() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect · Campaigns</p>
-          <h1 className="text-2xl font-bold text-foreground">Campañas de correo</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Redacta campañas con la marca de tu empresa y envíalas desde tu propia cuenta de Brevo solo a los clientes que han aceptado recibirlas. Las bajas se respetan siempre.</p>
-        </header>
+        <PanelPageHeader icon={<Mail />} title="Campañas de correo" description="Redacta campañas con la marca de tu empresa y envíalas desde tu propia cuenta de Brevo solo a los clientes que han aceptado recibirlas. Las bajas se respetan siempre." />
         <Campaigns />
       </div>
     </AdminLayout>

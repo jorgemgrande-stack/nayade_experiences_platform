@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -227,17 +228,16 @@ export default function SupportTicketsPage() {
           <TicketDetail id={selected} />
         ) : (
           <>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-0">
-                <h1 className="text-2xl font-bold text-foreground">{tr("help.support.title")}</h1>
-                <p className="text-sm text-muted-foreground">{tr("help.support.subtitle")}</p>
-              </div>
-              {available.data && !creating && (
+            <PanelPageHeader
+              icon={<LifeBuoy />}
+              title={tr("help.support.title")}
+              description={tr("help.support.subtitle")}
+              actions={available.data && !creating ? (
                 <Button type="button" onClick={() => setCreating(true)}>
                   <MessageSquarePlus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {tr("help.support.new")}
                 </Button>
-              )}
-            </div>
+              ) : undefined}
+            />
 
             {available.isSuccess && !available.data && (
               <section className="rounded-2xl border border-border bg-card p-5 flex gap-3">
@@ -254,7 +254,7 @@ export default function SupportTicketsPage() {
 
             {list.isLoading && <PanelLoading label={tr("help.support.loadingList")} />}
             {list.isError && <PanelError error={list.error} onRetry={() => list.refetch()} title={tr("help.support.loadListError")} />}
-            {list.isSuccess && tickets.length === 0 && !creating && <p className="text-sm text-muted-foreground">{tr("help.support.empty")}</p>}
+            {list.isSuccess && tickets.length === 0 && !creating && <PanelEmpty icon={<LifeBuoy />} title={tr("help.support.empty")} />}
 
             {tickets.length > 0 && (
               <ul className="divide-y divide-border rounded-2xl border border-border bg-card">

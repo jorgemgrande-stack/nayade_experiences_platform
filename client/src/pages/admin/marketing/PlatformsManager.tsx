@@ -7,6 +7,7 @@ import { confirmAction } from "@/components/admin/ConfirmHost";
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,9 +82,9 @@ const FREQ_OPTIONS = [
 ];
 
 const SETTLEMENT_STATUS_CONFIG = {
-  pendiente: { label: "Pendiente", color: "text-amber-400 bg-amber-500/15 border-amber-500/30", icon: Clock },
-  emitida:   { label: "Emitida",   color: "text-blue-400 bg-blue-500/15 border-blue-500/30",   icon: Zap },
-  pagada:    { label: "Pagada",    color: "text-emerald-400 bg-emerald-500/15 border-emerald-500/30", icon: CheckCircle },
+  pendiente: { label: "Pendiente", color: "text-warning bg-warning/15 border-warning/30", icon: Clock },
+  emitida:   { label: "Emitida",   color: "text-info bg-info/15 border-info/30",   icon: Zap },
+  pagada:    { label: "Pagada",    color: "text-success bg-success/15 border-success/30", icon: CheckCircle },
 };
 
 function formatDate(d: Date | string | null | undefined): string {
@@ -264,8 +265,8 @@ function PlatformCard({ platform, onEdit, onToggle, onDelete, onSelect, isSelect
     <div
       className={`rounded-xl border transition-all cursor-pointer ${
         isSelected
-          ? "border-violet-500/50 bg-violet-500/10"
-          : "border-white/5 bg-white/[0.03] hover:border-white/10 hover:bg-white/5"
+          ? "border-primary/50 bg-primary/10"
+          : "border-border/50 bg-muted/40 hover:border-border hover:bg-muted"
       }`}
       onClick={() => onSelect(platform)}
     >
@@ -273,15 +274,15 @@ function PlatformCard({ platform, onEdit, onToggle, onDelete, onSelect, isSelect
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             {platform.logoUrl ? (
-              <img src={platform.logoUrl} alt={platform.name} className="w-10 h-10 rounded-lg object-cover bg-white/10" />
+              <img src={platform.logoUrl} alt={platform.name} className="w-10 h-10 rounded-lg object-cover bg-muted" />
             ) : (
-              <div className="w-10 h-10 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-400 font-bold text-sm">
+              <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
                 {platform.name.charAt(0).toUpperCase()}
               </div>
             )}
             <div>
-              <p className="text-white font-semibold">{platform.name}</p>
-              <p className="text-white/40 text-xs">
+              <p className="text-foreground font-semibold">{platform.name}</p>
+              <p className="text-muted-foreground text-xs">
                 {FREQ_OPTIONS.find(f => f.value === platform.settlementFrequency)?.label ?? platform.settlementFrequency}
                 {platform.commissionPct ? ` · ${platform.commissionPct}% comisión` : ""}
               </p>
@@ -290,19 +291,19 @@ function PlatformCard({ platform, onEdit, onToggle, onDelete, onSelect, isSelect
           <div className="flex items-center gap-1">
             <button
               onClick={(e) => { e.stopPropagation(); onToggle(platform.id, !platform.active); }}
-              className={`p-1.5 rounded-lg transition-colors ${platform.active ? "text-emerald-400 hover:bg-emerald-500/20" : "text-white/30 hover:bg-white/10"}`}
+              className={`p-1.5 rounded-lg transition-colors ${platform.active ? "text-success hover:bg-success/20" : "text-muted-foreground hover:bg-muted"}`}
             >
               {platform.active ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(platform); }}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             >
               <Edit2 className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(platform.id); }}
-              className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/50 hover:text-red-400 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-danger/20 text-danger/50 hover:text-danger transition-colors"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -311,8 +312,8 @@ function PlatformCard({ platform, onEdit, onToggle, onDelete, onSelect, isSelect
         <div className="mt-3 flex items-center gap-2">
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
             platform.active
-              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-              : "bg-slate-500/15 text-slate-400 border-slate-500/30"
+              ? "bg-success/15 text-success border-success/30"
+              : "bg-muted text-muted-foreground border-border"
           }`}>
             {platform.active ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
             {platform.active ? "Activa" : "Inactiva"}
@@ -323,14 +324,14 @@ function PlatformCard({ platform, onEdit, onToggle, onDelete, onSelect, isSelect
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-blue-400 hover:text-blue-300 border border-blue-500/20 bg-blue-500/10"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-info hover:text-info border border-info/20 bg-info/10"
             >
               <Globe className="w-3 h-3" /> Web
             </a>
           )}
         </div>
         {isSelected && (
-          <div className="mt-2 flex items-center gap-1 text-violet-400 text-xs">
+          <div className="mt-2 flex items-center gap-1 text-primary text-xs">
             <ChevronRight className="w-3 h-3" /> Seleccionada — ver productos y liquidaciones
           </div>
         )}
@@ -524,55 +525,46 @@ export default function PlatformsManager() {
 
   return (
     <AdminLayout>
-      <div className="min-h-screen bg-[#080810] text-white">
+      <div className="min-h-screen bg-background text-foreground">
         <div className="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
 
           {/* ── HEADER ─────────────────────────────────────────────────────── */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => window.location.href = "/admin/marketing/cupones"}
-                className="p-2 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <Settings className="w-6 h-6 text-violet-400" />
-                  Plataformas de Cupones
-                </h1>
-                <p className="text-sm text-white/40 mt-1">Configura proveedores, productos y liquidaciones</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
+          <PanelPageHeader
+            className="mb-0"
+            icon={<Settings />}
+            title="Plataformas de Cupones"
+            description="Configura proveedores, productos y liquidaciones"
+            actions={<>
+              <Button variant="outline" size="sm" onClick={() => window.location.href = "/admin/marketing/cupones"}>
+                <ArrowLeft className="w-4 h-4 mr-1" /> Cupones
+              </Button>
               <Button variant="outline" size="sm"
-                className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
                 onClick={() => utils.ticketing.listPlatforms.invalidate()}>
                 <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
               </Button>
               <Button size="sm" onClick={openCreatePlatform}>
                 <Plus className="w-4 h-4 mr-1" /> Nueva plataforma
               </Button>
-            </div>
-          </div>
+            </>}
+          />
 
           {/* ── LAYOUT ───────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
             {/* Lista de plataformas */}
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
+              <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wider">
                 Plataformas ({platforms.length})
               </h2>
               {platformsQuery.isPending ? (
                 Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="rounded-xl border border-white/5 p-4 animate-pulse">
-                    <div className="h-4 bg-white/5 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-white/5 rounded w-1/2" />
+                  <div key={i} className="rounded-xl border border-border/50 p-4 animate-pulse">
+                    <div className="h-4 bg-muted/50 rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-muted/50 rounded w-1/2" />
                   </div>
                 ))
               ) : platforms.length === 0 ? (
-                <div className="rounded-xl border border-white/5 p-8 text-center text-white/30 text-sm">
+                <div className="rounded-xl border border-border/50 p-8 text-center text-muted-foreground text-sm">
                   No hay plataformas. Crea la primera.
                 </div>
               ) : platforms.map((p) => (
@@ -595,7 +587,7 @@ export default function PlatformsManager() {
             {/* Panel de detalle */}
             <div className="lg:col-span-2">
               {!selectedPlatform ? (
-                <div className="rounded-xl border border-white/5 p-12 text-center text-white/30">
+                <div className="rounded-xl border border-border/50 p-12 text-center text-muted-foreground">
                   <Settings className="w-12 h-12 mx-auto mb-3 opacity-20" />
                   <p>Selecciona una plataforma para ver sus productos y liquidaciones</p>
                 </div>
@@ -607,17 +599,17 @@ export default function PlatformsManager() {
                       {selectedPlatform.logoUrl ? (
                         <img src={selectedPlatform.logoUrl} alt={selectedPlatform.name} className="w-8 h-8 rounded-lg object-cover" />
                       ) : (
-                        <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-400 font-bold text-sm">
+                        <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
                           {selectedPlatform.name.charAt(0)}
                         </div>
                       )}
-                      <h2 className="text-lg font-semibold text-white">{selectedPlatform.name}</h2>
+                      <h2 className="text-lg font-semibold text-foreground">{selectedPlatform.name}</h2>
                     </div>
-                    <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+                    <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
                       {(["productos", "liquidaciones"] as const).map((s) => (
                         <button key={s} onClick={() => setActiveSection(s)}
                           className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                            activeSection === s ? "bg-violet-600 text-white" : "text-white/50 hover:text-white"
+                            activeSection === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary-foreground"
                           }`}>
                           {s === "productos"
                             ? <><Package className="w-3.5 h-3.5 inline mr-1" />Productos</>
@@ -631,37 +623,37 @@ export default function PlatformsManager() {
                   {activeSection === "productos" && (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-white/40">
-                          Productos de <span className="text-white">{selectedPlatform.name}</span>
+                        <p className="text-sm text-muted-foreground">
+                          Productos de <span className="text-foreground">{selectedPlatform.name}</span>
                           {" "}— {products.filter(p => p.active).length} activos
                         </p>
                         <Button size="sm" variant="outline" onClick={openCreateProduct}
-                          className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10 h-8">
+                          className="border-border bg-muted/50 text-foreground/70 hover:bg-muted h-8">
                           <Plus className="w-3.5 h-3.5 mr-1" /> Añadir producto
                         </Button>
                       </div>
-                      <div className="rounded-xl border border-white/5 overflow-x-auto">
+                      <div className="rounded-xl border border-border/50 overflow-x-auto">
                         {products.length === 0 ? (
-                          <div className="p-8 text-center text-white/30 text-sm">
+                          <div className="p-8 text-center text-muted-foreground text-sm">
                             <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
                             No hay productos configurados para esta plataforma.
                           </div>
                         ) : (
                           <table className="w-full min-w-[1100px] text-sm">
                             <thead>
-                              <tr className="border-b border-white/5 bg-white/[0.03]">
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Producto</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">PVP</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Precio neto</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Caduca</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Estado</th>
-                                <th className="text-center px-3 py-3 text-blue-400/60 font-medium text-xs" title="Cupones recibidos">Recibidos</th>
-                                <th className="text-center px-3 py-3 text-emerald-400/60 font-medium text-xs" title="Cupones canjeados">Canjeados</th>
-                                <th className="text-center px-3 py-3 text-amber-400/60 font-medium text-xs" title="Cupones aparcados / pendientes">Aparcados</th>
-                                <th className="text-center px-3 py-3 text-red-400/60 font-medium text-xs" title="Cupones con incidencia">Anulados</th>
-                                <th className="text-right px-3 py-3 text-violet-400/60 font-medium text-xs" title="PVP generado (suma de precios PVP de cupones no incidencia)">PVP gen.</th>
-                                <th className="text-right px-3 py-3 text-teal-400/60 font-medium text-xs" title="Precio neto obtenido (suma de neto de cupones canjeados)">Neto obt.</th>
-                                <th className="text-left px-3 py-3 text-white/40 font-medium text-xs" title="Clientes con cupón de este producto">Clientes</th>
+                              <tr className="border-b border-border/50 bg-muted/40">
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Producto</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">PVP</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Precio neto</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Caduca</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Estado</th>
+                                <th className="text-center px-3 py-3 text-info/60 font-medium text-xs" title="Cupones recibidos">Recibidos</th>
+                                <th className="text-center px-3 py-3 text-success/60 font-medium text-xs" title="Cupones canjeados">Canjeados</th>
+                                <th className="text-center px-3 py-3 text-warning/60 font-medium text-xs" title="Cupones aparcados / pendientes">Aparcados</th>
+                                <th className="text-center px-3 py-3 text-danger/60 font-medium text-xs" title="Cupones con incidencia">Anulados</th>
+                                <th className="text-right px-3 py-3 text-primary/60 font-medium text-xs" title="PVP generado (suma de precios PVP de cupones no incidencia)">PVP gen.</th>
+                                <th className="text-right px-3 py-3 text-success/60 font-medium text-xs" title="Precio neto obtenido (suma de neto de cupones canjeados)">Neto obt.</th>
+                                <th className="text-left px-3 py-3 text-muted-foreground font-medium text-xs" title="Clientes con cupón de este producto">Clientes</th>
                                 <th className="px-4 py-3" />
                               </tr>
                             </thead>
@@ -671,98 +663,98 @@ export default function PlatformsManager() {
                                 const expiring = isExpiringSoon(p.expiresAt);
                                 const st = (productStats as Record<number, { total: number; canjeados: number; pendientes: number; incidencias: number; anulados: number; pvpTotal: number; netoTotal: number; customerNames?: string[] }>)[p.id];
                                 return (
-                                  <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.03]">
+                                  <tr key={p.id} className="border-b border-border/50 hover:bg-muted/50">
                                     <td className="px-4 py-3">
-                                      <p className="text-white font-medium text-sm">
+                                      <p className="text-foreground font-medium text-sm">
                                         {p.externalProductName ?? p.experienceTitle ?? "—"}
                                       </p>
                                       {p.experienceTitle && p.externalProductName && (
-                                        <p className="text-white/40 text-xs">→ {p.experienceTitle}</p>
+                                        <p className="text-muted-foreground text-xs">→ {p.experienceTitle}</p>
                                       )}
                                       {p.externalLink && (
                                         <a href={p.externalLink} target="_blank" rel="noreferrer"
-                                          className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs mt-0.5">
+                                          className="inline-flex items-center gap-1 text-info hover:text-info text-xs mt-0.5">
                                           <ExternalLink className="w-3 h-3" /> Ver en plataforma
                                         </a>
                                       )}
                                     </td>
                                     <td className="px-4 py-3">
                                       {p.pvpPrice ? (
-                                        <span className="text-white font-semibold">{parseFloat(p.pvpPrice).toFixed(2)} €</span>
-                                      ) : <span className="text-white/30 text-xs">—</span>}
+                                        <span className="text-foreground font-semibold">{parseFloat(p.pvpPrice).toFixed(2)} €</span>
+                                      ) : <span className="text-muted-foreground text-xs">—</span>}
                                     </td>
                                     <td className="px-4 py-3">
                                       {p.netPrice ? (
-                                        <span className="text-emerald-400 font-semibold">{parseFloat(p.netPrice).toFixed(2)} €</span>
-                                      ) : <span className="text-white/30 text-xs">—</span>}
+                                        <span className="text-success font-semibold">{parseFloat(p.netPrice).toFixed(2)} €</span>
+                                      ) : <span className="text-muted-foreground text-xs">—</span>}
                                     </td>
                                     <td className="px-4 py-3">
                                       {p.expiresAt ? (
                                         <span className={`text-xs font-medium flex items-center gap-1 ${
-                                          expired ? "text-red-400" : expiring ? "text-amber-400" : "text-white/60"
+                                          expired ? "text-danger" : expiring ? "text-warning" : "text-foreground/60"
                                         }`}>
                                           {expired && <AlertCircle className="w-3 h-3" />}
                                           {expiring && !expired && <Clock className="w-3 h-3" />}
                                           {expired && !expiring && <CalendarDays className="w-3 h-3" />}
                                           {formatDate(p.expiresAt)}
                                         </span>
-                                      ) : <span className="text-white/30 text-xs">Sin caducidad</span>}
+                                      ) : <span className="text-muted-foreground text-xs">Sin caducidad</span>}
                                     </td>
                                     <td className="px-4 py-3">
                                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
                                         p.active
-                                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                                          : "bg-slate-500/15 text-slate-400 border-slate-500/30"
+                                          ? "bg-success/15 text-success border-success/30"
+                                          : "bg-muted text-muted-foreground border-border"
                                       }`}>
                                         {p.active ? "Activo" : "Inactivo"}
                                       </span>
                                     </td>
                                     {/* Columnas estadísticas */}
                                     <td className="px-3 py-3 text-center">
-                                      <span className="text-blue-400 font-semibold text-sm">{st?.total ?? 0}</span>
+                                      <span className="text-info font-semibold text-sm">{st?.total ?? 0}</span>
                                     </td>
                                     <td className="px-3 py-3 text-center">
-                                      <span className="text-emerald-400 font-semibold text-sm">{st?.canjeados ?? 0}</span>
+                                      <span className="text-success font-semibold text-sm">{st?.canjeados ?? 0}</span>
                                     </td>
                                     <td className="px-3 py-3 text-center">
-                                      <span className="text-amber-400 font-semibold text-sm">{st?.pendientes ?? 0}</span>
+                                      <span className="text-warning font-semibold text-sm">{st?.pendientes ?? 0}</span>
                                     </td>
                                     <td className="px-3 py-3 text-center">
-                                      <span className="text-red-400 font-semibold text-sm">{st?.incidencias ?? 0}</span>
+                                      <span className="text-danger font-semibold text-sm">{st?.incidencias ?? 0}</span>
                                     </td>
                                     <td className="px-3 py-3 text-right">
-                                      <span className="text-violet-400 font-semibold text-sm">{st ? st.pvpTotal.toFixed(2) + " €" : "—"}</span>
+                                      <span className="text-primary font-semibold text-sm">{st ? st.pvpTotal.toFixed(2) + " €" : "—"}</span>
                                     </td>
                                     <td className="px-3 py-3 text-right">
-                                      <span className="text-teal-400 font-semibold text-sm">{st ? st.netoTotal.toFixed(2) + " €" : "—"}</span>
+                                      <span className="text-success font-semibold text-sm">{st ? st.netoTotal.toFixed(2) + " €" : "—"}</span>
                                     </td>
                                     <td className="px-3 py-3">
                                       {st?.customerNames && st.customerNames.length > 0 ? (
                                         <div className="flex flex-wrap gap-1 max-w-[180px]">
                                           {st.customerNames.slice(0, 3).map((name, i) => (
-                                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/70 text-[10px] truncate max-w-[85px]" title={name}>
+                                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/50 border border-border text-foreground/70 text-[10px] truncate max-w-[85px]" title={name}>
                                               {name}
                                             </span>
                                           ))}
                                           {st.customerNames.length > 3 && (
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/40 text-[10px]">
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/50 border border-border text-muted-foreground text-[10px]">
                                               +{st.customerNames.length - 3}
                                             </span>
                                           )}
                                         </div>
                                       ) : (
-                                        <span className="text-white/20 text-xs">—</span>
+                                        <span className="text-foreground/20 text-xs">—</span>
                                       )}
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-end gap-1">
                                         <button onClick={() => openEditProduct(p)}
-                                          className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors">
+                                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                                           <Edit2 className="w-3.5 h-3.5" />
                                         </button>
                                         <button onClick={async () => {
                                           if ((await confirmAction({ description: "¿Eliminar este producto?", destructive: true }))) deleteProduct.mutate({ id: p.id });
-                                        }} className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/50 hover:text-red-400 transition-colors">
+                                        }} className="p-1.5 rounded-lg hover:bg-danger/20 text-danger/50 hover:text-danger transition-colors">
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       </div>
@@ -781,17 +773,17 @@ export default function PlatformsManager() {
                   {activeSection === "liquidaciones" && (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-white/40">Liquidaciones de <span className="text-white">{selectedPlatform.name}</span></p>
+                        <p className="text-sm text-muted-foreground">Liquidaciones de <span className="text-foreground">{selectedPlatform.name}</span></p>
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" onClick={() => {
                             setGenerateForm({ periodLabel: "", periodFrom: "", periodTo: "", notes: "" });
                             setGenerateModalOpen(true);
                           }}
-                            className="border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 h-8">
+                            className="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 h-8">
                             <Zap className="w-3.5 h-3.5 mr-1" /> Generar automática
                           </Button>
                           <Button size="sm" variant="outline" onClick={openCreateSettlement}
-                            className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10 h-8">
+                            className="border-border bg-muted/50 text-foreground/70 hover:bg-muted h-8">
                             <Plus className="w-3.5 h-3.5 mr-1" /> Manual
                           </Button>
                         </div>
@@ -800,40 +792,40 @@ export default function PlatformsManager() {
                       {/* Stats de liquidaciones */}
                       {settlements.length > 0 && (
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
-                            <p className="text-xs text-white/40">Total</p>
-                            <p className="text-xl font-bold text-white">{settlementStats.total}</p>
+                          <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
+                            <p className="text-xs text-muted-foreground">Total</p>
+                            <p className="text-xl font-bold text-foreground">{settlementStats.total}</p>
                           </div>
-                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                            <p className="text-xs text-amber-400/70">Pendientes</p>
-                            <p className="text-xl font-bold text-amber-400">{settlementStats.pendiente}</p>
+                          <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
+                            <p className="text-xs text-warning/70">Pendientes</p>
+                            <p className="text-xl font-bold text-warning">{settlementStats.pendiente}</p>
                           </div>
-                          <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
-                            <p className="text-xs text-blue-400/70">Emitidas</p>
-                            <p className="text-xl font-bold text-blue-400">{settlementStats.emitida}</p>
+                          <div className="rounded-lg border border-info/20 bg-info/5 p-3">
+                            <p className="text-xs text-info/70">Emitidas</p>
+                            <p className="text-xl font-bold text-info">{settlementStats.emitida}</p>
                           </div>
-                          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-                            <p className="text-xs text-emerald-400/70">Neto pendiente</p>
-                            <p className="text-xl font-bold text-emerald-400">{settlementStats.pendienteNet.toFixed(2)} €</p>
+                          <div className="rounded-lg border border-success/20 bg-success/5 p-3">
+                            <p className="text-xs text-success/70">Neto pendiente</p>
+                            <p className="text-xl font-bold text-success">{settlementStats.pendienteNet.toFixed(2)} €</p>
                           </div>
                         </div>
                       )}
 
-                      <div className="rounded-xl border border-white/5 overflow-hidden">
+                      <div className="rounded-xl border border-border/50 overflow-hidden">
                         {settlements.length === 0 ? (
-                          <div className="p-8 text-center text-white/30 text-sm">
+                          <div className="p-8 text-center text-muted-foreground text-sm">
                             <Banknote className="w-8 h-8 mx-auto mb-2 opacity-30" />
                             No hay liquidaciones registradas para esta plataforma.
                           </div>
                         ) : (
                           <table className="w-full text-sm">
                             <thead>
-                              <tr className="border-b border-white/5 bg-white/[0.03]">
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Periodo</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Cupones</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">PVP total</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Neto</th>
-                                <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Estado</th>
+                              <tr className="border-b border-border/50 bg-muted/40">
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Periodo</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Cupones</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">PVP total</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Neto</th>
+                                <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Estado</th>
                                 <th className="px-4 py-3" />
                               </tr>
                             </thead>
@@ -842,26 +834,26 @@ export default function PlatformsManager() {
                                 const cfg = SETTLEMENT_STATUS_CONFIG[s.status] ?? SETTLEMENT_STATUS_CONFIG.pendiente;
                                 const Icon = cfg.icon;
                                 return (
-                                  <tr key={s.id} className="border-b border-white/5 hover:bg-white/[0.03]">
+                                  <tr key={s.id} className="border-b border-border/50 hover:bg-muted/50">
                                     <td className="px-4 py-3">
-                                      <p className="text-white font-medium">{s.periodLabel}</p>
+                                      <p className="text-foreground font-medium">{s.periodLabel}</p>
                                       {(s.periodFrom || s.periodTo) && (
-                                        <p className="text-white/40 text-xs">{formatDate(s.periodFrom)} — {formatDate(s.periodTo)}</p>
+                                        <p className="text-muted-foreground text-xs">{formatDate(s.periodFrom)} — {formatDate(s.periodTo)}</p>
                                       )}
                                       {s.invoiceRef && (
-                                        <p className="text-violet-400 text-xs">Ref: {s.invoiceRef}</p>
+                                        <p className="text-primary text-xs">Ref: {s.invoiceRef}</p>
                                       )}
                                     </td>
                                     <td className="px-4 py-3">
                                       <button
                                         onClick={() => setDetailSettlement(s)}
-                                        className="text-white hover:text-violet-300 font-medium underline decoration-dotted underline-offset-2"
+                                        className="text-foreground hover:text-primary font-medium underline decoration-dotted underline-offset-2"
                                       >
                                         {s.totalCoupons}
                                       </button>
                                     </td>
-                                    <td className="px-4 py-3 text-white font-medium">{parseFloat(s.totalAmount).toFixed(2)} €</td>
-                                    <td className="px-4 py-3 text-emerald-400 font-semibold">{parseFloat(s.netTotal ?? "0").toFixed(2)} €</td>
+                                    <td className="px-4 py-3 text-foreground font-medium">{parseFloat(s.totalAmount).toFixed(2)} €</td>
+                                    <td className="px-4 py-3 text-success font-semibold">{parseFloat(s.netTotal ?? "0").toFixed(2)} €</td>
                                     <td className="px-4 py-3">
                                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
                                         <Icon className="w-3 h-3" /> {cfg.label}
@@ -877,8 +869,8 @@ export default function PlatformsManager() {
                                             title={s.status === "pendiente" ? "Marcar como Emitida" : "Marcar como Pagada"}
                                             className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
                                               s.status === "pendiente"
-                                                ? "bg-blue-500/20 hover:bg-blue-500/35 text-blue-300 border border-blue-500/30"
-                                                : "bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-500/30"
+                                                ? "bg-info/20 hover:bg-info/35 text-info border border-info/30"
+                                                : "bg-success/20 hover:bg-success/35 text-success border border-success/30"
                                             }`}
                                           >
                                             {s.status === "pendiente" ? "→ Emitida" : "→ Pagada"}
@@ -887,16 +879,16 @@ export default function PlatformsManager() {
                                         <button
                                           onClick={() => setDetailSettlement(s)}
                                           title="Ver detalle de operaciones"
-                                          className="p-1.5 rounded-lg hover:bg-violet-500/20 text-violet-400/50 hover:text-violet-400 transition-colors">
+                                          className="p-1.5 rounded-lg hover:bg-primary/20 text-primary/50 hover:text-primary transition-colors">
                                           <Eye className="w-3.5 h-3.5" />
                                         </button>
                                         <button onClick={() => openEditSettlement(s)}
-                                          className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors">
+                                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                                           <Edit2 className="w-3.5 h-3.5" />
                                         </button>
                                         <button onClick={async () => {
                                           if ((await confirmAction({ description: "¿Eliminar esta liquidación?", destructive: true }))) deleteSettlement.mutate({ id: s.id });
-                                        }} className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/50 hover:text-red-400 transition-colors">
+                                        }} className="p-1.5 rounded-lg hover:bg-danger/20 text-danger/50 hover:text-danger transition-colors">
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       </div>
@@ -919,68 +911,68 @@ export default function PlatformsManager() {
 
       {/* ── MODAL: PLATAFORMA ─────────────────────────────────────────────── */}
       <Dialog open={platformFormOpen} onOpenChange={setPlatformFormOpen}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-violet-400" />
+              <Settings className="w-5 h-5 text-primary" />
               {editingPlatform ? "Editar plataforma" : "Nueva plataforma"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-white/70 text-xs">Nombre *</Label>
+              <Label className="text-foreground/70 text-xs">Nombre *</Label>
               <Input
                 value={platformForm.name}
                 onChange={(e) => setPlatformForm(f => ({ ...f, name: e.target.value, slug: editingPlatform ? f.slug : slugify(e.target.value) }))}
                 placeholder="Ej: Groupon"
-                className="bg-white/5 border-white/10 text-white mt-1"
+                className="bg-muted/50 border-border text-foreground mt-1"
               />
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Slug (identificador único) *</Label>
+              <Label className="text-foreground/70 text-xs">Slug (identificador único) *</Label>
               <Input
                 value={platformForm.slug}
                 onChange={(e) => setPlatformForm(f => ({ ...f, slug: slugify(e.target.value) }))}
                 placeholder="groupon"
-                className="bg-white/5 border-white/10 text-white mt-1 font-mono text-sm"
+                className="bg-muted/50 border-border text-foreground mt-1 font-mono text-sm"
               />
             </div>
             <div>
-              <Label className="text-white/70 text-xs">URL del logo</Label>
-              <Input value={platformForm.logoUrl} onChange={(e) => setPlatformForm(f => ({ ...f, logoUrl: e.target.value }))} placeholder="https://..." className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">URL del logo</Label>
+              <Input value={platformForm.logoUrl} onChange={(e) => setPlatformForm(f => ({ ...f, logoUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-white/70 text-xs">URL del proveedor</Label>
-              <Input value={platformForm.externalUrl} onChange={(e) => setPlatformForm(f => ({ ...f, externalUrl: e.target.value }))} placeholder="https://..." className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">URL del proveedor</Label>
+              <Input value={platformForm.externalUrl} onChange={(e) => setPlatformForm(f => ({ ...f, externalUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white/70 text-xs">Frecuencia liquidación</Label>
+                <Label className="text-foreground/70 text-xs">Frecuencia liquidación</Label>
                 <Select value={platformForm.settlementFrequency} onValueChange={(v) => setPlatformForm(f => ({ ...f, settlementFrequency: v as "quincenal" | "mensual" | "trimestral" }))}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-card border-border">
                     {FREQ_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-white/70 text-xs">Comisión (%)</Label>
-                <Input type="number" min={0} max={100} step={0.01} value={platformForm.commissionPct} onChange={(e) => setPlatformForm(f => ({ ...f, commissionPct: e.target.value }))} placeholder="20.00" className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label className="text-foreground/70 text-xs">Comisión (%)</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={platformForm.commissionPct} onChange={(e) => setPlatformForm(f => ({ ...f, commissionPct: e.target.value }))} placeholder="20.00" className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Notas</Label>
-              <Textarea value={platformForm.notes} onChange={(e) => setPlatformForm(f => ({ ...f, notes: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={2} />
+              <Label className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea value={platformForm.notes} onChange={(e) => setPlatformForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setPlatformForm(f => ({ ...f, active: !f.active }))}>
-                {platformForm.active ? <ToggleRight className="w-6 h-6 text-emerald-400" /> : <ToggleLeft className="w-6 h-6 text-white/30" />}
+                {platformForm.active ? <ToggleRight className="w-6 h-6 text-success" /> : <ToggleLeft className="w-6 h-6 text-muted-foreground" />}
               </button>
-              <span className="text-sm text-white/60">{platformForm.active ? "Activa" : "Inactiva"}</span>
+              <span className="text-sm text-foreground/60">{platformForm.active ? "Activa" : "Inactiva"}</span>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPlatformFormOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
+            <Button variant="outline" onClick={() => setPlatformFormOpen(false)} className="border-border text-foreground/70">Cancelar</Button>
             <Button 
               disabled={!platformForm.name || !platformForm.slug || createPlatform.isPending || updatePlatform.isPending}
               onClick={() => {
@@ -996,48 +988,48 @@ export default function PlatformsManager() {
 
       {/* ── MODAL: PRODUCTO ───────────────────────────────────────────────── */}
       <Dialog open={productFormOpen} onOpenChange={setProductFormOpen}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg">
+        <DialogContent className="bg-background border-border text-foreground max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5 text-violet-400" />
+              <Package className="w-5 h-5 text-primary" />
               {editingProduct ? "Editar producto" : "Añadir producto"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-white/70 text-xs">Nombre del producto en la plataforma *</Label>
-              <Input value={productForm.externalProductName} onChange={(e) => setProductForm(f => ({ ...f, externalProductName: e.target.value }))} placeholder="Ej: Forfait día completo adulto" className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">Nombre del producto en la plataforma *</Label>
+              <Input value={productForm.externalProductName} onChange={(e) => setProductForm(f => ({ ...f, externalProductName: e.target.value }))} placeholder="Ej: Forfait día completo adulto" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-white/70 text-xs">URL del producto en la plataforma</Label>
-              <Input value={productForm.externalLink} onChange={(e) => setProductForm(f => ({ ...f, externalLink: e.target.value }))} placeholder="https://www.groupon.es/deals/..." className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">URL del producto en la plataforma</Label>
+              <Input value={productForm.externalLink} onChange={(e) => setProductForm(f => ({ ...f, externalLink: e.target.value }))} placeholder="https://www.groupon.es/deals/..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white/70 text-xs flex items-center gap-1"><Euro className="w-3 h-3" /> Precio PVP (€)</Label>
-                <Input type="number" min={0} step={0.01} value={productForm.pvpPrice} onChange={(e) => setProductForm(f => ({ ...f, pvpPrice: e.target.value }))} placeholder="45.00" className="bg-white/5 border-white/10 text-white mt-1" />
-                <p className="text-white/30 text-xs mt-1">Precio de venta al público</p>
+                <Label className="text-foreground/70 text-xs flex items-center gap-1"><Euro className="w-3 h-3" /> Precio PVP (€)</Label>
+                <Input type="number" min={0} step={0.01} value={productForm.pvpPrice} onChange={(e) => setProductForm(f => ({ ...f, pvpPrice: e.target.value }))} placeholder="45.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <p className="text-muted-foreground text-xs mt-1">Precio de venta al público</p>
               </div>
               <div>
-                <Label className="text-white/70 text-xs flex items-center gap-1 text-emerald-400/80"><Euro className="w-3 h-3" /> Precio neto (€)</Label>
-                <Input type="number" min={0} step={0.01} value={productForm.netPrice} onChange={(e) => setProductForm(f => ({ ...f, netPrice: e.target.value }))} placeholder="36.00" className="bg-white/5 border-white/10 text-white mt-1" />
-                <p className="text-white/30 text-xs mt-1">Lo que nos paga el proveedor</p>
+                <Label className="text-foreground/70 text-xs flex items-center gap-1 text-success/80"><Euro className="w-3 h-3" /> Precio neto (€)</Label>
+                <Input type="number" min={0} step={0.01} value={productForm.netPrice} onChange={(e) => setProductForm(f => ({ ...f, netPrice: e.target.value }))} placeholder="36.00" className="bg-muted/50 border-border text-foreground mt-1" />
+                <p className="text-muted-foreground text-xs mt-1">Lo que nos paga el proveedor</p>
               </div>
             </div>
             <div>
-              <Label className="text-white/70 text-xs flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Fecha de caducidad del producto</Label>
-              <Input type="date" value={productForm.expiresAt} onChange={(e) => setProductForm(f => ({ ...f, expiresAt: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
-              <p className="text-white/30 text-xs mt-1">Dejar vacío si no tiene caducidad</p>
+              <Label className="text-foreground/70 text-xs flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Fecha de caducidad del producto</Label>
+              <Input type="date" value={productForm.expiresAt} onChange={(e) => setProductForm(f => ({ ...f, expiresAt: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              <p className="text-muted-foreground text-xs mt-1">Dejar vacío si no tiene caducidad</p>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setProductForm(f => ({ ...f, active: !f.active }))}>
-                {productForm.active ? <ToggleRight className="w-6 h-6 text-emerald-400" /> : <ToggleLeft className="w-6 h-6 text-white/30" />}
+                {productForm.active ? <ToggleRight className="w-6 h-6 text-success" /> : <ToggleLeft className="w-6 h-6 text-muted-foreground" />}
               </button>
-              <span className="text-sm text-white/60">{productForm.active ? "Activo — aparece en el selector de conversión" : "Inactivo — no aparece en el selector"}</span>
+              <span className="text-sm text-foreground/60">{productForm.active ? "Activo — aparece en el selector de conversión" : "Inactivo — no aparece en el selector"}</span>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setProductFormOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
+            <Button variant="outline" onClick={() => setProductFormOpen(false)} className="border-border text-foreground/70">Cancelar</Button>
             <Button 
               disabled={!productForm.externalProductName || createProduct.isPending || updateProduct.isPending}
               onClick={() => {
@@ -1062,47 +1054,47 @@ export default function PlatformsManager() {
 
       {/* ── MODAL: LIQUIDACIÓN MANUAL ─────────────────────────────────────── */}
       <Dialog open={settlementFormOpen} onOpenChange={setSettlementFormOpen}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Banknote className="w-5 h-5 text-violet-400" />
+              <Banknote className="w-5 h-5 text-primary" />
               {editingSettlement ? "Editar liquidación" : "Nueva liquidación manual"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label className="text-white/70 text-xs">Etiqueta del periodo *</Label>
-              <Input value={settlementForm.periodLabel} onChange={(e) => setSettlementForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
+              <Input value={settlementForm.periodLabel} onChange={(e) => setSettlementForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white/70 text-xs">Desde</Label>
-                <Input type="date" value={settlementForm.periodFrom} onChange={(e) => setSettlementForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label className="text-foreground/70 text-xs">Desde</Label>
+                <Input type="date" value={settlementForm.periodFrom} onChange={(e) => setSettlementForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-white/70 text-xs">Hasta</Label>
-                <Input type="date" value={settlementForm.periodTo} onChange={(e) => setSettlementForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label className="text-foreground/70 text-xs">Hasta</Label>
+                <Input type="date" value={settlementForm.periodTo} onChange={(e) => setSettlementForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white/70 text-xs">Nº cupones</Label>
-                <Input type="number" min={0} value={settlementForm.totalCoupons} onChange={(e) => setSettlementForm(f => ({ ...f, totalCoupons: parseInt(e.target.value) || 0 }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label className="text-foreground/70 text-xs">Nº cupones</Label>
+                <Input type="number" min={0} value={settlementForm.totalCoupons} onChange={(e) => setSettlementForm(f => ({ ...f, totalCoupons: parseInt(e.target.value) || 0 }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-white/70 text-xs">Importe PVP (€)</Label>
-                <Input type="number" min={0} step={0.01} value={settlementForm.totalAmount} onChange={(e) => setSettlementForm(f => ({ ...f, totalAmount: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label className="text-foreground/70 text-xs">Importe PVP (€)</Label>
+                <Input type="number" min={0} step={0.01} value={settlementForm.totalAmount} onChange={(e) => setSettlementForm(f => ({ ...f, totalAmount: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-white/70 text-xs text-emerald-400/80">Importe neto a cobrar (€)</Label>
-              <Input type="number" min={0} step={0.01} value={settlementForm.netTotal} onChange={(e) => setSettlementForm(f => ({ ...f, netTotal: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs text-success/80">Importe neto a cobrar (€)</Label>
+              <Input type="number" min={0} step={0.01} value={settlementForm.netTotal} onChange={(e) => setSettlementForm(f => ({ ...f, netTotal: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Estado</Label>
+              <Label className="text-foreground/70 text-xs">Estado</Label>
               <Select value={settlementForm.status} onValueChange={(v) => setSettlementForm(f => ({ ...f, status: v as "pendiente" | "emitida" | "pagada" }))}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-[#1a1a2e] border-white/10">
+                <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-card border-border">
                   <SelectItem value="pendiente">Pendiente de cobro</SelectItem>
                   <SelectItem value="emitida">Emitida (factura enviada)</SelectItem>
                   <SelectItem value="pagada">Pagada</SelectItem>
@@ -1110,20 +1102,20 @@ export default function PlatformsManager() {
               </Select>
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Referencia factura</Label>
-              <Input value={settlementForm.invoiceRef} onChange={(e) => setSettlementForm(f => ({ ...f, invoiceRef: e.target.value }))} placeholder="FAC-2026-001" className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">Referencia factura</Label>
+              <Input value={settlementForm.invoiceRef} onChange={(e) => setSettlementForm(f => ({ ...f, invoiceRef: e.target.value }))} placeholder="FAC-2026-001" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-white/70 text-xs">URL justificante</Label>
-              <Input value={settlementForm.justificantUrl} onChange={(e) => setSettlementForm(f => ({ ...f, justificantUrl: e.target.value }))} placeholder="https://..." className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">URL justificante</Label>
+              <Input value={settlementForm.justificantUrl} onChange={(e) => setSettlementForm(f => ({ ...f, justificantUrl: e.target.value }))} placeholder="https://..." className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Notas</Label>
-              <Textarea value={settlementForm.notes} onChange={(e) => setSettlementForm(f => ({ ...f, notes: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={2} />
+              <Label className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea value={settlementForm.notes} onChange={(e) => setSettlementForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSettlementFormOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
+            <Button variant="outline" onClick={() => setSettlementFormOpen(false)} className="border-border text-foreground/70">Cancelar</Button>
             <Button 
               disabled={!settlementForm.periodLabel || createSettlement.isPending || updateSettlement.isPending}
               onClick={() => {
@@ -1142,38 +1134,38 @@ export default function PlatformsManager() {
 
       {/* ── MODAL: GENERAR LIQUIDACIÓN AUTOMÁTICA ─────────────────────────── */}
       <Dialog open={generateModalOpen} onOpenChange={setGenerateModalOpen}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-violet-400" />
+              <Zap className="w-5 h-5 text-primary" />
               Generar liquidación automática
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 text-sm text-violet-300">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
               Agrupa automáticamente todos los cupones <strong>canjeados</strong> de <strong>{selectedPlatform?.name}</strong> en el periodo seleccionado que aún no tengan liquidación asignada.
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Etiqueta del periodo *</Label>
-              <Input value={generateForm.periodLabel} onChange={(e) => setGenerateForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label className="text-foreground/70 text-xs">Etiqueta del periodo *</Label>
+              <Input value={generateForm.periodLabel} onChange={(e) => setGenerateForm(f => ({ ...f, periodLabel: e.target.value }))} placeholder="Ej: Enero 2026" className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white/70 text-xs">Desde *</Label>
-                <Input type="date" value={generateForm.periodFrom} onChange={(e) => setGenerateForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label className="text-foreground/70 text-xs">Desde *</Label>
+                <Input type="date" value={generateForm.periodFrom} onChange={(e) => setGenerateForm(f => ({ ...f, periodFrom: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-white/70 text-xs">Hasta *</Label>
-                <Input type="date" value={generateForm.periodTo} onChange={(e) => setGenerateForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label className="text-foreground/70 text-xs">Hasta *</Label>
+                <Input type="date" value={generateForm.periodTo} onChange={(e) => setGenerateForm(f => ({ ...f, periodTo: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Notas</Label>
-              <Textarea value={generateForm.notes} onChange={(e) => setGenerateForm(f => ({ ...f, notes: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={2} />
+              <Label className="text-foreground/70 text-xs">Notas</Label>
+              <Textarea value={generateForm.notes} onChange={(e) => setGenerateForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGenerateModalOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
+            <Button variant="outline" onClick={() => setGenerateModalOpen(false)} className="border-border text-foreground/70">Cancelar</Button>
             <Button 
               disabled={!generateForm.periodLabel || !generateForm.periodFrom || !generateForm.periodTo || generateSettlement.isPending}
               onClick={() => {
@@ -1188,10 +1180,10 @@ export default function PlatformsManager() {
 
       {/* ── MODAL: DETALLE OPERACIONES DE LIQUIDACIÓN ─────────────────────── */}
       <Dialog open={!!detailSettlement} onOpenChange={(o) => { if (!o) setDetailSettlement(null); }}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-3xl">
+        <DialogContent className="bg-background border-border text-foreground max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Banknote className="w-5 h-5 text-violet-400" />
+              <Banknote className="w-5 h-5 text-primary" />
               Detalle de operaciones — {detailSettlement?.periodLabel}
             </DialogTitle>
           </DialogHeader>
@@ -1199,20 +1191,20 @@ export default function PlatformsManager() {
             {/* Summary cards */}
             {detailSettlement && (
               <div className="grid grid-cols-4 gap-3">
-                <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
-                  <p className="text-xs text-white/40">Cupones</p>
-                  <p className="text-2xl font-bold text-white">{detailSettlement.totalCoupons}</p>
+                <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Cupones</p>
+                  <p className="text-2xl font-bold text-foreground">{detailSettlement.totalCoupons}</p>
                 </div>
-                <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
-                  <p className="text-xs text-white/40">PVP Total</p>
-                  <p className="text-2xl font-bold text-white">{parseFloat(detailSettlement.totalAmount).toFixed(2)} €</p>
+                <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">PVP Total</p>
+                  <p className="text-2xl font-bold text-foreground">{parseFloat(detailSettlement.totalAmount).toFixed(2)} €</p>
                 </div>
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-                  <p className="text-xs text-emerald-400/70">Neto Total</p>
-                  <p className="text-2xl font-bold text-emerald-400">{parseFloat(detailSettlement.netTotal ?? "0").toFixed(2)} €</p>
+                <div className="rounded-lg border border-success/20 bg-success/5 p-3">
+                  <p className="text-xs text-success/70">Neto Total</p>
+                  <p className="text-2xl font-bold text-success">{parseFloat(detailSettlement.netTotal ?? "0").toFixed(2)} €</p>
                 </div>
-                <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
-                  <p className="text-xs text-white/40 mb-1.5">Estado</p>
+                <div className="rounded-lg border border-border/50 bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-1.5">Estado</p>
                   {(() => {
                     const cfg = SETTLEMENT_STATUS_CONFIG[detailSettlement.status] ?? SETTLEMENT_STATUS_CONFIG.pendiente;
                     const Icon = cfg.icon;
@@ -1223,7 +1215,7 @@ export default function PlatformsManager() {
                     );
                   })()}
                   {detailSettlement.invoiceRef && (
-                    <p className="text-violet-400 text-xs mt-1">Ref: {detailSettlement.invoiceRef}</p>
+                    <p className="text-primary text-xs mt-1">Ref: {detailSettlement.invoiceRef}</p>
                   )}
                 </div>
               </div>
@@ -1231,43 +1223,43 @@ export default function PlatformsManager() {
 
             {/* Coupon table */}
             {settlementCouponsQuery.isPending ? (
-              <div className="text-center text-white/40 py-8">Cargando operaciones...</div>
+              <div className="text-center text-muted-foreground py-8">Cargando operaciones...</div>
             ) : (settlementCouponsQuery.data?.length ?? 0) === 0 ? (
-              <div className="text-center text-white/30 py-8 text-sm">No hay cupones vinculados a esta liquidación.</div>
+              <div className="text-center text-muted-foreground py-8 text-sm">No hay cupones vinculados a esta liquidación.</div>
             ) : (
-              <div className="rounded-xl border border-white/5 overflow-hidden">
+              <div className="rounded-xl border border-border/50 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-white/5 bg-white/[0.03]">
-                      <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Código</th>
-                      <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Cliente</th>
-                      <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Producto</th>
-                      <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Fecha canje</th>
-                      <th className="text-right px-4 py-3 text-white/40 font-medium text-xs">PVP</th>
-                      <th className="text-right px-4 py-3 text-white/40 font-medium text-xs">Neto</th>
+                    <tr className="border-b border-border/50 bg-muted/40">
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Código</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Cliente</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Producto</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">Fecha canje</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium text-xs">PVP</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium text-xs">Neto</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(settlementCouponsQuery.data ?? []).map((c: SettlementCouponRow) => (
-                      <tr key={c.id} className="border-b border-white/5 hover:bg-white/[0.03]">
-                        <td className="px-4 py-3 font-mono text-violet-300 text-xs">{c.couponCode ?? "—"}</td>
-                        <td className="px-4 py-3 text-white text-sm">{c.customerName}</td>
-                        <td className="px-4 py-3 text-white/60 text-xs">{c.productName ?? "—"}</td>
-                        <td className="px-4 py-3 text-white/50 text-xs">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES") : "—"}</td>
-                        <td className="px-4 py-3 text-white text-sm text-right">{c.pvpPrice ? `${parseFloat(c.pvpPrice).toFixed(2)} €` : "—"}</td>
-                        <td className="px-4 py-3 text-emerald-400 font-semibold text-sm text-right">{c.netPrice ? `${parseFloat(c.netPrice).toFixed(2)} €` : "—"}</td>
+                      <tr key={c.id} className="border-b border-border/50 hover:bg-muted/50">
+                        <td className="px-4 py-3 font-mono text-primary text-xs">{c.couponCode ?? "—"}</td>
+                        <td className="px-4 py-3 text-foreground text-sm">{c.customerName}</td>
+                        <td className="px-4 py-3 text-foreground/60 text-xs">{c.productName ?? "—"}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES") : "—"}</td>
+                        <td className="px-4 py-3 text-foreground text-sm text-right">{c.pvpPrice ? `${parseFloat(c.pvpPrice).toFixed(2)} €` : "—"}</td>
+                        <td className="px-4 py-3 text-success font-semibold text-sm text-right">{c.netPrice ? `${parseFloat(c.netPrice).toFixed(2)} €` : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-white/[0.03] border-t border-white/10">
-                      <td colSpan={4} className="px-4 py-2 text-white/40 text-xs font-medium">
+                    <tr className="bg-muted/40 border-t border-border">
+                      <td colSpan={4} className="px-4 py-2 text-muted-foreground text-xs font-medium">
                         TOTAL — {settlementCouponsQuery.data?.length ?? 0} operaciones
                       </td>
-                      <td className="px-4 py-2 text-white font-semibold text-sm text-right">
+                      <td className="px-4 py-2 text-foreground font-semibold text-sm text-right">
                         {(settlementCouponsQuery.data as SettlementCouponRow[] ?? []).reduce((s, c) => s + (c.pvpPrice ? parseFloat(c.pvpPrice) : 0), 0).toFixed(2)} €
                       </td>
-                      <td className="px-4 py-2 text-emerald-400 font-bold text-sm text-right">
+                      <td className="px-4 py-2 text-success font-bold text-sm text-right">
                         {(settlementCouponsQuery.data as SettlementCouponRow[] ?? []).reduce((s, c) => s + (c.netPrice ? parseFloat(c.netPrice) : 0), 0).toFixed(2)} €
                       </td>
                     </tr>
@@ -1277,7 +1269,7 @@ export default function PlatformsManager() {
             )}
           </div>
           <DialogFooter className="gap-2 flex-wrap">
-            <Button variant="outline" onClick={() => setDetailSettlement(null)} className="border-white/10 text-white/70 mr-auto">
+            <Button variant="outline" onClick={() => setDetailSettlement(null)} className="border-border text-foreground/70 mr-auto">
               Cerrar
             </Button>
             {(settlementCouponsQuery.data?.length ?? 0) > 0 && detailSettlement && (
@@ -1289,7 +1281,7 @@ export default function PlatformsManager() {
                     selectedPlatform?.name ?? detailSettlement.platformName ?? "Plataforma",
                     settlementCouponsQuery.data as SettlementCouponRow[]
                   )}
-                  className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                  className="border-success/30 bg-success/10 text-success hover:bg-success/20"
                 >
                   <Download className="w-4 h-4 mr-1.5" /> Descargar Excel (.xls)
                 </Button>
@@ -1300,7 +1292,7 @@ export default function PlatformsManager() {
                     selectedPlatform?.name ?? detailSettlement.platformName ?? "Plataforma",
                     settlementCouponsQuery.data as SettlementCouponRow[]
                   )}
-                  className="border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                  className="border-danger/30 bg-danger/10 text-danger hover:bg-danger/20"
                 >
                   <FileText className="w-4 h-4 mr-1.5" /> Descargar PDF
                 </Button>

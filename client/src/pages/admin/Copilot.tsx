@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { errorMessage, toastError } from "@/lib/errorMessage";
 import {
   COPILOT_DRAFT_LABELS,
@@ -378,11 +379,7 @@ export default function Copilot() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">Copilot</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Pregunta por los datos de tu empresa en lenguaje natural y redacta respuestas, descripciones y resúmenes. Copilot solo consulta (no modifica nada) y solo ve lo que tu usuario puede ver en el panel.</p>
-        </header>
+        <PanelPageHeader icon={<Sparkles />} title="Copilot" description="Pregunta por los datos de tu empresa en lenguaje natural y redacta respuestas, descripciones y resúmenes. Copilot solo consulta (no modifica nada) y solo ve lo que tu usuario puede ver en el panel." />
         {status.isLoading && <PanelLoading />}
         {status.isError && <PanelError error={status.error} onRetry={() => status.refetch()} />}
         {status.data && (
