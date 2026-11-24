@@ -687,7 +687,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               </button>
             ))}
           </div>
-          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 xl:flex" role="group" aria-label={tx("Zoom del lienzo")}>
+          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 2xl:flex" role="group" aria-label={tx("Zoom del lienzo")}>
             <button type="button" onClick={() => stepZoom(-1)} disabled={scale <= ZOOM_STEPS[0] + 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label={tx("Alejar")} title={tx("Alejar")}>
               <ZoomOut className="h-4 w-4" />
             </button>
@@ -717,7 +717,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </Button>
         </div>
 
-        <div className="hidden items-center rounded-lg bg-muted p-0.5 xl:flex" role="radiogroup" aria-label={tx("Modo de edición")}>
+        <div className="hidden items-center rounded-lg bg-muted p-0.5 2xl:flex" role="radiogroup" aria-label={tx("Modo de edición")}>
           {[
             { v: false, label: tx("Sencillo") },
             { v: true, label: tx("Profesional") },
@@ -757,7 +757,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
               <DropdownMenuItem onSelect={() => window.open(page.isHome ? "/" : `/${page.slug}`, "_blank", "noopener")}>
                 <ExternalLink className="mr-2 h-4 w-4" />{" "}{tx("Ver la página publicada")}</DropdownMenuItem>
             )}
-            <DropdownMenuItem className="xl:hidden" onSelect={() => setPro(!pro)}>
+            <DropdownMenuItem className="2xl:hidden" onSelect={() => setPro(!pro)}>
               {pro ? tx("Pasar al modo sencillo") : tx("Pasar al modo profesional")}
             </DropdownMenuItem>
             <DropdownMenuItem

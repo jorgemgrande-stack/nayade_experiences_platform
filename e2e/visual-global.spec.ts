@@ -144,6 +144,39 @@ Object.assign(data, {
   ], total: 2 },
 });
 
+
+// CMS y Elephant Studio (feat/ux2-cms-studio): datos ficticios mínimos
+const sp = (id: number, slug: string, title: string, o: Record<string, unknown> = {}) => ({ id, slug, title, isPublished: true, metaTitle: null, metaDescription: null, updatedAt: new Date(NOW - id * DAY).toISOString(), hasDraft: false, isHome: false, isLegal: false, inHeader: false, inFooter: false, ...o });
+const sitePages = [
+  sp(1, "inicio", "Inicio", { isHome: true, inHeader: true }), sp(2, "servicios", "Servicios", { inHeader: true, hasDraft: true }),
+  sp(3, "quienes-somos", "Quiénes somos", { isPublished: false, hasDraft: true }), sp(4, "contacto", "Contacto", { inHeader: true }),
+  sp(5, "aviso-legal", "Aviso legal", { isLegal: true, inFooter: true }), sp(6, "retiros-otono", "Retiros de otoño en la costa", { isPublished: false }),
+];
+const hid = () => Math.random().toString(36).slice(2, 10);
+Object.assign(data, {
+  "cms.sitePages": sitePages,
+  "cms.i18nConfig": { defaultLocale: "es", fallback: "hide", locales: [{ locale: "es", isDefault: true, validated: true }, { locale: "de", isDefault: false, validated: false }] },
+  "cms.pageTranslations": [],
+  "cms.getMenuItems": [
+    { id: 1, label: "Inicio", url: "/", menuZone: "header", sortOrder: 0, parentId: null, isActive: true, openInNewTab: false },
+    { id: 2, label: "Servicios", url: "/servicios", menuZone: "header", sortOrder: 1, parentId: null, isActive: true, openInNewTab: false },
+    { id: 3, label: "Contacto", url: "/contacto", menuZone: "header", sortOrder: 2, parentId: null, isActive: true, openInNewTab: false },
+  ],
+  "cms.getMediaFiles": ["terraza.jpg", "retiro-otono.webp", "equipo.png", "logo.svg", "sala-yoga.jpg", "desayuno.jpg"].map((n, i) => ({ id: i + 1, filename: n, originalName: n, url: "/placeholder-" + i + ".jpg", mimeType: "image/jpeg", size: 120000 * (i + 1), fileSize: 120000 * (i + 1), createdAt: new Date(NOW - i * DAY).toISOString() })),
+  "cms.getSlideshowItems": [], "gallery.adminGetAll": [], "redirects.list": [{ id: 1, fromPath: "/retiro", toPath: "/retiros-otono", statusCode: 301, isActive: true, note: null, hits: 14 }], "redirects.log": [],
+  "homeModules.getModule": [],
+  "blog.list": [
+    { id: 1, title: "Cinco hábitos para empezar el otoño", slug: "cinco-habitos-otono", visibleStatus: "published", category: "Bienestar", publishedAt: new Date(NOW - 4 * DAY).toISOString() },
+    { id: 2, title: "Qué esperar de un retiro de silencio", slug: "retiro-silencio", visibleStatus: "draft", category: "Retiros", publishedAt: null },
+    { id: 3, title: "Recetas de temporada", slug: "recetas-temporada", visibleStatus: "scheduled", category: null, publishedAt: new Date(NOW + 6 * DAY).toISOString() },
+  ],
+  "cms.studioTokens": null, "cms.savedBlocks": [], "cms.pageVersions": [],
+  "cms.pageEditor": { page: sitePages[1], source: "draft", draftSavedAt: new Date(NOW - 60_000).toISOString(), blocks: [
+    { id: hid(), type: "heading", data: { eyebrow: "Servicios", title: "Acompañamos tu proceso", subtitle: "Retiros, talleres y sesiones individuales", align: "center" } },
+    { id: hid(), type: "text", data: { title: "", html: "<p>Texto de ejemplo para la página de servicios.</p>", align: "left" } },
+  ] },
+});
+
 async function mock(page: Page) {
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
@@ -160,7 +193,7 @@ const VIEWS = [
   { name: "movil", width: 390, height: 844 },
   { name: "portatil", width: 1280, height: 800 },
 ];
-const SCREENS = [
+const SCREENS: { key?: string; screen?: string; url: string }[] = [
   { key: "1-inicio", url: "/admin" },
   { key: "2-clientes", url: "/admin/crm/clientes" },
   { key: "2b-ficha-cliente", url: "/admin/crm/clientes/1" },
@@ -181,6 +214,14 @@ const SCREENS = [
   { key: "e11-finance-sync", url: "/admin/contabilidad/finance-sync" },
   { key: "e12-sedes", url: "/admin/configuracion/sedes" },
   { key: "e13-correo", url: "/admin/configuracion/email" },
+  { screen: "c1-paginas", url: "/admin/cms/paginas" },
+  { screen: "c2-blog", url: "/admin/cms/blog" },
+  { screen: "c3-multimedia", url: "/admin/cms/multimedia" },
+  { screen: "c4-menus", url: "/admin/cms/menus" },
+  { screen: "c5-redirecciones", url: "/admin/cms/redirecciones" },
+  { screen: "c6-idiomas", url: "/admin/cms/idiomas" },
+  { screen: "c7-galeria", url: "/admin/cms/galeria" },
+  { screen: "c8-studio", url: "/admin/studio/servicios" },
 ];
 // Filtros opcionales: VISUAL_ONLY=regex de claves, VISUAL_VIEWS=nombres separados por coma
 const ONLY = process.env.VISUAL_ONLY ? new RegExp(process.env.VISUAL_ONLY) : null;
@@ -189,18 +230,21 @@ const ONLY_VIEWS = process.env.VISUAL_VIEWS ? process.env.VISUAL_VIEWS.split(","
 for (const v of VIEWS) {
   if (ONLY_VIEWS && !ONLY_VIEWS.includes(v.name)) continue;
   for (const s of SCREENS) {
-    if (ONLY && !ONLY.test(s.key)) continue;
-    test(`${TAG} · ${s.key} · ${v.name}`, async ({ page }) => {
+    if (ONLY && !ONLY.test(s.key ?? s.screen ?? "")) continue;
+    test(`${TAG} · ${s.key ?? s.screen} · ${v.name}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: (process.env.VISUAL_SCHEME as "dark" | "light") ?? "dark" });
       if (process.env.VISUAL_PRIMARY) {
         const c = process.env.VISUAL_PRIMARY;
         await page.addInitScript((col) => { const st = document.createElement("style"); st.textContent = `:root,.dark{--primary:${col};--sidebar-primary:${col};--ring:${col}}`; document.addEventListener("DOMContentLoaded", () => document.head.appendChild(st)); }, c);
       }
+      // El panel guarda su tema en localStorage: emulateMedia no basta para el claro
+      await page.addInitScript((t) => localStorage.setItem("nayade-admin-theme", t), process.env.VISUAL_SCHEME ?? "dark");
       await mock(page);
       await page.setViewportSize({ width: v.width, height: v.height });
       await page.goto(s.url);
+      if (s.url.startsWith("/admin/studio")) await page.locator("header").first().waitFor({ timeout: 40_000 }).catch(() => undefined);
       await page.waitForTimeout(4500);
-      await page.screenshot({ path: path.join(OUT, `${TAG}-${s.key}-${v.name}.png`), fullPage: true });
+      await page.screenshot({ path: path.join(OUT, `${TAG}-${s.key ?? s.screen}-${v.name}.png`), fullPage: true });
     });
   }
 }
