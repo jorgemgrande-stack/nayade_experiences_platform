@@ -5,6 +5,7 @@
  * campañas comerciales no pasan por aquí (van por Brevo marketing). La autorización la aplica el servidor.
  */
 import { useState } from "react";
+import { serviceFieldProps, serviceSecretProps } from "@/lib/credentialFields";
 import { Link } from "wouter";
 import { AlertTriangle, CheckCircle2, Copy, KeyRound, Mail, ShieldCheck, Unplug } from "lucide-react";
 import { toast } from "sonner";
@@ -132,16 +133,16 @@ export default function PostmarkSettings() {
                     {t("settingsPostmark.step1.token")} <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" aria-label={t("settingsPostmark.step1.encrypted")} />
                     {s.serverToken.set && <span className="text-xs font-normal text-muted-foreground">{t("settingsPostmark.step1.stored", { display: s.serverToken.display })}</span>}
                   </span>
-                  <Input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={s.serverToken.set ? t("settingsPostmark.step1.keepPlaceholder") : t("settingsPostmark.step1.pastePlaceholder")} />
+                  <Input type="password" {...serviceSecretProps("postmark-token-servidor")} value={token} onChange={(e) => setToken(e.target.value)} placeholder={s.serverToken.set ? t("settingsPostmark.step1.keepPlaceholder") : t("settingsPostmark.step1.pastePlaceholder")} />
                 </label>
                 <label className="space-y-1.5 text-sm font-medium text-foreground">
                   <span>{t("settingsPostmark.step1.sender")}</span>
-                  <Input type="email" value={from} onChange={(e) => setFrom(e.target.value)} placeholder={s.fromEmail ?? "reservas@tuempresa.es"} />
+                  <Input type="email" {...serviceFieldProps("postmark-remitente")} value={from} onChange={(e) => setFrom(e.target.value)} placeholder={s.fromEmail ?? "reservas@tuempresa.es"} />
                   <span className="block text-xs font-normal text-muted-foreground">{t("settingsPostmark.step1.senderHelp")}</span>
                 </label>
                 <label className="space-y-1.5 text-sm font-medium text-foreground">
                   <span>{t("settingsPostmark.step1.stream")}</span>
-                  <Input value={stream} onChange={(e) => setStream(e.target.value)} placeholder={s.messageStream} />
+                  <Input {...serviceFieldProps("postmark-flujo")} value={stream} onChange={(e) => setStream(e.target.value)} placeholder={s.messageStream} />
                   <span className="block text-xs font-normal text-muted-foreground">{t("settingsPostmark.step1.streamHelp")}</span>
                 </label>
                 <div className="sm:col-span-2">

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { serviceFieldProps, serviceSecretProps } from "@/lib/credentialFields";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -68,13 +69,13 @@ function FormSection({ icon, title, description, tone = "text-foreground", child
   );
 }
 
-function PasswordInput({ value, onChange, placeholder }: {
-  value: string; onChange: (v: string) => void; placeholder?: string;
+function PasswordInput({ value, onChange, placeholder, name }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; name: string;
 }) {
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
-      <Input type={show ? "text" : "password"} value={value} onChange={e => onChange(e.target.value)}
+      <Input type={show ? "text" : "password"} {...serviceSecretProps(name)} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder} className="h-8 text-xs pr-8 font-mono" />
       <button type="button" onClick={() => setShow(s => !s)}
         className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground/70">
@@ -86,7 +87,7 @@ function PasswordInput({ value, onChange, placeholder }: {
 
 // ─── Account form modal ───────────────────────────────────────────────────────
 
-function AccountModal({
+export function AccountModal({
   open, onClose, initial, editId,
 }: {
   open: boolean;
@@ -168,16 +169,16 @@ function AccountModal({
           <FormSection icon={<Mail className="w-3.5 h-3.5 text-muted-foreground" />} title={t("settingsEmailAccounts.modal.account")} description={t("settingsEmailAccounts.modal.accountDesc")}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={t("settingsEmailAccounts.modal.accountName")} error={missing("name")}>
-              <Input value={form.name} onChange={e => f("name")(e.target.value)} onBlur={touch("name")} aria-invalid={!!missing("name")} className="h-9 sm:h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.accountNamePh")} />
+              <Input {...serviceFieldProps("cuenta-nombre")} value={form.name} onChange={e => f("name")(e.target.value)} onBlur={touch("name")} aria-invalid={!!missing("name")} className="h-9 sm:h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.accountNamePh")} />
             </Field>
             <Field label={t("settingsEmailAccounts.modal.accountEmail")}>
-              <Input value={form.email} onChange={e => f("email")(e.target.value)} className="h-8 text-xs" placeholder="info@empresa.es" />
+              <Input {...serviceFieldProps("cuenta-direccion")} value={form.email} onChange={e => f("email")(e.target.value)} className="h-8 text-xs" placeholder="info@empresa.es" />
             </Field>
             <Field label={t("settingsEmailAccounts.modal.fromName")}>
-              <Input value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.fromNamePh")} />
+              <Input {...serviceFieldProps("cuenta-remitente-nombre")} value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder={t("settingsEmailAccounts.modal.fromNamePh")} />
             </Field>
             <Field label={t("settingsEmailAccounts.modal.fromEmail")}>
-              <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-9 sm:h-8 text-xs" placeholder="info@tuempresa.es" />
+              <Input {...serviceFieldProps("cuenta-remitente-direccion")} value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-9 sm:h-8 text-xs" placeholder="info@tuempresa.es" />
             </Field>
           </div>
           </FormSection>
@@ -187,18 +188,18 @@ function AccountModal({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
                 <Field label={t("settingsEmailAccounts.modal.imapServer")} error={missing("imapHost")}>
-                  <Input value={form.imapHost} onChange={e => f("imapHost")(e.target.value)} onBlur={touch("imapHost")} aria-invalid={!!missing("imapHost")} className="h-9 sm:h-8 text-xs font-mono" placeholder="imap.empresa.es" />
+                  <Input {...serviceFieldProps("imap-servidor")} value={form.imapHost} onChange={e => f("imapHost")(e.target.value)} onBlur={touch("imapHost")} aria-invalid={!!missing("imapHost")} className="h-9 sm:h-8 text-xs font-mono" placeholder="imap.empresa.es" />
                 </Field>
               </div>
               <Field label={t("settingsEmailAccounts.modal.port")}>
                 <Input type="number" value={form.imapPort} onChange={e => f("imapPort")(Number(e.target.value))} className="h-8 text-xs" />
               </Field>
               <Field label={t("settingsEmailAccounts.modal.imapUser")}>
-                <Input value={form.imapUser} onChange={e => f("imapUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
+                <Input {...serviceFieldProps("imap-usuario")} value={form.imapUser} onChange={e => f("imapUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
               </Field>
               <div className="sm:col-span-2">
                 <Field label={t("settingsEmailAccounts.modal.imapPassword")}>
-                  <PasswordInput value={form.imapPassword} onChange={f("imapPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
+                  <PasswordInput name="imap-clave" value={form.imapPassword} onChange={f("imapPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
                 </Field>
               </div>
               <div className="flex items-center gap-2 pt-4">
@@ -227,18 +228,18 @@ function AccountModal({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
                 <Field label={t("settingsEmailAccounts.modal.smtpServer")} error={missing("smtpHost")}>
-                  <Input value={form.smtpHost} onChange={e => f("smtpHost")(e.target.value)} onBlur={touch("smtpHost")} aria-invalid={!!missing("smtpHost")} className="h-9 sm:h-8 text-xs font-mono" placeholder="smtp.empresa.es" />
+                  <Input {...serviceFieldProps("smtp-servidor")} value={form.smtpHost} onChange={e => f("smtpHost")(e.target.value)} onBlur={touch("smtpHost")} aria-invalid={!!missing("smtpHost")} className="h-9 sm:h-8 text-xs font-mono" placeholder="smtp.empresa.es" />
                 </Field>
               </div>
               <Field label={t("settingsEmailAccounts.modal.port")}>
                 <Input type="number" value={form.smtpPort} onChange={e => f("smtpPort")(Number(e.target.value))} className="h-8 text-xs" />
               </Field>
               <Field label={t("settingsEmailAccounts.modal.smtpUser")}>
-                <Input value={form.smtpUser} onChange={e => f("smtpUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
+                <Input {...serviceFieldProps("smtp-usuario")} value={form.smtpUser} onChange={e => f("smtpUser")(e.target.value)} className="h-8 text-xs" placeholder="usuario@empresa.es" />
               </Field>
               <div className="sm:col-span-2">
                 <Field label={t("settingsEmailAccounts.modal.smtpPassword")}>
-                  <PasswordInput value={form.smtpPassword} onChange={f("smtpPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
+                  <PasswordInput name="smtp-clave" value={form.smtpPassword} onChange={f("smtpPassword")} placeholder={editId ? t("settingsEmailAccounts.modal.keepEmpty") : ""} />
                 </Field>
               </div>
               <div className="flex items-center gap-2 pt-4">

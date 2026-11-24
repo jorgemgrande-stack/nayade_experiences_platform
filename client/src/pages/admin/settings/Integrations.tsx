@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { serviceFieldProps, serviceSecretProps } from "@/lib/credentialFields";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
@@ -63,10 +64,9 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
         </select>
       ) : (
         <input
-          id={id}
           className={`w-full h-10 rounded-lg border bg-background px-3 text-sm ${error ? "border-danger ring-1 ring-danger/30" : "border-border/60"}`}
           type={f.secret ? "password" : "text"}
-          autoComplete="off"
+          {...(f.secret ? serviceSecretProps(id) : serviceFieldProps(id))}
           spellCheck={false}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
@@ -130,6 +130,8 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
       <form
         className="p-5 space-y-4"
         noValidate
+        autoComplete="off"
+        data-form-type="other"
         onSubmit={async (e) => {
           e.preventDefault();
           if (hasErrors) {
