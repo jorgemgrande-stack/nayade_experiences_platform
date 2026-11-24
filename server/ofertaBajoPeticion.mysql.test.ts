@@ -125,10 +125,17 @@ describe.skipIf(!URL_)("Oferta bajo petición y próximamente (aplicación real)
     expect(errCode(await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed" }, admA))).toBe("BAD_REQUEST");
     expect(errCode(await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed", basePrice: "0" }, admA))).toBe("BAD_REQUEST");
     expect((await ess.sql("a", "SELECT offer_mode AS m FROM experiences WHERE id = ?", [ids.fijo]))[0].m).toBe("on_request");
-    // Preparación para venta online: sin cuenta de cobros verificada (ni pasarela) la empresa de la prueba no puede volver a precio fijo
-    expect(errCode(await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed", basePrice: "55" }, admA))).toBe("BAD_REQUEST");
+    // Preparación para venta online: la empresa de la prueba SÍ tiene canal de cobro (Redsys de prueba), así que no hay bloqueos,
+    // pero el producto tiene avisos (p. ej. sin política de cancelación): hace falta la confirmación explícita del administrador
+    const warn = await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed", basePrice: "55" }, admA);
+    expect(errCode(warn)).toBe("PRECONDITION_FAILED");
+    expect(msg(warn)).toContain("avisos");
     const [back] = await ess.sql("a", "SELECT offer_mode AS m, basePrice FROM experiences WHERE id = ?", [ids.fijo]);
     expect([back.m, Number(back.basePrice)]).toEqual(["on_request", 0]);
+    // Con la confirmación pasa a precio fijo con su precio; se devuelve a «bajo petición» para no alterar las pruebas siguientes
+    expect((await ess.m("a", "products.update", { id: ids.fijo, offerMode: "fixed", basePrice: "55", confirmReadiness: true }, admA)).status).toBe(200);
+    expect(Number((await ess.sql("a", "SELECT basePrice FROM experiences WHERE id = ?", [ids.fijo]))[0].basePrice)).toBe(55);
+    expect((await ess.m("a", "products.update", { id: ids.fijo, offerMode: "on_request" }, admA)).status).toBe(200);
   });
 
   it("clonar conserva cómo se ofrece", async () => {

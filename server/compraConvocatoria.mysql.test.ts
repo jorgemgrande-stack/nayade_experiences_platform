@@ -101,8 +101,13 @@ describe.skipIf(!URL_)("Compra ligada a convocatoria (aplicación real)", () => 
     const r = await checkout([{ productId: retiro, bookingDate: "", people: 1, editionId: e }]);
     const order = data(r).merchantOrder as string;
     expect((await ipn(order, data(r).totalAmountCents)).text).toBe("OK");
+    // La pasarela recibe «OK» ANTES de aplicar los efectos (se procesan en segundo plano): se espera a que la retención se confirme
+    const state = async () => (await ess.sql("a", "SELECT status, hold_status AS h FROM reservations WHERE merchant_order = ?", [order]))[0];
+    for (let i = 0; i < 100 && (await state()).h !== "confirmada"; i++) await new Promise((res) => setTimeout(res, 100));
+    // Un aviso repetido: otra respuesta «OK» y nada cambia (idempotente)
     expect((await ipn(order, data(r).totalAmountCents)).text).toBe("OK");
-    const [row] = await ess.sql("a", "SELECT status, hold_status AS h FROM reservations WHERE merchant_order = ?", [order]);
+    await new Promise((res) => setTimeout(res, 500));
+    const row = await state();
     expect(row).toMatchObject({ status: "paid", h: "confirmada" });
     expect(Number((await edRow(e)).reserved)).toBe(1);
   });
