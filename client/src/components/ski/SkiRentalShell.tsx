@@ -10,6 +10,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { errorToastMessage } from "@/lib/errorMessage";
 import { SiteSelect, sdkCode, useSkiSite, type CodeLabel } from "@/components/ski/SkiSchoolShell";
 
@@ -92,19 +93,23 @@ export function SkiRentalShell({ title, description, actions, children }: { titl
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-5">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ski Net · Alquiler</p>
-            <h1 className="break-words text-2xl font-bold text-foreground">{title}</h1>
-            <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <SiteSelect sites={sites} />
-            {ctx && s?.active && actions?.(ctx)}
-          </div>
-        </header>
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Ski Net · Alquiler</p>
+          <PanelPageHeader
+            className="mb-0"
+            icon={<Snowflake />}
+            title={title}
+            description={description}
+            actions={
+              <>
+                <SiteSelect sites={sites} />
+                {ctx && s?.active && actions?.(ctx)}
+              </>
+            }
+          />
+        </div>
         {s && s.active && !s.license.write && (
-          <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-foreground">
+          <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-foreground">
             {MESSAGES.module_read_only}
           </p>
         )}

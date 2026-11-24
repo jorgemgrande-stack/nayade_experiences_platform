@@ -4,10 +4,12 @@
  */
 import type { ReactNode } from "react";
 import { Link } from "wouter";
+import { Home } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { TONE_BADGE, type Tone } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { LIFE_NET_CAPABILITY, LIFE_PATHS, TASK_STATE_LABELS, type LifeColor, type TaskState } from "@shared/lifeNet";
@@ -21,7 +23,7 @@ export const COLOR_DOT: Record<LifeColor, string> = {
   ambar: "bg-warning",
   violeta: "bg-info",
   rosa: "bg-info",
-  gris: "bg-slate-500",
+  gris: "bg-muted-foreground",
 };
 export const COLOR_LABELS: Record<LifeColor, string> = { rojo: "Rojo", azul: "Azul", verde: "Verde", ambar: "Ámbar", violeta: "Violeta", rosa: "Rosa", gris: "Gris" };
 
@@ -52,15 +54,7 @@ export function LifeGate({ q, children }: { q: { isLoading: boolean; isError: bo
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="break-words text-2xl font-bold text-foreground">{title}</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>
-      </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-    </div>
-  );
+  return <PanelPageHeader className="mb-1" icon={<Home />} title={title} description={description} actions={actions} />;
 }
 
 export function MemberChip({ m }: { m: Pick<MemberLite, "displayName" | "color"> }) {

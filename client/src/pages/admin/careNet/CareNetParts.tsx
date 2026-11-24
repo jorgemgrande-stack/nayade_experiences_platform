@@ -4,7 +4,7 @@
  */
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { Search } from "lucide-react";
+import { HeartPulse, Search } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { TONE_BADGE, type Tone } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { randomId } from "@shared/randomId";
@@ -33,15 +34,7 @@ export function useCareWrite() {
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="break-words text-2xl font-bold text-foreground">{title}</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>
-      </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-    </div>
-  );
+  return <PanelPageHeader className="mb-1" icon={<HeartPulse />} title={title} description={description} actions={actions} />;
 }
 
 export function PurchaseBadge({ state }: { state: PurchaseState }) {
