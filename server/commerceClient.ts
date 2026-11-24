@@ -9,6 +9,7 @@
  *  - URL: https, o la red privada de Railway (`http://<servicio>.railway.internal:<puerto>`, cifrada por la
  *    plataforma y sin salida a Internet), o localhost fuera de producción.
  */
+import type { BillingInvoiceLinks, TenantBillingCenter } from "../shared/billingCenter";
 import type { PanelSites, SiteFormInput } from "../shared/sites";
 
 export interface CommerceInput {
@@ -99,6 +100,9 @@ export interface CommerceClient {
   plan(tenantId: string): Promise<unknown>;
   /** Documento imprimible (HTML) de una factura expedida de la empresa. */
   invoiceDocument(tenantId: string, id: number): Promise<string>;
+  /** Centro de suscripción, pagos y facturas de la empresa (solo lectura) y los enlaces oficiales de una factura suya. Opcionales en los dobles. */
+  billingCenter?(tenantId: string): Promise<TenantBillingCenter>;
+  billingInvoiceLinks?(tenantId: string, id: string): Promise<BillingInvoiceLinks>;
   /** Contratación desde el panel de una empresa en prueba: ¿disponible? (y qué la impide), presupuesto y pago. */
   conversionStatus(): Promise<{ enabled: boolean; reasons: string[] }>;
   conversionPreview(tenantId: string, input: ConversionSelection): Promise<unknown>;
@@ -211,6 +215,8 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     usage: async (tenantId) => ((await call("GET", `${seg(tenantId)}/usage`)) as { usage: unknown }).usage,
     plan: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan`)) as { plan: unknown }).plan,
     invoiceDocument: async (tenantId, id) => ((await call("GET", `${seg(tenantId)}/invoices/${id}/document`)) as { html: string }).html,
+    billingCenter: async (tenantId) => ((await call("GET", `${seg(tenantId)}/billing-center`)) as { center: TenantBillingCenter }).center,
+    billingInvoiceLinks: async (tenantId, id) => ((await call("GET", `${seg(tenantId)}/billing-center/invoices/${encodeURIComponent(id)}/links`)) as { links: BillingInvoiceLinks }).links,
     billingPortal: async (tenantId, returnUrl) => (await call("POST", `${seg(tenantId)}/billing-portal`, { returnUrl })) as { url: string },
     conversionStatus: async () => (await call("GET", "/conversion/status")) as { enabled: boolean; reasons: string[] },
     conversionPreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/conversion/preview`, input)) as { preview: unknown }).preview,
