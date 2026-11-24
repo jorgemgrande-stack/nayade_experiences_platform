@@ -11,10 +11,11 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearch } from "wouter";
-import { ArrowUpRight, CheckCircle2, Clock, Eye, Info, Layers, ShieldAlert, Sparkles } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, ChevronDown, Clock, Eye, Info, Layers, Lock, ShieldAlert, Sparkles } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -31,6 +32,7 @@ import { PlanRequestList } from "./PlanRequests";
 import { GrowSection, OwnedModules } from "./GrowSection";
 import { UsageSection } from "./UsagePage";
 import { SubscriptionHero } from "./SubscriptionHero";
+import { BillingCenterView, useBillingCenter } from "./BillingCenter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { buildPlanComparison, isTrialState, parsePanelPlans, type PlanChangeInfo, type SelfServicePlanKey } from "@shared/subscriptionPlans";
@@ -105,6 +107,35 @@ const scrollTo = (id: string) => requestAnimationFrame(() => document.getElement
 const TABS = ["features", "limits", "modules", "billing", "data"] as const;
 type DetailTab = (typeof TABS)[number];
 
+/** Con contratación formalizada, planes y ampliaciones van en una sección plegada («Cambiar o ampliar tu plan»). */
+function ManageShell({ managed, open, onOpenChange, blockedNote, children }: { managed: boolean; open: boolean; onOpenChange: (o: boolean) => void; blockedNote: string | null; children: React.ReactNode }) {
+  const { t } = useI18n();
+  if (!managed) return <>{children}</>;
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange} className="rounded-xl border border-border bg-card">
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-xl p-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-6">
+        <span className="min-w-0">
+          <span className="block text-base font-semibold text-foreground">{t("subscription.center.manage.title")}</span>
+          <span className="block text-sm text-muted-foreground">{t("subscription.center.manage.text")}</span>
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground">
+          {open ? t("subscription.center.manage.hide") : t("subscription.center.manage.show")}
+          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-10 border-t border-border p-5 sm:p-6">
+        {blockedNote && (
+          <p className="flex gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span>{blockedNote}</span>
+          </p>
+        )}
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function SubscriptionPage() {
   const { t } = useI18n();
   const GROUP_LABELS = groupLabels(t);
@@ -123,13 +154,23 @@ export default function SubscriptionPage() {
   const catalog = trpc.subscription.catalog.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
   const planRequests = trpc.subscription.planRequests.useQuery(undefined, { retry: false, staleTime: 60_000, enabled: licensed });
   const portal = useBillingPortal();
+  // Centro de gestión: con contratación formalizada (etapa distinta de «sin contrato») los planes pasan a una sección secundaria
+  const center = useBillingCenter(licensed);
+  const bc = center.data ?? null;
+  const managed = !!bc && bc.stage !== "no_contract";
+  const centerPending = licensed && center.isLoading;
+  const planChangeAllowed = !managed || !!bc?.actions.selfServicePlanChange;
+  const [manageOpen, setManageOpen] = useState(false);
   const [requested, setRequested] = useState<ConversionRequest | null>(null);
   const [tab, setTab] = useState<DetailTab>("features");
   // «Contratar ahora» desde el marketplace: /admin/suscripcion?contratar=<plan>&modulos=<clave>#contratar
   const search = useSearch();
   useEffect(() => {
     const r = parseConversionRequest(search);
-    if (r) setRequested({ plan: r.plan, modules: r.modules, at: Date.now() });
+    if (r) {
+      setRequested({ plan: r.plan, modules: r.modules, at: Date.now() });
+      setManageOpen(true);
+    }
   }, [search]);
 
   const plans = useMemo(() => parsePanelPlans((catalog.data as { plans?: unknown } | null | undefined)?.plans), [catalog.data]);
@@ -161,6 +202,11 @@ export default function SubscriptionPage() {
   useEffect(() => {
     if (hashDone.current || !data) return;
     const h = window.location.hash;
+    // Con el centro de gestión, planes y ampliaciones viven en una sección plegada: se abre antes de desplazarse
+    if (managed && !manageOpen && /^#(planes|ampliar|contratar)$/.test(h)) {
+      setManageOpen(true);
+      return;
+    }
     if (h === "#planes" && cards.length > 0) {
       hashDone.current = true;
       scrollTo("planes");
@@ -176,15 +222,21 @@ export default function SubscriptionPage() {
       hashDone.current = true;
       scrollTo("contratar");
     }
-  }, [cards.length, data, conversion.data]);
+  }, [cards.length, data, conversion.data, managed, manageOpen]);
 
   const onConvert = (plan: SelfServicePlanKey) => {
     setRequested({ plan, at: Date.now() });
+    setManageOpen(true);
     scrollTo("contratar");
   };
   const onHeader = (a: HeaderAction) => {
-    if (a.kind === "convert") scrollTo("contratar");
-    else if (a.kind === "plans") scrollTo("planes");
+    if (a.kind === "convert") {
+      setManageOpen(true);
+      scrollTo("contratar");
+    } else if (a.kind === "plans") {
+      setManageOpen(true);
+      scrollTo("planes");
+    }
     else if (a.kind === "portal") portal.open.mutate();
     else if (a.kind === "billing") {
       setTab("billing");
@@ -196,7 +248,9 @@ export default function SubscriptionPage() {
     <AdminLayout>
       <div className="cx-stage cx-market -m-4 min-h-full p-4 sm:-m-6 sm:p-6">
         <div className="mx-auto max-w-7xl space-y-10">
-          <SubscriptionHero model={header} planKey={data?.plan?.key ?? null} onAction={onHeader} busy={portal.open.isPending ? "portal" : null} />
+          {!managed && !centerPending && <SubscriptionHero model={header} planKey={data?.plan?.key ?? null} onAction={onHeader} busy={portal.open.isPending ? "portal" : null} />}
+          {centerPending && <PanelLoading label={t("subscription.center.loading")} />}
+          {managed && bc && <BillingCenterView center={bc} onPortal={() => portal.open.mutate()} portalBusy={portal.open.isPending} />}
 
           {sub.isLoading && <PanelLoading label={t("subscription.page.loading")} />}
           {sub.isError && <PanelError error={sub.error} onRetry={() => sub.refetch()} title={t("subscription.page.loadError")} />}
@@ -217,7 +271,9 @@ export default function SubscriptionPage() {
 
           {data && licensed && (
             <>
+              <ManageShell managed={managed} open={manageOpen} onOpenChange={setManageOpen} blockedNote={!planChangeAllowed ? (bc?.actions.note ?? t("subscription.center.manage.blockedTitle")) : null}>
               {/* Planes publicados */}
+              {planChangeAllowed && (
               <section id="planes" className="scroll-mt-4 space-y-6" aria-labelledby="sub-plans">
                 <div className="flex flex-wrap items-end justify-between gap-4">
                   <div className="min-w-0 max-w-3xl space-y-1">
@@ -255,11 +311,13 @@ export default function SubscriptionPage() {
                   </>
                 )}
               </section>
+              )}
 
               {/* Contratar desde la prueba (solo administración; el servidor decide si está disponible) */}
-              {trial && <ConversionSection requested={requested} currentPlan={data.plan?.key ?? null} plans={plans} />}
+              {trial && planChangeAllowed && <ConversionSection requested={requested} currentPlan={data.plan?.key ?? null} plans={plans} />}
 
               <GrowSection />
+              </ManageShell>
 
               {/* Detalle organizado en pestañas */}
               <section id="detalle" aria-labelledby="sub-detail" className="scroll-mt-4 space-y-4">
@@ -423,7 +481,7 @@ export default function SubscriptionPage() {
                   <TabsContent value="billing" className="space-y-4">
                     <PlanContractSection isTrial={trial} />
                     <BillingPortalSection />
-                    <PlanChangeSection />
+                    {planChangeAllowed && <PlanChangeSection />}
                     <CancellationSection />
                     {/* Desistimiento (particulares, dentro del plazo): distinto de cancelar la suscripción */}
                     <WithdrawalSection />
