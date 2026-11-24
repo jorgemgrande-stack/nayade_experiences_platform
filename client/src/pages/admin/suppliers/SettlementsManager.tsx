@@ -122,7 +122,7 @@ function DetailBlock({ icon, title, aside, children }: { icon: ReactNode; title:
 }
 
 function fmt(v: string | number | undefined | null): string {
-  return parseFloat(String(v ?? "0")).toFixed(2);
+  return new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(parseFloat(String(v ?? "0")) || 0);
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -321,7 +321,7 @@ export default function SettlementsManager() {
         <div className="break-words text-xs text-muted-foreground">{s.supplierName ?? "—"}</div>
       </div>
     ) },
-    { key: "period", header: "Periodo", priority: "md", cell: (s) => <span className="whitespace-nowrap text-xs text-muted-foreground">{s.periodFrom} → {s.periodTo}</span> },
+    { key: "period", header: "Periodo", priority: "md", cell: (s) => <span className="text-xs text-muted-foreground">{s.periodFrom} → {s.periodTo}</span> },
     { key: "status", header: "Estado", cell: (s) => <StatusBadgeS status={s.status} /> },
     { key: "gross", header: "Importe bruto", align: "right", num: true, priority: "lg", cell: (s) => `${fmt(s.grossAmount)} €` },
     { key: "commission", header: "Comisión", align: "right", num: true, priority: "xl", cell: (s) => `${fmt(s.commissionAmount)} €` },
@@ -340,8 +340,8 @@ export default function SettlementsManager() {
         />
 
         <EconomySummary>
-          <MetricCard icon={<Clock />} tone="warning" label="Neto pendiente de abonar" value={`${sumNet(toPay).toFixed(2)} €`} detail={`${toPay.length} ${toPay.length === 1 ? "liquidación" : "liquidaciones"}`} />
-          <MetricCard icon={<CheckCircle2 />} tone="success" label="Abonado" value={`${sumNet(paid).toFixed(2)} €`} detail={`${paid.length} ${paid.length === 1 ? "liquidación" : "liquidaciones"}`} onClick={() => setStatusFilter(statusFilter === "abonada" ? "all" : "abonada")} active={statusFilter === "abonada"} />
+          <MetricCard icon={<Clock />} tone="warning" label="Neto pendiente de abonar" value={`${fmt(sumNet(toPay))} €`} detail={`${toPay.length} ${toPay.length === 1 ? "liquidación" : "liquidaciones"}`} />
+          <MetricCard icon={<CheckCircle2 />} tone="success" label="Abonado" value={`${fmt(sumNet(paid))} €`} detail={`${paid.length} ${paid.length === 1 ? "liquidación" : "liquidaciones"}`} onClick={() => setStatusFilter(statusFilter === "abonada" ? "all" : "abonada")} active={statusFilter === "abonada"} />
           <MetricCard icon={<AlertTriangle />} tone={issues.length ? "danger" : "neutral"} label="Con incidencia" value={issues.length} onClick={() => setStatusFilter(statusFilter === "incidencia" ? "all" : "incidencia")} active={statusFilter === "incidencia"} />
           <MetricCard icon={<FileText />} tone="brand" label="Liquidaciones" value={all.length} />
         </EconomySummary>
@@ -604,9 +604,9 @@ export default function SettlementsManager() {
                         {(preview?.lines ?? []).map((l: PreviewLine, i: number) => (
                           <tr key={i} className="border-b last:border-0">
                             <td className="py-2 px-3">{l.productName}</td>
-                            <td className="py-2 px-2 text-right">{l.saleAmount.toFixed(2)} €</td>
-                            <td className="py-2 px-2 text-right text-warning">{l.commissionAmount.toFixed(2)} € ({l.commissionPercent}%)</td>
-                            <td className="py-2 px-2 text-right font-semibold text-success">{l.netAmountProvider.toFixed(2)} €</td>
+                            <td className="py-2 px-2 text-right">{fmt(l.saleAmount)} €</td>
+                            <td className="py-2 px-2 text-right text-warning">{fmt(l.commissionAmount)} € ({l.commissionPercent}%)</td>
+                            <td className="py-2 px-2 text-right font-semibold text-success">{fmt(l.netAmountProvider)} €</td>
                           </tr>
                         ))}
                       </tbody>
@@ -614,9 +614,9 @@ export default function SettlementsManager() {
                         <tfoot className="bg-muted/40 font-semibold">
                           <tr>
                             <td className="py-2 px-3 text-foreground">TOTAL</td>
-                            <td className="py-2 px-2 text-right">{preview.totals.grossAmount.toFixed(2)} €</td>
-                            <td className="py-2 px-2 text-right text-warning">{preview.totals.commissionAmount.toFixed(2)} €</td>
-                            <td className="py-2 px-2 text-right text-success">{preview.totals.netAmountProvider.toFixed(2)} €</td>
+                            <td className="py-2 px-2 text-right">{fmt(preview.totals.grossAmount)} €</td>
+                            <td className="py-2 px-2 text-right text-warning">{fmt(preview.totals.commissionAmount)} €</td>
+                            <td className="py-2 px-2 text-right text-success">{fmt(preview.totals.netAmountProvider)} €</td>
                           </tr>
                         </tfoot>
                       )}
