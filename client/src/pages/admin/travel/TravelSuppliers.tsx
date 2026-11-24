@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,22 +121,22 @@ export default function TravelSuppliers() {
   return (
     <AdminLayout title="Proveedores turísticos">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><Truck className="h-6 w-6 shrink-0" /> Proveedores</h1>
-            <p className="text-muted-foreground text-sm">Hoteles, actividades, transporte y seguros con los que montas tus viajes. Son los proveedores de la empresa, con su perfil turístico.</p>
-          </div>
-          <Button onClick={() => setCreating(true)} disabled={isTravelNotInstalled(q.error)}><Plus className="h-4 w-4 mr-1" /> Nuevo proveedor</Button>
-        </div>
+        <PanelPageHeader
+          className="mb-1"
+          icon={<Truck />}
+          title="Proveedores"
+          description="Hoteles, actividades, transporte y seguros con los que montas tus viajes. Son los proveedores de la empresa, con su perfil turístico."
+          actions={<Button onClick={() => setCreating(true)} disabled={isTravelNotInstalled(q.error)}><Plus className="h-4 w-4 mr-1" /> Nuevo proveedor</Button>}
+        />
         {!isTravelNotInstalled(q.error) && <VeturisSettingsCard suppliers={q.data ?? []} />}
         <Select value={kind} onValueChange={setKind}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="all">Todos los servicios</SelectItem>{KINDS.map((k) => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent>
         </Select>
-        {isTravelNotInstalled(q.error) ? <TravelNotInstalled /> : q.error ? <Card><CardContent className="p-6 text-sm text-destructive">{q.error.message}</CardContent></Card> : (
+        {isTravelNotInstalled(q.error) ? <TravelNotInstalled /> : q.error ? <PanelError error={q.error} onRetry={() => q.refetch()} /> : (
           <Card>
             <CardContent className="p-0">
-              {q.isLoading ? <p className="p-6 text-sm text-muted-foreground">Cargando…</p> : list.length === 0 ? (
+              {q.isLoading ? <PanelLoading label="Cargando proveedores…" /> : list.length === 0 ? (
                 <TravelEmpty title="Crea tu primer proveedor" text="Da de alta los proveedores con los que trabajas para añadir sus servicios a los expedientes.">
                   <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-1" /> Nuevo proveedor</Button>
                 </TravelEmpty>

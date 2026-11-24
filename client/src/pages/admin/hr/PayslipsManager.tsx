@@ -9,10 +9,13 @@
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useMemo, useEffect } from "react";
 import {
-  Banknote, Plus, Pencil, Trash2, Loader2, Upload, Search,
-  FileText as FileIcon, AlertCircle,
+  Banknote, Plus, Pencil, Trash2, Upload, Search,
+  FileText as FileIcon, AlertCircle, Hash, Euro,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,15 +42,15 @@ function currentPeriod(): string {
 
 const STATUS_CLASS: Record<string, string> = {
   borrador: "bg-foreground/10 text-foreground/60 border-foreground/20",
-  registrada: "bg-blue-500/15 text-blue-300 border-blue-500/30",
-  pagada: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-  anulada: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  registrada: "bg-info/15 text-info border-info/30",
+  pagada: "bg-success/15 text-success border-success/30",
+  anulada: "bg-danger/15 text-danger border-danger/30",
 };
 const FISCAL_CLASS: Record<string, string> = {
-  pendiente: "bg-amber-500/10 text-amber-300",
-  revisado: "bg-blue-500/10 text-blue-300",
-  exportado: "bg-violet-500/10 text-violet-300",
-  presentado: "bg-emerald-500/10 text-emerald-300",
+  pendiente: "bg-warning/10 text-warning",
+  revisado: "bg-info/10 text-info",
+  exportado: "bg-info/10 text-info",
+  presentado: "bg-success/10 text-success",
 };
 
 export default function PayslipsManager() {
@@ -58,7 +61,7 @@ export default function PayslipsManager() {
 
   const { data: employees } = trpc.hr.employees.list.useQuery({ isActive: true });
   const { data: settings } = trpc.hr.settings.get.useQuery();
-  const { data: rows, isLoading } = trpc.hr.payslips.list.useQuery({
+  const { data: rows, isLoading, error, refetch } = trpc.hr.payslips.list.useQuery({
     period,
     status: statusFilter === "all" ? undefined : statusFilter,
   });
@@ -172,36 +175,34 @@ export default function PayslipsManager() {
 
   return (
     <AdminLayout title="Nóminas — Personal">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
+      <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                <Banknote className="w-5 h-5 text-orange-400" />
-                Nóminas
-              </h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5">
-                Las nóminas se agrupan en remesas mensuales. Cierra la remesa para generar los gastos contables.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => { setBulkPeriod(period); setBulkOpen(true); }}>
-                <Upload className="w-4 h-4 mr-1.5" /> Carga masiva
-              </Button>
-              <Button onClick={openCreate}>
-                <Plus className="w-4 h-4 mr-1.5" /> Nueva nómina
-              </Button>
-            </div>
-          </div>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6">
+          <PanelPageHeader
+            icon={<Banknote />}
+            title="Nóminas"
+            description="Las nóminas se agrupan en remesas mensuales. Cierra la remesa para generar los gastos contables."
+            actions={
+              <>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => { setBulkPeriod(period); setBulkOpen(true); }}>
+                    <Upload className="w-4 h-4 mr-1.5" /> Carga masiva
+                  </Button>
+                  <Button onClick={openCreate}>
+                    <Plus className="w-4 h-4 mr-1.5" /> Nueva nómina
+                  </Button>
+                </div>
+              </>
+            }
+          />
           {/* Totales */}
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 mt-3 text-xs">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-3 text-xs">
             <Stat label="Nóminas" value={totals.count} />
-            <Stat label="Bruto total" value={fmtEur(totals.gross)} color="text-orange-300" />
+            <Stat label="Bruto total" value={fmtEur(totals.gross)} color="text-primary" />
             <Stat label="IRPF" value={fmtEur(totals.irpf)} />
             <Stat label="SS empleado" value={fmtEur(totals.ssEmp)} />
-            <Stat label="SS empresa (est)" value={fmtEur(totals.ssCompEst)} color="text-violet-300" />
-            <Stat label="Neto" value={fmtEur(totals.net)} color="text-emerald-300" />
+            <Stat label="SS empresa (est)" value={fmtEur(totals.ssCompEst)} color="text-info" />
+            <Stat label="Neto" value={fmtEur(totals.net)} color="text-success" />
           </div>
         </div>
 
@@ -209,26 +210,26 @@ export default function PayslipsManager() {
         <div className="px-4 sm:px-6 py-3 border-b border-foreground/[0.05]">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
-              <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Periodo</Label>
+              <Label className="text-foreground/50 text-xs uppercase tracking-wider">Periodo</Label>
               <Input type="month" value={period} onChange={e => setPeriod(e.target.value)}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
             </div>
             <div className="relative">
-              <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Buscar</Label>
+              <Label className="text-foreground/50 text-xs uppercase tracking-wider">Buscar</Label>
               <Search className="absolute left-3 bottom-2.5 w-3.5 h-3.5 text-foreground/40" />
-              <Input className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"
+              <Input className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1"
                 placeholder="Nombre empleado…" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
             <div>
-              <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Estado</Label>
+              <Label className="text-foreground/50 text-xs uppercase tracking-wider">Estado</Label>
               <Select value={statusFilter} onValueChange={v => setStatusFilter(v as typeof statusFilter)}>
-                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="all" className="text-white">Todos los estados</SelectItem>
-                  <SelectItem value="borrador" className="text-white">Borrador</SelectItem>
-                  <SelectItem value="registrada" className="text-white">Registrada</SelectItem>
-                  <SelectItem value="pagada" className="text-white">Pagada</SelectItem>
-                  <SelectItem value="anulada" className="text-white">Anulada</SelectItem>
+                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-card border-foreground/[0.12]">
+                  <SelectItem value="all" className="text-foreground">Todos los estados</SelectItem>
+                  <SelectItem value="borrador" className="text-foreground">Borrador</SelectItem>
+                  <SelectItem value="registrada" className="text-foreground">Registrada</SelectItem>
+                  <SelectItem value="pagada" className="text-foreground">Pagada</SelectItem>
+                  <SelectItem value="anulada" className="text-foreground">Anulada</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -237,19 +238,18 @@ export default function PayslipsManager() {
 
         {/* Tabla */}
         <div className="px-4 sm:px-6 py-4">
+          {!isLoading && error && <PanelError error={error} onRetry={() => refetch()} />}
           {isLoading && (
-            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-orange-500 animate-spin" /></div>
+            <PanelLoading />
           )}
-          {!isLoading && filtered.length === 0 && (
-            <div className="text-center py-12 text-foreground/40 text-sm">
-              No hay nóminas para este periodo. Crea la primera o usa la carga masiva.
-            </div>
+          {!isLoading && !error && filtered.length === 0 && (
+            <PanelEmpty title="No hay nóminas para este periodo. Crea la primera o usa la carga masiva." />
           )}
-          {!isLoading && filtered.length > 0 && (
+          {!isLoading && !error && filtered.length > 0 && (
             <div className="rounded-xl border border-foreground/[0.08] overflow-x-auto">
               <table className="w-full text-sm min-w-[820px]">
                 <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
-                  <tr className="text-left text-[10px] uppercase tracking-widest text-foreground/50">
+                  <tr className="text-left text-xs uppercase tracking-widest text-foreground/50">
                     <th className="px-4 py-3">Empleado</th>
                     <th className="px-4 py-3 text-right">Bruto</th>
                     <th className="px-4 py-3 text-right">IRPF</th>
@@ -266,34 +266,34 @@ export default function PayslipsManager() {
                   {filtered.map(r => (
                     <tr key={r.id} className="border-b border-foreground/[0.05] hover:bg-foreground/[0.03]">
                       <td className="px-4 py-3 text-foreground/90">{r.employeeName ?? `#${r.employeeId}`}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-orange-300 font-semibold">{fmtEur(r.grossSalary)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-primary font-semibold">{fmtEur(r.grossSalary)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{fmtEur(r.irpfAmount)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{fmtEur(r.ssEmployee)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-emerald-300 font-semibold">{fmtEur(r.netSalary)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-violet-300">{fmtEur(r.ssCompanyEstimated)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-success font-semibold">{fmtEur(r.netSalary)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-info">{fmtEur(r.ssCompanyEstimated)}</td>
                       <td className="px-4 py-3 text-center">
                         {r.pdfUrl ? (
-                          <a href={r.pdfUrl} target="_blank" rel="noreferrer" className="text-orange-300 hover:text-orange-200 inline-flex items-center gap-1 text-xs">
+                          <a href={r.pdfUrl} target="_blank" rel="noreferrer" className="text-primary hover:text-primary inline-flex items-center gap-1 text-xs">
                             <FileIcon className="w-3 h-3" /> PDF
                           </a>
                         ) : <span className="text-foreground/30 text-xs">—</span>}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border", STATUS_CLASS[r.status])}>
+                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border", STATUS_CLASS[r.status])}>
                           {r.status}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-[10px] font-medium", FISCAL_CLASS[r.fiscalStatus])}>
+                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-xs font-medium", FISCAL_CLASS[r.fiscalStatus])}>
                           {r.fiscalStatus}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => openEdit(r)} className="text-orange-300 hover:bg-orange-500/10 h-7">
+                          <Button size="sm" variant="ghost" onClick={() => openEdit(r)} className="text-primary hover:bg-primary/10 h-7">
                             <Pencil className="w-3 h-3" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={async () => (await confirmAction({ description: "¿Eliminar esta nómina?", destructive: true })) && del.mutate({ id: r.id })} className="text-rose-400 hover:bg-rose-500/10 h-7">
+                          <Button size="sm" variant="ghost" onClick={async () => (await confirmAction({ description: "¿Eliminar esta nómina?", destructive: true })) && del.mutate({ id: r.id })} className="text-danger hover:bg-danger/10 h-7">
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
@@ -308,61 +308,61 @@ export default function PayslipsManager() {
 
         {/* Modal crear/editar */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+          <DialogContent className="bg-card border-foreground/[0.12] text-foreground max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-white">{editing ? "Editar nómina" : "Nueva nómina"}</DialogTitle>
+              <DialogTitle className="text-foreground">{editing ? "Editar nómina" : "Nueva nómina"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Empleado</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Empleado</Label>
                   <Select value={formEmpId === "" ? "" : String(formEmpId)} onValueChange={v => setFormEmpId(Number(v))} disabled={!!editing}>
-                    <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue placeholder="Selecciona…" /></SelectTrigger>
-                    <SelectContent className="bg-[#0d1526] border-foreground/[0.12] max-h-80">
+                    <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1"><SelectValue placeholder="Selecciona…" /></SelectTrigger>
+                    <SelectContent className="bg-card border-foreground/[0.12] max-h-80">
                       {(employees ?? []).map(e => (
-                        <SelectItem key={e.id} value={String(e.id)} className="text-white">{e.fullName}</SelectItem>
+                        <SelectItem key={e.id} value={String(e.id)} className="text-foreground">{e.fullName}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Periodo</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Periodo</Label>
                   <Input type="month" value={formPeriod} onChange={e => setFormPeriod(e.target.value)}
                     disabled={!!editing}
-                    className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                    className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Bruto</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Bruto</Label>
                   <Input type="number" step="0.01" min="0" value={formGross} onChange={e => setFormGross(e.target.value)}
-                    className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                    className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
                 </div>
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">IRPF</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">IRPF</Label>
                   <Input type="number" step="0.01" min="0" value={formIrpf} onChange={e => setFormIrpf(e.target.value)}
-                    className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                    className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
                 </div>
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">SS empleado</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">SS empleado</Label>
                   <Input type="number" step="0.01" min="0" value={formSsEmp} onChange={e => setFormSsEmp(e.target.value)}
-                    className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                    className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 pt-2 border-t border-foreground/[0.05]">
                 <div className="text-xs">
                   <span className="text-foreground/50">Neto calculado:</span>{" "}
-                  <strong className="text-emerald-300 tabular-nums">{fmtEur(previewNet)}</strong>
+                  <strong className="text-success tabular-nums">{fmtEur(previewNet)}</strong>
                 </div>
                 <div className="text-xs">
                   <span className="text-foreground/50">SS empresa estimada ({settings?.ssCompanyPercent ?? 31}%):</span>{" "}
-                  <strong className="text-violet-300 tabular-nums">{fmtEur(previewSsComp)}</strong>
+                  <strong className="text-info tabular-nums">{fmtEur(previewSsComp)}</strong>
                 </div>
               </div>
               <div>
-                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Notas</Label>
+                <Label className="text-foreground/50 text-xs uppercase tracking-wider">Notas</Label>
                 <Input value={formNotes} onChange={e => setFormNotes(e.target.value)}
-                  className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                  className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
               </div>
             </div>
             <DialogFooter>
@@ -377,7 +377,7 @@ export default function PayslipsManager() {
                   notes: formNotes || undefined,
                 })}
                 disabled={upsert.isPending || formEmpId === "" || !formPeriod || !formGross}
-                className="bg-orange-600 hover:bg-orange-700 text-white"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {upsert.isPending ? "Guardando…" : "Guardar"}
               </Button>
@@ -387,20 +387,20 @@ export default function PayslipsManager() {
 
         {/* Modal bulk upload */}
         <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-lg">
+          <DialogContent className="bg-card border-foreground/[0.12] text-foreground max-w-lg">
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <Upload className="w-5 h-5 text-orange-400" /> Carga masiva de nóminas
+              <DialogTitle className="text-foreground flex items-center gap-2">
+                <Upload className="w-5 h-5 text-primary" /> Carga masiva de nóminas
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2 text-sm">
               <div>
-                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Periodo</Label>
+                <Label className="text-foreground/50 text-xs uppercase tracking-wider">Periodo</Label>
                 <Input type="month" value={bulkPeriod} onChange={e => setBulkPeriod(e.target.value)}
-                  className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                  className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">
+                <Label className="text-foreground/50 text-xs uppercase tracking-wider">
                   Datos (una línea por empleado: dni;bruto;irpf;ss_empleado)
                 </Label>
                 <Textarea
@@ -408,16 +408,16 @@ export default function PayslipsManager() {
                   onChange={e => setBulkText(e.target.value)}
                   rows={8}
                   placeholder={"47289685Y;1800;180;110\n47409077M;1600;160;100"}
-                  className="bg-foreground/[0.05] border-foreground/[0.12] text-white font-mono text-xs mt-1"
+                  className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground font-mono text-xs mt-1"
                 />
-                <p className="text-foreground/40 text-[10px] mt-1">
+                <p className="text-foreground/40 text-xs mt-1">
                   Separadores aceptados: <code>;</code> <code>,</code> tabulación.
                 </p>
               </div>
               {bulkUpload.data && (
                 <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] p-3 text-xs max-h-40 overflow-y-auto">
                   {bulkUpload.data.report.map((r, i) => (
-                    <div key={i} className={r.ok ? "text-emerald-300" : "text-rose-400"}>
+                    <div key={i} className={r.ok ? "text-success" : "text-danger"}>
                       Fila {r.row}: {r.ok ? "✓" : "✗"} {r.error ?? `empleado #${r.employeeId}`}
                     </div>
                   ))}
@@ -438,10 +438,6 @@ export default function PayslipsManager() {
 }
 
 function Stat({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
-  return (
-    <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-      <p className="text-[10px] uppercase tracking-wider text-foreground/40">{label}</p>
-      <p className={cn("text-sm font-bold tabular-nums mt-0.5", color ?? "text-foreground/80")}>{value}</p>
-    </div>
-  );
+  const tone = color === "text-success" ? "success" : color === "text-warning" ? "warning" : color === "text-info" ? "info" : color === "text-primary" ? "brand" : "neutral";
+  return <MetricCard compact tone={tone} icon={typeof value === "number" ? <Hash /> : <Euro />} label={label} value={value} />;
 }

@@ -51,10 +51,10 @@ export const OPERATION_NEXT: Record<string, string[]> = {
 };
 
 export function operationClass(s: string): string {
-  if (s === "consolidated" || s === "provider_confirmed") return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300";
-  if (s === "requires_manual_action" || s === "expired_no_response" || s === "failed") return "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300";
+  if (s === "consolidated" || s === "provider_confirmed") return "border-success bg-success text-success dark:border-success dark:bg-success/50 dark:text-success";
+  if (s === "requires_manual_action" || s === "expired_no_response" || s === "failed") return "border-danger bg-danger text-danger dark:border-danger dark:bg-danger/50 dark:text-danger";
   if (s === "provider_cancelled" || s === "internally_cancelled") return "border-border bg-muted text-muted-foreground";
-  return "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300";
+  return "border-warning bg-warning text-warning dark:border-warning dark:bg-warning/50 dark:text-warning";
 }
 
 export function isTravelNotInstalled(err: { message?: string } | null | undefined): boolean {
@@ -63,9 +63,9 @@ export function isTravelNotInstalled(err: { message?: string } | null | undefine
 
 export function TravelNotInstalled() {
   return (
-    <Card className="border-amber-300 dark:border-amber-800">
+    <Card className="border-warning dark:border-warning">
       <CardContent className="p-6 flex gap-3 items-start">
-        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <AlertTriangle className="h-5 w-5 text-warning dark:text-warning shrink-0 mt-0.5" />
         <div className="space-y-1 text-sm">
           <p className="font-medium">Travel Net aún no está preparado en tu empresa.</p>
           <p className="text-muted-foreground">Falta una actualización de la base de datos de tu empresa. Contacta con soporte para activarlo.</p>

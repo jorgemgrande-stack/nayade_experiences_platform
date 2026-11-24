@@ -7,10 +7,12 @@
  */
 import { useState, useMemo } from "react";
 import {
-  CalendarOff, Loader2, CheckCircle2, XCircle, Search, Clock,
+  CalendarOff, CheckCircle2, XCircle, Search, Clock,
   CalendarCheck, Settings2,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,9 +37,9 @@ const TYPE_LABEL: Record<string, string> = {
   otro: "Otro",
 };
 const STATUS_CLASS: Record<string, string> = {
-  pendiente: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  aprobada: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-  rechazada: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  pendiente: "bg-warning/15 text-warning border-warning/30",
+  aprobada: "bg-success/15 text-success border-success/30",
+  rechazada: "bg-danger/15 text-danger border-danger/30",
   cancelada: "bg-foreground/10 text-foreground/40 border-foreground/20",
 };
 
@@ -50,7 +52,7 @@ export default function LeaveManager() {
   const [search, setSearch] = useState("");
 
   const { data: employeesList } = trpc.hr.employees.list.useQuery({ isActive: true });
-  const { data: rows, isLoading } = trpc.hr.leaves.listAll.useQuery({
+  const { data: rows, isLoading, error, refetch } = trpc.hr.leaves.listAll.useQuery({
     status: statusFilter === "all" ? undefined : statusFilter,
     type: typeFilter === "all" ? undefined : typeFilter,
   });
@@ -114,23 +116,21 @@ export default function LeaveManager() {
 
   return (
     <AdminLayout title="Vacaciones — Personal">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
+      <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                <CalendarOff className="w-5 h-5 text-orange-400" />
-                Vacaciones y permisos
-              </h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5">
-                Solicitudes del personal. Las decisiones quedan auditadas (quién y cuándo aprobó/rechazó).
-              </p>
-            </div>
-            <Button variant="outline" onClick={() => setBalanceOpen(true)}>
-              <Settings2 className="w-4 h-4 mr-1.5" /> Saldos de vacaciones
-            </Button>
-          </div>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6">
+          <PanelPageHeader
+            icon={<CalendarOff />}
+            title="Vacaciones y permisos"
+            description="Solicitudes del personal. Las decisiones quedan auditadas (quién y cuándo aprobó/rechazó)."
+            actions={
+              <>
+                <Button variant="outline" onClick={() => setBalanceOpen(true)}>
+                  <Settings2 className="w-4 h-4 mr-1.5" /> Saldos de vacaciones
+                </Button>
+              </>
+            }
+          />
         </div>
 
         {/* Filtros */}
@@ -138,25 +138,25 @@ export default function LeaveManager() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
-              <Input className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
+              <Input className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm"
                 placeholder="Buscar empleado…" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
             <Select value={statusFilter} onValueChange={v => setStatusFilter(v as typeof statusFilter)}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="all" className="text-white">Todos los estados</SelectItem>
-                <SelectItem value="pendiente" className="text-white">Pendientes</SelectItem>
-                <SelectItem value="aprobada" className="text-white">Aprobadas</SelectItem>
-                <SelectItem value="rechazada" className="text-white">Rechazadas</SelectItem>
-                <SelectItem value="cancelada" className="text-white">Canceladas</SelectItem>
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-card border-foreground/[0.12]">
+                <SelectItem value="all" className="text-foreground">Todos los estados</SelectItem>
+                <SelectItem value="pendiente" className="text-foreground">Pendientes</SelectItem>
+                <SelectItem value="aprobada" className="text-foreground">Aprobadas</SelectItem>
+                <SelectItem value="rechazada" className="text-foreground">Rechazadas</SelectItem>
+                <SelectItem value="cancelada" className="text-foreground">Canceladas</SelectItem>
               </SelectContent>
             </Select>
             <Select value={typeFilter} onValueChange={v => setTypeFilter(v as typeof typeFilter)}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="all" className="text-white">Todos los tipos</SelectItem>
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-card border-foreground/[0.12]">
+                <SelectItem value="all" className="text-foreground">Todos los tipos</SelectItem>
                 {Object.entries(TYPE_LABEL).map(([k, v]) => (
-                  <SelectItem key={k} value={k} className="text-white">{v}</SelectItem>
+                  <SelectItem key={k} value={k} className="text-foreground">{v}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -165,19 +165,18 @@ export default function LeaveManager() {
 
         {/* Tabla */}
         <div className="px-4 sm:px-6 py-4">
+          {!isLoading && error && <PanelError error={error} onRetry={() => refetch()} />}
           {isLoading && (
-            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-orange-500 animate-spin" /></div>
+            <PanelLoading />
           )}
-          {!isLoading && filtered.length === 0 && (
-            <div className="text-center py-12 text-foreground/40 text-sm">
-              No hay solicitudes con esos filtros.
-            </div>
+          {!isLoading && !error && filtered.length === 0 && (
+            <PanelEmpty title="No hay solicitudes con esos filtros." />
           )}
-          {!isLoading && filtered.length > 0 && (
+          {!isLoading && !error && filtered.length > 0 && (
             <div className="rounded-xl border border-foreground/[0.08] overflow-x-auto">
               <table className="w-full text-sm min-w-[720px]">
                 <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
-                  <tr className="text-left text-[10px] uppercase tracking-widest text-foreground/50">
+                  <tr className="text-left text-xs uppercase tracking-widest text-foreground/50">
                     <th className="px-4 py-3">Empleado</th>
                     <th className="px-4 py-3">Tipo</th>
                     <th className="px-4 py-3">Desde</th>
@@ -193,22 +192,22 @@ export default function LeaveManager() {
                     <tr key={r.id} className="border-b border-foreground/[0.05] hover:bg-foreground/[0.03]">
                       <td className="px-4 py-3 text-foreground/90">{r.employeeName ?? `#${r.employeeId}`}</td>
                       <td className="px-4 py-3 text-xs">
-                        <span className="px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                        <span className="px-2 py-0.5 rounded-full bg-info/15 text-info border border-info/30">
                           {TYPE_LABEL[r.type] ?? r.type}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-foreground/70 text-xs">{fmtDate(r.fromDate)}</td>
                       <td className="px-4 py-3 text-foreground/70 text-xs">{fmtDate(r.toDate)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-orange-300 font-semibold">{Number(r.days)}</td>
-                      <td className="px-4 py-3 text-xs text-foreground/60 max-w-[180px] truncate" title={r.reason ?? ""}>
+                      <td className="px-4 py-3 text-right tabular-nums text-primary font-semibold">{Number(r.days)}</td>
+                      <td className="px-4 py-3 text-xs text-foreground/60 max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={r.reason ?? ""}>
                         {r.reason || <span className="text-foreground/30">—</span>}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border", STATUS_CLASS[r.status])}>
+                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border", STATUS_CLASS[r.status])}>
                           {r.status}
                         </span>
                         {r.status !== "pendiente" && r.decisionReason && (
-                          <p className="text-[10px] text-foreground/40 mt-1 max-w-[140px] mx-auto truncate" title={r.decisionReason}>
+                          <p className="text-xs text-foreground/40 mt-1 max-w-[140px] mx-auto overflow-hidden text-ellipsis whitespace-nowrap" title={r.decisionReason}>
                             {r.decisionReason}
                           </p>
                         )}
@@ -217,16 +216,16 @@ export default function LeaveManager() {
                         {r.status === "pendiente" ? (
                           <div className="flex justify-end gap-1">
                             <Button size="sm" onClick={() => { setDecision({ row: r, action: "approve" }); setDecisionReason(""); }}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs">
+                              className="bg-success hover:bg-success/90 text-white h-7 text-xs">
                               <CheckCircle2 className="w-3 h-3 mr-1" /> Aprobar
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => { setDecision({ row: r, action: "reject" }); setDecisionReason(""); }}
-                              className="border-rose-500/40 text-rose-400 hover:bg-rose-500/10 h-7 text-xs">
+                              className="border-danger/40 text-danger hover:bg-danger/10 h-7 text-xs">
                               <XCircle className="w-3 h-3 mr-1" /> Rechazar
                             </Button>
                           </div>
                         ) : (
-                          <span className="text-[10px] text-foreground/40">
+                          <span className="text-xs text-foreground/40">
                             {r.approvedAt ? fmtDate(r.approvedAt) : ""}
                           </span>
                         )}
@@ -241,12 +240,12 @@ export default function LeaveManager() {
 
         {/* Modal decisión */}
         <Dialog open={!!decision} onOpenChange={(o) => !o && setDecision(null)}>
-          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+          <DialogContent className="bg-card border-foreground/[0.12] text-foreground max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
+              <DialogTitle className="text-foreground flex items-center gap-2">
                 {decision?.action === "approve"
-                  ? <><CheckCircle2 className="w-5 h-5 text-emerald-400" /> Aprobar solicitud</>
-                  : <><XCircle className="w-5 h-5 text-rose-400" /> Rechazar solicitud</>}
+                  ? <><CheckCircle2 className="w-5 h-5 text-success" /> Aprobar solicitud</>
+                  : <><XCircle className="w-5 h-5 text-danger" /> Rechazar solicitud</>}
               </DialogTitle>
             </DialogHeader>
             {decision && (
@@ -262,18 +261,18 @@ export default function LeaveManager() {
                   <p className="text-foreground/60 text-xs italic">Motivo del empleado: "{decision.row.reason}"</p>
                 )}
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">
                     {decision.action === "approve" ? "Comentario (opcional)" : "Motivo del rechazo *"}
                   </Label>
                   <Textarea value={decisionReason} onChange={e => setDecisionReason(e.target.value)} rows={2}
-                    className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                    className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
                 </div>
               </div>
             )}
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDecision(null)}>Cancelar</Button>
               <Button onClick={submitDecision} disabled={approve.isPending || reject.isPending}
-                className={decision?.action === "approve" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-rose-600 hover:bg-rose-700 text-white"}>
+                className={decision?.action === "approve" ? "bg-success hover:bg-success/90 text-white" : "bg-danger hover:bg-danger/90 text-white"}>
                 {(approve.isPending || reject.isPending) ? "Procesando…" : (decision?.action === "approve" ? "Aprobar" : "Rechazar")}
               </Button>
             </DialogFooter>
@@ -282,46 +281,46 @@ export default function LeaveManager() {
 
         {/* Modal saldos */}
         <Dialog open={balanceOpen} onOpenChange={setBalanceOpen}>
-          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+          <DialogContent className="bg-card border-foreground/[0.12] text-foreground max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <CalendarCheck className="w-5 h-5 text-orange-400" /> Saldo de vacaciones
+              <DialogTitle className="text-foreground flex items-center gap-2">
+                <CalendarCheck className="w-5 h-5 text-primary" /> Saldo de vacaciones
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Empleado</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Empleado</Label>
                   <Select value={balEmpId === "" ? "" : String(balEmpId)} onValueChange={v => setBalEmpId(Number(v))}>
-                    <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue placeholder="Selecciona…" /></SelectTrigger>
-                    <SelectContent className="bg-[#0d1526] border-foreground/[0.12] max-h-80">
+                    <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1"><SelectValue placeholder="Selecciona…" /></SelectTrigger>
+                    <SelectContent className="bg-card border-foreground/[0.12] max-h-80">
                       {(employeesList ?? []).map(e => (
-                        <SelectItem key={e.id} value={String(e.id)} className="text-white">{e.fullName}</SelectItem>
+                        <SelectItem key={e.id} value={String(e.id)} className="text-foreground">{e.fullName}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Año</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Año</Label>
                   <Input type="number" value={balYear} onChange={e => setBalYear(Number(e.target.value))}
-                    className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+                    className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
                 </div>
               </div>
 
               {balEmpId !== "" && balData && (
                 <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] p-3 grid grid-cols-4 gap-2 text-center text-xs">
                   <div><p className="text-foreground/40">Asignados</p><p className="font-bold text-foreground/90">{balData.accrued}</p></div>
-                  <div><p className="text-foreground/40">Disfrutados</p><p className="font-bold text-emerald-300">{balData.taken}</p></div>
-                  <div><p className="text-foreground/40">Pendientes</p><p className="font-bold text-amber-300">{balData.pending}</p></div>
-                  <div><p className="text-foreground/40">Disponibles</p><p className="font-bold text-orange-300">{balData.available}</p></div>
+                  <div><p className="text-foreground/40">Disfrutados</p><p className="font-bold text-success">{balData.taken}</p></div>
+                  <div><p className="text-foreground/40">Pendientes</p><p className="font-bold text-warning">{balData.pending}</p></div>
+                  <div><p className="text-foreground/40">Disponibles</p><p className="font-bold text-primary">{balData.available}</p></div>
                 </div>
               )}
 
               <div>
-                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Días asignados al año</Label>
+                <Label className="text-foreground/50 text-xs uppercase tracking-wider">Días asignados al año</Label>
                 <Input type="number" step="0.5" min="0" max="99" value={balDays} onChange={e => setBalDays(e.target.value)}
-                  className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
-                <p className="text-foreground/40 text-[10px] mt-1">
+                  className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-1" />
+                <p className="text-foreground/40 text-xs mt-1">
                   Si no defines un saldo, se usa el valor por defecto de Configuración ({balData?.accrued ?? 22} días).
                 </p>
               </div>
@@ -333,7 +332,7 @@ export default function LeaveManager() {
                   employeeId: Number(balEmpId), year: balYear, accruedDays: Number(balDays),
                 })}
                 disabled={setBalance.isPending || balEmpId === ""}
-                className="bg-orange-600 hover:bg-orange-700 text-white"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {setBalance.isPending ? "Guardando…" : "Guardar saldo"}
               </Button>

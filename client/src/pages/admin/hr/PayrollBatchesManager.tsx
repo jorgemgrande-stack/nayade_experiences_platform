@@ -6,8 +6,10 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { CalendarClock, Plus, Loader2, ChevronRight, AlertCircle, Trash2 } from "lucide-react";
+import { CalendarClock, Plus, ChevronRight, AlertCircle, Trash2 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,14 +33,14 @@ function currentPeriod(): string {
 }
 
 const STATUS_CLASS: Record<string, string> = {
-  open: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  closed: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-  exported: "bg-violet-500/15 text-violet-300 border-violet-500/30",
+  open: "bg-warning/15 text-warning border-warning/30",
+  closed: "bg-success/15 text-success border-success/30",
+  exported: "bg-info/15 text-info border-info/30",
 };
 
 export default function PayrollBatchesManager() {
   const utils = trpc.useUtils();
-  const { data: batches, isLoading } = trpc.hr.batches.list.useQuery();
+  const { data: batches, isLoading, error, refetch } = trpc.hr.batches.list.useQuery();
   const [openModal, setOpenModal] = useState(false);
   const [newPeriod, setNewPeriod] = useState(currentPeriod());
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; period: string; status: string } | null>(null);
@@ -63,39 +65,35 @@ export default function PayrollBatchesManager() {
 
   return (
     <AdminLayout title="Remesas — Personal">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                <CalendarClock className="w-5 h-5 text-orange-400" />
-                Remesas mensuales
-              </h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5">
-                Una remesa por periodo. Al cerrarla se generan 3 gastos contables (Nóminas, IRPF, SS empresa).
-              </p>
-            </div>
-            <Button onClick={() => setOpenModal(true)}>
-              <Plus className="w-4 h-4 mr-1.5" /> Abrir remesa
-            </Button>
-          </div>
+      <div className="min-h-screen bg-background text-foreground">
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6">
+          <PanelPageHeader
+            icon={<CalendarClock />}
+            title="Remesas mensuales"
+            description="Una remesa por periodo. Al cerrarla se generan 3 gastos contables (Nóminas, IRPF, SS empresa)."
+            actions={
+              <>
+                <Button onClick={() => setOpenModal(true)}>
+                  <Plus className="w-4 h-4 mr-1.5" /> Abrir remesa
+                </Button>
+              </>
+            }
+          />
         </div>
 
         <div className="px-4 sm:px-6 py-4">
+          {!isLoading && error && <PanelError error={error} onRetry={() => refetch()} />}
           {isLoading && (
-            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-orange-500 animate-spin" /></div>
+            <PanelLoading />
           )}
-          {!isLoading && (!batches || batches.length === 0) && (
-            <div className="text-center py-12 text-foreground/50 text-sm">
-              <AlertCircle className="w-6 h-6 mx-auto mb-2 text-foreground/30" />
-              No hay remesas todavía. Abre la primera para empezar.
-            </div>
+          {!isLoading && !error && (!batches || batches.length === 0) && (
+            <PanelEmpty title="No hay remesas todavía. Abre la primera para empezar." />
           )}
-          {!isLoading && batches && batches.length > 0 && (
-            <div className="rounded-xl border border-foreground/[0.08] overflow-hidden">
-              <table className="w-full text-sm">
+          {!isLoading && !error && batches && batches.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
-                  <tr className="text-left text-[10px] uppercase tracking-widest text-foreground/50">
+                  <tr className="text-left text-xs uppercase tracking-widest text-foreground/50">
                     <th className="px-4 py-3">Periodo</th>
                     <th className="px-4 py-3 text-center">Estado</th>
                     <th className="px-4 py-3 text-center">Fiscal</th>
@@ -111,31 +109,31 @@ export default function PayrollBatchesManager() {
                   {batches.map(b => (
                     <tr key={b.id} className="border-b border-foreground/[0.05] hover:bg-foreground/[0.03]">
                       <td className="px-4 py-3">
-                        <Link href={`/admin/personal/remesas/${b.id}`} className="text-foreground/90 hover:text-orange-300 font-medium">
+                        <Link href={`/admin/personal/remesas/${b.id}`} className="text-foreground/90 hover:text-primary font-medium">
                           {periodLabel(b.period)}
                         </Link>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border", STATUS_CLASS[b.status])}>
+                        <span className={cn("inline-block px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border", STATUS_CLASS[b.status])}>
                           {b.status === "open" ? "Abierta" : b.status === "closed" ? "Cerrada" : "Exportada"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center text-xs text-foreground/70 capitalize">{b.fiscalStatus}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-orange-300 font-semibold">{fmtEur(b.totalGross)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-primary font-semibold">{fmtEur(b.totalGross)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{fmtEur(b.totalIrpf)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{fmtEur(b.totalSsEmployee)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-emerald-300">{fmtEur(b.totalNet)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-violet-300">
+                      <td className="px-4 py-3 text-right tabular-nums text-success">{fmtEur(b.totalNet)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-info">
                         {fmtEur(b.totalSsCompanyEstimated)}
                         {b.totalSsCompanyReal != null && (
-                          <span className="text-emerald-300 text-[10px] block">real: {fmtEur(b.totalSsCompanyReal)}</span>
+                          <span className="text-success text-xs block">real: {fmtEur(b.totalSsCompanyReal)}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {b.status !== "exported" && (
                           <Button
                             size="sm" variant="ghost"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0"
+                            className="text-danger hover:text-danger hover:bg-danger/10 h-7 w-7 p-0"
                             title="Borrar remesa"
                             onClick={() => setDeleteTarget({ id: b.id, period: b.period, status: b.status })}
                           >
@@ -143,7 +141,7 @@ export default function PayrollBatchesManager() {
                           </Button>
                         )}
                         <Link href={`/admin/personal/remesas/${b.id}`}>
-                          <Button size="sm" variant="ghost" className="text-orange-300 h-7">
+                          <Button size="sm" variant="ghost" className="text-primary h-7">
                             Ver <ChevronRight className="w-3 h-3 ml-0.5" />
                           </Button>
                         </Link>
@@ -158,14 +156,14 @@ export default function PayrollBatchesManager() {
 
         {/* Modal abrir remesa */}
         <Dialog open={openModal} onOpenChange={setOpenModal}>
-          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-sm">
+          <DialogContent className="bg-card border-foreground/[0.12] text-foreground max-w-sm">
             <DialogHeader>
-              <DialogTitle className="text-white">Abrir nueva remesa</DialogTitle>
+              <DialogTitle className="text-foreground">Abrir nueva remesa</DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2">
-              <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Periodo</Label>
+              <Label className="text-foreground/50 text-xs uppercase tracking-wider">Periodo</Label>
               <Input type="month" value={newPeriod} onChange={e => setNewPeriod(e.target.value)}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
               <p className="text-xs text-foreground/50">
                 Se creará una remesa vacía. Después añadirás nóminas desde la pantalla Nóminas y cerrarás la remesa cuando esté completa.
               </p>
@@ -181,24 +179,24 @@ export default function PayrollBatchesManager() {
 
         {/* Modal borrar remesa */}
         <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
-          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+          <DialogContent className="bg-card border-foreground/[0.12] text-foreground max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <Trash2 className="w-4 h-4 text-red-400" />
+              <DialogTitle className="text-foreground flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-danger" />
                 Borrar remesa {deleteTarget ? periodLabel(deleteTarget.period) : ""}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2 text-sm">
               <p className="text-foreground/70">
-                Esta acción borra la remesa y revierte lo que generó su cierre. <strong className="text-red-300">No se puede deshacer.</strong>
+                Esta acción borra la remesa y revierte lo que generó su cierre. <strong className="text-danger">No se puede deshacer.</strong>
               </p>
-              <div className="rounded-lg bg-red-500/10 border border-red-500/25 p-3 space-y-1.5 text-xs">
-                <p className="text-red-300 font-semibold">Se eliminará:</p>
+              <div className="rounded-lg bg-danger/10 border border-danger/25 p-3 space-y-1.5 text-xs">
+                <p className="text-danger font-semibold">Se eliminará:</p>
                 <ul className="text-foreground/70 space-y-0.5 list-disc list-inside">
                   <li>Los gastos contables generados (Nóminas, IRPF, SS empresa y ajustes).</li>
                   <li>El registro de Seguridad Social del periodo.</li>
                 </ul>
-                <p className="text-emerald-300 font-semibold pt-1">Se conserva:</p>
+                <p className="text-success font-semibold pt-1">Se conserva:</p>
                 <ul className="text-foreground/70 space-y-0.5 list-disc list-inside">
                   <li>Las nóminas del periodo (quedan desvinculadas, disponibles en Nóminas).</li>
                 </ul>
@@ -209,7 +207,7 @@ export default function PayrollBatchesManager() {
               <Button
                 onClick={() => deleteTarget && deleteBatch.mutate({ id: deleteTarget.id })}
                 disabled={deleteBatch.isPending}
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-danger hover:bg-danger/90 text-white"
               >
                 {deleteBatch.isPending ? "Borrando…" : "Borrar remesa"}
               </Button>
