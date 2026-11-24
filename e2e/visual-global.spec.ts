@@ -168,6 +168,8 @@ Object.assign(data, {
     { siteId: "s2", name: "Sede Sevilla", status: "active", isPrimary: false, virtual: false, address: null, phone: null, email: null, createdAt: NOW - 30 * DAY },
     { siteId: "s3", name: "Sede antigua", status: "archived", isPrimary: false, virtual: false, address: null, phone: null, email: null, createdAt: NOW - 200 * DAY },
   ], primarySiteId: "s1", limit: 3, used: 2, canAdd: true, canManage: true, managed: true, multiSite: true },
+});
+
 // Centro de suscripción (feat/centro-suscripcion-ui): escenarios simulados de `subscription.billingCenter`
 const eur = "EUR";
 const baseCenter = {
@@ -227,8 +229,6 @@ const centerOver = (k: string): Record<string, unknown> => ({
   ...(k === "sc-quantum" ? {} : k === "sc-sin" ? {} : { "subscription.overview": scOverview }),
 });
 
-async function mock(page: Page, over: Record<string, unknown> = {}) {
-
 // CMS y Elephant Studio (feat/ux2-cms-studio): datos ficticios mínimos
 const sp = (id: number, slug: string, title: string, o: Record<string, unknown> = {}) => ({ id, slug, title, isPublished: true, metaTitle: null, metaDescription: null, updatedAt: new Date(NOW - id * DAY).toISOString(), hasDraft: false, isHome: false, isLegal: false, inHeader: false, inFooter: false, ...o });
 const sitePages = [
@@ -261,7 +261,7 @@ Object.assign(data, {
   ] },
 });
 
-async function mock(page: Page) {
+async function mock(page: Page, over: Record<string, unknown> = {}) {
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
     const names = decodeURIComponent(url.pathname.replace(/^.*\/api\/trpc\//, "")).split(",");

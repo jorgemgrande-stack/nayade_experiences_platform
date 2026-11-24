@@ -80,3 +80,83 @@
   .sx-option,
   .sx-chevron { transition: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * Centro de suscripción (empresas con contratación formalizada): la identidad visual es la de CADA empresa.
+ * `--tenant-primary` guarda el color de marca que pone TenantTheme en <html> (el escenario del marketplace redefine
+ * `--primary`, por eso se captura antes). Todos los degradados y tonos de abajo salen de él con color-mix:
+ *  - Cabecera: base oscura (tinta) mezclada con el color de marca; el texto es siempre blanco, y el brillo máximo del
+ *    color queda por debajo del 55 % sobre la tinta, así el contraste del texto blanco se mantiene (≥ 4,5:1) incluso
+ *    con amarillos u ocres claros. El texto de la cifra grande va sobre el cristal oscuro.
+ *  - Tarjetas: borde, halo y fondo con un toque del color de marca sobre `--card`, en claro y oscuro.
+ * ════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --tenant-primary: var(--primary);
+  --tenant-primary-fg: var(--primary-foreground);
+  --bc-ink: #0a0c14;
+  --bc-hue: var(--tenant-primary);
+}
+/* Tono de la cabecera: la luminosidad del color de marca se acota (0,5–0,62) para que un primario muy oscuro no quede plano ni uno claro pierda contraste */
+@supports (color: oklch(from red l c h)) {
+  :root { --bc-hue: oklch(from var(--tenant-primary) clamp(0.5, l, 0.62) max(c, 0.1) h); }
+}
+.cx-stage.cx-market.bc-tenant {
+  --primary: var(--tenant-primary);
+  --primary-foreground: var(--tenant-primary-fg);
+  --ring: var(--tenant-primary);
+  background-image:
+    radial-gradient(60rem 26rem at 88% -8%, color-mix(in srgb, var(--tenant-primary) 14%, transparent), transparent 62%),
+    radial-gradient(42rem 22rem at -6% 18%, color-mix(in srgb, var(--tenant-primary) 9%, transparent), transparent 62%);
+}
+
+.bc-hero {
+  position: relative;
+  overflow: hidden;
+  color: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--bc-hue) 50%, rgba(255, 255, 255, 0.12));
+  background-color: color-mix(in srgb, var(--bc-hue) 36%, var(--bc-ink));
+  background-image:
+    radial-gradient(70% 100% at 92% 0%, color-mix(in srgb, var(--bc-hue) 64%, transparent), transparent 68%),
+    radial-gradient(55% 80% at 0% 100%, color-mix(in srgb, var(--bc-hue) 44%, transparent), transparent 70%),
+    linear-gradient(135deg, color-mix(in srgb, var(--bc-hue) 22%, var(--bc-ink)) 0%, var(--bc-ink) 100%);
+  box-shadow: 0 32px 70px -32px color-mix(in srgb, var(--bc-hue) 70%, transparent), 0 12px 30px -18px rgba(0, 0, 0, 0.55);
+}
+/* Cristal oscuro: el texto blanco del interior siempre se apoya en él */
+.bc-glass {
+  background: rgba(8, 10, 18, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Tarjetas de sección: profundidad y tono de la marca */
+.bc-card {
+  border: 1px solid color-mix(in srgb, var(--tenant-primary) 22%, var(--border));
+  background-color: var(--card);
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--tenant-primary) 7%, var(--card)) 0%, var(--card) 38%);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--tenant-primary) 18%, transparent), 0 18px 40px -22px var(--cx-shadow);
+}
+.bc-card-forecast {
+  border: 1px dashed color-mix(in srgb, var(--tenant-primary) 35%, var(--border));
+  background-color: color-mix(in srgb, var(--tenant-primary) 5%, var(--muted));
+}
+/* Icono de sección sobre el color de marca (tinta mezclada para conservar el contraste del glifo blanco) */
+.bc-chip {
+  color: #ffffff;
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--bc-hue) 75%, var(--bc-ink)) 0%, color-mix(in srgb, var(--bc-hue) 42%, var(--bc-ink)) 100%);
+  box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--tenant-primary) 70%, transparent);
+}
+/* Tarjeta de cifra (resumen inferior) */
+.bc-stat {
+  border: 1px solid color-mix(in srgb, var(--tenant-primary) 22%, var(--border));
+  background-color: var(--card);
+  background-image: radial-gradient(18rem 8rem at 100% 0%, color-mix(in srgb, var(--tenant-primary) 12%, transparent), transparent 70%);
+  box-shadow: 0 16px 34px -22px var(--cx-shadow);
+}
+
+/* Radios del centro (en CSS: la guarda de geometría del panel solo admite rounded-lg/xl en las clases) */
+.bc-hero { border-radius: 1.75rem; }
+.bc-glass { border-radius: 1.25rem; }
+.bc-card,
+.bc-card-forecast,
+.bc-stat { border-radius: 1.25rem; }

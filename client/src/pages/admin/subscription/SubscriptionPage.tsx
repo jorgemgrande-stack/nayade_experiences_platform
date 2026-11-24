@@ -246,7 +246,7 @@ export default function SubscriptionPage() {
 
   return (
     <AdminLayout>
-      <div className="cx-stage cx-market -m-4 min-h-full p-4 sm:-m-6 sm:p-6">
+      <div className={cn("cx-stage cx-market -m-4 min-h-full p-4 sm:-m-6 sm:p-6", managed && "bc-tenant")}>
         <div className="mx-auto max-w-7xl space-y-10">
           {!managed && !centerPending && <SubscriptionHero model={header} planKey={data?.plan?.key ?? null} onAction={onHeader} busy={portal.open.isPending ? "portal" : null} />}
           {centerPending && <PanelLoading label={t("subscription.center.loading")} />}

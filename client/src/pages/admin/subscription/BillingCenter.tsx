@@ -10,14 +10,13 @@
  * El cliente nunca decide un identificador de Stripe: de la lista solo envía el `id` opaco de la factura.
  */
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpRight, CalendarClock, CheckCircle2, CreditCard, Download, FileText, Info, Layers, Lock, Receipt, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, CalendarClock, CreditCard, Download, FileText, Layers, Lock, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MetricCard } from "@/components/admin/PanelVisual";
-import { PanelPageHeader, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { BillingCenterHero } from "./BillingCenterHero";
 import { PanelEmpty } from "@/components/admin/PanelStates";
-import { TONE_SURFACE } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -124,15 +123,15 @@ function RowsList<T>({ rows, columns, rowKey, caption }: { rows: T[]; columns: P
 
 function Panel({ id, title, text, children, tone = "solid", icon }: { id?: string; title: string; text?: string; children: ReactNode; tone?: "solid" | "forecast"; icon?: ReactNode }) {
   return (
-    <section
-      id={id}
-      aria-labelledby={id ? `${id}-h` : undefined}
-      className={cn("scroll-mt-4 min-w-0 space-y-4 rounded-xl border p-5 sm:p-6", tone === "forecast" ? "border-dashed border-border bg-muted/30" : "border-border bg-card")}
-    >
-      <div className="flex items-start gap-3">
-        {icon && <span className="mt-0.5 shrink-0 text-muted-foreground [&_svg]:h-5 [&_svg]:w-5" aria-hidden="true">{icon}</span>}
-        <div className="min-w-0">
-          <h2 id={id ? `${id}-h` : undefined} className="text-base font-semibold text-foreground">
+    <section id={id} aria-labelledby={id ? `${id}-h` : undefined} className={cn("scroll-mt-4 min-w-0 space-y-5 p-5 sm:p-7", tone === "forecast" ? "bc-card-forecast" : "bc-card")}>
+      <div className="flex items-start gap-3.5">
+        {icon && (
+          <span className="bc-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl [&_svg]:h-5 [&_svg]:w-5" aria-hidden="true">
+            {icon}
+          </span>
+        )}
+        <div className="min-w-0 pt-0.5">
+          <h2 id={id ? `${id}-h` : undefined} className="text-lg font-bold tracking-tight text-foreground">
             {title}
           </h2>
           {text && <p className="mt-0.5 text-sm text-muted-foreground">{text}</p>}
@@ -140,19 +139,6 @@ function Panel({ id, title, text, children, tone = "solid", icon }: { id?: strin
       </div>
       {children}
     </section>
-  );
-}
-
-function Notice({ tone, title, children }: { tone: Tone; title: string; children?: ReactNode }) {
-  const Icon = tone === "danger" || tone === "warning" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
-  return (
-    <div role="status" className={cn("flex gap-3 rounded-xl border p-4 sm:p-5", TONE_SURFACE[tone])}>
-      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-foreground" aria-hidden="true" />
-      <div className="min-w-0 space-y-1">
-        <p className="font-semibold text-foreground">{title}</p>
-        {children && <div className="text-sm text-foreground/90">{children}</div>}
-      </div>
-    </div>
   );
 }
 
@@ -165,6 +151,30 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function Stat({ icon, label, value, detail, tone, small }: { icon: ReactNode; label: string; value: ReactNode; detail?: ReactNode; tone?: Tone; small?: boolean }) {
+  return (
+    <div className="bc-stat flex min-w-0 items-start gap-4 p-5">
+      <span className={cn("inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl [&_svg]:h-5 [&_svg]:w-5", tone ? `${TONE_ICON[tone]}` : "bc-chip")} aria-hidden="true">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        <p className={cn("mt-0.5 break-words font-extrabold leading-tight tracking-tight tabular-nums text-foreground", small ? "text-xl" : "text-2xl sm:text-3xl")}>{value}</p>
+        {detail && <p className="mt-1 break-words text-sm text-muted-foreground">{detail}</p>}
+      </div>
+    </div>
+  );
+}
+
+const TONE_ICON: Record<Tone, string> = {
+  success: "bg-success/15 text-success",
+  warning: "bg-warning/15 text-warning",
+  danger: "bg-danger/15 text-danger",
+  info: "bg-info/15 text-info",
+  neutral: "bg-muted text-muted-foreground",
+  brand: "bc-chip",
+};
+
 export function BillingCenterView({ center, onPortal, portalBusy, children }: { center: TenantBillingCenter; onPortal: () => void; portalBusy: boolean; children?: ReactNode }) {
   const { t, format: f } = useI18n();
   const links = useInvoiceLinks();
@@ -172,14 +182,10 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
   const [docHtml, setDocHtml] = useState<string | null>(null);
   const date = (ms: number | null | undefined) => (ms ? f.date(ms, { day: "numeric", month: "short", year: "numeric" }) : null);
   const money = (cents: number | null | undefined, currency: string) => (cents == null ? "—" : f.currency(cents / 100, currency));
-  const stageLabel = t(`subscription.center.stage.${center.stage}`);
-  const tone = STAGE_TONE[center.stage];
-  const trialStage = center.stage === "trial_authorized";
   const planName = center.contracted?.planName ?? null;
   const interval = center.fee?.interval ?? center.contracted?.interval ?? null;
   const intervalLabel = interval === "year" ? t("subscription.center.plan.perYear") : interval === "month" ? t("subscription.center.plan.perMonth") : "";
   const trialDiffers = !!center.trial?.planName && !!planName && center.trial.planName !== planName;
-  const noPortalHint = !center.actions.portal;
 
   const openInvoice = async (inv: BillingCenterInvoice) => {
     setBusyId(inv.id);
@@ -196,29 +202,13 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
     }
   };
 
-  const notice = (): ReactNode => {
-    switch (center.stage) {
-      case "contract_pending_payment":
-        return <Notice tone="warning" title={t("subscription.center.notice.pendingTitle")}>{t("subscription.center.notice.pendingText")}</Notice>;
-      case "trial_authorized":
-        return <Notice tone="info" title={t("subscription.center.notice.trialTitle")}>{t("subscription.center.notice.trialText")}</Notice>;
-      case "payment_issue":
-        return <Notice tone="danger" title={t("subscription.center.notice.issueTitle")}>{noPortalHint ? t("subscription.center.notice.issueTextNoPortal") : t("subscription.center.notice.issueText")}</Notice>;
-      case "suspended":
-        return <Notice tone="danger" title={t("subscription.center.notice.suspendedTitle")}>{noPortalHint ? t("subscription.center.notice.suspendedTextNoPortal") : t("subscription.center.notice.suspendedText")}</Notice>;
-      case "canceled":
-        return <Notice tone="neutral" title={t("subscription.center.notice.canceledTitle")}>{t("subscription.center.notice.canceledText")}</Notice>;
-      default:
-        return null;
-    }
-  };
-
   // Próximo cobro: fecha de Stripe; durante la prueba es el primer cobro, no una mensualidad ya pagada
   const next = center.nextCharge;
   const nextDate = date(next?.at);
   const nextEstimated = next?.estimatedTotalCents != null ? money(next.estimatedTotalCents, next.currency) : null;
   const last = center.lastPayment;
   const pm = center.paymentMethod.state;
+  const hasPeriod = !!center.billingPeriod && !!(center.billingPeriod.start || center.billingPeriod.end);
 
   const paymentColumns: PanelColumn<BillingCenterPayment>[] = [
     {
@@ -278,91 +268,44 @@ export function BillingCenterView({ center, onPortal, portalBusy, children }: { 
 
   return (
     <div className="space-y-6">
-      <PanelPageHeader
-        className="mb-0"
-        icon={<Receipt />}
-        title={t("subscription.center.title")}
-        description={center.company.name ? `${center.company.name} · ${t("subscription.center.description")}` : t("subscription.center.description")}
-        actions={
-          center.actions.portal ? (
-            <Button type="button" variant="outline" disabled={portalBusy} onClick={onPortal}>
-              {portalBusy ? t("subscription.common.opening") : t("subscription.center.actions.portal")}
-              <ArrowUpRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
-            </Button>
-          ) : undefined
-        }
-      />
-
-      {notice()}
-      {center.customTerms && (
-        <Notice tone="brand" title={t("subscription.center.customTerms")}>
-          {center.actions.note ?? t("subscription.center.customTermsNote")}
-        </Notice>
-      )}
-
-      {/* 1. Resumen */}
-      <section aria-label={t("subscription.center.title")} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-        <MetricCard
-          icon={<ShieldCheck />}
-          tone={tone}
-          label={t("subscription.center.summary.status")}
-          value={<StatusBadge tone={tone} className="text-sm">{stageLabel}</StatusBadge>}
-          detail={center.customTerms ? t("subscription.center.customTerms") : undefined}
-        />
-        <MetricCard
-          icon={<Layers />}
-          tone="brand"
-          label={t("subscription.center.summary.plan")}
-          value={<span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{planName ?? "—"}</span>}
-          detail={planName ? intervalLabel || undefined : t("subscription.center.summary.noPlan")}
-        />
-        <MetricCard
-          icon={<CalendarClock />}
-          tone={trialStage ? "info" : "neutral"}
-          label={t("subscription.center.summary.nextCharge")}
-          value={nextDate ?? (next ? t("subscription.center.summary.toBeConfirmed") : "—")}
-          detail={next ? (nextEstimated ? t("subscription.center.summary.estimated", { amount: nextEstimated }) : undefined) : t("subscription.center.summary.notScheduled")}
-        />
-        <MetricCard
+      {/* 1. Cabecera (estado, planes, próximo cobro) y, debajo, lo que la cabecera no dice */}
+      <BillingCenterHero center={center} onPortal={onPortal} portalBusy={portalBusy} />
+      <section aria-label={t("subscription.center.summary.paymentMethod")} className={cn("grid gap-4 sm:grid-cols-2", hasPeriod ? "xl:grid-cols-3" : "")}>
+        <Stat icon={<CreditCard />} label={t("subscription.center.summary.paymentMethod")} value={t(`subscription.center.summary.${pm}`)} detail={pm === "authorized" ? t("subscription.center.summary.authorizedNote") : undefined} tone={pm === "authorized" ? "success" : pm === "missing" ? "warning" : "neutral"} />
+        <Stat
           icon={<Receipt />}
-          tone={last ? "success" : "neutral"}
           label={t("subscription.center.summary.lastPayment")}
-          value={last ? money(last.amountCents, last.currency) : "—"}
-          detail={last ? [date(last.at), last.invoiceNumber ? t("subscription.center.summary.invoice", { number: last.invoiceNumber }) : null].filter(Boolean).join(" · ") : t("subscription.center.summary.noneYet")}
+          value={last ? money(last.amountCents, last.currency) : t("subscription.center.summary.noneYet")}
+          detail={last ? [date(last.at), last.invoiceNumber ? t("subscription.center.summary.invoice", { number: last.invoiceNumber }) : null].filter(Boolean).join(" · ") : undefined}
+          tone={last ? "success" : "neutral"}
         />
-        <MetricCard
-          icon={<CreditCard />}
-          tone={pm === "authorized" ? "success" : pm === "missing" ? "warning" : "neutral"}
-          label={t("subscription.center.summary.paymentMethod")}
-          value={t(`subscription.center.summary.${pm}`)}
-          detail={pm === "authorized" ? t("subscription.center.summary.authorizedNote") : undefined}
-        />
+        {hasPeriod && (
+          <Stat
+            icon={<CalendarClock />}
+            label={t("subscription.center.plan.period")}
+            value={t("subscription.center.plan.periodRange", { from: date(center.billingPeriod?.start) ?? "—", to: date(center.billingPeriod?.end) ?? "—" })}
+            detail={intervalLabel || undefined}
+            small
+          />
+        )}
       </section>
 
       {/* 2. Plan y condiciones */}
       <Panel id="condiciones" title={t("subscription.center.plan.title")} icon={<Layers />}>
         {center.fee ? (
-          <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label={t("subscription.center.plan.net")}>{money(center.fee.netCents, center.fee.currency)}</Field>
-            <Field label={t("subscription.center.plan.tax")}>{money(center.fee.taxCents, center.fee.currency)}</Field>
-            <Field label={t("subscription.center.plan.total")}>
-              {money(center.fee.totalCents, center.fee.currency)} {intervalLabel}
-            </Field>
-            {center.billingPeriod && (center.billingPeriod.start || center.billingPeriod.end) && (
-              <Field label={t("subscription.center.plan.period")}>
-                {t("subscription.center.plan.periodRange", { from: date(center.billingPeriod.start) ?? "—", to: date(center.billingPeriod.end) ?? "—" })}
-              </Field>
-            )}
-          </dl>
+          <div className="space-y-4">
+            <p className="text-4xl font-extrabold leading-none tracking-tight tabular-nums text-foreground sm:text-5xl">
+              {money(center.fee.totalCents, center.fee.currency)}
+              {intervalLabel && <span className="ml-2 text-base font-semibold text-muted-foreground">{intervalLabel}</span>}
+            </p>
+            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3">
+              <Field label={t("subscription.center.plan.net")}>{money(center.fee.netCents, center.fee.currency)}</Field>
+              <Field label={t("subscription.center.plan.tax")}>{money(center.fee.taxCents, center.fee.currency)}</Field>
+              <Field label={t("subscription.center.plan.total")}>{money(center.fee.totalCents, center.fee.currency)}</Field>
+            </dl>
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">{t("subscription.center.plan.noFee")}</p>
-        )}
-        {(center.trial || planName) && (
-          <dl className="grid gap-x-6 gap-y-4 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
-            {center.trial?.planName && <Field label={t("subscription.center.plan.trialPlan")}>{center.trial.planName}</Field>}
-            {planName && <Field label={t("subscription.center.plan.contractedPlan")}>{planName}</Field>}
-            {center.trial?.endsAt && <Field label={t("subscription.center.plan.trialEnds")}>{date(center.trial.endsAt)}</Field>}
-          </dl>
         )}
         {trialDiffers && <p className="text-sm text-muted-foreground">{t("subscription.center.plan.trialDiffers", { trial: center.trial?.planName ?? "", contracted: planName ?? "" })}</p>}
         {center.included.length > 0 && (
