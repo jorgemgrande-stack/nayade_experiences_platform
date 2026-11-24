@@ -168,8 +168,8 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             <ImageUploader value={form.coverImageUrl} onChange={url => setForm(f => ({ ...f, coverImageUrl: url }))} />
           </div>
           {/* Descuento promocional */}
-          <div className="border rounded-lg p-4 space-y-3 bg-amber-50 dark:bg-amber-950/20">
-            <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-400">Descuento promocional</h4>
+          <div className="border rounded-lg p-4 space-y-3 bg-warning/10">
+            <h4 className="font-semibold text-sm text-warning">Descuento promocional</h4>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label>Descuento (%)</Label>
@@ -189,8 +189,8 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             </div>
           </div>
           {/* Régimen fiscal */}
-          <div className="border rounded-lg p-4 space-y-3 bg-blue-50 dark:bg-blue-950/20">
-            <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-400">Régimen fiscal</h4>
+          <div className="border rounded-lg p-4 space-y-3 bg-info/10">
+            <h4 className="font-semibold text-sm text-info">Régimen fiscal</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Régimen</Label>
@@ -227,8 +227,8 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             </div>
           </div>
           {/* Proveedor y liquidaciones */}
-          <div className="border rounded-lg p-4 space-y-3 bg-violet-50 dark:bg-violet-950/20">
-            <h4 className="font-semibold text-sm text-violet-700 dark:text-violet-400">Proveedor y liquidaciones</h4>
+          <div className="border rounded-lg p-4 space-y-3 bg-primary/10">
+            <h4 className="font-semibold text-sm text-primary">Proveedor y liquidaciones</h4>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <Label>Proveedor</Label>
@@ -280,7 +280,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.isPresentialSale} onCheckedChange={v => setForm(f => ({ ...f, isPresentialSale: v }))} />
-              <Label className="text-violet-700 font-medium">Vendible en TPV</Label>
+              <Label className="text-primary font-medium">Vendible en TPV</Label>
             </div>
           </div>
         </div>
@@ -340,7 +340,7 @@ function CategoriesTab() {
                   <div className="font-medium">{c.name}</div>
                   <div className="text-sm text-muted-foreground">/{c.slug}</div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: c.id })} className="text-red-500 hover:text-red-700">
+                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: c.id })} className="text-danger hover:text-danger/80">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </CardContent>
@@ -403,7 +403,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
               generateMut.mutate({ treatmentId: selectedTreatment ?? (treatments[0]?.id ?? 0), startDate: fd, endDate: endD });
             }}
             disabled={!generateDate || generateMut.isPending}
-            className="bg-emerald-600 hover:bg-emerald-500"
+           
           >
             <Zap className="h-4 w-4 mr-1" />
             {generateMut.isPending ? "Generando..." : "Generar slots"}
@@ -494,7 +494,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
                       {DOW[t.dayOfWeek]} · {t.startTime} – {t.endTime} · {t.slotIntervalMinutes > 0 ? `Cada ${t.slotIntervalMinutes} min` : "Slot único"} · Máx. {t.capacity} reserva{t.capacity !== 1 ? "s" : ""}
                     </div>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: t.id })} className="text-red-500 hover:text-red-700">
+                  <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: t.id })} className="text-danger hover:text-danger/80">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </CardContent>
@@ -591,7 +591,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
                         isSelected
                           ? "bg-primary text-primary-foreground border-primary"
                           : hasSlots
-                            ? "bg-teal-50 border-teal-200 dark:bg-teal-900/20 dark:border-teal-700"
+                            ? "bg-success/10 border-success/40"
                             : "bg-muted/30 border-muted"
                       }`}
                     >
@@ -632,7 +632,7 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
                             {booked}/{cap} reservas
                           </div>
                         </div>
-                        <Badge className={blocked ? "bg-slate-500" : full ? "bg-red-500" : "bg-emerald-500"}>
+                        <Badge className={blocked ? "bg-muted text-muted-foreground" : full ? "border border-danger/40 bg-danger/15 text-danger" : "border border-success/40 bg-success/15 text-success"}>
                           {blocked ? "Bloqueado" : full ? "Lleno" : "Libre"}
                         </Badge>
                       </div>
@@ -712,11 +712,11 @@ export default function SpaManager() {
                       </div>
                     )}
                     {t.isFeatured && (
-                      <Badge className="absolute top-2 left-2 bg-amber-500 text-white text-xs">
+                      <Badge className="absolute top-2 left-2 border border-warning/40 bg-warning/15 text-warning text-xs">
                         <Star className="h-3 w-3 mr-1" /> Destacado
                       </Badge>
                     )}
-                    <Badge className={`absolute top-2 right-2 text-xs ${t.isActive ? "bg-emerald-500" : "bg-slate-400"}`}>
+                    <Badge className={`absolute top-2 right-2 text-xs ${t.isActive ? "border border-success/40 bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
                       {t.isActive ? "Activo" : "Inactivo"}
                     </Badge>
                   </div>
@@ -739,7 +739,7 @@ export default function SpaManager() {
                       </Button>
                       <Button
                         size="sm" variant="outline"
-                        className="text-red-500 hover:text-red-700 ml-auto"
+                        className="text-danger hover:text-danger/80 ml-auto"
                         onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${t.name}"?`, destructive: true }))) deleteMut.mutate({ id: t.id }); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

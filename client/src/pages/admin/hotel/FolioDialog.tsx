@@ -106,7 +106,7 @@ export default function FolioDialog({ reservationId, onClose }: { reservationId:
                         </td>
                         <td className="p-2">{it.kind === "cargo" ? it.quantity : ""}</td>
                         <td className="p-2">{it.kind === "cargo" && it.taxRateBp != null ? `${it.taxRateBp / 100} %` : ""}</td>
-                        <td className={`p-2 text-right whitespace-nowrap ${it.kind === "pago" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{it.kind === "pago" ? "−" : ""}{eur(it.amountCents)}</td>
+                        <td className={`p-2 text-right whitespace-nowrap ${it.kind === "pago" ? "text-success" : ""}`}>{it.kind === "pago" ? "−" : ""}{eur(it.amountCents)}</td>
                         <td className="p-2 text-right">
                           {editable && !it.automatic && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del.mutate({ reservationId, itemId: it.id })} disabled={busy} aria-label={it.external ? "Anular el cargo (vuelve a pendiente de cobro en su módulo)" : "Borrar"} title={it.external ? "Anula el cargo entero: vuelve a pendiente de cobro en su módulo" : undefined}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
@@ -120,8 +120,8 @@ export default function FolioDialog({ reservationId, onClose }: { reservationId:
             )}
             <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 text-sm border-t border-border pt-2">
               <span>Cargos: <b>{eur(d.totals.chargesCents)}</b></span>
-              <span>Pagos: <b className="text-emerald-700 dark:text-emerald-400">{eur(d.totals.paymentsCents)}</b></span>
-              <span>Saldo: <b className={d.totals.balanceCents !== 0 ? "text-amber-700 dark:text-amber-400" : ""}>{eur(d.totals.balanceCents)}</b></span>
+              <span>Pagos: <b className="text-success">{eur(d.totals.paymentsCents)}</b></span>
+              <span>Saldo: <b className={d.totals.balanceCents !== 0 ? "text-warning" : ""}>{eur(d.totals.balanceCents)}</b></span>
             </div>
 
             {editable && (
@@ -178,7 +178,7 @@ export default function FolioDialog({ reservationId, onClose }: { reservationId:
                     <Input value={nif} maxLength={32} onChange={(e) => setNif(e.target.value)} placeholder="NIF / CIF" aria-label="NIF" />
                     <Input value={address} maxLength={500} onChange={(e) => setAddress(e.target.value)} placeholder="Dirección fiscal" aria-label="Dirección" />
                   </div>
-                  {d.closeBlocker && <p className="text-xs text-amber-700 dark:text-amber-400">{d.closeBlocker}</p>}
+                  {d.closeBlocker && <p className="text-xs text-warning">{d.closeBlocker}</p>}
                 </div>
               </>
             )}

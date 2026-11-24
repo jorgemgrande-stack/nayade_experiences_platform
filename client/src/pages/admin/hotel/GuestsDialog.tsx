@@ -44,8 +44,8 @@ export default function GuestsDialog({ reservationId, title, onClose }: { reserv
                       <div className="font-medium flex flex-wrap items-center gap-2">{g.displayName}{g.isLead && <Badge variant="secondary">Titular</Badge>}{g.kinship && <Badge variant="outline">{g.kinship}</Badge>}</div>
                       <div className="text-xs text-muted-foreground">{[g.docType && g.docNumber ? `${g.docType} ${g.docNumber}` : null, g.nationality, g.birthDate].filter(Boolean).join(" · ") || "Sin datos"}</div>
                       {g.missing.length > 0
-                        ? <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Para el registro falta: {g.missing.join(" ")}</p>
-                        : <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1 flex items-center gap-1"><UserCheck className="h-3 w-3" /> Registro completo</p>}
+                        ? <p className="text-xs text-warning mt-1">Para el registro falta: {g.missing.join(" ")}</p>
+                        : <p className="text-xs text-success mt-1 flex items-center gap-1"><UserCheck className="h-3 w-3" /> Registro completo</p>}
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditing({ guestId: g.id, isLead: g.isLead, kinship: g.kinship ?? "", form: guestToForm(g) })} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>

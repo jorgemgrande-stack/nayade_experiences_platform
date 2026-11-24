@@ -19,10 +19,10 @@ const DOW = ["D", "L", "M", "X", "J", "V", "S"];
 
 function barClass(a: any) {
   const s = a.reservation?.statusReservation;
-  if (s === "EN_CURSO") return "bg-blue-600 text-white dark:bg-blue-500";
+  if (s === "EN_CURSO") return "border border-info/50 bg-info/20 text-foreground";
   if (s === "FINALIZADA") return "bg-muted text-muted-foreground";
-  if (a.reservation?.status === "paid") return "bg-emerald-600 text-white dark:bg-emerald-500";
-  return "bg-amber-400 text-amber-950 dark:bg-amber-500";
+  if (a.reservation?.status === "paid") return "border border-success/40 bg-success/15 text-success";
+  return "border border-warning/50 bg-warning/20 text-foreground";
 }
 
 function MoveDialog({ assignment, rooms, onClose }: { assignment: any; rooms: any[]; onClose: () => void }) {
@@ -191,16 +191,16 @@ export default function HotelPlanning() {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-emerald-600 dark:bg-emerald-500" /> Pagada</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-amber-400 dark:bg-amber-500" /> Pendiente de pago</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-blue-600 dark:bg-blue-500" /> En casa</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded border border-success/50 bg-success/20" /> Pagada</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded border border-warning/50 bg-warning/20" /> Pendiente de pago</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded border border-info/50 bg-info/20" /> En casa</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-muted border border-border" /> Salida hecha</span>
             </div>
 
             {unassigned.length > 0 && (
-              <Card className="border-amber-300 dark:border-amber-800">
+              <Card className="border-warning/40">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                  <CardTitle className="text-sm flex items-center gap-2 text-warning">
                     <AlertCircle className="h-4 w-4" /> {unassigned.length} reserva{unassigned.length !== 1 ? "s" : ""} sin habitación en estas fechas
                   </CardTitle>
                 </CardHeader>
@@ -234,7 +234,7 @@ export default function HotelPlanning() {
                           const weekend = dt.getUTCDay() === 0 || dt.getUTCDay() === 6;
                           return (
                             <th key={d} className={`p-1 text-center font-medium border-b border-border min-w-[40px] ${d === today ? "bg-primary/15" : weekend ? "bg-muted/50" : ""}`}>
-                              <div className="text-[10px] text-muted-foreground">{DOW[dt.getUTCDay()]}</div>
+                              <div className="text-xs text-muted-foreground">{DOW[dt.getUTCDay()]}</div>
                               <div>{dt.getUTCDate()}</div>
                             </th>
                           );
@@ -245,16 +245,16 @@ export default function HotelPlanning() {
                       {groups.map((g) => (
                         <Fragment key={`g-${g.type}`}>
                           <tr>
-                            <td colSpan={days.length + 1} className="bg-muted/40 px-2 py-1 font-semibold text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">{g.type}</td>
+                            <td colSpan={days.length + 1} className="bg-muted/40 px-2 py-1 font-semibold text-xs uppercase tracking-wide text-muted-foreground border-b border-border">{g.type}</td>
                           </tr>
                           {g.rooms.map((room) => (
                             <tr key={room.id} className={room.isActive ? "" : "opacity-50"}>
                               <td className="sticky left-0 z-10 bg-background p-2 border-b border-r border-border whitespace-nowrap">
                                 <div className="flex items-center gap-1">
                                   <span className="font-medium">{room.code}</span>
-                                  {room.floor ? <span className="text-[10px] text-muted-foreground">P{room.floor}</span> : null}
+                                  {room.floor ? <span className="text-xs text-muted-foreground">P{room.floor}</span> : null}
                                 </div>
-                                <Badge variant="outline" className={`mt-0.5 text-[10px] px-1 py-0 ${roomStateClass(room.operationalStatus)}`}>{ROOM_STATE_LABEL[room.operationalStatus] ?? room.operationalStatus}</Badge>
+                                <Badge variant="outline" className={`mt-0.5 text-xs px-1 py-0 ${roomStateClass(room.operationalStatus)}`}>{ROOM_STATE_LABEL[room.operationalStatus] ?? room.operationalStatus}</Badge>
                               </td>
                               {days.map((d) => {
                                 const a = occ.get(`${room.id}|${d}`);
@@ -268,7 +268,7 @@ export default function HotelPlanning() {
                                       title={`${a.reservation?.customerName ?? ""} · ${a.reservation?.reservationNumber ?? ""} · ${a.checkIn} → ${a.checkOut}`}
                                       onClick={() => setMoveTarget(a)}
                                     >
-                                      {first && <span className="text-[10px] font-medium overflow-hidden text-ellipsis whitespace-nowrap">{a.reservation?.customerName ?? `#${a.reservationId}`}</span>}
+                                      {first && <span className="text-xs font-medium overflow-hidden text-ellipsis whitespace-nowrap">{a.reservation?.customerName ?? `#${a.reservationId}`}</span>}
                                     </button>
                                   </td>
                                 );

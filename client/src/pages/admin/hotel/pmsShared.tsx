@@ -24,10 +24,10 @@ export type RoomStateValue = (typeof ROOM_STATES)[number]["value"];
 export const ROOM_STATE_LABEL: Record<string, string> = Object.fromEntries(ROOM_STATES.map((s) => [s.value, s.label]));
 
 export function roomStateClass(s: string): string {
-  if (s === "libre" || s === "revisada") return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300";
-  if (s === "ocupada" || s === "reservada") return "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300";
-  if (s === "sucia" || s === "limpieza_en_curso") return "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300";
-  if (s === "fuera_de_servicio" || s === "bloqueada_mantenimiento") return "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300";
+  if (s === "libre" || s === "revisada") return "border-success/40 bg-success/10 text-success";
+  if (s === "ocupada" || s === "reservada") return "border-info/40 bg-info/10 text-info";
+  if (s === "sucia" || s === "limpieza_en_curso") return "border-warning/40 bg-warning/10 text-warning";
+  if (s === "fuera_de_servicio" || s === "bloqueada_mantenimiento") return "border-danger/40 bg-danger/10 text-danger";
   return "border-border bg-muted text-muted-foreground";
 }
 
@@ -82,9 +82,9 @@ export function isPmsNotInstalled(err: { message?: string } | null | undefined):
 
 export function PmsNotInstalled() {
   return (
-    <Card className="border-amber-300 dark:border-amber-800">
+    <Card className="border-warning/40">
       <CardContent className="p-6 flex gap-3 items-start">
-        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
         <div className="space-y-1 text-sm">
           <p className="font-medium">El PMS del hotel aún no está preparado en tu empresa.</p>
           <p className="text-muted-foreground">

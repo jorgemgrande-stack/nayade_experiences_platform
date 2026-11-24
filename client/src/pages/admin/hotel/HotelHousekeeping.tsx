@@ -21,9 +21,9 @@ const PRIORITY_LABEL: Record<string, string> = { baja: "Baja", media: "Media", a
 const INCIDENT_LABEL: Record<string, string> = { abierta: "Abierta", en_curso: "En curso", resuelta: "Resuelta" };
 
 function statusClass(s: string) {
-  if (s === "inspeccionada") return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300";
-  if (s === "hecha") return "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300";
-  if (s === "en_curso") return "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300";
+  if (s === "inspeccionada") return "border-success/40 bg-success/10 text-success";
+  if (s === "hecha") return "border-info/40 bg-info/10 text-info";
+  if (s === "en_curso") return "border-warning/40 bg-warning/10 text-warning";
   return "border-border bg-muted text-muted-foreground";
 }
 
@@ -49,7 +49,7 @@ function TaskCard({ t, canManage, assignees, onChanged, onIncident }: {
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <Badge variant="outline" className={statusClass(t.status)}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
-          <Badge variant="outline" className={`text-[10px] ${roomStateClass(t.roomStatus)}`}>{ROOM_STATE_LABEL[t.roomStatus] ?? t.roomStatus}</Badge>
+          <Badge variant="outline" className={`text-xs ${roomStateClass(t.roomStatus)}`}>{ROOM_STATE_LABEL[t.roomStatus] ?? t.roomStatus}</Badge>
         </div>
       </div>
       {t.notes && <p className="text-xs text-muted-foreground">{t.notes}</p>}
@@ -68,7 +68,7 @@ function TaskCard({ t, canManage, assignees, onChanged, onIncident }: {
         {(t.status === "pendiente" || t.status === "en_curso") && <Button className="h-10 flex-1 min-w-[120px]" onClick={() => go("hecha")} disabled={busy}><CheckCircle2 className="h-4 w-4 mr-1" /> Hecha</Button>}
         {t.status === "hecha" && canManage && <Button className="h-10 flex-1 min-w-[120px]" onClick={() => go("inspeccionada")} disabled={busy}><ClipboardCheck className="h-4 w-4 mr-1" /> Inspeccionar</Button>}
         {t.status === "hecha" && <Button className="h-10" variant="outline" onClick={() => go("en_curso")} disabled={busy}>Reabrir</Button>}
-        <Button className="h-10" variant="ghost" onClick={() => onIncident(t)} title="Avisar de una incidencia"><AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" /><span className="sr-only">Incidencia</span></Button>
+        <Button className="h-10" variant="ghost" onClick={() => onIncident(t)} title="Avisar de una incidencia"><AlertTriangle className="h-4 w-4 text-warning" /><span className="sr-only">Incidencia</span></Button>
       </div>
     </div>
   );

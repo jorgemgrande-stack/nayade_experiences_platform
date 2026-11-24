@@ -13,11 +13,11 @@ const MONTHS = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  pending:         "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  pending_payment: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  confirmed:       "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  cancelled:       "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  no_show:         "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  pending:         "bg-warning/10 text-warning",
+  pending_payment: "bg-warning/10 text-warning",
+  confirmed:       "bg-success/10 text-success",
+  cancelled:       "bg-danger/10 text-danger",
+  no_show:         "bg-muted text-muted-foreground",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -30,14 +30,14 @@ const STATUS_LABELS: Record<string, string> = {
 
 // Paleta de colores por restaurante (hasta 8)
 const RESTAURANT_COLORS = [
-  "bg-blue-500",
-  "bg-purple-500",
-  "bg-emerald-500",
-  "bg-rose-500",
-  "bg-amber-500",
-  "bg-cyan-500",
-  "bg-indigo-500",
-  "bg-pink-500",
+  "bg-info",
+  "bg-primary",
+  "bg-success",
+  "bg-danger",
+  "bg-warning",
+  "bg-info/60",
+  "bg-primary/60",
+  "bg-success/60",
 ];
 
 function formatYearMonth(d: Date) {
@@ -162,7 +162,7 @@ export default function GlobalCalendar() {
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Calendario mensual */}
           <div className="lg:col-span-2">
-            <div className="bg-card rounded-2xl border border-border/40 p-5">
+            <div className="bg-card rounded-xl border border-border/40 p-5">
               {/* Navegación de mes */}
               <div className="flex items-center justify-between mb-5">
                 <button
@@ -230,14 +230,14 @@ export default function GlobalCalendar() {
                             {restIds.slice(0, 4).map(rid => (
                               <span
                                 key={rid}
-                                className={`w-2 h-2 rounded-full ${restaurantColorMap[rid] ?? "bg-gray-400"}`}
+                                className={`w-2 h-2 rounded-full ${restaurantColorMap[rid] ?? "bg-muted-foreground/40"}`}
                               />
                             ))}
                           </div>
                         )}
                         {/* Contador de reservas */}
                         {dayBks.length > 0 && (
-                          <span className={`text-[10px] font-display font-bold mt-0.5 ${
+                          <span className={`text-xs font-display font-bold mt-0.5 ${
                             isSelected ? "text-accent" : "text-muted-foreground"
                           }`}>
                             {dayBks.length}
@@ -258,13 +258,13 @@ export default function GlobalCalendar() {
                   <div className="text-xs text-muted-foreground font-display">Total reservas</div>
                 </div>
                 <div className="bg-card rounded-xl border border-border/40 p-3 text-center">
-                  <div className="text-2xl font-heading font-bold text-green-600">
+                  <div className="text-2xl font-heading font-bold text-success">
                     {data.bookings.filter(b => b.status === "confirmed").length}
                   </div>
                   <div className="text-xs text-muted-foreground font-display">Confirmadas</div>
                 </div>
                 <div className="bg-card rounded-xl border border-border/40 p-3 text-center">
-                  <div className="text-2xl font-heading font-bold text-amber-600">
+                  <div className="text-2xl font-heading font-bold text-warning">
                     {data.bookings.filter(b => b.status === "pending" || b.status === "pending_payment").length}
                   </div>
                   <div className="text-xs text-muted-foreground font-display">Pendientes</div>
@@ -280,7 +280,7 @@ export default function GlobalCalendar() {
           </div>
 
           {/* Panel lateral: timing del día */}
-          <div className="bg-card rounded-2xl border border-border/40 p-5 h-fit sticky top-6">
+          <div className="bg-card rounded-xl border border-border/40 p-5 h-fit sticky top-6">
             {selectedDate ? (
               <>
                 <div className="flex items-center gap-2 mb-4">
@@ -308,7 +308,7 @@ export default function GlobalCalendar() {
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-heading font-bold text-accent">{b.time}</span>
-                            <span className={`w-2 h-2 rounded-full ${restaurantColorMap[b.restaurantId] ?? "bg-gray-400"}`} />
+                            <span className={`w-2 h-2 rounded-full ${restaurantColorMap[b.restaurantId] ?? "bg-muted-foreground/40"}`} />
                             <span className="text-xs font-display text-muted-foreground truncate max-w-[100px]">{b.restaurantName}</span>
                           </div>
                           {/* Icono de pago:
@@ -318,11 +318,11 @@ export default function GlobalCalendar() {
                           */}
                           {b.paymentStatus === "pending" ? (
                             <span title="Pago pendiente">
-                              <CreditCard className="w-4 h-4 text-orange-500" />
+                              <CreditCard className="w-4 h-4 text-warning" />
                             </span>
                           ) : b.paymentStatus === "paid" && Number(b.depositAmount) > 0 ? (
                             <span title="Pagado">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
+                              <CheckCircle className="w-4 h-4 text-success" />
                             </span>
                           ) : b.paymentStatus === "paid" && Number(b.depositAmount) === 0 ? (
                             <span title="Sin depósito">
@@ -354,7 +354,7 @@ export default function GlobalCalendar() {
 
                         {/* Estado */}
                         <div className="mt-2">
-                          <span className={`text-[10px] font-display font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[b.status] ?? STATUS_COLORS.pending}`}>
+                          <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[b.status] ?? STATUS_COLORS.pending}`}>
                             {STATUS_LABELS[b.status] ?? b.status}
                           </span>
                         </div>

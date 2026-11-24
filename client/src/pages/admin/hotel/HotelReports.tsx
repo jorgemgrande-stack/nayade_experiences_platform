@@ -17,7 +17,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       <CardContent className="p-3 sm:p-4 min-w-0">
         <div className="text-xl sm:text-2xl font-bold leading-none">{value}</div>
         <div className="text-xs text-muted-foreground mt-1">{label}</div>
-        {hint && <div className="text-[11px] text-muted-foreground mt-0.5">{hint}</div>}
+        {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
       </CardContent>
     </Card>
   );

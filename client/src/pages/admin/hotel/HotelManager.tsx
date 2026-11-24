@@ -186,8 +186,8 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             <Input value={form.amenities} onChange={e => setForm(f => ({ ...f, amenities: e.target.value }))} placeholder="WiFi, Desayuno, TV, Minibar..." />
           </div>
           {/* Descuento promocional */}
-          <div className="border rounded-lg p-4 space-y-3 bg-amber-50 dark:bg-amber-950/20">
-            <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-400">Descuento promocional</h4>
+          <div className="border rounded-lg p-4 space-y-3 bg-warning/10">
+            <h4 className="font-semibold text-sm text-warning">Descuento promocional</h4>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label>Descuento (%)</Label>
@@ -207,8 +207,8 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             </div>
           </div>
           {/* Régimen fiscal */}
-          <div className="border rounded-lg p-4 space-y-3 bg-blue-50 dark:bg-blue-950/20">
-            <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-400">Régimen fiscal</h4>
+          <div className="border rounded-lg p-4 space-y-3 bg-info/10">
+            <h4 className="font-semibold text-sm text-info">Régimen fiscal</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Régimen</Label>
@@ -245,8 +245,8 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             </div>
           </div>
           {/* Proveedor y liquidaciones */}
-          <div className="border rounded-lg p-4 space-y-3 bg-violet-50 dark:bg-violet-950/20">
-            <h4 className="font-semibold text-sm text-violet-700 dark:text-violet-400">Proveedor y liquidaciones</h4>
+          <div className="border rounded-lg p-4 space-y-3 bg-primary/10">
+            <h4 className="font-semibold text-sm text-primary">Proveedor y liquidaciones</h4>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <Label>Proveedor</Label>
@@ -298,7 +298,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.isPresentialSale} onCheckedChange={v => setForm(f => ({ ...f, isPresentialSale: v }))} />
-              <Label className="text-violet-700 font-medium">Vendible en TPV</Label>
+              <Label className="text-primary font-medium">Vendible en TPV</Label>
             </div>
           </div>
         </div>
@@ -386,10 +386,10 @@ function InventoryCalendar({ rooms }: { rooms: any[] }) {
                 const price = cell?.priceOverride ?? null;
                 const pct = total > 0 ? avail / total : 1;
                 const bgClass = avail === 0
-                  ? "bg-red-100 border-red-300 dark:bg-red-900/30 dark:border-red-700"
+                  ? "bg-danger/10 border-danger/40"
                   : pct < 0.4
-                    ? "bg-amber-50 border-amber-300 dark:bg-amber-900/20 dark:border-amber-700"
-                    : "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-700";
+                    ? "bg-warning/10 border-warning/40"
+                    : "bg-success/10 border-success/40";
 
                 return (
                   <button
@@ -398,19 +398,19 @@ function InventoryCalendar({ rooms }: { rooms: any[] }) {
                     className={`rounded-lg p-1.5 text-center border transition-all hover:scale-105 ${bgClass}`}
                   >
                     <div className="text-xs font-medium">{d}</div>
-                    <div className={`text-xs font-bold ${avail === 0 ? "text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-300"}`}>
+                    <div className={`text-xs font-bold ${avail === 0 ? "text-danger" : "text-muted-foreground"}`}>
                       {avail}/{total}
                     </div>
-                    {price && <div className="text-xs text-blue-600 dark:text-blue-400">{parseFloat(price).toFixed(0)}€</div>}
+                    {price && <div className="text-xs text-info">{parseFloat(price).toFixed(0)}€</div>}
                   </button>
                 );
               })}
             </div>
           )}
           <div className="flex gap-4 mt-4 justify-center text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-200 dark:bg-emerald-900 inline-block" /> Disponible</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-200 dark:bg-amber-900 inline-block" /> Pocas plazas</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-200 dark:bg-red-900 inline-block" /> Completo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-success/20 inline-block" /> Disponible</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-warning/20 inline-block" /> Pocas plazas</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-danger/20 inline-block" /> Completo</span>
           </div>
         </CardContent>
       </Card>
@@ -527,7 +527,7 @@ function RateSeasonsTab() {
                     {s.dateFrom} → {s.dateTo} · Multiplicador: ×{parseFloat(s.multiplier).toFixed(2)}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: s.id })} className="text-red-500 hover:text-red-700">
+                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: s.id })} className="text-danger hover:text-danger/80">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </CardContent>
@@ -597,11 +597,11 @@ export default function HotelManager() {
                       </div>
                     )}
                     {room.isFeatured && (
-                      <Badge className="absolute top-2 left-2 bg-amber-500 text-white text-xs">
+                      <Badge className="absolute top-2 left-2 border border-warning/40 bg-warning/15 text-warning text-xs">
                         <Star className="h-3 w-3 mr-1" /> Destacado
                       </Badge>
                     )}
-                    <Badge className={`absolute top-2 right-2 text-xs ${room.isActive ? "bg-emerald-500" : "bg-slate-400"}`}>
+                    <Badge className={`absolute top-2 right-2 text-xs ${room.isActive ? "border border-success/40 bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
                       {room.isActive ? "Activo" : "Inactivo"}
                     </Badge>
                   </div>
@@ -625,7 +625,7 @@ export default function HotelManager() {
                       </Button>
                       <Button
                         size="sm" variant="outline"
-                        className="text-red-500 hover:text-red-700 ml-auto"
+                        className="text-danger hover:text-danger/80 ml-auto"
                         onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${room.name}"?`, destructive: true }))) deleteMut.mutate({ id: room.id }); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

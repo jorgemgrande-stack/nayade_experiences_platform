@@ -129,9 +129,9 @@ function NewReservationDialog({ roomTypes, rooms, onClose }: { roomTypes: any[];
           <div className="space-y-1"><Label>Teléfono</Label><Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} /></div>
           <div className="sm:col-span-2 space-y-1"><Label>Correo</Label><Input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} /></div>
           <div className="sm:col-span-2 space-y-1"><Label>Notas</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
-          <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/40">
+          <div className="sm:col-span-2 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-2">
             <Switch checked={force} onCheckedChange={setForce} />
-            <Label className="text-amber-900 dark:text-amber-200 leading-snug">Forzar: alojar aunque la tipología esté completa o la estancia incumpla sus restricciones</Label>
+            <Label className="text-foreground leading-snug">Forzar: alojar aunque la tipología esté completa o la estancia incumpla sus restricciones</Label>
           </div>
           <p className="sm:col-span-2 text-xs text-muted-foreground">La reserva queda confirmada y pendiente de pago; el cobro se registra desde el módulo de reservas.</p>
         </div>
@@ -290,16 +290,16 @@ export default function HotelReservations() {
                           </td>
                           <td className="p-3">{r.roomName ?? "—"}</td>
                           <td className="p-3 whitespace-nowrap">{shortDate(r.checkIn)} → {shortDate(r.checkOut)}<div className="text-xs text-muted-foreground">{r.nights} noche{r.nights === 1 ? "" : "s"} · {r.people} pers.</div></td>
-                          <td className="p-3 whitespace-nowrap">{eur(r.amountTotal)}{r.amountPaid > 0 && r.amountPaid < r.amountTotal && <div className="text-xs text-amber-600 dark:text-amber-400">pagado {eur(r.amountPaid)}</div>}</td>
+                          <td className="p-3 whitespace-nowrap">{eur(r.amountTotal)}{r.amountPaid > 0 && r.amountPaid < r.amountTotal && <div className="text-xs text-warning">pagado {eur(r.amountPaid)}</div>}</td>
                           <td className="p-3"><Badge variant={r.status === "paid" ? "default" : "outline"}>{PAYMENT_LABEL[r.status] ?? r.status}</Badge></td>
                           <td className="p-3">{stayBadge(r)}</td>
                           <td className="p-3">{r.assignment ? <Badge variant="outline" className="gap-1"><BedDouble className="h-3 w-3" /> {r.assignment.roomCode}</Badge> : <span className="text-xs text-muted-foreground">Sin asignar</span>}</td>
                           <td className="sticky right-0 bg-card p-3 whitespace-nowrap text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]">
-                            {canCheckIn && <Button variant="ghost" size="sm" onClick={() => checkIn.mutate({ reservationId: r.id })} disabled={busy} title="Check-in"><LogIn className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /></Button>}
-                            {s === "EN_CURSO" && <Button variant="ghost" size="sm" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-4 w-4 text-violet-600 dark:text-violet-400" /></Button>}
+                            {canCheckIn && <Button variant="ghost" size="sm" onClick={() => checkIn.mutate({ reservationId: r.id })} disabled={busy} title="Check-in"><LogIn className="h-4 w-4 text-success" /></Button>}
+                            {s === "EN_CURSO" && <Button variant="ghost" size="sm" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-4 w-4 text-primary" /></Button>}
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => noShow.mutate({ reservationId: r.id })} disabled={busy} title="No-show"><Ban className="h-4 w-4" /></Button>}
                             {(r.occupies || s === "FINALIZADA") && <Button variant="ghost" size="sm" onClick={() => setGuestsFor({ id: r.id, title: r.customerName })} title="Huéspedes"><IdCard className="h-4 w-4" /></Button>}
-                            {(r.occupies || s === "FINALIZADA") && <Button variant="ghost" size="sm" onClick={() => setFolioId(r.id)} title="Folio de la estancia"><Receipt className="h-4 w-4 text-amber-600 dark:text-amber-400" /></Button>}
+                            {(r.occupies || s === "FINALIZADA") && <Button variant="ghost" size="sm" onClick={() => setFolioId(r.id)} title="Folio de la estancia"><Receipt className="h-4 w-4 text-warning" /></Button>}
                             {r.occupies && s !== "FINALIZADA" && !r.assignment && <Button variant="ghost" size="sm" onClick={() => auto.mutate({ reservationId: r.id })} disabled={busy} title="Asignar automáticamente"><Wand2 className="h-4 w-4" /></Button>}
                             {r.occupies && s !== "FINALIZADA" && <Button variant="ghost" size="sm" onClick={() => setAssignTarget(r)} disabled={busy} title={r.assignment ? "Cambiar habitación" : "Asignar habitación"}><Link2 className="h-4 w-4" /></Button>}
                             {r.assignment && s !== "EN_CURSO" && s !== "FINALIZADA" && <Button variant="ghost" size="sm" onClick={() => unassign.mutate({ reservationId: r.id })} disabled={busy} title="Quitar habitación"><Link2Off className="h-4 w-4 text-destructive" /></Button>}

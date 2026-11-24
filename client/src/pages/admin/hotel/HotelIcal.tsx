@@ -72,7 +72,7 @@ function Destination({ kind, id, name, data }: { kind: Kind; id: number; name: s
               <Badge variant="outline">{CHANNEL_LABEL[e.channel as Channel]}</Badge>
               <span className="text-muted-foreground">{e.fetchCount} consultas · última {when(e.lastFetchedAt)}</span>
             </div>
-            {e.url ? <CopyField value={e.url} /> : <p className="text-xs text-amber-700 dark:text-amber-400">La clave del servidor ha cambiado: rota el enlace y vuelve a pegarlo en el canal.</p>}
+            {e.url ? <CopyField value={e.url} /> : <p className="text-xs text-warning">La clave del servidor ha cambiado: rota el enlace y vuelve a pegarlo en el canal.</p>}
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={issue.isPending} onClick={async () => { if ((await confirmAction({ description: "El enlace actual dejará de funcionar y tendrás que pegar el nuevo en el canal. ¿Rotar?" }))) issue.mutate({ targetKind: kind, targetId: id, channel: e.channel }); }}>Rotar</Button>
               <Button size="sm" variant="outline" disabled={revoke.isPending} onClick={async () => { if ((await confirmAction({ description: "El canal dejará de recibir la disponibilidad. ¿Revocar el enlace?", destructive: true }))) revoke.mutate({ id: e.id }); }}>Revocar</Button>
@@ -98,14 +98,14 @@ function Destination({ kind, id, name, data }: { kind: Kind; id: number; name: s
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Badge variant="outline">{CHANNEL_LABEL[f.channel as Channel]}</Badge>
               {f.label && <span className="font-medium">{f.label}</span>}
-              {f.status === "paused" ? <Badge variant="secondary">En pausa</Badge> : f.lastStatus === "error" ? <Badge variant="destructive">Error</Badge> : f.lastStatus === "ok" ? <Badge className="bg-emerald-600 text-white dark:bg-emerald-700">Al día</Badge> : <Badge variant="secondary">Pendiente</Badge>}
+              {f.status === "paused" ? <Badge variant="secondary">En pausa</Badge> : f.lastStatus === "error" ? <Badge variant="destructive">Error</Badge> : f.lastStatus === "ok" ? <Badge className="border border-success/40 bg-success/15 text-success">Al día</Badge> : <Badge variant="secondary">Pendiente</Badge>}
             </div>
             <div className="text-xs text-muted-foreground font-mono overflow-hidden text-ellipsis whitespace-nowrap">{f.url}</div>
             <div className="text-xs text-muted-foreground">
               Última sincronización correcta: {when(f.lastSuccessAt)} · {f.upcoming} bloqueo{f.upcoming === 1 ? "" : "s"} próximo{f.upcoming === 1 ? "" : "s"}{f.nextStart ? ` (desde ${shortDate(f.nextStart)})` : ""}
               {f.lastStatus === "ok" && ` · último cambio: ${f.lastAdded} nuevos, ${f.lastUpdated} cambiados, ${f.lastCancelled} cancelados`}
             </div>
-            {f.lastStatus === "error" && f.lastError && <p className="text-xs text-red-700 dark:text-red-400">{f.lastError}{f.consecutiveFailures > 1 ? ` (${f.consecutiveFailures} intentos seguidos; se conservan los bloqueos anteriores)` : ""}</p>}
+            {f.lastStatus === "error" && f.lastError && <p className="text-xs text-danger">{f.lastError}{f.consecutiveFailures > 1 ? ` (${f.consecutiveFailures} intentos seguidos; se conservan los bloqueos anteriores)` : ""}</p>}
             <div className="flex flex-wrap gap-2 pt-1">
               <Button size="sm" variant="outline" disabled={sync.isPending || f.status !== "active"} onClick={() => sync.mutate({ feedId: f.id })}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Sincronizar ahora</Button>
               <Button size="sm" variant="outline" disabled={status.isPending} onClick={() => status.mutate({ id: f.id, status: f.status === "paused" ? "active" : "paused" })}>{f.status === "paused" ? "Reanudar" : "Pausar"}</Button>
@@ -161,13 +161,13 @@ export default function HotelIcal() {
             (solo dice «No disponible», nunca datos del huésped) e importa la URL iCal de cada canal: lo vendido allí bloquea la disponibilidad aquí, sin tocar tus reservas.
             iCal sincroniza disponibilidad, no tarifas, y los canales lo leen cada cierto tiempo (de minutos a horas).
           </p>
-          <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+          <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
             Ojo: una reserva que llega por el iCal de un canal ya bloquea la disponibilidad. Si además la das de alta a mano en el PMS, cuenta dos veces.
             En ese caso, no la crees como reserva o pausa la URL de ese canal.
           </p>
         </div>
         {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : q.error ? (
-          <Card><CardContent className="p-6 text-sm text-red-700 dark:text-red-400">{q.error.message}</CardContent></Card>
+          <Card><CardContent className="p-6 text-sm text-danger">{q.error.message}</CardContent></Card>
         ) : !data ? (
           <p className="text-sm text-muted-foreground">Cargando…</p>
         ) : data.types.length === 0 ? (

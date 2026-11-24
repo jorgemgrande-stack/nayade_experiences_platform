@@ -176,7 +176,7 @@ export default function HotelRooms() {
         ) : (
           <>
             {mismatched.length > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
                 El número de habitaciones activas no coincide con las unidades a la venta en: {mismatched.map((t: any) => `${t.name} (${rooms.filter((r: any) => r.roomTypeId === t.id && r.isActive).length} de ${t.totalUnits})`).join(", ")}. La venta sigue usando las unidades de la tipología.
               </div>
             )}
