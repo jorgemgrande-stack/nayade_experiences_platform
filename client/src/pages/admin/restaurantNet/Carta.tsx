@@ -156,13 +156,13 @@ export default function Carta() {
                 <h2 className="border-b border-border bg-muted/40 px-4 py-3 text-sm font-semibold text-foreground">{cat} <span className="font-normal text-muted-foreground">· {items.length}</span></h2>
                 <ul className="divide-y divide-border">
                   {items.map((m) => (
-                    <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap">
+                    <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap">
                       {m.imageUrl ? (
                         <img src={m.imageUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg border border-border object-cover" loading="lazy" />
                       ) : (
                         <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground"><BookOpen className="h-4 w-4" /></span>
                       )}
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 basis-44">
                         <p className="break-words font-medium text-foreground">{m.name}</p>
                         <p className="text-xs text-muted-foreground">IVA {m.taxRate.toLocaleString("es-ES")} %{m.station ? ` · ${m.station}` : ""}</p>
                         {m.allergens.length > 0 && (

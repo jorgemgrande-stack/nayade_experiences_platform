@@ -242,7 +242,7 @@ export default function Comanda() {
                       {formatEur(l.unitPrice)} · IVA {l.taxRate.toLocaleString("es-ES")} %{l.station ? ` · ${l.station}` : ""}
                       {l.notes ? ` · ${l.notes}` : ""}
                       {isVoid ? null : (
-                        <span className={cn("ml-1.5 rounded-full border px-2 py-0.5 text-xs font-medium", l.status === "ready" ? TONE_BADGE.success : l.status === "pending" ? TONE_BADGE.neutral : l.status === "preparing" ? TONE_BADGE.warning : TONE_BADGE.info)}>
+                        <span className={cn("ml-1.5 inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium", l.status === "ready" ? TONE_BADGE.success : l.status === "pending" ? TONE_BADGE.neutral : l.status === "preparing" ? TONE_BADGE.warning : TONE_BADGE.info)}>
                           {KITCHEN_STATUS_LABELS[l.status] ?? l.status}{l.course > 1 ? ` · pase ${l.course}` : ""}
                         </span>
                       )}
