@@ -159,14 +159,29 @@ export class MysqlBackupInventory implements BackupInventory {
   }
 
   async latestAttempts() {
-    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
-      `SELECT ${COLS} FROM backup_inventory b WHERE b.id = (
-         SELECT b2.id FROM backup_inventory b2 WHERE b2.target_kind = b.target_kind AND b2.target_id = b.target_id AND b2.status <> 'pruned'
-         ORDER BY b2.started_at DESC, b2.id DESC LIMIT 1)`,
-    );
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(LATEST_ATTEMPTS_SQL);
     return rows.map(fromRow);
   }
 }
+
+/**
+ * Último intento (no `pruned`) por destino: criterio started_at DESC, id DESC.
+ * Sin subconsulta correlacionada: la agregación interior usa el índice idx_backup_target y solo se
+ * relee la fila ganadora por clave primaria (antes se evaluaba una subconsulta por cada fila de la tabla).
+ */
+export const LATEST_ATTEMPTS_SQL = `SELECT ${COLS.split(",").map((c) => "b." + c.trim()).join(", ")} FROM backup_inventory b
+  JOIN (
+    SELECT MAX(b1.id) AS id FROM backup_inventory b1
+    JOIN (SELECT target_kind, target_id, MAX(started_at) AS ms FROM backup_inventory WHERE status <> 'pruned' GROUP BY target_kind, target_id) m
+      ON m.target_kind = b1.target_kind AND m.target_id = b1.target_id AND m.ms = b1.started_at
+    WHERE b1.status <> 'pruned'
+    GROUP BY b1.target_kind, b1.target_id
+  ) w ON w.id = b.id`;
+
+/** Consulta anterior (subconsulta correlacionada); solo para pruebas de equivalencia. */
+export const LATEST_ATTEMPTS_SQL_LEGACY = `SELECT ${COLS} FROM backup_inventory b WHERE b.id = (
+         SELECT b2.id FROM backup_inventory b2 WHERE b2.target_kind = b.target_kind AND b2.target_id = b.target_id AND b2.status <> 'pruned'
+         ORDER BY b2.started_at DESC, b2.id DESC LIMIT 1)`;
 
 export class MemoryBackupInventory implements BackupInventory {
   rows: BackupRecord[] = [];

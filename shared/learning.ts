@@ -33,6 +33,64 @@ export interface AccessRule {
   startMode: StartMode;
   fixedStart: number | null;
   active: boolean;
+  /** true = la regla declara de forma EXPRESA acceso sin caducidad para los módulos sin duración (por defecto false). */
+  permanent?: boolean;
+  /** Calendario por módulo: desbloqueo progresivo y duración propia. Sin entrada = desde el primer día y duración de la regla. */
+  moduleSchedule?: Record<number, ModuleSchedule>;
+}
+
+export interface ModuleSchedule {
+  /** Días desde la concesión en que se desbloquea el módulo. null/0 = desde el primer día. */
+  unlockOffsetDays: number | null;
+  /** Días de acceso desde el desbloqueo. null = hereda `durationDays` de la regla. */
+  durationDays: number | null;
+}
+
+/** Ventana propia de un módulo en una matrícula (ms epoch). null en un extremo = hereda el de la matrícula. */
+export interface ModuleWindow {
+  startsAt: number | null;
+  endsAt: number | null;
+}
+
+/** Duración efectiva de un módulo en la regla: la propia o, si no consta, la de la regla. null = sin duración definida. */
+export function effectiveModuleDuration(rule: Pick<AccessRule, "durationDays" | "moduleSchedule">, moduleId: number): number | null {
+  const own = rule.moduleSchedule?.[moduleId]?.durationDays;
+  return own != null ? own : rule.durationDays;
+}
+
+/** Módulos de una regla que quedarían sin ninguna duración (ni propia ni heredada). */
+export function modulesWithoutDuration(rule: Pick<AccessRule, "durationDays" | "moduleSchedule" | "moduleIds">): number[] {
+  return rule.moduleIds.filter((m) => effectiveModuleDuration(rule, m) == null);
+}
+
+/**
+ * Ventanas propias por módulo al conceder según una regla. Sin desbloqueo diferido ni duración propia el módulo no lleva ventana
+ * (hereda la de la matrícula: comportamiento de siempre). La duración cuenta desde el desbloqueo del módulo.
+ * También devuelve el fin de la matrícula: el mayor de los fines de módulo, o null si algún módulo no caduca.
+ */
+export function computeModuleWindows(rule: Pick<AccessRule, "durationDays" | "moduleSchedule" | "moduleIds">, base: { startsAt: number; endsAt: number | null }): { windows: Record<number, ModuleWindow>; enrollmentEndsAt: number | null } {
+  const all: Record<number, ModuleWindow> = {};
+  const ends: Array<number | null> = [];
+  let custom = false;
+  for (const m of rule.moduleIds) {
+    const s = rule.moduleSchedule?.[m];
+    const offset = s?.unlockOffsetDays && s.unlockOffsetDays > 0 ? s.unlockOffsetDays : 0;
+    const own = s?.durationDays ?? null;
+    if (offset === 0 && own == null) {
+      all[m] = { startsAt: null, endsAt: base.endsAt };
+      ends.push(base.endsAt);
+      continue;
+    }
+    custom = true;
+    const start = base.startsAt + offset * DAY_MS;
+    const dur = own ?? rule.durationDays;
+    const end = dur == null ? null : start + Math.round(dur) * DAY_MS;
+    all[m] = { startsAt: offset > 0 ? start : null, endsAt: end };
+    ends.push(end);
+  }
+  if (!custom) return { windows: {}, enrollmentEndsAt: base.endsAt };
+  const unlimited = ends.some((e) => e == null);
+  return { windows: all, enrollmentEndsAt: unlimited ? null : Math.max(...(ends as number[])) };
 }
 
 /** Reglas activas que aplican a una compra: la de la variante exacta o, si no hay, las genéricas del producto. */
@@ -54,20 +112,66 @@ export interface EnrollmentView {
   startsAt: number;
   endsAt: number | null;
   moduleIds: number[];
+  /** Ventanas propias por módulo (opcional). Sin entrada, el módulo hereda la ventana de la matrícula. */
+  moduleWindows?: Record<number, ModuleWindow>;
   /** Matrícula técnica de validación (ver `isTechnicalGrant`). */
   technical?: boolean;
 }
 
-export type AccessDecision = { allowed: true } | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted" };
+export type AccessDecision =
+  | { allowed: true }
+  | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted"; unlocksAt?: number };
 
-/** ¿Abre esta matrícula este módulo ahora? */
+/** Ventana efectiva de un módulo: la propia o, en cada extremo que no tenga, la de la matrícula. */
+export function moduleWindow(e: Pick<EnrollmentView, "startsAt" | "endsAt" | "moduleWindows">, moduleId: number): { startsAt: number; endsAt: number | null } {
+  const w = e.moduleWindows?.[moduleId];
+  return { startsAt: w?.startsAt ?? e.startsAt, endsAt: w?.endsAt ?? e.endsAt };
+}
+
+/** ¿Abre esta matrícula este módulo ahora? Cada módulo incluido se evalúa con su propia ventana (desbloqueo y caducidad). */
 export function evaluateAccess(e: EnrollmentView | null | undefined, moduleId: number, now: number): AccessDecision {
   if (!e) return { allowed: false, reason: "no_enrollment" };
   if (e.status !== "active") return { allowed: false, reason: "inactive" };
+  if (!e.moduleIds.includes(moduleId)) {
+    if (now < e.startsAt) return { allowed: false, reason: "not_started" };
+    if (e.endsAt != null && now >= e.endsAt) return { allowed: false, reason: "expired" };
+    return { allowed: false, reason: "module_not_granted" };
+  }
   if (now < e.startsAt) return { allowed: false, reason: "not_started" };
-  if (e.endsAt != null && now >= e.endsAt) return { allowed: false, reason: "expired" };
-  if (!e.moduleIds.includes(moduleId)) return { allowed: false, reason: "module_not_granted" };
+  const w = moduleWindow(e, moduleId);
+  if (now < w.startsAt) return { allowed: false, reason: "not_started", unlocksAt: w.startsAt };
+  if (w.endsAt != null && now >= w.endsAt) return { allowed: false, reason: "expired" };
   return { allowed: true };
+}
+
+/** Estado de la matrícula para mostrar teniendo en cuenta las ventanas por módulo: activa si algún módulo está abierto. */
+export function effectiveEnrollmentStatus(e: EnrollmentView, now: number): EnrollmentStatus | "scheduled" {
+  if (e.status !== "active") return e.status;
+  if (!e.moduleWindows || !Object.keys(e.moduleWindows).length) return effectiveStatus(e, now);
+  const ds = e.moduleIds.map((m) => evaluateAccess(e, m, now));
+  if (ds.some((d) => d.allowed)) return "active";
+  if (ds.some((d) => !d.allowed && d.reason === "not_started")) return "scheduled";
+  return "expired";
+}
+
+/** Normaliza las ventanas leídas de la base de datos: solo las que tienen algún extremo propio. */
+export function windowsFromRows(list: Array<{ moduleId: number; startsAt: number | null; endsAt: number | null }>): Record<number, ModuleWindow> | undefined {
+  const out: Record<number, ModuleWindow> = {};
+  for (const r of list) if (r.startsAt != null || r.endsAt != null) out[r.moduleId] = { startsAt: r.startsAt, endsAt: r.endsAt };
+  return Object.keys(out).length ? out : undefined;
+}
+
+// ─── Ampliación individual por módulo ──────────────────────────────────────────────────────────────────────────────
+
+/** Ampliaciones del catálogo (los precios los fija el catálogo, no este código). */
+export const MODULE_EXTENSION_DAYS = [30, 60] as const;
+
+/** Clave de idempotencia de una ampliación: la misma referencia de pedido, módulo y días no se aplica dos veces. */
+export const extensionKey = (p: { ref: string; moduleId: number; days: number }) => `ext:${p.ref}:m${p.moduleId}:d${p.days}`;
+
+/** Nuevo fin de una ampliación: desde el mayor entre el fin actual y ahora. */
+export function extendedEnd(currentEndsAt: number, now: number, days: number): number {
+  return Math.max(currentEndsAt, now) + Math.round(days) * DAY_MS;
 }
 
 /** La mejor decisión entre varias matrículas del mismo usuario (basta una que abra el módulo). */
