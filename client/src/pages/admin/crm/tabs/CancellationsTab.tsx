@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { useVocabulary } from "@/lib/vocabulary";
 import { errorToastMessage } from "@/lib/errorMessage";
@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import CancellationDetailModal from "../CancellationDetailModal";
-import { Eye, XCircle, AlertTriangle, RefreshCw, Trash2, ExternalLink, CloudLightning, HeartPulse, HelpCircle } from "lucide-react";
+import { Eye, XCircle, AlertTriangle, RefreshCw, Trash2, ExternalLink, CloudLightning, HeartPulse, HelpCircle, Inbox, Search, FileWarning, Clock, CheckCircle2, Archive, Wallet } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import { Tab, AnulOpBadge, AnulResBadge, AnulFinBadge, PAGE_SIZE } from "../shared/crmCommon";
+import { Tab, PAGE_SIZE } from "../shared/crmCommon";
+import { BPill, BStat, BSummary, BFilterBar, BFilterField, BTable, BRowActions, BPager, type BChip, type BColumn, type BTone } from "../shared/ui/bCrmUi";
 import { AnularReservaModal } from "../modals/AnularReservaModal";
 
 
@@ -55,256 +56,173 @@ export type CancellationsController = ReturnType<typeof useCancellationsControll
 export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: CancellationsController; tab: Tab; setViewResId: React.Dispatch<React.SetStateAction<number | null>> }) {
   const { t, format } = useI18n();
   const voc = useVocabulary();
-  const { anulKpis, anulOpFilter, setAnulOpFilter, anulResFilter, setAnulResFilter, anulFinFilter, setAnulFinFilter, anulReasonFilter, setAnulReasonFilter, refetchAnul, anulLoading, anulError, anulRows, setSelectedAnulId, setDeleteAnulId, anulData, anulPage, setAnulPage } = ctrl;
+  const { anulKpis, anulOpFilter, setAnulOpFilter, anulResFilter, setAnulResFilter, anulFinFilter, setAnulFinFilter, anulReasonFilter, setAnulReasonFilter, anulSearch, setAnulSearch, refetchAnul, anulLoading, anulError, anulRows, setSelectedAnulId, setDeleteAnulId, anulData, anulPage, setAnulPage } = ctrl;
+  const opOptions: [string, string][] = [
+    ["recibida", t("crmCancellations.recibida")], ["en_revision", t("crmCancellations.enRevision")], ["pendiente_documentacion", t("crmCancellations.pendDocumentacion")],
+    ["pendiente_decision", t("crmCancellations.pendDecision")], ["resuelta", t("crmCancellations.resuelta")], ["cerrada", t("crmCancellations.cerrada")], ["incidencia", t("crmCancellations.incidencia")],
+  ];
+  const resOptions: [string, string][] = [
+    ["sin_resolver", t("crmCancellations.sinResolver")], ["rechazada", t("crmCancellations.rechazada")], ["aceptada_total", t("crmCancellations.aceptadaTotal")], ["aceptada_parcial", t("crmCancellations.aceptadaParcial")],
+  ];
+  const finOptions: [string, string][] = [
+    ["sin_compensacion", t("crmCancellations.sinCompensacion")], ["pendiente_devolucion", t("crmCancellations.pendDevolucion")], ["devuelta_economicamente", t("crmCancellations.devuelta")],
+    ["pendiente_bono", t("crmCancellations.pendBono")], ["compensada_bono", t("crmCancellations.bonoEnviado")], ["incidencia_economica", t("crmCancellations.incidenciaEc")],
+  ];
+  const reasonOptions: [string, string][] = [
+    ["meteorologicas", t("crmCancellations.meteorologicas")], ["accidente", t("crmCancellations.accidente")], ["enfermedad", t("crmCancellations.enfermedad")], ["desistimiento", t("crmCancellations.desistimiento")], ["otra", t("crmCancellations.otra")],
+  ];
+  const labelOf = (opts: [string, string][], v: string) => opts.find(([k]) => k === v)?.[1] ?? v;
+  const toggle = (cur: string, set: (v: string) => void, v: string) => set(cur === v ? "all" : v);
+  const clearAll = () => { setAnulOpFilter("all"); setAnulResFilter("all"); setAnulFinFilter("all"); setAnulReasonFilter("all"); setAnulSearch(""); };
+  const chips: BChip[] = [
+    ...(anulOpFilter !== "all" ? [{ id: "op", label: `${t("crmCancellations.estadoOperativo")}: ${labelOf(opOptions, anulOpFilter)}`, onRemove: () => setAnulOpFilter("all") }] : []),
+    ...(anulResFilter !== "all" ? [{ id: "res", label: `${t("crmCancellations.resolucion")}: ${labelOf(resOptions, anulResFilter)}`, onRemove: () => setAnulResFilter("all") }] : []),
+    ...(anulFinFilter !== "all" ? [{ id: "fin", label: `${t("crmCancellations.estadoFinanciero")}: ${labelOf(finOptions, anulFinFilter)}`, onRemove: () => setAnulFinFilter("all") }] : []),
+    ...(anulReasonFilter !== "all" ? [{ id: "reason", label: `${t("crmCancellations.motivo")}: ${labelOf(reasonOptions, anulReasonFilter)}`, onRemove: () => setAnulReasonFilter("all") }] : []),
+    ...(anulSearch ? [{ id: "search", label: `“${anulSearch}”`, onRemove: () => setAnulSearch("") }] : []),
+  ];
+  const opPill = (s: string) => {
+    const cfg: Record<string, [BTone, ReactNode]> = {
+      recibida: ["info", <Inbox />], en_revision: ["warning", <Search />], pendiente_documentacion: ["warning", <FileWarning />], pendiente_decision: ["warning", <Clock />],
+      resuelta: ["success", <CheckCircle2 />], cerrada: ["muted", <Archive />], incidencia: ["danger", <AlertTriangle />],
+    };
+    const [tone, icon] = cfg[s] ?? ["muted", <Clock />];
+    return <BPill tone={tone} icon={icon}>{labelOf(opOptions, s)}</BPill>;
+  };
+  const resPill = (s: string) => {
+    const tone: BTone = s === "rechazada" ? "danger" : s === "aceptada_total" || s === "aceptada_parcial" ? "success" : "muted";
+    const icon = s === "rechazada" ? <XCircle /> : s === "sin_resolver" ? <Clock /> : <CheckCircle2 />;
+    return <BPill tone={tone} icon={icon}>{labelOf(resOptions, s)}</BPill>;
+  };
+  const finPill = (s: string) => {
+    const tone: BTone = s === "incidencia_economica" ? "danger" : s === "pendiente_devolucion" ? "warning" : s === "devuelta_economicamente" ? "success" : s === "pendiente_bono" || s === "compensada_bono" ? "primary" : "muted";
+    return <BPill tone={tone} icon={<Wallet />}>{labelOf(finOptions, s)}</BPill>;
+  };
+  const reasonIcon = (r: string) => (
+    r === "meteorologicas" ? <CloudLightning className="h-4 w-4 text-info" aria-hidden="true" /> :
+    r === "accidente" ? <AlertTriangle className="h-4 w-4 text-danger" aria-hidden="true" /> :
+    r === "enfermedad" ? <HeartPulse className="h-4 w-4 text-danger" aria-hidden="true" /> :
+    r === "desistimiento" ? <XCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> :
+    <HelpCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+  );
+  const columns: BColumn<any>[] = [
+    { key: "who", header: t("crmCancellations.solicitante"), mobile: "title", cell: (row) => (
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2"><span className="font-mono text-xs text-muted-foreground">#{row.id}</span><span className="break-words font-medium text-foreground">{row.fullName}</span></div>
+        {row.email && <div className="break-all text-xs text-muted-foreground">{row.email}</div>}
+        {row.locator && <div className="font-mono text-xs text-muted-foreground">{row.locator}</div>}
+      </div>
+    ) },
+    { key: "order", header: `${voc.Order} / ${voc.serviceDateColumn}`, cell: (row) => (
+      <div className="space-y-0.5">
+        {row.linkedReservationId && row.reservationNumber ? (
+          <button type="button" onClick={(e) => { e.stopPropagation(); setViewResId(row.linkedReservationId!); }} title={voc.viewOrder} className="font-mono text-xs font-medium text-primary hover:underline">{row.reservationNumber}</button>
+        ) : <span className="text-xs text-muted-foreground">—</span>}
+        {row.activityDate && <div className="text-xs tabular-nums text-muted-foreground">{row.activityDate}</div>}
+      </div>
+    ) },
+    { key: "reason", header: t("crmCancellations.motivo"), priority: "md", cell: (row) => (
+      <span className="inline-flex items-center gap-1.5 text-xs text-foreground">{reasonIcon(row.reason)}<span className="capitalize">{labelOf(reasonOptions, row.reason)}</span></span>
+    ) },
+    { key: "state", header: t("crmCancellations.estadoOp"), cell: (row) => (
+      <div className="flex flex-col items-start gap-1">{opPill(row.operationalStatus)}{resPill(row.resolutionStatus)}{finPill(row.financialStatus)}</div>
+    ) },
+    { key: "date", header: t("crmCancellations.fecha"), priority: "lg", num: true, cell: (row) => <span className="text-xs text-muted-foreground">{format.date(row.createdAt, {})}</span> },
+  ];
+  const statCards = anulKpis ? (
+    <>
+      <BSummary>
+        <BStat tone="primary" icon={<Inbox />} label={t("crmCancellations.total")} value={anulKpis.total}
+          hint={`${anulKpis.recibidas + anulKpis.enRevision + anulKpis.pendienteDocumentacion} ${t("crmShared.solicitudesAbiertas").toLowerCase()}`}
+          onClick={() => clearAll()} />
+        <BStat tone="info" label={t("crmCancellations.recibidas")} value={anulKpis.recibidas} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "recibida")} active={anulOpFilter === "recibida"} />
+        <BStat tone="warning" label={t("crmCancellations.enRevision")} value={anulKpis.enRevision} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "en_revision")} active={anulOpFilter === "en_revision"} />
+        <BStat tone="warning" label={t("crmCancellations.pendDocs")} value={anulKpis.pendienteDocumentacion} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "pendiente_documentacion")} active={anulOpFilter === "pendiente_documentacion"} />
+        <BStat tone="danger" label={t("crmCancellations.incidencias")} value={anulKpis.incidencias} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "incidencia")} active={anulOpFilter === "incidencia"} />
+        <BStat tone="muted" label={t("crmCancellations.cerradas")} value={anulKpis.cerradas} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "cerrada")} active={anulOpFilter === "cerrada"} />
+      </BSummary>
+      <section aria-label={t("crmShared.resoluciones")} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <BStat compact tone="success" label={t("crmCancellations.aceptadasTotal")} value={anulKpis.resueltasTotal} onClick={() => toggle(anulResFilter, setAnulResFilter, "aceptada_total")} active={anulResFilter === "aceptada_total"} />
+        <BStat compact tone="success" label={t("crmCancellations.aceptadasParcial")} value={anulKpis.resueltasParcial} onClick={() => toggle(anulResFilter, setAnulResFilter, "aceptada_parcial")} active={anulResFilter === "aceptada_parcial"} />
+        <BStat compact tone="danger" label={t("crmCancellations.rechazadas")} value={anulKpis.rechazadas} onClick={() => toggle(anulResFilter, setAnulResFilter, "rechazada")} active={anulResFilter === "rechazada"} />
+        <BStat compact tone="primary" label={voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")} value={anulKpis.compensadasBono} onClick={() => toggle(anulFinFilter, setAnulFinFilter, "compensada_bono")} active={anulFinFilter === "compensada_bono"} />
+      </section>
+    </>
+  ) : null;
+  const sel = (value: string, onChange: (v: string) => void, all: string, opts: [string, string][]) => (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{all}</SelectItem>
+        {opts.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
   return (
     <>
 {/* ─── TAB: ANULACIONES ─────────────────────────────────────────────── */}
 {tab === "anulaciones" && (
-            <div className="space-y-4">
-              {/* KPIs fila 1 */}
-              {anulKpis && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                  {[
-                    { label: t("crmCancellations.total"), value: anulKpis.total, color: "border-foreground/[0.08]" },
-                    { label: t("crmCancellations.recibidas"), value: anulKpis.recibidas, color: "border-info/20" },
-                    { label: t("crmCancellations.enRevision"), value: anulKpis.enRevision, color: "border-warning/20" },
-                    { label: t("crmCancellations.pendDocs"), value: anulKpis.pendienteDocumentacion, color: "border-warning/20" },
-                    { label: t("crmCancellations.incidencias"), value: anulKpis.incidencias, color: "border-danger/20" },
-                    { label: t("crmCancellations.cerradas"), value: anulKpis.cerradas, color: "border-gray-500/20" },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
-                      <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
-                      <p className="text-2xl font-bold text-foreground">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* KPIs fila 2 */}
-              {anulKpis && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { label: t("crmCancellations.aceptadasTotal"), value: anulKpis.resueltasTotal, color: "border-success/20" },
-                    { label: t("crmCancellations.aceptadasParcial"), value: anulKpis.resueltasParcial, color: "border-success/20" },
-                    { label: t("crmCancellations.rechazadas"), value: anulKpis.rechazadas, color: "border-danger/20" },
-                    { label: voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados"), value: anulKpis.compensadasBono, color: "border-primary/20" },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
-                      <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
-                      <p className="text-2xl font-bold text-foreground">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Filtros */}
-              <div className="flex flex-wrap gap-3">
-                <Select value={anulOpFilter} onValueChange={setAnulOpFilter}>
-                  <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder={t("crmCancellations.estadoOperativo")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todosLosEstados")}</SelectItem>
-                    <SelectItem value="recibida" className="text-foreground/70 text-xs">{t("crmCancellations.recibida")}</SelectItem>
-                    <SelectItem value="en_revision" className="text-foreground/70 text-xs">{t("crmCancellations.enRevision")}</SelectItem>
-                    <SelectItem value="pendiente_documentacion" className="text-foreground/70 text-xs">{t("crmCancellations.pendDocumentacion")}</SelectItem>
-                    <SelectItem value="pendiente_decision" className="text-foreground/70 text-xs">{t("crmCancellations.pendDecision")}</SelectItem>
-                    <SelectItem value="resuelta" className="text-foreground/70 text-xs">{t("crmCancellations.resuelta")}</SelectItem>
-                    <SelectItem value="cerrada" className="text-foreground/70 text-xs">{t("crmCancellations.cerrada")}</SelectItem>
-                    <SelectItem value="incidencia" className="text-foreground/70 text-xs">{t("crmCancellations.incidencia")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={anulResFilter} onValueChange={setAnulResFilter}>
-                  <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder={t("crmCancellations.resolucion")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todaResolucion")}</SelectItem>
-                    <SelectItem value="sin_resolver" className="text-foreground/70 text-xs">{t("crmCancellations.sinResolver")}</SelectItem>
-                    <SelectItem value="rechazada" className="text-foreground/70 text-xs">{t("crmCancellations.rechazada")}</SelectItem>
-                    <SelectItem value="aceptada_total" className="text-foreground/70 text-xs">{t("crmCancellations.aceptadaTotal")}</SelectItem>
-                    <SelectItem value="aceptada_parcial" className="text-foreground/70 text-xs">{t("crmCancellations.aceptadaParcial")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={anulFinFilter} onValueChange={setAnulFinFilter}>
-                  <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder={t("crmCancellations.estadoFinanciero")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todoFinanciero")}</SelectItem>
-                    <SelectItem value="sin_compensacion" className="text-foreground/70 text-xs">{t("crmCancellations.sinCompensacion")}</SelectItem>
-                    <SelectItem value="pendiente_devolucion" className="text-foreground/70 text-xs">{t("crmCancellations.pendDevolucion")}</SelectItem>
-                    <SelectItem value="devuelta_economicamente" className="text-foreground/70 text-xs">{t("crmCancellations.devuelta")}</SelectItem>
-                    <SelectItem value="pendiente_bono" className="text-foreground/70 text-xs">{t("crmCancellations.pendBono")}</SelectItem>
-                    <SelectItem value="compensada_bono" className="text-foreground/70 text-xs">{t("crmCancellations.bonoEnviado")}</SelectItem>
-                    <SelectItem value="incidencia_economica" className="text-foreground/70 text-xs">{t("crmCancellations.incidenciaEc")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={anulReasonFilter} onValueChange={setAnulReasonFilter}>
-                  <SelectTrigger className="w-40 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
-                    <SelectValue placeholder={t("crmCancellations.motivo")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmCancellations.todosLosMotivos")}</SelectItem>
-                    <SelectItem value="meteorologicas" className="text-foreground/70 text-xs">{t("crmCancellations.meteorologicas")}</SelectItem>
-                    <SelectItem value="accidente" className="text-foreground/70 text-xs">{t("crmCancellations.accidente")}</SelectItem>
-                    <SelectItem value="enfermedad" className="text-foreground/70 text-xs">{t("crmCancellations.enfermedad")}</SelectItem>
-                    <SelectItem value="desistimiento" className="text-foreground/70 text-xs">{t("crmCancellations.desistimiento")}</SelectItem>
-                    <SelectItem value="otra" className="text-foreground/70 text-xs">{t("crmCancellations.otra")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetchAnul()}
-                  className="gap-1.5 border-foreground/[0.12] text-foreground/50 hover:text-foreground h-9"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />{t("crmCancellations.actualizar")}</Button>
-                <Button
-                  size="sm"
-                  onClick={() => window.open("/solicitar-anulacion", "_blank")}
-                  className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground h-9 ml-auto"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />{t("crmCancellations.verFormularioPublico")}</Button>
-              </div>
-              {/* Tabla */}
-              <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[900px]">
-                    <thead>
-                      <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">#</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.solicitante")}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{voc.Order}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.motivo")}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{voc.serviceDateColumn}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.estadoOp")}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.resolucion")}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.financiero")}</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.fecha")}</th>
-                        <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmCancellations.acciones")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {anulLoading && (
-                        <tr>
-                          <td colSpan={10} className="text-center py-12 text-foreground/40">
-                            <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
-                          </td>
-                        </tr>
-                      )}
-                      {!anulLoading && anulError && (
-                        <tr>
-                          <td colSpan={10} className="text-center py-12">
-                            <AlertTriangle className="w-8 h-8 text-danger/60 mx-auto mb-2" />
-                            <p className="text-danger/70 text-sm font-medium">{t("crmCancellations.errorAlCargarLas")}</p>
-                            <button onClick={() => refetchAnul()} className="mt-2 text-xs text-foreground/40 hover:text-foreground/70 underline">{t("crmCancellations.reintentar")}</button>
-                          </td>
-                        </tr>
-                      )}
-                      {!anulLoading && !anulError && anulRows.length === 0 && (
-                        <tr>
-                          <td colSpan={10} className="text-center py-12">
-                            <AlertTriangle className="w-8 h-8 text-foreground/30 mx-auto mb-2" />
-                            <p className="text-foreground/40 text-sm">{t("crmCancellations.noHaySolicitudesQue")}</p>
-                          </td>
-                        </tr>
-                      )}
-                      {anulRows.map((row) => (
-                        <tr
-                          key={row.id}
-                          className="border-b border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors cursor-pointer"
-                          onClick={() => setSelectedAnulId(row.id)}
-                        >
-                          <td className="px-4 py-3 text-foreground/50 text-sm font-mono">#{row.id}</td>
-                          <td className="px-4 py-3">
-                            <p className="text-white text-sm font-medium">{row.fullName}</p>
-                            {row.email && <p className="text-foreground/50 text-xs">{row.email}</p>}
-                            {row.locator && <p className="text-foreground/40 text-xs font-mono">{row.locator}</p>}
-                          </td>
-                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                            {row.linkedReservationId && row.reservationNumber ? (
-                              <button
-                                onClick={() => setViewResId(row.linkedReservationId!)}
-                                className="font-mono text-xs text-warning hover:text-warning hover:underline transition-colors"
-                                title={voc.viewOrder}
-                              >
-                                {row.reservationNumber}
-                              </button>
-                            ) : (
-                              <span className="text-foreground/30 text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
-                              {row.reason === "meteorologicas" && <CloudLightning className="w-4 h-4 text-info" />}
-                              {row.reason === "accidente" && <AlertTriangle className="w-4 h-4 text-danger" />}
-                              {row.reason === "enfermedad" && <HeartPulse className="w-4 h-4 text-danger" />}
-                              {row.reason === "desistimiento" && <XCircle className="w-4 h-4 text-foreground/50" />}
-                              {row.reason === "otra" && <HelpCircle className="w-4 h-4 text-foreground/50" />}
-                              <span className="text-foreground/65 text-xs capitalize">{row.reason}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-foreground/65 text-sm">{row.activityDate}</td>
-                          <td className="px-4 py-3">
-                            <AnulOpBadge status={row.operationalStatus} />
-                          </td>
-                          <td className="px-4 py-3">
-                            <AnulResBadge status={row.resolutionStatus} />
-                          </td>
-                          <td className="px-4 py-3">
-                            <AnulFinBadge status={row.financialStatus} />
-                          </td>
-                          <td className="px-4 py-3 text-foreground/50 text-xs">
-                            {format.date(row.createdAt, {})}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                onClick={() => setSelectedAnulId(row.id)}
-                                className="p-1.5 rounded-lg text-foreground/50 hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
-                                title={t("crmCancellations.verDetalle")}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setDeleteAnulId(row.id)}
-                                className="p-1.5 rounded-lg text-foreground/30 hover:text-danger hover:bg-danger/10 transition-colors"
-                                title={t("crmCancellations.eliminar")}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {anulData && anulData.total > 0 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
-                    <span className="text-sm text-foreground/50">
-                      {anulData.total <= PAGE_SIZE
-                        ? t("crmCancellations.mostrandoDeSolicitudes", { total: anulData.total, total2: anulData.total })
-                        : t("crmCancellations.paginaDeSolicitudes", { v: anulPage + 1, ceil: Math.ceil(anulData.total / PAGE_SIZE), total: anulData.total })}
-                    </span>
-                    {anulData.total > PAGE_SIZE && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setAnulPage(p => p - 1)}
-                          disabled={anulPage === 0}
-                          className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                        >{t("crmCancellations.anterior")}</button>
-                        <button
-                          onClick={() => setAnulPage(p => p + 1)}
-                          disabled={(anulPage + 1) * PAGE_SIZE >= anulData.total}
-                          className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                        >{t("crmCancellations.siguiente")}</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+      <div className="space-y-4">
+        {statCards}
+        <BFilterBar
+          search={{ value: anulSearch, onChange: setAnulSearch, placeholder: t("crmCancellations.solicitante") }}
+          primary={(
+            <>
+              <BFilterField label={t("crmCancellations.estadoOperativo")} className="w-full sm:w-48">{sel(anulOpFilter, setAnulOpFilter, t("crmCancellations.todosLosEstados"), opOptions)}</BFilterField>
+              <BFilterField label={t("crmCancellations.resolucion")} className="w-full sm:w-48">{sel(anulResFilter, setAnulResFilter, t("crmCancellations.todaResolucion"), resOptions)}</BFilterField>
+            </>
           )}
+          more={(
+            <>
+              <BFilterField label={t("crmCancellations.estadoFinanciero")}>{sel(anulFinFilter, setAnulFinFilter, t("crmCancellations.todoFinanciero"), finOptions)}</BFilterField>
+              <BFilterField label={t("crmCancellations.motivo")}>{sel(anulReasonFilter, setAnulReasonFilter, t("crmCancellations.todosLosMotivos"), reasonOptions)}</BFilterField>
+            </>
+          )}
+          chips={chips}
+          onClear={clearAll}
+          summary={anulData ? `${anulData.total} ${voc.cancellations.toLowerCase()}` : undefined}
+          actions={(
+            <>
+              <Button type="button" variant="outline" onClick={() => refetchAnul()} className="gap-1.5"><RefreshCw className="h-4 w-4" aria-hidden="true" />{t("crmCancellations.actualizar")}</Button>
+              <Button type="button" onClick={() => window.open("/solicitar-anulacion", "_blank")} className="gap-1.5"><ExternalLink className="h-4 w-4" aria-hidden="true" />{t("crmCancellations.verFormularioPublico")}</Button>
+            </>
+          )}
+        />
+        <BTable
+          rows={anulRows as any[]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          caption={voc.cancellations}
+          loading={anulLoading}
+          error={anulError ? new Error(t("crmCancellations.errorAlCargarLas")) : undefined}
+          onRetry={() => refetchAnul()}
+          filtered={chips.length > 0}
+          onClearFilters={clearAll}
+          emptyTitle={t("crmCancellations.noHaySolicitudesQue")}
+          onRowClick={(r) => setSelectedAnulId(r.id)}
+          actions={(row) => (
+            <BRowActions
+              label={`#${row.id} ${row.fullName}`}
+              primary={{ label: t("crmShared.ver"), icon: <Eye className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => setSelectedAnulId(row.id) }}
+              menu={[{ label: t("crmCancellations.eliminar"), icon: <Trash2 />, destructive: true, onSelect: () => setDeleteAnulId(row.id) }]}
+            />
+          )}
+          footer={anulData && anulData.total > 0 ? (
+            <BPager
+              page={anulPage}
+              onPrev={() => setAnulPage(p => p - 1)}
+              onNext={() => setAnulPage(p => p + 1)}
+              hasNext={(anulPage + 1) * PAGE_SIZE < anulData.total}
+              prevLabel={t("crmCancellations.anterior")}
+              nextLabel={t("crmCancellations.siguiente")}
+              text={anulData.total <= PAGE_SIZE
+                ? t("crmCancellations.mostrandoDeSolicitudes", { total: anulData.total, total2: anulData.total })
+                : t("crmCancellations.paginaDeSolicitudes", { v: anulPage + 1, ceil: Math.ceil(anulData.total / PAGE_SIZE), total: anulData.total })}
+            />
+          ) : undefined}
+        />
+      </div>
+    )}
     </>
   );
 }
@@ -333,7 +251,7 @@ export function CancellationsModals({ ctrl, handleTabChange, setViewResId, cance
       )}
 {/* Confirmar eliminación anulación */}
 <Dialog open={deleteAnulId !== null} onOpenChange={(o) => !o && setDeleteAnulId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>{t("crmCancellations.eliminarSolicitud")}</DialogTitle>
           </DialogHeader>
@@ -344,7 +262,7 @@ export function CancellationsModals({ ctrl, handleTabChange, setViewResId, cance
               size="sm"
               onClick={() => deleteAnulId && deleteAnulMutation.mutate({ id: deleteAnulId })}
               disabled={deleteAnulMutation.isPending}
-              className="bg-destructive hover:bg-destructive/90 text-white"
+              variant="destructive"
             >
               {deleteAnulMutation.isPending ? t("crmCancellations.eliminando") : t("crmCancellations.eliminar")}
             </Button>

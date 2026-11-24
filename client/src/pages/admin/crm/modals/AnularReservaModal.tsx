@@ -45,17 +45,17 @@ export function AnularReservaModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#111] border border-warning/30 rounded-2xl p-6 max-w-md w-full">
+    <div role="dialog" aria-modal="true" aria-label={t("crmReservations.iniciarAnulacion")} className="fixed inset-0 bg-background/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-card border border-warning/30 rounded-2xl p-6 max-w-md w-full">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-warning/10 rounded-full flex items-center justify-center flex-shrink-0">
             <XCircle className="w-5 h-5 text-warning" />
           </div>
           <div>
-            <h2 className="text-white font-semibold">{t("crmReservations.iniciarAnulacion")}</h2>
-            <p className="text-gray-400 text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[280px]">{reservationName}</p>
+            <h2 className="text-foreground font-semibold">{t("crmReservations.iniciarAnulacion")}</h2>
+            <p className="text-muted-foreground text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[280px]">{reservationName}</p>
           </div>
-          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-foreground">
+          <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -66,9 +66,9 @@ export function AnularReservaModal({
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-gray-300 text-sm">{t("crmReservations.motivoDeLaAnulacion")}</label>
+            <label className="text-foreground/80 text-sm">{t("crmReservations.motivoDeLaAnulacion")}</label>
             <Select value={reason} onValueChange={(v) => setReason(v as typeof reason)}>
-              <SelectTrigger className="bg-[#1a1a1a] border-foreground/[0.12] text-gray-300">
+              <SelectTrigger className="bg-muted border-foreground/[0.12] text-foreground/80">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -82,24 +82,24 @@ export function AnularReservaModal({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-gray-300 text-sm">{t("crmReservations.detalleDelMotivoOpcional")}</label>
+            <label className="text-foreground/80 text-sm">{t("crmReservations.detalleDelMotivoOpcional")}</label>
             <textarea
               value={reasonDetail}
               onChange={(e) => setReasonDetail(e.target.value)}
               placeholder={t("crmReservations.explicacionAdicional")}
               rows={2}
-              className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-warning/40"
+              className="w-full bg-muted border border-foreground/[0.12] rounded-lg px-3 py-2 text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:border-warning/40"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-gray-300 text-sm">{t("crmReservations.notasInternasOpcional")}</label>
+            <label className="text-foreground/80 text-sm">{t("crmReservations.notasInternasOpcional")}</label>
             <textarea
               value={adminNotes}
               onChange={(e) => setAdminNotes(e.target.value)}
               placeholder={t("crmReservations.anotacionesParaElExpediente")}
               rows={2}
-              className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-foreground/[0.18]"
+              className="w-full bg-muted border border-foreground/[0.12] rounded-lg px-3 py-2 text-foreground text-sm placeholder:text-muted-foreground resize-none focus:outline-none focus:border-foreground/[0.18]"
             />
           </div>
         </div>
@@ -107,7 +107,7 @@ export function AnularReservaModal({
         <div className="flex gap-3 mt-6">
           <button
             onClick={onClose}
-            className="flex-1 py-2 rounded-xl border border-foreground/[0.12] text-gray-400 text-sm hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
+            className="flex-1 py-2 rounded-xl border border-foreground/[0.12] text-muted-foreground text-sm hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
           >{t("crmReservations.cancelar")}</button>
           <button
             onClick={handleSubmit}

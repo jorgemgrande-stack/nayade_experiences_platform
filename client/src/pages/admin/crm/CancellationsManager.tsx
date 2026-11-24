@@ -56,13 +56,13 @@ type FinancialStatus =
 function OperationalBadge({ status }: { status: OperationalStatus }) {
   const { t } = useI18n();
   const map: Record<OperationalStatus, { label: string; className: string; icon: React.ReactNode }> = {
-    recibida: { label: t("crmCancellations.recibida"), className: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: <Clock className="w-3 h-3" /> },
-    en_revision: { label: t("crmCancellations.enRevision"), className: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <Search className="w-3 h-3" /> },
-    pendiente_documentacion: { label: t("crmCancellations.pendDocs"), className: "bg-orange-500/10 text-orange-400 border-orange-500/20", icon: <FileQuestion className="w-3 h-3" /> },
-    pendiente_decision: { label: t("crmCancellations.pendDecision"), className: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: <AlertCircle className="w-3 h-3" /> },
-    resuelta: { label: t("crmCancellations.resuelta"), className: "bg-green-500/10 text-green-400 border-green-500/20", icon: <CheckCircle2 className="w-3 h-3" /> },
-    cerrada: { label: t("crmCancellations.cerrada"), className: "bg-gray-500/10 text-gray-400 border-gray-500/20", icon: <Archive className="w-3 h-3" /> },
-    incidencia: { label: t("crmCancellations.incidencia"), className: "bg-red-500/10 text-red-400 border-red-500/20", icon: <AlertTriangle className="w-3 h-3" /> },
+    recibida: { label: t("crmCancellations.recibida"), className: "bg-info/10 text-info border-info/20", icon: <Clock className="w-3 h-3" /> },
+    en_revision: { label: t("crmCancellations.enRevision"), className: "bg-warning/10 text-warning border-warning/20", icon: <Search className="w-3 h-3" /> },
+    pendiente_documentacion: { label: t("crmCancellations.pendDocs"), className: "bg-warning/10 text-warning border-warning/20", icon: <FileQuestion className="w-3 h-3" /> },
+    pendiente_decision: { label: t("crmCancellations.pendDecision"), className: "bg-primary/10 text-primary border-primary/20", icon: <AlertCircle className="w-3 h-3" /> },
+    resuelta: { label: t("crmCancellations.resuelta"), className: "bg-success/10 text-success border-success/20", icon: <CheckCircle2 className="w-3 h-3" /> },
+    cerrada: { label: t("crmCancellations.cerrada"), className: "bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20", icon: <Archive className="w-3 h-3" /> },
+    incidencia: { label: t("crmCancellations.incidencia"), className: "bg-danger/10 text-danger border-danger/20", icon: <AlertTriangle className="w-3 h-3" /> },
   };
   const { label, className, icon } = map[status] ?? map.recibida;
   return (
@@ -75,10 +75,10 @@ function OperationalBadge({ status }: { status: OperationalStatus }) {
 function ResolutionBadge({ status }: { status: ResolutionStatus }) {
   const { t } = useI18n();
   const map: Record<ResolutionStatus, { label: string; className: string }> = {
-    sin_resolver: { label: t("crmCancellations.sinResolver"), className: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
-    rechazada: { label: t("crmCancellations.rechazada"), className: "bg-red-500/10 text-red-400 border-red-500/20" },
-    aceptada_total: { label: t("crmCancellations.aceptadaTotal"), className: "bg-green-500/10 text-green-400 border-green-500/20" },
-    aceptada_parcial: { label: t("crmCancellations.aceptadaParcial"), className: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+    sin_resolver: { label: t("crmCancellations.sinResolver"), className: "bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20" },
+    rechazada: { label: t("crmCancellations.rechazada"), className: "bg-danger/10 text-danger border-danger/20" },
+    aceptada_total: { label: t("crmCancellations.aceptadaTotal"), className: "bg-success/10 text-success border-success/20" },
+    aceptada_parcial: { label: t("crmCancellations.aceptadaParcial"), className: "bg-success/10 text-success border-success/20" },
   };
   const { label, className } = map[status] ?? map.sin_resolver;
   return (
@@ -91,13 +91,13 @@ function ResolutionBadge({ status }: { status: ResolutionStatus }) {
 function FinancialBadge({ status }: { status: FinancialStatus }) {
   const { t } = useI18n();
   const map: Record<FinancialStatus, { label: string; className: string; icon: React.ReactNode }> = {
-    sin_compensacion: { label: t("crmCancellations.sinComp"), className: "bg-gray-500/10 text-gray-400 border-gray-500/20", icon: null },
-    pendiente_devolucion: { label: t("crmCancellations.pendDevolucion"), className: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <Banknote className="w-3 h-3" /> },
-    devuelta_economicamente: { label: t("crmCancellations.devuelta"), className: "bg-green-500/10 text-green-400 border-green-500/20", icon: <Banknote className="w-3 h-3" /> },
-    pendiente_bono: { label: t("crmCancellations.pendBono"), className: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: <Gift className="w-3 h-3" /> },
-    compensada_bono: { label: t("crmCancellations.bonoEnviado"), className: "bg-violet-500/10 text-violet-400 border-violet-500/20", icon: <Gift className="w-3 h-3" /> },
-    compensacion_mixta: { label: t("crmCancellations.mixta"), className: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20", icon: null },
-    incidencia_economica: { label: t("crmCancellations.incidenciaEc"), className: "bg-red-500/10 text-red-400 border-red-500/20", icon: <AlertTriangle className="w-3 h-3" /> },
+    sin_compensacion: { label: t("crmCancellations.sinComp"), className: "bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20", icon: null },
+    pendiente_devolucion: { label: t("crmCancellations.pendDevolucion"), className: "bg-warning/10 text-warning border-warning/20", icon: <Banknote className="w-3 h-3" /> },
+    devuelta_economicamente: { label: t("crmCancellations.devuelta"), className: "bg-success/10 text-success border-success/20", icon: <Banknote className="w-3 h-3" /> },
+    pendiente_bono: { label: t("crmCancellations.pendBono"), className: "bg-primary/10 text-primary border-primary/20", icon: <Gift className="w-3 h-3" /> },
+    compensada_bono: { label: t("crmCancellations.bonoEnviado"), className: "bg-primary/10 text-primary border-primary/20", icon: <Gift className="w-3 h-3" /> },
+    compensacion_mixta: { label: t("crmCancellations.mixta"), className: "bg-info/10 text-info border-info/20", icon: null },
+    incidencia_economica: { label: t("crmCancellations.incidenciaEc"), className: "bg-danger/10 text-danger border-danger/20", icon: <AlertTriangle className="w-3 h-3" /> },
   };
   const { label, className, icon } = map[status] ?? map.sin_compensacion;
   return (
@@ -109,22 +109,22 @@ function FinancialBadge({ status }: { status: FinancialStatus }) {
 
 function ReasonIcon({ reason }: { reason: string }) {
   const icons: Record<string, React.ReactNode> = {
-    meteorologicas: <CloudLightning className="w-4 h-4 text-blue-400" />,
-    accidente: <Car className="w-4 h-4 text-red-400" />,
-    enfermedad: <HeartPulse className="w-4 h-4 text-pink-400" />,
-    desistimiento: <XCircle className="w-4 h-4 text-gray-400" />,
-    otra: <HelpCircle className="w-4 h-4 text-gray-400" />,
+    meteorologicas: <CloudLightning className="w-4 h-4 text-info" />,
+    accidente: <Car className="w-4 h-4 text-danger" />,
+    enfermedad: <HeartPulse className="w-4 h-4 text-primary" />,
+    desistimiento: <XCircle className="w-4 h-4 text-muted-foreground" />,
+    otra: <HelpCircle className="w-4 h-4 text-muted-foreground" />,
   };
-  return <>{icons[reason] ?? <HelpCircle className="w-4 h-4 text-gray-400" />}</>;
+  return <>{icons[reason] ?? <HelpCircle className="w-4 h-4 text-muted-foreground" />}</>;
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, color }: { label: string; value: number; sub?: string; color: string }) {
   return (
-    <div className={`bg-[#111] border ${color} rounded-xl p-4`}>
-      <p className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+    <div className={`bg-card border ${color} rounded-xl p-4`}>
+      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-2xl font-bold text-foreground">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -167,12 +167,12 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#111] border border-white/10 rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-background/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-card border border-border rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-white font-semibold text-lg flex items-center gap-2">
-            <Plus className="w-5 h-5 text-orange-400" />{t("crmCancellations.nuevaSolicitudManual")}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+          <h2 className="text-foreground font-semibold text-lg flex items-center gap-2">
+            <Plus className="w-5 h-5 text-warning" />{t("crmCancellations.nuevaSolicitudManual")}</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <XCircle className="w-5 h-5" />
           </button>
         </div>
@@ -180,41 +180,41 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">{t("crmCancellations.nombreCompleto")}</Label>
+              <Label className="text-foreground/80 text-sm">{t("crmCancellations.nombreCompleto")}</Label>
               <Input value={fullName} onChange={(e) => setFullName(e.target.value)}
                 placeholder={t("crmCancellations.juanGarciaLopez")}
-                className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">{t("crmCancellations.fechaDeActividad")}</Label>
+              <Label className="text-foreground/80 text-sm">{t("crmCancellations.fechaDeActividad")}</Label>
               <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)}
-                className="bg-[#1a1a1a] border-white/10 text-white" />
+                className="bg-muted border-border text-foreground" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">{t("crmCancellations.email")}</Label>
+              <Label className="text-foreground/80 text-sm">{t("crmCancellations.email")}</Label>
               <Input value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="cliente@email.com" type="email"
-                className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-gray-300 text-sm">{t("crmCancellations.telefono")}</Label>
+              <Label className="text-foreground/80 text-sm">{t("crmCancellations.telefono")}</Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)}
                 placeholder="+34 600 000 000"
-                className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground" />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">{t("crmCancellations.localizadorNReserva")}</Label>
+            <Label className="text-foreground/80 text-sm">{t("crmCancellations.localizadorNReserva")}</Label>
             <Input value={locator} onChange={(e) => setLocator(e.target.value)}
               placeholder={t("crmCancellations.res20260001")}
-              className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+              className="bg-muted border-border text-foreground placeholder:text-muted-foreground" />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">{t("crmCancellations.motivo")}</Label>
+            <Label className="text-foreground/80 text-sm">{t("crmCancellations.motivo")}</Label>
             <Select value={reason} onValueChange={setReason}>
-              <SelectTrigger className="bg-[#1a1a1a] border-white/10 text-gray-300">
+              <SelectTrigger className="bg-muted border-border text-foreground/80">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -228,24 +228,24 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">{t("crmCancellations.detalleDelMotivo")}</Label>
+            <Label className="text-foreground/80 text-sm">{t("crmCancellations.detalleDelMotivo")}</Label>
             <Textarea value={reasonDetail} onChange={(e) => setReasonDetail(e.target.value)}
               placeholder={t("crmCancellations.descripcionAdicional")}
-              className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600 min-h-[80px]" />
+              className="bg-muted border-border text-foreground placeholder:text-muted-foreground min-h-[80px]" />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-gray-300 text-sm">{t("crmCancellations.notasInternasAdmin")}</Label>
+            <Label className="text-foreground/80 text-sm">{t("crmCancellations.notasInternasAdmin")}</Label>
             <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)}
               placeholder={t("crmCancellations.anotacionesInternas")}
-              className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600 min-h-[60px]" />
+              className="bg-muted border-border text-foreground placeholder:text-muted-foreground min-h-[60px]" />
           </div>
         </div>
 
         <div className="flex gap-3 mt-6">
-          <Button variant="outline" className="flex-1 border-white/10 text-gray-400" onClick={onClose}>{t("crmCancellations.cancelar")}</Button>
+          <Button variant="outline" className="flex-1 border-border text-muted-foreground" onClick={onClose}>{t("crmCancellations.cancelar")}</Button>
           <Button
-            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+            className="flex-1 bg-warning hover:bg-warning text-foreground"
             onClick={handleSubmit}
             disabled={createMutation.isPending}
           >
@@ -311,30 +311,30 @@ export default function CancellationsManager() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="w-6 h-6 text-orange-400" />{t("crmCancellations.solicitudesDeAnulacion")}</h1>
-          <p className="text-gray-400 text-sm mt-1">{t("crmCancellations.pipelineDeGestionDe")}</p>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <AlertTriangle className="w-6 h-6 text-warning" />{t("crmCancellations.solicitudesDeAnulacion")}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{t("crmCancellations.pipelineDeGestionDe")}</p>
         </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => refetch()}
-            className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
+            className="gap-1.5 border-border text-muted-foreground hover:text-foreground"
           >
             <RefreshCw className="w-4 h-4" />{t("crmCancellations.actualizar")}</Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => window.open("/solicitar-anulacion", "_blank")}
-            className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
+            className="gap-1.5 border-border text-muted-foreground hover:text-foreground"
           >{t("crmCancellations.verFormularioPublico")}</Button>
           <Button
             variant="outline"
             size="sm"
             disabled={sendTestEmails.isPending}
             onClick={() => sendTestEmails.mutate({ to: "jorgemgrande@gmail.com" })}
-            className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
+            className="gap-1.5 border-border text-muted-foreground hover:text-foreground"
             title={t("crmCancellations.enviaLos8Templates")}
           >
             <Mail className="w-4 h-4" />
@@ -343,7 +343,7 @@ export default function CancellationsManager() {
           <Button
             size="sm"
             onClick={() => setShowNewModal(true)}
-            className="gap-1.5 bg-orange-500 hover:bg-orange-600 text-white"
+            className="gap-1.5 bg-warning hover:bg-warning text-foreground"
           >
             <Plus className="w-4 h-4" />{t("crmCancellations.nuevaSolicitud")}</Button>
         </div>
@@ -352,38 +352,38 @@ export default function CancellationsManager() {
       {/* KPIs */}
       {kpis && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          <KpiCard label={t("crmCancellations.total")} value={kpis.total} color="border-white/5" />
-          <KpiCard label={t("crmCancellations.recibidas")} value={kpis.recibidas} color="border-blue-500/20" />
-          <KpiCard label={t("crmCancellations.enRevision")} value={kpis.enRevision} color="border-amber-500/20" />
-          <KpiCard label={t("crmCancellations.pendDocs")} value={kpis.pendienteDocumentacion} color="border-orange-500/20" />
-          <KpiCard label={t("crmCancellations.incidencias")} value={kpis.incidencias} color="border-red-500/20" />
-          <KpiCard label={t("crmCancellations.cerradas")} value={kpis.cerradas} color="border-gray-500/20" />
+          <KpiCard label={t("crmCancellations.total")} value={kpis.total} color="border-border/50" />
+          <KpiCard label={t("crmCancellations.recibidas")} value={kpis.recibidas} color="border-info/20" />
+          <KpiCard label={t("crmCancellations.enRevision")} value={kpis.enRevision} color="border-warning/20" />
+          <KpiCard label={t("crmCancellations.pendDocs")} value={kpis.pendienteDocumentacion} color="border-warning/20" />
+          <KpiCard label={t("crmCancellations.incidencias")} value={kpis.incidencias} color="border-danger/20" />
+          <KpiCard label={t("crmCancellations.cerradas")} value={kpis.cerradas} color="border-muted-foreground/20" />
         </div>
       )}
 
       {/* Segunda fila KPIs resolución */}
       {kpis && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <KpiCard label={t("crmCancellations.aceptadasTotal")} value={kpis.resueltasTotal} color="border-green-500/20" />
-          <KpiCard label={t("crmCancellations.aceptadasParcial")} value={kpis.resueltasParcial} color="border-teal-500/20" />
-          <KpiCard label={t("crmCancellations.rechazadas")} value={kpis.rechazadas} color="border-red-500/20" />
-          <KpiCard label={voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")} value={kpis.compensadasBono} color="border-purple-500/20" />
+          <KpiCard label={t("crmCancellations.aceptadasTotal")} value={kpis.resueltasTotal} color="border-success/20" />
+          <KpiCard label={t("crmCancellations.aceptadasParcial")} value={kpis.resueltasParcial} color="border-success/20" />
+          <KpiCard label={t("crmCancellations.rechazadas")} value={kpis.rechazadas} color="border-danger/20" />
+          <KpiCard label={voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")} value={kpis.compensadasBono} color="border-primary/20" />
         </div>
       )}
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("crmCancellations.buscarPorNombreEmail")}
-            className="pl-9 bg-[#111] border-white/10 text-white placeholder:text-gray-600"
+            className="pl-9 bg-card border-border text-foreground placeholder:text-muted-foreground"
           />
         </div>
         <Select value={opFilter} onValueChange={setOpFilter}>
-          <SelectTrigger className="w-44 bg-[#111] border-white/10 text-gray-300">
+          <SelectTrigger className="w-44 bg-card border-border text-foreground/80">
             <SelectValue placeholder={t("crmCancellations.estadoOperativo")} />
           </SelectTrigger>
           <SelectContent>
@@ -398,7 +398,7 @@ export default function CancellationsManager() {
           </SelectContent>
         </Select>
         <Select value={resFilter} onValueChange={setResFilter}>
-          <SelectTrigger className="w-44 bg-[#111] border-white/10 text-gray-300">
+          <SelectTrigger className="w-44 bg-card border-border text-foreground/80">
             <SelectValue placeholder={t("crmCancellations.resolucion")} />
           </SelectTrigger>
           <SelectContent>
@@ -410,7 +410,7 @@ export default function CancellationsManager() {
           </SelectContent>
         </Select>
         <Select value={finFilter} onValueChange={setFinFilter}>
-          <SelectTrigger className="w-44 bg-[#111] border-white/10 text-gray-300">
+          <SelectTrigger className="w-44 bg-card border-border text-foreground/80">
             <SelectValue placeholder={t("crmCancellations.estadoFinanciero")} />
           </SelectTrigger>
           <SelectContent>
@@ -424,7 +424,7 @@ export default function CancellationsManager() {
           </SelectContent>
         </Select>
         <Select value={reasonFilter} onValueChange={setReasonFilter}>
-          <SelectTrigger className="w-40 bg-[#111] border-white/10 text-gray-300">
+          <SelectTrigger className="w-40 bg-card border-border text-foreground/80">
             <SelectValue placeholder={t("crmCancellations.motivo")} />
           </SelectTrigger>
           <SelectContent>
@@ -439,57 +439,57 @@ export default function CancellationsManager() {
       </div>
 
       {/* Tabla */}
-      <div className="bg-[#111] border border-white/5 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
             <thead>
-              <tr className="border-b border-white/5">
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">#</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.solicitante")}</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.reserva")}</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.motivo")}</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.fechaActividad")}</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.estadoOp")}</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.resolucion")}</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.financiero")}</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.fecha")}</th>
-                <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">{t("crmCancellations.acciones")}</th>
+              <tr className="border-b border-border/50">
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">#</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.solicitante")}</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.reserva")}</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.motivo")}</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.fechaActividad")}</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.estadoOp")}</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.resolucion")}</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.financiero")}</th>
+                <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.fecha")}</th>
+                <th className="text-right text-xs text-muted-foreground font-medium px-4 py-3">{t("crmCancellations.acciones")}</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-500">{t("crmCancellations.cargandoSolicitudes")}</td>
+                  <td colSpan={10} className="text-center py-12 text-muted-foreground">{t("crmCancellations.cargandoSolicitudes")}</td>
                 </tr>
               )}
               {!isLoading && rows.length === 0 && (
                 <tr>
                   <td colSpan={10} className="text-center py-12">
-                    <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                    <p className="text-gray-500">{t("crmCancellations.noHaySolicitudesQue")}</p>
+                    <AlertTriangle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-muted-foreground">{t("crmCancellations.noHaySolicitudesQue")}</p>
                   </td>
                 </tr>
               )}
               {rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-white/5 hover:bg-white/2 transition-colors"
+                  className="border-b border-border/50 hover:bg-white/2 transition-colors"
                 >
-                  <td className="px-4 py-3 text-gray-400 text-sm font-mono">#{row.id}</td>
+                  <td className="px-4 py-3 text-muted-foreground text-sm font-mono">#{row.id}</td>
                   <td className="px-4 py-3">
-                    <p className="text-white text-sm font-medium">{row.fullName}</p>
-                    {row.email && <p className="text-gray-500 text-xs">{row.email}</p>}
+                    <p className="text-foreground text-sm font-medium">{row.fullName}</p>
+                    {row.email && <p className="text-muted-foreground text-xs">{row.email}</p>}
                     {row.locator && (
-                      <p className="text-gray-600 text-xs font-mono">{row.locator}</p>
+                      <p className="text-muted-foreground text-xs font-mono">{row.locator}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs font-mono">
+                  <td className="px-4 py-3 text-muted-foreground text-xs font-mono">
                     {row.reservationNumber ?? "—"}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <ReasonIcon reason={row.reason} />
-                      <span className="text-gray-300 text-xs capitalize">
+                      <span className="text-foreground/80 text-xs capitalize">
                         {row.reason === "meteorologicas" ? t("crmCancellations.meteorologicas") :
                          row.reason === "accidente" ? t("crmCancellations.accidente") :
                          row.reason === "enfermedad" ? t("crmCancellations.enfermedad") :
@@ -497,7 +497,7 @@ export default function CancellationsManager() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-300 text-sm">{row.activityDate}</td>
+                  <td className="px-4 py-3 text-foreground/80 text-sm">{row.activityDate}</td>
                   <td className="px-4 py-3">
                     <OperationalBadge status={row.operationalStatus as OperationalStatus} />
                   </td>
@@ -507,21 +507,21 @@ export default function CancellationsManager() {
                   <td className="px-4 py-3">
                     <FinancialBadge status={row.financialStatus as FinancialStatus} />
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">
+                  <td className="px-4 py-3 text-muted-foreground text-xs">
                     {format.date(row.createdAt, {})}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => setSelectedId(row.id)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-colors"
                         title={t("crmCancellations.verDetalle")}
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => setDeleteId(row.id)}
-                        className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
                         title={t("crmCancellations.eliminar")}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -534,7 +534,7 @@ export default function CancellationsManager() {
           </table>
         </div>
         {rows.length > 0 && (
-          <div className="px-4 py-3 border-t border-white/5 text-xs text-gray-500">
+          <div className="px-4 py-3 border-t border-border/50 text-xs text-muted-foreground">
             {t("crmCancellations.solicitud2", { rowsCount: rows.length })}
           </div>
         )}
@@ -563,26 +563,26 @@ export default function CancellationsManager() {
 
       {/* Modal de confirmación de borrado */}
       {deleteId !== null && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 max-w-sm w-full">
+        <div className="fixed inset-0 bg-background/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-500/10 rounded-full flex items-center justify-center">
-                <Trash2 className="w-5 h-5 text-red-400" />
+              <div className="w-10 h-10 bg-danger/10 rounded-full flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-danger" />
               </div>
               <div>
-                <h3 className="text-white font-semibold">{t("crmCancellations.eliminarSolicitud")}</h3>
-                <p className="text-gray-400 text-sm">{t("crmCancellations.solicitud3", { deleteId })}</p>
+                <h3 className="text-foreground font-semibold">{t("crmCancellations.eliminarSolicitud")}</h3>
+                <p className="text-muted-foreground text-sm">{t("crmCancellations.solicitud3", { deleteId })}</p>
               </div>
             </div>
-            <p className="text-gray-400 text-sm mb-6">{t("crmCancellations.estaAccionEliminaraPermanentem")}</p>
+            <p className="text-muted-foreground text-sm mb-6">{t("crmCancellations.estaAccionEliminaraPermanentem")}</p>
             <div className="flex gap-3">
               <Button
                 variant="outline"
-                className="flex-1 border-white/10 text-gray-400"
+                className="flex-1 border-border text-muted-foreground"
                 onClick={() => setDeleteId(null)}
               >{t("crmCancellations.cancelar")}</Button>
               <Button
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                className="flex-1 bg-danger hover:bg-danger text-foreground"
                 onClick={() => deleteRequest.mutate({ id: deleteId })}
                 disabled={deleteRequest.isPending}
               >
