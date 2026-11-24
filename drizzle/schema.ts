@@ -218,7 +218,7 @@ export const experienceVariants = mysqlTable("experience_variants", {
   minQty: int("minQty"),
   maxQty: int("maxQty"),
   /**
-   * Suplemento opcional (0091): si está informado, la fila NO es una opción del programa sino un suplemento que la persona
+   * Suplemento opcional (0090): si está informado, la fila NO es una opción del programa sino un suplemento que la persona
    * marca aparte. Las filas con el mismo grupo son los tramos (minQty/maxQty) de un mismo suplemento. NULL = opción normal.
    */
   supplementGroup: varchar("supplementGroup", { length: 64 }),

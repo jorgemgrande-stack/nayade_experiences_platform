@@ -1,6 +1,6 @@
 # Suplementos opcionales (alimentación ayurvédica de los retiros)
 
-Estado: 24/11/2026. Rama `feat/suplementos-opcionales`, migración 0091 (aditiva). **No cambia precios, modos de oferta ni cobros**; no se ha creado ningún suplemento en ningún entorno.
+Estado: 24/11/2026. Rama `feat/suplementos-opcionales`, migración 0090 (aditiva). **No cambia precios, modos de oferta ni cobros**; no se ha creado ningún suplemento en ningún entorno.
 
 ## Hallazgos del modelo anterior
 
@@ -11,7 +11,7 @@ Estado: 24/11/2026. Rama `feat/suplementos-opcionales`, migración 0091 (aditiva
 
 ## Diseño (mínimo)
 
-Una columna nueva: `experience_variants.supplementGroup VARCHAR(64) NULL` (0091). Si está informada, la fila es un **suplemento** y deja de ser opción del programa en todas partes.
+Una columna nueva: `experience_variants.supplementGroup VARCHAR(64) NULL` (0090). Si está informada, la fila es un **suplemento** y deja de ser opción del programa en todas partes.
 
 - Las filas con el mismo grupo son los **tramos** del mismo suplemento; el tramo lo decide el servidor por número de participantes (`minQty`/`maxQty`). Quien viaja solo no puede acogerse a la tarifa de grupo aunque envíe el id de ese tramo.
 - `priceType = per_person`: importe × participantes. `fixed`: importe único por pedido. `percentage`: no admitido.

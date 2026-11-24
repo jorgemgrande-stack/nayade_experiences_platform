@@ -1,5 +1,5 @@
 /**
- * Suplementos opcionales (migración 0091) con la aplicación real sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL).
+ * Suplementos opcionales (migración 0090) con la aplicación real sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL).
  * Dos empresas sintéticas; ningún cobro real (cuenta Redsys de prueba ficticia, el carrito solo calcula el importe).
  *  - Un suplemento (variante con supplementGroup) NO es una opción del programa: no sale en las opciones, ni en el «desde»,
  *    ni se puede elegir como modalidad.

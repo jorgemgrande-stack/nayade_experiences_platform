@@ -2,7 +2,7 @@
  * Suplementos opcionales de un producto (p. ej. la alimentación ayurvédica de los retiros de Quantum Soulrise).
  *
  * Modelo (sin tablas nuevas): un suplemento es una fila de `experience_variants` con `supplementGroup` informado
- * (migración 0091). Esas filas NUNCA son una opción del programa: no salen en la lista de opciones de la ficha, no
+ * (migración 0090). Esas filas NUNCA son una opción del programa: no salen en la lista de opciones de la ficha, no
  * cuentan para el precio «desde», no se pueden elegir como modalidad y no se añaden solas a ningún total.
  *
  *  - Las filas que comparten `supplementGroup` son los TRAMOS de un mismo suplemento. Se distinguen por minQty/maxQty

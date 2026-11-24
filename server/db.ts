@@ -1272,7 +1272,7 @@ export function todayMadridISO(now: Date = new Date()): string {
 export async function getVariantsByExperience(experienceId: number, opts: { includeExpired?: boolean; includeSupplements?: boolean } = {}) {
   const db = await getDb();
   if (!db) return [];
-  // Los suplementos opcionales (supplementGroup, 0091) no son opciones del programa: solo salen si se piden expresamente
+  // Los suplementos opcionales (supplementGroup, 0090) no son opciones del programa: solo salen si se piden expresamente
   const noSupplements = opts.includeSupplements ? undefined : isNull(experienceVariants.supplementGroup);
   return db.select().from(experienceVariants)
     .where(opts.includeExpired
