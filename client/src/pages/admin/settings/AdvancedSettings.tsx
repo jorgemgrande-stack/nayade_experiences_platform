@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
@@ -218,10 +219,7 @@ export default function AdvancedSettings() {
   return (
     <AdminLayout>
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsGeneral.advanced.title")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("settingsGeneral.advanced.intro")}</p>
-        </div>
+        <PanelPageHeader title={t("settingsGeneral.advanced.title")} description={t("settingsGeneral.advanced.intro")} />
 
         <div className="flex gap-1 bg-muted/40 p-1 rounded-xl w-fit">
           {(["flags", "settings"] as Tab[]).map(k => (

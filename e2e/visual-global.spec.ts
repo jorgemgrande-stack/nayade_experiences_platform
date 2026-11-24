@@ -20,7 +20,7 @@ const CAPS = [
   "shop-catalog", "shop-variants", "shop-store", "shop-checkout", "shop-orders", "shop-coupons",
   "cms-editor", "cms-domain", "cms-pages-forms", "cms-blog", "cms-seo",
   "bill-invoices", "bill-series", "bill-taxes", "bill-payments", "bill-cash", "bill-reports",
-  "admin-panel", "admin-users", "comms-email", "comms-whatsapp-links", "auto-basic",
+  "admin-panel", "admin-users", "tax-filings", "comms-email", "comms-whatsapp-links", "auto-basic",
 ];
 const overview = {
   mode: "multi", licensing: "capabilities", plan: { key: "essential", name: "Essential" }, state: "trial",
@@ -104,6 +104,18 @@ const data: Record<string, unknown> = {
 };
 
 
+// Economía y Administración (feat/ux2-economia-admin): datos ficticios mínimos para que las pantallas rendericen
+const usr = (i: number, n: string, role: string, active = true) => ({ id: i, name: n, email: n.toLowerCase().replace(/[^a-z]+/g, ".") + "@ejemplo.invalid", role, isActive: active, createdAt: new Date(NOW - i * 20 * DAY).toISOString(), lastSignedIn: new Date(NOW - i * DAY).toISOString(), loginMethod: "email", openId: "o" + i });
+Object.assign(data, {
+  "admin.getUsers": [usr(1, "Jorge Grande", "admin"), usr(2, "Marta Ruiz", "agent"), usr(3, "Daniel Fischer", "user"), usr(4, "Laura Gómez", "agent", false)],
+  "admin.getRbacStatus": { available: false },
+  "gestoria.obligations.list": [
+    { id: 1, model: "303", name: "IVA 1T", period: "1T", dueDate: new Date(NOW + 5 * DAY).toISOString(), status: "pendiente" },
+    { id: 2, model: "111", name: "Retenciones 1T", period: "1T", dueDate: new Date(NOW - 3 * DAY).toISOString(), status: "pagado" },
+  ],
+  "gestoria.dossiers.list": [], "gestoria.access.list": [],
+});
+
 const products = [
   ["Retiro de bienestar · 5 noches", "Retiros", 189000, true, true], ["Taller de respiración consciente", "Talleres", 4500, true, false],
   ["Sesión individual de coaching", "Sesiones", 9000, true, false], ["Escapada de otoño en Berchtesgaden", "Viajes", 129000, false, false],
@@ -153,22 +165,41 @@ const VIEWS = [
   { name: "ancho", width: 1920, height: 1080 },
   { name: "tableta", width: 768, height: 1024 },
   { name: "movil", width: 390, height: 844 },
+  { name: "portatil", width: 1280, height: 800 },
 ];
 const SCREENS = [
-  { key: "1-inicio", url: "/admin" },
-  { key: "2-clientes", url: "/admin/crm/clientes" },
-  { key: "2b-ficha-cliente", url: "/admin/crm/clientes/1" },
-  { key: "3-productos", url: "/admin/productos" },
-  { key: "4-facturacion", url: "/admin/crm?tab=invoices" },
-  { key: "6-presupuestos", url: "/admin/crm?tab=quotes" },
-  { key: "7-pedidos", url: "/admin/crm?tab=reservations" },
-  { key: "8-formacion", url: "/admin/formacion?tab=cursos" },
-  { key: "8-suscripcion", url: "/admin/suscripcion" },
+  { id: "1-inicio", url: "/admin" },
+  { id: "2-clientes", url: "/admin/crm/clientes" },
+  { id: "2b-ficha-cliente", url: "/admin/crm/clientes/1" },
+  { id: "3-productos", url: "/admin/productos" },
+  { id: "4-facturacion", url: "/admin/crm?tab=invoices" },
+  { id: "6-presupuestos", url: "/admin/crm?tab=quotes" },
+  { id: "7-pedidos", url: "/admin/crm?tab=reservations" },
+  { id: "e1-gestoria-iva", url: "/admin/gestoria/iva" },
+  { id: "e2-gestoria-expedientes", url: "/admin/gestoria/expedientes" },
+  { id: "e3-gestoria-calendario", url: "/admin/gestoria/calendario" },
+  { id: "e4-usuarios", url: "/admin/usuarios" },
+  { id: "e5-numeracion", url: "/admin/numeracion" },
+  { id: "e6-marca", url: "/admin/configuracion/marca" },
+  { id: "e7-integraciones", url: "/admin/configuracion/integraciones" },
+  { id: "e8-cobros", url: "/admin/configuracion/cobros" },
+  { id: "e9-gastos", url: "/admin/contabilidad/gastos" },
+  { id: "e10-movimientos-bancarios", url: "/admin/contabilidad/movimientos-bancarios" },
+  { id: "e11-finance-sync", url: "/admin/contabilidad/finance-sync" },
+  { id: "e12-sedes", url: "/admin/configuracion/sedes" },
+  { id: "e13-correo", url: "/admin/configuracion/email" },
+  { id: "8-formacion", url: "/admin/formacion?tab=cursos" },
+  { id: "8-suscripcion", url: "/admin/suscripcion" },
 ];
+// Filtros opcionales: VISUAL_ONLY=regex de claves, VISUAL_VIEWS=nombres separados por coma
+const ONLY = process.env.VISUAL_ONLY ? new RegExp(process.env.VISUAL_ONLY) : null;
+const ONLY_VIEWS = process.env.VISUAL_VIEWS ? process.env.VISUAL_VIEWS.split(",") : null;
 
 for (const v of VIEWS) {
+  if (ONLY_VIEWS && !ONLY_VIEWS.includes(v.name)) continue;
   for (const s of SCREENS) {
-    test(`${TAG} · ${s.key} · ${v.name}`, async ({ page }) => {
+    if (ONLY && !ONLY.test(s.id)) continue;
+    test(`${TAG} · ${s.id} · ${v.name}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: (process.env.VISUAL_SCHEME as "dark" | "light") ?? "dark" });
       if (process.env.VISUAL_PRIMARY) {
         const c = process.env.VISUAL_PRIMARY;
@@ -178,7 +209,7 @@ for (const v of VIEWS) {
       await page.setViewportSize({ width: v.width, height: v.height });
       await page.goto(s.url);
       await page.waitForTimeout(4500);
-      await page.screenshot({ path: path.join(OUT, `${TAG}-${s.key}-${v.name}.png`), fullPage: true });
+      await page.screenshot({ path: path.join(OUT, `${TAG}-${s.id}-${v.name}.png`), fullPage: true });
     });
   }
 }

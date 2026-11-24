@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
@@ -359,7 +360,7 @@ export default function CardTerminalBatchesManager() {
               </CardHeader>
               <CardContent className="p-0">
                 {listQ.isLoading ? (
-                  <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">Cargando...</div>
+                  <PanelLoading />
                 ) : batches.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                     <Package className="w-8 h-8" />

@@ -11,6 +11,8 @@ import { Link } from "wouter";
 import { toast } from "sonner";
 import { Check, CheckCircle2, Circle, Copy, ExternalLink, Globe, Loader2, RefreshCw, ShieldCheck, Star, Unplug } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -303,17 +305,10 @@ export default function CustomDomains() {
   return (
     <AdminLayout>
       <div className="max-w-4xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">{t("settingsDomains.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("settingsDomains.intro")}</p>
-        </div>
+        <PanelPageHeader title={t("settingsDomains.title")} description={t("settingsDomains.intro")} />
 
-        {status.isLoading && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> {t("settingsDomains.loading")}
-          </div>
-        )}
-        {status.error && <p className="text-sm text-danger">{status.error.message}</p>}
+        {status.isLoading && <PanelLoading label={t("settingsDomains.loading")} />}
+        {status.error && <PanelError error={status.error} onRetry={() => void status.refetch()} />}
         {status.data && !status.data.available && (
           <Card>
             <CardContent className="py-6 text-sm text-muted-foreground">{localizeIntegrationText(status.data.reason, locale)}</CardContent>

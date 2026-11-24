@@ -8,6 +8,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -47,26 +49,27 @@ export default function GestoriaIVA() {
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
         {/* Cabecera */}
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Percent className="w-6 h-6 text-primary" /> Tributación de IVA
-            </h1>
-            <p className="text-sm text-muted-foreground">Modelos 303 y 390 · estimación</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
-              {recalcMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Recalcular ejercicio
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<Percent />}
+          title="Tributación de IVA"
+          description="Modelos 303 y 390 · estimación"
+          actions={
+            <>
+            <div className="flex items-center gap-2">
+              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
+                {recalcMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Recalcular ejercicio
+              </Button>
+            </div>
+            </>
+          }
+        />
 
         {/* Pestañas de periodo */}
         <div className="flex gap-1 border-b border-border">
@@ -78,7 +81,7 @@ export default function GestoriaIVA() {
 
         {/* Detalle trimestral */}
         {!isAnnual && (
-          q303.isLoading ? <Loading /> : q303.data ? (
+          q303.isLoading ? <Loading /> : q303.isError ? <PanelError error={q303.error} onRetry={() => q303.refetch()} /> : q303.data ? (
             <div className="space-y-4">
               {/* IVA repercutido */}
               <Panel title="IVA repercutido — facturas emitidas">
@@ -131,7 +134,7 @@ export default function GestoriaIVA() {
 
         {/* Resumen anual 390 */}
         {isAnnual && (
-          q390.isLoading ? <Loading /> : q390.data ? (
+          q390.isLoading ? <Loading /> : q390.isError ? <PanelError error={q390.error} onRetry={() => q390.refetch()} /> : q390.data ? (
             <div className="space-y-4">
               <Panel title={`Resumen anual de IVA ${year} — por trimestre`}>
                 <table className="w-full text-sm">
@@ -230,7 +233,7 @@ function ResultBox({ result, annual }: { result: number; annual?: boolean }) {
 }
 
 function Loading() {
-  return <div className="py-12 text-center"><RefreshCw className="w-5 h-5 animate-spin mx-auto text-muted-foreground" /></div>;
+  return <PanelLoading />;
 }
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground py-2">{children}</p>;
