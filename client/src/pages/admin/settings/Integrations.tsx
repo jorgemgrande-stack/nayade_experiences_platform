@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Circle, CircleDashed, Loader2, ShieldCheck } from "lucide-react";
@@ -210,25 +212,16 @@ export default function Integrations() {
   return (
     <AdminLayout>
       <div className="max-w-3xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">{t("settingsPayments.integrations.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("settingsPayments.integrations.intro")}
-          </p>
-        </div>
+        <PanelPageHeader title={t("settingsPayments.integrations.title")} description={t("settingsPayments.integrations.intro")} />
 
         {avail.isLoading || (avail.data?.available && list.isLoading) ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
+          <PanelLoading />
         ) : !avail.data?.available ? (
           <div className="bg-card border border-border/50 rounded-xl p-5 text-sm text-muted-foreground">
             {t("settingsPayments.integrations.technicalTeam")}
           </div>
         ) : list.isError ? (
-          <div role="alert" className="bg-card border border-border/50 rounded-xl p-5 text-sm text-danger">
-            {t("settingsPayments.integrations.loadError")}
-          </div>
+          <PanelError title={t("settingsPayments.integrations.loadError")} error={list.error} onRetry={() => void list.refetch()} />
         ) : groups.length === 0 ? (
           <div className="bg-card border border-border/50 rounded-xl p-5 text-sm text-muted-foreground">
             {t("settingsPayments.integrations.none")}

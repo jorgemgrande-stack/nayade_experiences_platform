@@ -12,6 +12,8 @@ import {
   Eye, EyeOff, ChevronDown, ChevronUp, Server, Send,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { useI18n } from "@/i18n/I18nProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -301,7 +303,7 @@ function AccountModal({
 export default function EmailAccountsSettings() {
   const { t, format } = useI18n();
   const utils = trpc.useUtils();
-  const { data: accounts = [], isLoading } = trpc.emailAccounts.list.useQuery();
+  const { data: accounts = [], isLoading, isError, error: listError, refetch: refetchList } = trpc.emailAccounts.list.useQuery();
   const [showCreate, setShowCreate] = useState(false);
   const [editAccount, setEditAccount] = useState<any | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -342,16 +344,12 @@ export default function EmailAccountsSettings() {
     <AdminLayout>
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Mail className="w-5 h-5 text-info" /> {t("settingsEmailAccounts.title")}
-            </h1>
-            <p className="text-sm text-foreground/50 mt-1">
-              {t("settingsEmailAccounts.intro")}
-            </p>
-          </div>
-          <div className="flex gap-2">
+        <PanelPageHeader
+          icon={<Mail />}
+          title={t("settingsEmailAccounts.title")}
+          description={t("settingsEmailAccounts.intro")}
+          actions={
+          <>
             <Button size="sm" variant="outline" onClick={() => syncMut.mutate({})} disabled={syncMut.isPending} className="gap-1 text-xs">
               {syncMut.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               {t("settingsEmailAccounts.syncNow")}
@@ -359,22 +357,21 @@ export default function EmailAccountsSettings() {
             <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1 text-xs">
               <Plus className="w-3 h-3" /> {t("settingsEmailAccounts.newAccount")}
             </Button>
-          </div>
-        </div>
+          </>
+          }
+        />
 
         {/* Accounts list */}
         {isLoading ? (
-          <div className="flex justify-center py-12">
-            <RefreshCw className="w-4 h-4 animate-spin text-foreground/30" />
-          </div>
+          <PanelLoading />
+        ) : isError ? (
+          <PanelError error={listError} onRetry={() => void refetchList()} />
         ) : accounts.length === 0 ? (
-          <div className="text-center py-16 border border-dashed border-border/40 rounded-xl">
-            <Mail className="w-8 h-8 text-foreground/20 mx-auto mb-3" />
-            <p className="text-sm text-foreground/40">{t("settingsEmailAccounts.empty")}</p>
-            <Button size="sm" onClick={() => setShowCreate(true)} className="mt-4 gap-1">
+          <PanelEmpty icon={<Mail className="w-5 h-5" />} title={t("settingsEmailAccounts.empty")}>
+            <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1">
               <Plus className="w-3 h-3" /> {t("settingsEmailAccounts.addFirst")}
             </Button>
-          </div>
+          </PanelEmpty>
         ) : (
           <div className="space-y-3">
             {accounts.map(account => (
