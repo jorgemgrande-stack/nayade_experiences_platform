@@ -209,15 +209,15 @@ export default function VariantsManager() {
             const variants = variantsByExp[exp.id] ?? [];
             return (
               <div key={exp.id} className="bg-card border border-border rounded-xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-muted/30">
-                  <div className="flex items-center gap-3">
+                <div className="px-4 sm:px-5 py-3 border-b border-border flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-muted/30">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                     <ProductThumb
                       src={String((exp as Record<string, unknown>).image1 ?? exp.coverImageUrl ?? "") || null}
                       alt={exp.title}
                       noImageLabel={t("productsVariants.noImage")}
                       className="w-12"
                     />
-                    <span className="font-semibold text-foreground">{exp.title}</span>
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground">{exp.title}</span>
                     {!voc.licensed && <Badge variant="outline" className="text-xs">{exp.difficulty ?? "facil"}</Badge>}
                     {variants.length > 0 && (
                       <StatusBadge tone="success">
@@ -231,10 +231,10 @@ export default function VariantsManager() {
                 </div>
 
                 {variants.length > 0 ? (
-                  <div className="divide-y divide-border">
+                  <div className="ml-4 sm:ml-8 border-l-2 border-primary/25 divide-y divide-border" data-variant-list>
                     {variants.map((v) => (
-                      <div key={v.id} className="px-5 py-3.5 flex items-center gap-4">
-                        <div className="flex-1 min-w-0">
+                      <div key={v.id} className="px-4 sm:px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <div className="flex-1 min-w-[10rem]">
                           <p className="font-medium text-foreground text-sm">{v.name}</p>
                           {v.description && (
                             <p className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{v.description}</p>
@@ -243,7 +243,7 @@ export default function VariantsManager() {
                             {priceTypeLabels[v.priceType] ?? v.priceType}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1 text-primary font-bold text-base">
+                        <div className="flex items-center gap-1 text-primary font-bold text-base tabular-nums">
                           <Euro className="w-4 h-4" />
                           <span>{amount(v.priceModifier)}</span>
                           {v.priceType === "percentage" && <span className="text-sm font-normal text-muted-foreground">%</span>}
