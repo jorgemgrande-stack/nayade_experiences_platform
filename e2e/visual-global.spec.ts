@@ -168,6 +168,66 @@ Object.assign(data, {
     { siteId: "s2", name: "Sede Sevilla", status: "active", isPrimary: false, virtual: false, address: null, phone: null, email: null, createdAt: NOW - 30 * DAY },
     { siteId: "s3", name: "Sede antigua", status: "archived", isPrimary: false, virtual: false, address: null, phone: null, email: null, createdAt: NOW - 200 * DAY },
   ], primarySiteId: "s1", limit: 3, used: 2, canAdd: true, canManage: true, managed: true, multiSite: true },
+// Centro de suscripción (feat/centro-suscripcion-ui): escenarios simulados de `subscription.billingCenter`
+const eur = "EUR";
+const baseCenter = {
+  company: { name: "Casa Ejemplo SL" }, customTerms: false, trial: null, stripeStatus: null, included: ["Clientes y presupuestos", "Facturación", "Web y tienda", "Soporte por correo"],
+  billingPeriod: null, paymentMethod: { state: "authorized" }, payments: [], invoices: [],
+  actions: { portal: true, selfServicePlanChange: true, note: null },
+};
+const centers: Record<string, Record<string, unknown> | null> = {
+  "sc-quantum": {
+    ...baseCenter, company: { name: "Quantum Soulrise" }, stage: "trial_authorized", stripeStatus: "trialing",
+    trial: { planName: "Essential", endsAt: NOW + 9 * DAY }, contracted: { planName: "Business", interval: "month", reference: null },
+    fee: { netCents: 7900, taxCents: 1659, totalCents: 9559, currency: eur, interval: "month" },
+    nextCharge: { at: NOW + 9 * DAY, estimatedTotalCents: 9559, currency: eur, basis: "trial_end" }, lastPayment: null,
+    billingPeriod: { start: NOW - 5 * DAY, end: NOW + 9 * DAY },
+    invoices: [{ id: "in_demo_001", source: "stripe", number: "QS-0001", issuedAt: NOW - 5 * DAY, concept: "Prueba gratuita de 14 días · Business", baseCents: 0, taxCents: 0, totalCents: 0, currency: eur, state: "free", free: true, hasDocument: true }],
+    actions: { portal: true, selfServicePlanChange: false, note: "Tu contrato está en curso: los cambios de plan se gestionan con tu responsable de cuenta." },
+  },
+  "sc-several": {
+    ...baseCenter, company: { name: "Several Energy" }, stage: "active", stripeStatus: "active", contracted: { planName: "Business", interval: "month", reference: null },
+    fee: { netCents: 4500, taxCents: 945, totalCents: 5445, currency: eur, interval: "month" },
+    nextCharge: { at: NOW + 24 * DAY, estimatedTotalCents: 5445, currency: eur, basis: "period_end" },
+    lastPayment: { at: NOW - 6 * DAY, amountCents: 5445, currency: eur, invoiceNumber: "SE-0001" },
+    billingPeriod: { start: NOW - 6 * DAY, end: NOW + 24 * DAY },
+    payments: [{ id: "pay_demo_1", at: NOW - 6 * DAY, amountCents: 5445, currency: eur, periodStart: NOW - 6 * DAY, status: "paid", kind: "first", reference: "in_demo_001", invoiceNumber: "SE-0001", refundedCents: null }],
+    invoices: [{ id: "in_demo_001", source: "stripe", number: "SE-0001", issuedAt: NOW - 6 * DAY, concept: "Business · mensual", baseCents: 4500, taxCents: 945, totalCents: 5445, currency: eur, state: "paid", free: false, hasDocument: true }],
+  },
+  "sc-fallido": {
+    ...baseCenter, stage: "payment_issue", stripeStatus: "past_due", contracted: { planName: "Business", interval: "month", reference: null },
+    fee: { netCents: 4500, taxCents: 945, totalCents: 5445, currency: eur, interval: "month" },
+    nextCharge: { at: NOW + 3 * DAY, estimatedTotalCents: 5445, currency: eur, basis: "period_end" },
+    lastPayment: { at: NOW - 33 * DAY, amountCents: 5445, currency: eur, invoiceNumber: "CE-0001" }, paymentMethod: { state: "unknown" },
+    payments: [
+      { id: "pay_demo_2", at: NOW - 2 * DAY, amountCents: 5445, currency: eur, periodStart: NOW - 3 * DAY, status: "failed", kind: "renewal", reference: "in_demo_002", invoiceNumber: "CE-0002", refundedCents: null },
+      { id: "pay_demo_1", at: NOW - 33 * DAY, amountCents: 5445, currency: eur, periodStart: NOW - 33 * DAY, status: "paid", kind: "first", reference: "in_demo_001", invoiceNumber: "CE-0001", refundedCents: null },
+    ],
+    invoices: [
+      { id: "in_demo_002", source: "stripe", number: "CE-0002", issuedAt: NOW - 2 * DAY, concept: "Business · mensual", baseCents: 4500, taxCents: 945, totalCents: 5445, currency: eur, state: "open", free: false, hasDocument: true },
+      { id: "in_demo_001", source: "stripe", number: "CE-0001", issuedAt: NOW - 33 * DAY, concept: "Business · mensual", baseCents: 4500, taxCents: 945, totalCents: 5445, currency: eur, state: "paid", free: false, hasDocument: true },
+    ],
+  },
+  "sc-sin": { ...baseCenter, stage: "no_contract", contracted: null, fee: null, nextCharge: null, lastPayment: null, paymentMethod: { state: "unknown" }, included: [], actions: { portal: false, selfServicePlanChange: true, note: null } },
+  "sc-custom": {
+    ...baseCenter, company: { name: "Retiros del Sur SC" }, stage: "active", customTerms: true, stripeStatus: "active", contracted: { planName: "Enterprise", interval: "year", reference: null },
+    fee: { netCents: 120000, taxCents: 25200, totalCents: 145200, currency: eur, interval: "year" },
+    nextCharge: { at: NOW + 200 * DAY, estimatedTotalCents: 145200, currency: eur, basis: "period_end" },
+    lastPayment: { at: NOW - 165 * DAY, amountCents: 145200, currency: eur, invoiceNumber: "RS-0001" },
+    billingPeriod: { start: NOW - 165 * DAY, end: NOW + 200 * DAY },
+    payments: [{ id: "pay_demo_1", at: NOW - 165 * DAY, amountCents: 145200, currency: eur, periodStart: NOW - 165 * DAY, status: "paid", kind: "first", reference: "in_demo_001", invoiceNumber: "RS-0001", refundedCents: null }],
+    invoices: [{ id: "in_demo_001", source: "crm", number: "RS-0001", issuedAt: NOW - 165 * DAY, concept: "Enterprise · anual (condiciones acordadas)", baseCents: 120000, taxCents: 25200, totalCents: 145200, currency: eur, state: "paid", free: false, hasDocument: true }],
+    actions: { portal: false, selfServicePlanChange: false, note: "Tu contratación tiene condiciones personalizadas: cualquier cambio de plan se gestiona con tu responsable de cuenta." },
+  },
+};
+const scOverview = { ...overview, state: "active", trial: null, plan: { key: "business", name: "Business" } };
+const centerOver = (k: string): Record<string, unknown> => ({
+  "subscription.billingCenter": centers[k],
+  "subscription.billingInvoiceLinks": { pdfUrl: null, hostedUrl: null, documentHtml: null },
+  ...(k === "sc-quantum" ? {} : k === "sc-sin" ? {} : { "subscription.overview": scOverview }),
+});
+
+async function mock(page: Page, over: Record<string, unknown> = {}) {
 
 // CMS y Elephant Studio (feat/ux2-cms-studio): datos ficticios mínimos
 const sp = (id: number, slug: string, title: string, o: Record<string, unknown> = {}) => ({ id, slug, title, isPublished: true, metaTitle: null, metaDescription: null, updatedAt: new Date(NOW - id * DAY).toISOString(), hasDraft: false, isHome: false, isLegal: false, inHeader: false, inFooter: false, ...o });
@@ -205,7 +265,7 @@ async function mock(page: Page) {
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
     const names = decodeURIComponent(url.pathname.replace(/^.*\/api\/trpc\//, "")).split(",");
-    const body = names.map((n) => ({ result: { data: { json: n in data ? data[n] : null } } }));
+    const body = names.map((n) => ({ result: { data: { json: n in over ? over[n] : n in data ? data[n] : null } } }));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
 }
@@ -217,7 +277,7 @@ const VIEWS = [
   { name: "movil", width: 390, height: 844 },
   { name: "portatil", width: 1280, height: 800 },
 ];
-const SCREENS: { id: string; url: string; click?: RegExp }[] = [
+const SCREENS: { id: string; url: string; over?: Record<string, unknown>; click?: RegExp }[] = [
   { id: "1-inicio", url: "/admin" },
   { id: "2-clientes", url: "/admin/crm/clientes" },
   { id: "2b-ficha-cliente", url: "/admin/crm/clientes/1" },
@@ -243,6 +303,7 @@ const SCREENS: { id: string; url: string; click?: RegExp }[] = [
   { id: "e14-dominios", url: "/admin/configuracion/dominios" },
   { id: "e15-ajustes", url: "/admin/configuracion/sitio" },
   { id: "e16-correo-nueva", url: "/admin/configuracion/email", click: /Nueva cuenta/ },
+  ...Object.keys(centers).map((k) => ({ id: k, url: "/admin/suscripcion", over: centerOver(k) })),
   { id: "c1-paginas", url: "/admin/cms/paginas" },
   { id: "c2-blog", url: "/admin/cms/blog" },
   { id: "c3-multimedia", url: "/admin/cms/multimedia" },
@@ -268,7 +329,7 @@ for (const v of VIEWS) {
       }
       // El panel guarda su tema en localStorage: emulateMedia no basta para el claro
       await page.addInitScript((t) => localStorage.setItem("nayade-admin-theme", t), process.env.VISUAL_SCHEME ?? "dark");
-      await mock(page);
+      await mock(page, s.over);
       await page.setViewportSize({ width: v.width, height: v.height });
       await page.goto(s.url);
       if (s.url.startsWith("/admin/studio")) await page.locator("header").first().waitFor({ timeout: 40_000 }).catch(() => undefined);
