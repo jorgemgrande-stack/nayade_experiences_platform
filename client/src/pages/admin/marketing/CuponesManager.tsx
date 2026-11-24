@@ -7,7 +7,10 @@
 import React, { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { Link } from "wouter";
+import { PanelPageHeader, PanelDataList, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard, PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,69 +58,55 @@ interface Coupon {
 // ─── PROVEEDORES FIJOS ────────────────────────────────────────────────────────
 const PROVIDERS = ["Groupon", "Smartbox", "CheckYeti", "Atrapalo", "Jumping", "Alpine Resort", "Civitatis"];
 
-const PROVIDER_COLORS: Record<string, string> = {
-  Groupon: "bg-success/15 text-success border-success/30",
-  Smartbox: "bg-info/15 text-info border-info/30",
-  CheckYeti: "bg-info/15 text-info border-info/30",
-  Atrapalo: "bg-warning/15 text-warning border-warning/30",
-  Jumping: "bg-warning/15 text-warning border-warning/30",
-  "Alpine Resort": "bg-info/15 text-info border-info/30",
-  Civitatis: "bg-primary/15 text-primary border-primary/30",
+/** Cada proveedor se distingue por un tono con significado del sistema (no por un color propio). */
+const PROVIDER_TONES: Record<string, Tone> = {
+  Groupon: "success",
+  Smartbox: "info",
+  CheckYeti: "info",
+  Atrapalo: "warning",
+  Jumping: "warning",
+  "Alpine Resort": "info",
+  Civitatis: "brand",
 };
 
 // ─── BADGES ───────────────────────────────────────────────────────────────────
 function ProviderBadge({ provider }: { provider: string }) {
-  const cls = PROVIDER_COLORS[provider] ?? "bg-muted text-muted-foreground border-border";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {provider}
-    </span>
-  );
+  return <StatusBadge tone={PROVIDER_TONES[provider] ?? "neutral"}>{provider}</StatusBadge>;
 }
 
 function OpBadge({ status }: { status: StatusOp }) {
-  const map: Record<StatusOp, { label: string; cls: string; icon: React.ReactNode }> = {
-    recibido: { label: "Recibido", cls: "bg-info/15 text-info border-info/30", icon: <Ticket className="w-3 h-3" /> },
-    pendiente: { label: "Pendiente", cls: "bg-warning/15 text-warning border-warning/30", icon: <Clock className="w-3 h-3" /> },
-    reserva_generada: { label: "Reserva generada", cls: "bg-success/15 text-success border-success/30", icon: <CheckCircle className="w-3 h-3" /> },
+  const map: Record<StatusOp, { label: string; tone: Tone; icon: React.ReactNode }> = {
+    recibido: { label: "Recibido", tone: "info", icon: <Ticket /> },
+    pendiente: { label: "Pendiente", tone: "warning", icon: <Clock /> },
+    reserva_generada: { label: "Reserva generada", tone: "success", icon: <CheckCircle /> },
   };
-  const { label, cls, icon } = map[status] ?? map.recibido;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {icon}{label}
-    </span>
-  );
+  const { label, tone, icon } = map[status] ?? map.recibido;
+  return <StatusBadge tone={tone} icon={icon}>{label}</StatusBadge>;
 }
 
 function FinBadge({ status }: { status: StatusFin }) {
-  const map: Record<StatusFin, { label: string; cls: string }> = {
-    pendiente_canjear: { label: "Pendiente canjear", cls: "bg-muted text-muted-foreground border-border" },
-    canjeado: { label: "Canjeado", cls: "bg-success/15 text-success border-success/30" },
-    incidencia: { label: "Incidencia", cls: "bg-danger/15 text-danger border-danger/30" },
+  const map: Record<StatusFin, { label: string; tone: Tone }> = {
+    pendiente_canjear: { label: "Pendiente canjear", tone: "neutral" },
+    canjeado: { label: "Canjeado", tone: "success" },
+    incidencia: { label: "Incidencia", tone: "danger" },
   };
-  const { label, cls } = map[status] ?? map.pendiente_canjear;
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {label}
-    </span>
-  );
+  const { label, tone } = map[status] ?? map.pendiente_canjear;
+  return <StatusBadge tone={tone}>{label}</StatusBadge>;
 }
 
-// ─── STAT CARD ────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, gradient, icon }: {
-  label: string; value: number | string; sub?: string; gradient: string; icon: React.ReactNode;
-}) {
+/** Botón de icono de una fila: con nombre accesible, un objetivo táctil cómodo y el color de su significado. */
+const ACTION_TONE: Record<string, string> = {
+  neutral: "text-muted-foreground hover:text-foreground",
+  warning: "text-warning hover:bg-warning/10",
+  success: "text-success hover:bg-success/10",
+  danger: "text-danger hover:bg-danger/10",
+  info: "text-info hover:bg-info/10",
+};
+function RowAction({ label, tone = "neutral", onClick, disabled, children }: { label: string; tone?: keyof typeof ACTION_TONE; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <div className={`relative overflow-hidden rounded-xl border border-border/50 p-5 ${gradient}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{label}</p>
-          <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
-          {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
-        </div>
-        <div className="p-2 rounded-lg bg-muted">{icon}</div>
-      </div>
-    </div>
+    <Button type="button" variant="ghost" size="icon" className={`h-9 w-9 ${ACTION_TONE[tone]}`} aria-label={label} title={label} disabled={disabled} onClick={onClick}>
+      {children}
+    </Button>
   );
 }
 
@@ -156,7 +145,7 @@ function DetailModal({ coupon, onClose, onConvert, onRedeem, onPostpone, onIncid
             </div>
           </div>
           {/* Info cupón */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
             <div className="p-3 rounded-lg bg-muted/50">
               <p className="text-muted-foreground text-xs mb-1">Código cupón</p>
               <code className="text-primary font-mono">{coupon.couponCode}</code>
@@ -374,16 +363,16 @@ function ConvertModal({
           )}
 
           {/* Fecha y participantes */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label className="text-foreground/70 text-sm">Fecha de reserva *</Label>
-              <Input type="date" value={convertForm.reservationDate}
+              <Label htmlFor="cup-campo-1" className="text-foreground/70 text-sm">Fecha de reserva *</Label>
+              <Input id="cup-campo-1" type="date" value={convertForm.reservationDate}
                 onChange={(e) => setConvertForm(f => ({ ...f, reservationDate: e.target.value }))}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-sm">Participantes</Label>
-              <Input type="number" min={1} value={convertForm.participants}
+              <Label htmlFor="cup-campo-2" className="text-foreground/70 text-sm">Participantes</Label>
+              <Input id="cup-campo-2" type="number" min={1} value={convertForm.participants}
                 onChange={(e) => setConvertForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
@@ -547,10 +536,80 @@ export default function CuponesManager() {
     { id: "liquidaciones", label: "Liquidaciones" },
   ];
 
+  const columns: PanelColumn<Coupon>[] = [
+    {
+      key: "cliente",
+      header: "Cliente",
+      cell: (c) => (
+        <div className="flex min-w-[11rem] items-center gap-2.5">
+          <PersonAvatar name={c.customerName} id={c.id} size="sm" />
+          <div className="min-w-0">
+            <p className="break-words text-sm font-medium text-foreground">{c.customerName}</p>
+            <p className="break-words text-xs font-normal text-muted-foreground">{c.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "codigo",
+      header: "Cupón",
+      cell: (c) => (
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
+          <code className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">{c.couponCode}</code>
+          <ProviderBadge provider={c.provider} />
+          {c.duplicateFlag && <StatusBadge tone="warning" icon={<AlertTriangle />}>Posible duplicado</StatusBadge>}
+        </div>
+      ),
+    },
+    {
+      key: "estado",
+      header: "Estado",
+      cell: (c) => (
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
+          <OpBadge status={c.statusOperational} />
+          <FinBadge status={c.statusFinancial} />
+        </div>
+      ),
+    },
+    {
+      key: "fecha",
+      header: "Fecha",
+      cell: (c) => (
+        <span className="text-xs text-muted-foreground">
+          {new Date(c.createdAt).toLocaleDateString("es-ES")}
+          {c.requestedDate && <span className="block">Pide: {c.requestedDate}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cell: (c) => (
+        <div className="flex flex-nowrap items-center justify-end gap-0.5">
+          <RowAction label="Ver detalle" onClick={() => setDetailCoupon(c)}><Eye className="h-4 w-4" /></RowAction>
+          {c.statusOperational === "recibido" && (
+            <RowAction label="Posponer" tone="warning" onClick={() => { setPostponeCoupon(c); setPostponeNotes(""); }}><Pause className="h-4 w-4" /></RowAction>
+          )}
+          {c.statusFinancial === "pendiente_canjear" && (
+            <RowAction label="Marcar como canjeado" tone="success" onClick={() => setRedeemCoupon(c)}><BadgeCheck className="h-4 w-4" /></RowAction>
+          )}
+          {c.statusFinancial !== "incidencia" && (
+            <RowAction label="Marcar incidencia" tone="danger" onClick={() => { setIncidenceCoupon(c); setIncidenceNotes(""); }}><AlertTriangle className="h-4 w-4" /></RowAction>
+          )}
+          {c.statusOperational === "reserva_generada" && c.reservationId && (
+            <RowAction label="Regenerar operación y reenviar email" tone="info" disabled={regenerateMutation.isPending} onClick={() => regenerateMutation.mutate({ reservationId: c.reservationId! })}><Zap className="h-4 w-4" /></RowAction>
+          )}
+          <RowAction label="Eliminar cupón" tone="danger" onClick={() => setDeleteCoupon(c)}><Trash2 className="h-4 w-4" /></RowAction>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <AdminLayout>
       <div className="min-h-screen bg-background text-foreground">
-        <div className="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
+        <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6">
 
           {/* ── HEADER ─────────────────────────────────────────────────────── */}
           <PanelPageHeader
@@ -559,74 +618,38 @@ export default function CuponesManager() {
             title="Pipeline de Cupones"
             description="Recibido → Pendiente → Reserva generada · Trazabilidad completa por proveedor"
             actions={<>
-              <Button variant="outline" size="sm"
-                className="border-border bg-muted/50 text-foreground/70 hover:bg-muted"
-                onClick={() => window.location.href = "/admin/marketing/plataformas"}>
-                <Settings className="w-4 h-4 mr-1" /> Plataformas
+              <Button asChild variant="outline" size="sm">
+                <Link href="/admin/marketing/plataformas"><Settings className="mr-1 h-4 w-4" /> Plataformas</Link>
               </Button>
-              <Button variant="outline" size="sm"
-                className="border-border bg-muted/50 text-foreground/70 hover:bg-muted"
-                onClick={() => { utils.ticketing.listCoupons.invalidate(); utils.ticketing.getDashboardStats.invalidate(); }}>
-                <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+              <Button variant="outline" size="sm" onClick={() => { utils.ticketing.listCoupons.invalidate(); utils.ticketing.getDashboardStats.invalidate(); }}>
+                <RefreshCw className="mr-1 h-4 w-4" /> Actualizar
               </Button>
-              <Button size="sm" 
-                onClick={() => setManualOpen(true)}>
-                <Plus className="w-4 h-4 mr-1" /> Alta manual
+              <Button size="sm" onClick={() => setManualOpen(true)}>
+                <Plus className="mr-1 h-4 w-4" /> Alta manual
               </Button>
             </>}
           />
 
-          {/* ── DASHBOARD CARDS ─────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Cupones recibidos" value={stats?.recibidos ?? 0} sub="Sin procesar"
-              gradient="bg-gradient-to-br from-info/40 to-info/20"
-              icon={<Ticket className="w-5 h-5 text-info" />} />
-            <StatCard label="Pendientes" value={stats?.pendientes ?? 0} sub="Sin disponibilidad"
-              gradient="bg-gradient-to-br from-warning/40 to-warning/20"
-              icon={<Clock className="w-5 h-5 text-warning" />} />
-            <StatCard label="Reservas generadas" value={stats?.convertidos ?? 0} sub={`${stats?.conversionRate ?? 0}% conversión`}
-              gradient="bg-gradient-to-br from-success/40 to-success/20"
-              icon={<CalendarCheck className="w-5 h-5 text-success" />} />
-            <StatCard label="Incidencias" value={stats?.incidencias ?? 0} sub="Requieren atención"
-              gradient="bg-gradient-to-br from-danger/40 to-danger/20"
-              icon={<AlertTriangle className="w-5 h-5 text-danger" />} />
+          {/* ── INDICADORES: los cuatro del pipeline son accesos a su vista ───── */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <MetricCard tone="info" icon={<Ticket />} label="Cupones recibidos" value={stats?.recibidos ?? 0} detail="Sin procesar" className="bg-gradient-to-br from-info/10 to-card" onClick={() => { setActiveTab("todos"); setPage(1); }} active={activeTab === "todos"} />
+            <MetricCard tone="warning" icon={<Clock />} label="Pendientes" value={stats?.pendientes ?? 0} detail="Sin disponibilidad" className="bg-gradient-to-br from-warning/10 to-card" onClick={() => { setActiveTab("pendientes"); setPage(1); }} active={activeTab === "pendientes"} />
+            <MetricCard tone="success" icon={<CalendarCheck />} label="Reservas generadas" value={stats?.convertidos ?? 0} detail={`${stats?.conversionRate ?? 0}% conversión`} className="bg-gradient-to-br from-success/10 to-card" onClick={() => { setActiveTab("reservas_generadas"); setPage(1); }} active={activeTab === "reservas_generadas"} />
+            <MetricCard tone="danger" icon={<AlertTriangle />} label="Incidencias" value={stats?.incidencias ?? 0} detail="Requieren atención" className="bg-gradient-to-br from-danger/10 to-card" onClick={() => { setActiveTab("incidencias"); setPage(1); }} active={activeTab === "incidencias"} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <MetricCard compact tone="brand" icon={<TrendingUp />} label="Total cupones" value={stats?.total ?? 0} />
+            <MetricCard compact tone="success" icon={<Banknote />} label="Canjeados" value={stats?.canjeados ?? 0} />
+            <MetricCard compact tone="warning" icon={<Zap />} label="% Conversión" value={`${stats?.conversionRate ?? 0}%`} />
           </div>
 
-          {/* ── MÉTRICAS SECUNDARIAS ─────────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: "Total cupones", value: stats?.total ?? 0, icon: <TrendingUp className="w-4 h-4 text-primary" />, bg: "bg-primary/10" },
-              { label: "Canjeados", value: stats?.canjeados ?? 0, icon: <Banknote className="w-4 h-4 text-success" />, bg: "bg-success/10" },
-              { label: "% Conversión", value: `${stats?.conversionRate ?? 0}%`, icon: <Zap className="w-4 h-4 text-warning" />, bg: "bg-warning/10" },
-            ].map((m) => (
-              <div key={m.label} className="rounded-xl border border-border/50 bg-muted/50 p-4 flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${m.bg}`}>{m.icon}</div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{m.label}</p>
-                  <p className="text-lg font-bold text-foreground">{m.value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* ── TABS ─────────────────────────────────────────────────────────── */}
-          <div className="flex gap-1 border-b border-border/50">
-            {tabs.map((tab) => (
-              <button key={tab.id} onClick={() => { setActiveTab(tab.id); setPage(1); }}
-                className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-2 ${
-                  activeTab === tab.id
-                    ? "bg-muted text-foreground border-b-2 border-primary"
-                    : "text-muted-foreground hover:text-foreground/80 hover:bg-muted"
-                }`}>
-                {tab.label}
-                {tab.count !== undefined && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? "bg-primary/30 text-primary" : "bg-muted text-muted-foreground"}`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+          {/* ── VISTAS ───────────────────────────────────────────────────────── */}
+          <SegmentedTabs<Tab>
+            label="Vista del pipeline"
+            value={activeTab}
+            onChange={(v) => { setActiveTab(v); setPage(1); }}
+            options={tabs.map((tab) => ({ value: tab.id, label: tab.label, count: tab.count ?? null }))}
+          />
 
           {/* ── CONTENIDO POR TAB ────────────────────────────────────────────── */}
           {activeTab === "liquidaciones" ? (
@@ -634,127 +657,51 @@ export default function CuponesManager() {
           ) : (
             <>
               {/* Filtros */}
-              <div className="flex gap-3 items-center">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input placeholder="Buscar por nombre, email, código..."
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1 sm:max-w-sm">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input aria-label="Buscar cupones" placeholder="Buscar por nombre, email, código..."
                     value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                    className="pl-9 bg-muted/50 border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50" />
+                    className="pl-9" />
                 </div>
                 <Select value={providerFilter} onValueChange={(v) => { setProviderFilter(v); setPage(1); }}>
-                  <SelectTrigger className="w-48 bg-muted/50 border-border text-foreground">
-                    <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
+                  <SelectTrigger aria-label="Filtrar por proveedor" className="w-full sm:w-52">
+                    <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Proveedor" />
                   </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
+                  <SelectContent>
                     <SelectItem value="all">Todos los proveedores</SelectItem>
                     {PROVIDERS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Tabla */}
-              <div className="rounded-xl border border-border/50 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border/50 bg-muted/50">
-                      {["Cliente", "Código", "Proveedor", "Estado op.", "Estado fin.", "Fecha", ""].map((h, i) => (
-                        <th key={i} className="text-left px-4 py-3 text-muted-foreground font-medium text-xs">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {couponsQuery.isLoading ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <tr key={i} className="border-b border-border/50">
-                          {Array.from({ length: 7 }).map((_, j) => (
-                            <td key={j} className="px-4 py-3"><div className="h-4 bg-muted/50 rounded animate-pulse" /></td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : coupons.length === 0 ? (
-                      <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No hay cupones en esta vista</td></tr>
-                    ) : coupons.map((c) => (
-                      <tr key={c.id} className={`border-b border-border/50 hover:bg-muted transition-colors ${c.duplicateFlag ? "bg-warning/5" : ""}`}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold shrink-0">
-                              {c.customerName.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="text-foreground font-medium text-sm">{c.customerName}</p>
-                              <p className="text-muted-foreground text-xs">{c.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            {c.duplicateFlag && <AlertTriangle className="w-3 h-3 text-warning shrink-0" aria-label="Posible duplicado" />}
-                            <code className="text-primary text-xs bg-primary/10 px-2 py-0.5 rounded">{c.couponCode}</code>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3"><ProviderBadge provider={c.provider} /></td>
-                        <td className="px-4 py-3"><OpBadge status={c.statusOperational} /></td>
-                        <td className="px-4 py-3"><FinBadge status={c.statusFinancial} /></td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">
-                          {new Date(c.createdAt).toLocaleDateString("es-ES")}
-                          {c.requestedDate && <div className="text-muted-foreground">{c.requestedDate}</div>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => setDetailCoupon(c)}
-                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" aria-label="Ver detalle">
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            {c.statusOperational === "recibido" && (
-                              <button onClick={() => { setPostponeCoupon(c); setPostponeNotes(""); }}
-                                className="p-1.5 rounded-lg hover:bg-warning/20 text-warning/60 hover:text-warning transition-colors" aria-label="Posponer">
-                                <Pause className="w-4 h-4" />
-                              </button>
-                            )}
-                            {c.statusFinancial === "pendiente_canjear" && (
-                              <button onClick={() => setRedeemCoupon(c)}
-                                className="p-1.5 rounded-lg hover:bg-success/20 text-success/60 hover:text-success transition-colors" aria-label="Marcar como canjeado">
-                                <BadgeCheck className="w-4 h-4" />
-                              </button>
-                            )}
-                            {c.statusFinancial !== "incidencia" && (
-                              <button onClick={() => { setIncidenceCoupon(c); setIncidenceNotes(""); }}
-                                className="p-1.5 rounded-lg hover:bg-danger/20 text-danger/60 hover:text-danger transition-colors" aria-label="Marcar incidencia">
-                                <AlertTriangle className="w-4 h-4" />
-                              </button>
-                            )}
-                            {c.statusOperational === "reserva_generada" && c.reservationId && (
-                              <button
-                                onClick={() => regenerateMutation.mutate({ reservationId: c.reservationId! })}
-                                disabled={regenerateMutation.isPending}
-                                className="p-1.5 rounded-lg hover:bg-info/20 text-info/60 hover:text-info transition-colors disabled:opacity-40" aria-label="Regenerar operación y reenviar email">
-                                <Zap className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button onClick={() => setDeleteCoupon(c)}
-                              className="p-1.5 rounded-lg hover:bg-danger/30 text-danger/50 hover:text-danger transition-colors" aria-label="Eliminar cupón">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {/* Listado: tabla desde 768 px, tarjetas en móvil */}
+              {couponsQuery.isLoading ? (
+                <PanelLoading />
+              ) : couponsQuery.error ? (
+                <PanelError error={couponsQuery.error} onRetry={() => void couponsQuery.refetch()} title="No se han podido cargar los cupones" />
+              ) : coupons.length === 0 ? (
+                <PanelEmpty
+                  icon={<Ticket />}
+                  title="No hay cupones en esta vista"
+                  description={search || providerFilter !== "all" ? "Prueba con otra búsqueda o quita el filtro de proveedor." : "Cuando llegue un cupón de una plataforma aparecerá aquí, o dalo de alta a mano."}
+                >
+                  <Button size="sm" onClick={() => setManualOpen(true)}><Plus className="mr-1 h-4 w-4" /> Alta manual</Button>
+                </PanelEmpty>
+              ) : (
+                <PanelDataList rows={coupons} columns={columns} rowKey={(c) => c.id} caption="Cupones del pipeline" />
+              )}
 
               {/* Paginación */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm text-muted-foreground">
                     Página {page} de {totalPages} · {couponsQuery.data?.total ?? 0} cupones
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-                      className="border-border bg-muted/50 text-foreground/70">Anterior</Button>
-                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-                      className="border-border bg-muted/50 text-foreground/70">Siguiente</Button>
+                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
                   </div>
                 </div>
               )}
@@ -807,8 +754,8 @@ export default function CuponesManager() {
                 <p className="text-foreground/60">Cupón: <code className="text-primary">{postponeCoupon.couponCode}</code></p>
               </div>
               <div>
-                <Label className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
-                <Textarea value={postponeNotes} onChange={(e) => setPostponeNotes(e.target.value)}
+                <Label htmlFor="cup-campo-3" className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
+                <Textarea id="cup-campo-3" value={postponeNotes} onChange={(e) => setPostponeNotes(e.target.value)}
                   placeholder="Motivo del aplazamiento..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={3} />
               </div>
             </div>
@@ -843,8 +790,8 @@ export default function CuponesManager() {
                 <p className="text-foreground/60">Cupón: <code className="text-primary">{incidenceCoupon.couponCode}</code></p>
               </div>
               <div>
-                <Label className="text-foreground/70 text-sm">Descripción de la incidencia</Label>
-                <Textarea value={incidenceNotes} onChange={(e) => setIncidenceNotes(e.target.value)}
+                <Label htmlFor="cup-campo-4" className="text-foreground/70 text-sm">Descripción de la incidencia</Label>
+                <Textarea id="cup-campo-4" value={incidenceNotes} onChange={(e) => setIncidenceNotes(e.target.value)}
                   placeholder="Describe el problema..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={3} />
               </div>
             </div>
@@ -885,18 +832,18 @@ export default function CuponesManager() {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-foreground/70 text-xs">Proveedor *</Label>
+                <Label htmlFor="cup-campo-16" className="text-foreground/70 text-xs">Proveedor *</Label>
                 <Select value={manualForm.provider} onValueChange={(v) => setManualForm(f => ({ ...f, provider: v }))}>
-                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="cup-campo-16" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     {PROVIDERS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Canal *</Label>
+                <Label htmlFor="cup-campo-17" className="text-foreground/70 text-xs">Canal *</Label>
                 <Select value={manualForm.channelEntry} onValueChange={(v) => setManualForm(f => ({ ...f, channelEntry: v as typeof manualForm.channelEntry }))}>
-                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="cup-campo-17" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-card border-border">
                     {["web", "email", "whatsapp", "telefono", "presencial", "manual"].map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
@@ -906,37 +853,37 @@ export default function CuponesManager() {
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Nombre cliente *</Label>
-              <Input value={manualForm.customerName} onChange={(e) => setManualForm(f => ({ ...f, customerName: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              <Label htmlFor="cup-campo-5" className="text-foreground/70 text-xs">Nombre cliente *</Label>
+              <Input id="cup-campo-5" value={manualForm.customerName} onChange={(e) => setManualForm(f => ({ ...f, customerName: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Email *</Label>
-                <Input type="email" value={manualForm.email} onChange={(e) => setManualForm(f => ({ ...f, email: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="cup-campo-6" className="text-foreground/70 text-xs">Email *</Label>
+                <Input id="cup-campo-6" type="email" value={manualForm.email} onChange={(e) => setManualForm(f => ({ ...f, email: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Teléfono</Label>
-                <Input value={manualForm.phone} onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-foreground/70 text-xs">Código cupón *</Label>
-                <Input value={manualForm.couponCode} onChange={(e) => setManualForm(f => ({ ...f, couponCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
-              </div>
-              <div>
-                <Label className="text-foreground/70 text-xs">Código seguridad</Label>
-                <Input value={manualForm.securityCode} onChange={(e) => setManualForm(f => ({ ...f, securityCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
+                <Label htmlFor="cup-campo-7" className="text-foreground/70 text-xs">Teléfono</Label>
+                <Input id="cup-campo-7" value={manualForm.phone} onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-foreground/70 text-xs">Fecha solicitada</Label>
-                <Input type="date" value={manualForm.requestedDate} onChange={(e) => setManualForm(f => ({ ...f, requestedDate: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="cup-campo-8" className="text-foreground/70 text-xs">Código cupón *</Label>
+                <Input id="cup-campo-8" value={manualForm.couponCode} onChange={(e) => setManualForm(f => ({ ...f, couponCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
               </div>
               <div>
-                <Label className="text-foreground/70 text-xs">Participantes</Label>
-                <Input type="number" min={1} value={manualForm.participants} onChange={(e) => setManualForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))} className="bg-muted/50 border-border text-foreground mt-1" />
+                <Label htmlFor="cup-campo-9" className="text-foreground/70 text-xs">Código seguridad</Label>
+                <Input id="cup-campo-9" value={manualForm.securityCode} onChange={(e) => setManualForm(f => ({ ...f, securityCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="cup-campo-10" className="text-foreground/70 text-xs">Fecha solicitada</Label>
+                <Input id="cup-campo-10" type="date" value={manualForm.requestedDate} onChange={(e) => setManualForm(f => ({ ...f, requestedDate: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="cup-campo-11" className="text-foreground/70 text-xs">Participantes</Label>
+                <Input id="cup-campo-11" type="number" min={1} value={manualForm.participants} onChange={(e) => setManualForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
@@ -980,8 +927,8 @@ export default function CuponesManager() {
               </div>
             </div>
             <div>
-              <Label className="text-foreground/70 text-xs">Notas internas</Label>
-              <Textarea value={manualForm.notes} onChange={(e) => setManualForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
+              <Label htmlFor="cup-campo-12" className="text-foreground/70 text-xs">Notas internas</Label>
+              <Textarea id="cup-campo-12" value={manualForm.notes} onChange={(e) => setManualForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
@@ -1121,9 +1068,9 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
 
           {/* Plataforma */}
           <div>
-            <Label className="text-foreground/70 text-sm">Plataforma *</Label>
+            <Label htmlFor="cup-campo-18" className="text-foreground/70 text-sm">Plataforma *</Label>
             <Select value={selectedPlatformId?.toString() ?? ""} onValueChange={(v) => { setSelectedPlatformId(parseInt(v)); setPlatformProductId(undefined); }}>
-              <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1">
+              <SelectTrigger id="cup-campo-18" className="bg-muted/50 border-border text-foreground mt-1">
                 <SelectValue placeholder="Selecciona la plataforma del cupón" />
               </SelectTrigger>
               <SelectContent className="bg-card border-border">
@@ -1174,15 +1121,15 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
           )}
 
           {/* Fecha y participantes */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label className="text-foreground/70 text-sm">Fecha de reserva *</Label>
-              <Input type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
+              <Label htmlFor="cup-campo-13" className="text-foreground/70 text-sm">Fecha de reserva *</Label>
+              <Input id="cup-campo-13" type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-foreground/70 text-sm">Participantes</Label>
-              <Input type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
+              <Label htmlFor="cup-campo-14" className="text-foreground/70 text-sm">Participantes</Label>
+              <Input id="cup-campo-14" type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
                 className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
           </div>
@@ -1205,8 +1152,8 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
           </div>
 
           <div>
-            <Label className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+            <Label htmlFor="cup-campo-15" className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
+            <Textarea id="cup-campo-15" value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="Observaciones del canje..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
           </div>
         </div>
@@ -1238,83 +1185,87 @@ function SettlementCard({ s }: { s: {
   const coupons = couponsQuery.data ?? [];
 
   const statusBadge = s.status === "pagada"
-    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-success/15 text-success border-success/30"><CheckCircle className="w-3 h-3" /> Pagada</span>
+    ? <StatusBadge tone="success" icon={<CheckCircle />}>Pagada</StatusBadge>
     : s.status === "emitida"
-    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-info/15 text-info border-info/30"><Zap className="w-3 h-3" /> Emitida</span>
-    : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-warning/15 text-warning border-warning/30"><Clock className="w-3 h-3" /> Pendiente</span>;
+    ? <StatusBadge tone="info" icon={<Zap />}>Emitida</StatusBadge>
+    : <StatusBadge tone="warning" icon={<Clock />}>Pendiente</StatusBadge>;
 
   return (
-    <div className="rounded-xl border border-border/50 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       {/* Cabecera siempre visible */}
       <button
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted transition-colors text-left"
+        type="button"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-5"
         onClick={() => setOpen((v) => !v)}
       >
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-            <Banknote className="w-4 h-4 text-primary" />
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <Banknote className="h-4 w-4 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-foreground font-semibold text-sm overflow-hidden text-ellipsis whitespace-nowrap">
+            <p className="break-words text-sm font-semibold text-foreground">
               {s.platformName ?? `Plataforma #${s.platformId}`}
-              <span className="ml-2 text-muted-foreground font-normal">·</span>
-              <span className="ml-2 text-muted-foreground font-normal">{s.periodLabel}</span>
+              <span className="ml-2 font-normal text-muted-foreground">·</span>
+              <span className="ml-2 font-normal text-muted-foreground">{s.periodLabel}</span>
             </p>
-            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
               <span className="text-xs text-muted-foreground">{s.totalCoupons} cupón{s.totalCoupons !== 1 ? "es" : ""}</span>
-              <span className="text-xs font-semibold text-foreground/70">PVP: {s.totalAmount} €</span>
+              <span className="text-xs font-semibold text-foreground">PVP: {s.totalAmount} €</span>
               {s.netTotal && <span className="text-xs font-semibold text-info">Neto: {s.netTotal} €</span>}
               {s.invoiceRef && <span className="text-xs text-muted-foreground">Ref: {s.invoiceRef}</span>}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0 ml-4">
+        <div className="flex shrink-0 items-center gap-3">
           {statusBadge}
-          <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
+          <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} aria-hidden="true" />
         </div>
       </button>
 
       {/* Detalle expandido */}
       {open && (
-        <div className="border-t border-border/50 px-5 pb-4 pt-3">
+        <div className="border-t border-border px-4 pb-4 pt-3 sm:px-5">
           {couponsQuery.isPending ? (
-            <p className="text-muted-foreground text-sm py-4 text-center">Cargando cupones...</p>
+            <PanelLoading label="Cargando cupones…" />
           ) : coupons.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-4 text-center">No hay cupones vinculados a esta liquidación.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">No hay cupones vinculados a esta liquidación.</p>
           ) : (
-            <div className="space-y-1">
-              {/* Cabecera columnas */}
-              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 px-3 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                <span>Cliente</span>
-                <span>Código cupón</span>
-                <span>Fecha canje</span>
-                <span className="text-right">PVP</span>
-                <span className="text-right">Neto</span>
-              </div>
-              {coupons.map((c) => (
-                <div key={c.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center px-3 py-2 rounded-lg hover:bg-muted transition-colors">
-                  <span className="text-sm text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{c.customerName}</span>
-                  <span className="text-sm font-mono text-primary">{c.couponCode}</span>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—"}
-                  </span>
-                  <span className="text-xs text-foreground/70 text-right whitespace-nowrap">{c.pvpPrice ? `${c.pvpPrice} €` : "—"}</span>
-                  <span className="text-xs text-info text-right whitespace-nowrap">{c.netPrice ? `${c.netPrice} €` : "—"}</span>
+            <div className="overflow-x-auto">
+              <div className="min-w-[30rem] space-y-1">
+                {/* Cabecera columnas */}
+                <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 px-3 pb-1 text-xs font-medium text-muted-foreground">
+                  <span>Cliente</span>
+                  <span>Código cupón</span>
+                  <span>Fecha canje</span>
+                  <span className="text-right">PVP</span>
+                  <span className="text-right">Neto</span>
                 </div>
-              ))}
-              {/* Totales */}
-              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center px-3 pt-2 mt-1 border-t border-border/50">
-                <span className="text-xs font-semibold text-muted-foreground col-span-3">Total ({coupons.length} cupones)</span>
-                <span className="text-xs font-bold text-foreground text-right">{s.totalAmount} €</span>
-                <span className="text-xs font-bold text-info text-right">{s.netTotal ?? "—"} €</span>
+                {coupons.map((c) => (
+                  <div key={c.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto] items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-muted/40">
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm text-foreground">{c.customerName}</span>
+                    <span className="font-mono text-sm text-primary">{c.couponCode}</span>
+                    <span className="whitespace-nowrap text-xs text-muted-foreground">
+                      {c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                    </span>
+                    <span className="whitespace-nowrap text-right text-xs text-foreground">{c.pvpPrice ? `${c.pvpPrice} €` : "—"}</span>
+                    <span className="whitespace-nowrap text-right text-xs text-info">{c.netPrice ? `${c.netPrice} €` : "—"}</span>
+                  </div>
+                ))}
+                {/* Totales */}
+                <div className="mt-1 grid grid-cols-[1fr_1fr_auto_auto_auto] items-center gap-3 border-t border-border px-3 pt-2">
+                  <span className="col-span-3 text-xs font-semibold text-muted-foreground">Total ({coupons.length} cupones)</span>
+                  <span className="text-right text-xs font-bold text-foreground">{s.totalAmount} €</span>
+                  <span className="text-right text-xs font-bold text-info">{s.netTotal ?? "—"} €</span>
+                </div>
               </div>
             </div>
           )}
           {s.notes && (
-            <p className="mt-3 text-xs text-muted-foreground italic border-t border-border/50 pt-3">{s.notes}</p>
+            <p className="mt-3 border-t border-border pt-3 text-xs italic text-muted-foreground">{s.notes}</p>
           )}
           {(s.paidAt || s.emittedAt) && (
-            <div className="mt-3 flex gap-4 text-xs text-muted-foreground border-t border-border/50 pt-3">
+            <div className="mt-3 flex gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
               {s.emittedAt && <span>Emitida: {new Date(s.emittedAt).toLocaleDateString("es-ES")}</span>}
               {s.paidAt && <span>Pagada: {new Date(s.paidAt).toLocaleDateString("es-ES")}</span>}
             </div>
@@ -1332,18 +1283,20 @@ function LiquidacionesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-foreground">Liquidaciones de plataformas</h2>
-        <Button variant="outline" size="sm"
-          className="border-border bg-muted/50 text-foreground/70 hover:bg-muted"
-          onClick={() => window.location.href = "/admin/marketing/plataformas"}>
-          Gestionar plataformas <ChevronRight className="w-4 h-4 ml-1" />
+        <Button asChild variant="outline" size="sm">
+          <Link href="/admin/marketing/plataformas">Gestionar plataformas <ChevronRight className="ml-1 h-4 w-4" /></Link>
         </Button>
       </div>
-      {settlements.length === 0 ? (
-        <div className="rounded-xl border border-border/50 p-12 text-center text-muted-foreground">
-          No hay liquidaciones registradas. Crea plataformas y genera liquidaciones desde el módulo de Plataformas.
-        </div>
+      {settlementsQuery.isLoading ? (
+        <PanelLoading />
+      ) : settlementsQuery.error ? (
+        <PanelError error={settlementsQuery.error} onRetry={() => void settlementsQuery.refetch()} title="No se han podido cargar las liquidaciones" />
+      ) : settlements.length === 0 ? (
+        <PanelEmpty icon={<Banknote />} title="No hay liquidaciones registradas" description="Crea plataformas y genera liquidaciones desde el módulo de Plataformas.">
+          <Button asChild size="sm" variant="outline"><Link href="/admin/marketing/plataformas">Ir a Plataformas</Link></Button>
+        </PanelEmpty>
       ) : (
         <div className="space-y-2">
           {settlements.map((s) => <SettlementCard key={s.id} s={s} />)}

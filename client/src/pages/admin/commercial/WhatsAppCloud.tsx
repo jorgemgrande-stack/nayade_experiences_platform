@@ -6,7 +6,7 @@
  * persona) y su registro. La autorización real (licencia `whatsapp-ai` y rol) la aplica el servidor.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Bot, CheckCircle2, Copy, MessageSquare, Plus, RefreshCw, Save, Send, Sparkles, UserRound } from "lucide-react";
+import { ArrowLeft, Bot, CheckCircle2, Clock, Copy, Link2, Loader2, MessageSquare, Plus, RefreshCw, Save, Send, Sparkles, UserRound, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { HeroCard, MetricCard, PersonAvatar } from "@/components/admin/PanelVisual";
 import { toastError } from "@/lib/errorMessage";
 import { KNOWLEDGE_KINDS, KNOWLEDGE_KIND_LABELS, RECEPTION_LIMITS, WEEKDAY_LABELS, WEEKDAY_ORDER, type HoursRange, type KnowledgeKind, type Weekday } from "@shared/receptionAi";
 import {
@@ -50,6 +52,22 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <span className="block text-xs font-normal text-muted-foreground">{hint}</span>}
     </label>
+  );
+}
+
+/** Sección de formulario: título, ayuda breve y contenido, con la misma tarjeta en todas las pestañas. */
+function Section({ icon, title, help, children }: { icon?: React.ReactNode; title: string; help?: string; children: React.ReactNode }) {
+  return (
+    <section className={sectionClass}>
+      <div className="flex items-start gap-3">
+        {icon && <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:h-4 [&_svg]:w-4" aria-hidden="true">{icon}</span>}
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          {help && <p className="text-sm text-muted-foreground">{help}</p>}
+        </div>
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -103,7 +121,7 @@ function TemplateSender({ conversationId, onSent }: { conversationId: number; on
   );
 }
 
-function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }) {
+function ConversationView({ id, aiMode, onBack }: { id: number; aiMode: WhatsappAiMode; onBack?: () => void }) {
   const fmt = useFmt();
   const utils = trpc.useUtils();
   const q = trpc.whatsappCloud.conversation.useQuery({ id }, { retry: false, refetchInterval: 15_000 });
@@ -141,13 +159,21 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
   const c = d.conversation;
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="break-words font-semibold text-foreground">{c.customerName || `+${c.waId}`}</p>
-          <p className="text-xs text-muted-foreground">+{c.waId}</p>
+      {onBack && (
+        <Button type="button" variant="ghost" size="sm" className="-ml-2 lg:hidden" onClick={onBack}>
+          <ArrowLeft className="mr-1 h-4 w-4" />Conversaciones
+        </Button>
+      )}
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <PersonAvatar name={c.customerName || c.waId} id={c.id} />
+          <div className="min-w-0">
+            <p className="break-words font-semibold text-foreground">{c.customerName || `+${c.waId}`}</p>
+            <p className="text-xs text-muted-foreground">+{c.waId}</p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {d.windowOpen ? <Badge variant="secondary">Ventana abierta hasta {fmt(d.windowEndsAt)}</Badge> : <Badge variant="outline">Fuera de la ventana de 24 h</Badge>}
+          {d.windowOpen ? <StatusBadge tone="success" icon={<Clock />}>Ventana abierta hasta {fmt(d.windowEndsAt)}</StatusBadge> : <StatusBadge tone="neutral" icon={<Clock />}>Fuera de la ventana de 24 h</StatusBadge>}
           <Button variant={c.needsHuman ? "default" : "outline"} size="sm" onClick={() => human.mutate({ id, value: !c.needsHuman })} disabled={human.isPending}>
             <UserRound className="mr-1 h-4 w-4" />{c.needsHuman ? "La atiende una persona (devolver a la IA)" : "Pasar a una persona"}
           </Button>
@@ -159,7 +185,7 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
           <div key={m.id} className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.direction === "out" ? "bg-primary text-primary-foreground" : "bg-card text-foreground border border-border"}`}>
               <p className="whitespace-pre-wrap break-words">{m.body}</p>
-              <p className={`mt-1 text-[11px] ${m.direction === "out" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+              <p className={`mt-1 text-xs ${m.direction === "out" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                 {fmt(m.createdAt)}
                 {m.direction === "out" && ` · ${MESSAGE_ORIGIN_LABELS[m.origin as MessageOrigin]}${m.templateName ? " · plantilla" : ""} · ${MESSAGE_STATUS_LABELS[m.status as MessageStatus]}`}
                 {m.status === "failed" && m.errorTitle ? ` (${m.errorTitle})` : ""}
@@ -173,7 +199,7 @@ function ConversationView({ id, aiMode }: { id: number; aiMode: WhatsappAiMode }
           <Textarea rows={3} value={text} maxLength={WHATSAPP_LIMITS.textMax} onChange={(e) => setText(e.target.value)} placeholder="Escribe tu respuesta…" />
           {fromSuggestion && <p className="text-xs text-muted-foreground">Sugerencia de la IA: revísala antes de enviarla. Se registrará como sugerencia revisada por ti.</p>}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => reply.mutate({ id, text, fromSuggestion })} disabled={reply.isPending || !text.trim()}><Send className="mr-2 h-4 w-4" />Enviar</Button>
+            <Button onClick={() => reply.mutate({ id, text, fromSuggestion })} disabled={reply.isPending || !text.trim()}>{reply.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{reply.isPending ? "Enviando…" : "Enviar"}</Button>
             {aiMode !== "off" && (
               <Button variant="outline" onClick={() => suggest.mutate({ id })} disabled={suggest.isPending}><Sparkles className="mr-2 h-4 w-4" />{suggest.isPending ? "Pensando…" : "Sugerir respuesta con IA"}</Button>
             )}
@@ -214,14 +240,14 @@ function Inbox() {
   return (
     <div className="space-y-4">
       {status.data && (!status.data.ready || !status.data.webhookReady) && (
-        <section className={sectionClass}>
-          <p className="text-sm text-amber-700 dark:text-amber-300">{status.data.webhookReady ? "Ya recibes los mensajes, pero aún no puedes responder desde aquí." : "Tu número de WhatsApp Business aún no está conectado."}</p>
+        <section className="space-y-2 rounded-xl border border-warning/40 bg-warning/5 p-4">
+          <p className="text-sm font-medium text-foreground">{status.data.webhookReady ? "Ya recibes los mensajes, pero aún no puedes responder desde aquí." : "Tu número de WhatsApp Business aún no está conectado."}</p>
           <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{status.data.problems.map((p) => <li key={p}>{p}</li>)}</ul>
         </section>
       )}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-        <div className="space-y-3">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, número o texto…" maxLength={100} />
+        <div className={`space-y-3 ${openId ? "hidden lg:block" : ""}`}>
+          <Input aria-label="Buscar conversaciones" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, número o texto…" maxLength={100} />
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input type="checkbox" checked={onlyHuman} onChange={(e) => setOnlyHuman(e.target.checked)} />Solo las que esperan a una persona
           </label>
@@ -235,25 +261,28 @@ function Inbox() {
             <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
               {list.data.rows.map((c) => (
                 <li key={c.id}>
-                  <button type="button" className={`w-full p-3 text-left hover:bg-muted/30 ${openId === c.id ? "bg-muted/40" : ""}`} onClick={() => setOpenId(c.id)}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 break-words text-sm font-medium text-foreground">{c.customerName || `+${c.waId}`}</span>
-                      {c.unreadCount > 0 && <Badge>{c.unreadCount}</Badge>}
-                    </div>
-                    <p className="line-clamp-1 break-words text-xs text-muted-foreground">{c.lastPreview ?? ""}</p>
-                    <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-muted-foreground">
-                      <span>{fmt(c.lastMessageAt)}</span>
-                      {c.needsHuman && <Badge variant="destructive" className="text-[10px]">Espera a una persona</Badge>}
-                      {!c.windowOpen && <Badge variant="outline" className="text-[10px]">Solo plantillas</Badge>}
-                    </div>
+                  <button type="button" aria-current={openId === c.id} className={`flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${openId === c.id ? "bg-primary/5" : ""}`} onClick={() => setOpenId(c.id)}>
+                    <PersonAvatar name={c.customerName || c.waId} id={c.id} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 break-words text-sm font-medium text-foreground">{c.customerName || `+${c.waId}`}</span>
+                        {c.unreadCount > 0 && <StatusBadge tone="brand">{c.unreadCount}</StatusBadge>}
+                      </span>
+                      <span className="line-clamp-1 block break-words text-xs text-muted-foreground">{c.lastPreview ?? ""}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                        <span>{fmt(c.lastMessageAt)}</span>
+                        {c.needsHuman && <StatusBadge tone="danger">Espera a una persona</StatusBadge>}
+                        {!c.windowOpen && <StatusBadge tone="neutral">Solo plantillas</StatusBadge>}
+                      </span>
+                    </span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
         </div>
-        <div className="min-w-0">
-          {openId ? <ConversationView id={openId} aiMode={settings.data?.aiMode ?? "off"} /> : <PanelEmpty icon={<MessageSquare className="h-5 w-5" />} title="Elige una conversación" description="Verás sus mensajes, si puedes escribir libremente (24 h) o solo con plantillas, y lo que ha hecho la IA." />}
+        <div className={`min-w-0 ${openId ? "" : "hidden lg:block"}`}>
+          {openId ? <ConversationView id={openId} aiMode={settings.data?.aiMode ?? "off"} onBack={() => setOpenId(null)} /> : <PanelEmpty icon={<MessageSquare className="h-5 w-5" />} title="Elige una conversación" description="Verás sus mensajes, si puedes escribir libremente (24 h) o solo con plantillas, y lo que ha hecho la IA." />}
         </div>
       </div>
     </div>
@@ -277,33 +306,32 @@ function ConnectionTab() {
   ];
   return (
     <div className="space-y-4">
-      <section className={sectionClass}>
-        <h2 className="text-base font-semibold text-foreground">Tu número de WhatsApp Business</h2>
+      <Section icon={<Wifi />} title="Tu número de WhatsApp Business">
         <p className="text-sm text-muted-foreground">Los datos se guardan cifrados en <Link href="/admin/configuracion/integraciones" className="underline">Configuración › Integraciones › WhatsApp Business</Link>. Necesitas una app de Meta con WhatsApp, tu número verificado en ella y una clave de un usuario del sistema.</p>
         <ul className="space-y-1 text-sm">
           {items.map(([label, ok]) => (
             <li key={label} className="flex items-center gap-2">
-              {ok ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <span className="inline-block h-4 w-4 rounded-full border border-muted-foreground/40" />}
+              {ok ? <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" /> : <span className="inline-block h-4 w-4 rounded-full border border-muted-foreground/40" aria-hidden="true" />}
               <span className={ok ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+              <span className="sr-only">{ok ? "(configurado)" : "(falta)"}</span>
             </li>
           ))}
         </ul>
-        <Button variant="outline" onClick={() => verify.mutate()} disabled={!s.ready || verify.isPending}><RefreshCw className="mr-2 h-4 w-4" />Comprobar la conexión con Meta</Button>
+        <Button variant="outline" onClick={() => verify.mutate()} disabled={!s.ready || verify.isPending}>{verify.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Comprobar la conexión con Meta</Button>
         {verify.data && (
-          <p className="text-sm text-emerald-700 dark:text-emerald-300">
+          <p className="rounded-lg border border-success/40 bg-success/5 p-3 text-sm text-foreground">
             Conexión correcta: {[verify.data.displayPhoneNumber, verify.data.verifiedName, verify.data.accountName].filter(Boolean).join(" · ")}
             {verify.data.qualityRating ? ` · calidad ${verify.data.qualityRating.toLowerCase()}` : ""}
           </p>
         )}
-      </section>
-      <section className={sectionClass}>
-        <h2 className="text-base font-semibold text-foreground">Mensajes entrantes (webhook)</h2>
+      </Section>
+      <Section icon={<Link2 />} title="Mensajes entrantes (webhook)">
         <p className="text-sm text-muted-foreground">En tu app de Meta, en WhatsApp › Configuración, escribe esta dirección y tu clave de verificación de mensajes, y suscríbete al campo «messages».</p>
         <Field label="Dirección para Meta">
           <div className="flex gap-2"><Input readOnly value={s.webhookUrl} /><Button variant="outline" onClick={() => copy(s.webhookUrl)}><Copy className="mr-2 h-4 w-4" />Copiar</Button></div>
         </Field>
-        {s.webhookReady ? <p className="text-sm text-emerald-700 dark:text-emerald-300">Lista para recibir mensajes: cada mensaje se comprueba con la clave secreta de tu app.</p> : <p className="text-sm text-amber-700 dark:text-amber-300">Aún no se aceptan mensajes: faltan la clave secreta de tu app o la clave de verificación (al menos 24 caracteres).</p>}
-      </section>
+        {s.webhookReady ? <p className="rounded-lg border border-success/40 bg-success/5 p-3 text-sm text-foreground">Lista para recibir mensajes: cada mensaje se comprueba con la clave secreta de tu app.</p> : <p className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm text-foreground">Aún no se aceptan mensajes: faltan la clave secreta de tu app o la clave de verificación (al menos 24 caracteres).</p>}
+      </Section>
       <p className="text-xs text-muted-foreground">Las conversaciones de WhatsApp las factura Meta a tu empresa según su tarifa; las plantillas las aprueba Meta.</p>
     </div>
   );
@@ -362,7 +390,7 @@ function AiTab() {
   return (
     <div className="space-y-4">
       <form className="space-y-4" onSubmit={(e) => (e.preventDefault(), save.mutate({ ...form, handoffKeywords: form.handoffKeywords || null, extraRules: form.extraRules || null }))}>
-        <section className={sectionClass}>
+        <Section icon={<Sparkles />} title="Modo de la IA" help="Elige cuánto interviene la IA. Está apagada por defecto.">
           <Field label="IA en WhatsApp" hint="Responde con la base de conocimiento de tu empresa (pestaña «Conocimiento», compartida con la Recepcionista IA) y tu catálogo publicado. Cada respuesta cuenta en el consumo de IA de tu empresa.">
             <select className={selectClass} value={form.aiMode} onChange={(e) => set("aiMode", e.target.value as WhatsappAiMode)}>
               {modes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -378,17 +406,21 @@ function AiTab() {
               </Field>
             </>
           )}
+        </Section>
+        <Section icon={<UserRound />} title="Traspaso a una persona y reglas" help="Cuándo debe dejar de responder la IA y qué más debe tener en cuenta.">
           <Field label="Palabras que pasan la conversación a una persona" hint="Separadas por comas. Si el cliente las escribe, la IA deja de responder y la conversación espera a tu equipo.">
             <Input value={form.handoffKeywords} maxLength={WHATSAPP_LIMITS.keywordsMax} onChange={(e) => set("handoffKeywords", e.target.value)} />
           </Field>
           <Field label="Indicaciones para la IA (opcional)">
             <Textarea rows={3} value={form.extraRules} maxLength={WHATSAPP_LIMITS.extraRulesMax} onChange={(e) => set("extraRules", e.target.value)} placeholder="Por ejemplo: trata de usted; no ofrezcas descuentos." />
           </Field>
-          <Button type="submit" disabled={save.isPending}><Save className="mr-2 h-4 w-4" />Guardar</Button>
-        </section>
+        </Section>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={save.isPending}>{save.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{save.isPending ? "Guardando…" : "Guardar configuración"}</Button>
+          <span role="status" className="text-xs text-muted-foreground">{save.isSuccess && !save.isPending ? "Configuración guardada." : ""}</span>
+        </div>
       </form>
-      <section className={sectionClass}>
-        <h2 className="text-base font-semibold text-foreground">Registro de la IA</h2>
+      <Section icon={<Bot />} title="Registro de la IA" help="Cada sugerencia y cada respuesta automática, con su resultado.">
         {log.isLoading ? (
           <PanelLoading />
         ) : log.error ? (
@@ -405,7 +437,7 @@ function AiTab() {
             ))}
           </ul>
         )}
-      </section>
+      </Section>
     </div>
   );
 }
@@ -434,9 +466,7 @@ function KnowledgeTab() {
   const items = q.data ?? [];
   return (
     <div className="space-y-4">
-      <section className={sectionClass}>
-        <h2 className="text-base font-semibold text-foreground">Lo que la IA sabe de tu negocio</h2>
-        <p className="text-sm text-muted-foreground">Es la base de conocimiento de tu empresa: la misma que usa la Recepcionista IA, si la tienes. La IA responde solo con esto y con tu catálogo publicado.</p>
+      <Section icon={<Bot />} title="Lo que la IA sabe de tu negocio" help="Es la base de conocimiento de tu empresa: la misma que usa la Recepcionista IA, si la tienes. La IA responde solo con esto y con tu catálogo publicado.">
         <div className="grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
           <Field label="Tipo">
             <select className={selectClass} value={kind} onChange={(e) => setKind(e.target.value as KnowledgeKind)}>
@@ -450,8 +480,8 @@ function KnowledgeTab() {
         <Field label="Respuesta">
           <Textarea rows={3} value={answer} maxLength={RECEPTION_LIMITS.answerMax} onChange={(e) => setAnswer(e.target.value)} />
         </Field>
-        <Button onClick={() => add.mutate({ kind, question, answer })} disabled={add.isPending || !question.trim() || !answer.trim()}><Plus className="mr-2 h-4 w-4" />Añadir</Button>
-      </section>
+        <Button onClick={() => add.mutate({ kind, question, answer })} disabled={add.isPending || !question.trim() || !answer.trim()}>{add.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Añadir</Button>
+      </Section>
       {!items.length ? (
         <PanelEmpty icon={<Bot className="h-5 w-5" />} title="Aún no hay contenidos" description="Añade tus preguntas frecuentes, servicios e información útil para que la IA pueda responder." />
       ) : (
@@ -462,7 +492,7 @@ function KnowledgeTab() {
                 <div className="min-w-0">
                   <p className="break-words font-medium text-foreground">{k.question}</p>
                   <p className="whitespace-pre-wrap break-words text-muted-foreground">{k.answer}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{KNOWLEDGE_KIND_LABELS[k.kind as KnowledgeKind]}{k.archived ? " · archivado" : ""}</p>
+                  <p className="mt-1 flex flex-wrap gap-1"><StatusBadge tone="neutral">{KNOWLEDGE_KIND_LABELS[k.kind as KnowledgeKind]}</StatusBadge>{k.archived && <StatusBadge tone="warning">Archivado</StatusBadge>}</p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => archive.mutate({ id: k.id, archived: !k.archived })} disabled={archive.isPending}>{k.archived ? "Recuperar" : "Archivar"}</Button>
               </div>
@@ -476,20 +506,45 @@ function KnowledgeTab() {
 
 // ─── Página ───────────────────────────────────────────────────────────────────
 
+/** Resumen de la cabecera: estado de la conexión, lo que espera respuesta y el modo de la IA. Solo lectura. */
+function Summary({ onGoToConnection }: { onGoToConnection?: () => void }) {
+  const status = trpc.whatsappCloud.status.useQuery(undefined, { retry: false });
+  const settings = trpc.whatsappCloud.settings.useQuery(undefined, { retry: false });
+  const list = trpc.whatsappCloud.conversations.useQuery({ limit: 100 }, { retry: false, refetchInterval: 20_000 });
+  const rows = list.data?.rows ?? [];
+  const unread = rows.reduce((n, c) => n + c.unreadCount, 0);
+  const waiting = rows.filter((c) => c.needsHuman).length;
+  const connected = !!status.data?.ready && !!status.data?.webhookReady;
+  const mode = settings.data?.aiMode;
+  return (
+    <HeroCard>
+      <div className="grid grid-cols-2 gap-3 p-3 sm:p-4 lg:grid-cols-4">
+        <MetricCard compact tone={status.data ? (connected ? "success" : "warning") : "neutral"} icon={<Wifi />} label="Conexión con Meta" value={status.data ? (connected ? "Conectado" : "Incompleta") : "…"}
+          detail={status.data && !connected ? "Revisa la pestaña Conexión" : undefined} onClick={status.data && !connected ? onGoToConnection : undefined} />
+        <MetricCard compact tone={unread ? "brand" : "neutral"} icon={<MessageSquare />} label="Mensajes sin leer" value={list.data ? unread : "…"} detail={list.data ? `${rows.length} conversaciones` : undefined} />
+        <MetricCard compact tone={waiting ? "warning" : "neutral"} icon={<UserRound />} label="Esperan a una persona" value={list.data ? waiting : "…"} />
+        <MetricCard compact tone={mode && mode !== "off" ? "brand" : "neutral"} icon={<Sparkles />} label="IA en WhatsApp" value={mode ? (mode === "off" ? "Apagada" : mode === "suggest" ? "Sugiere" : "Automática") : "…"} />
+      </div>
+    </HeroCard>
+  );
+}
+
 export default function WhatsAppCloud() {
   const { user } = useAuth();
   const isAdmin = (user as { role?: string } | null)?.role === "admin";
   const [tab, setTab] = useState("bandeja");
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">WhatsApp Business con IA</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">El WhatsApp de tu empresa con tu propio número: responde desde el panel, usa plantillas aprobadas cuando han pasado más de 24 horas y deja que la IA te sugiera respuestas o conteste sola en el horario que elijas.</p>
-        </header>
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+        <PanelPageHeader
+          className="mb-0"
+          icon={<MessageSquare />}
+          title="WhatsApp Business con IA"
+          description="Elephant Connect: el WhatsApp de tu empresa con tu propio número. Responde desde el panel, usa plantillas aprobadas cuando han pasado más de 24 horas y deja que la IA te sugiera respuestas o conteste sola en el horario que elijas."
+        />
+        <Summary onGoToConnection={isAdmin ? () => setTab("conexion") : undefined} />
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="flex-wrap">
+          <TabsList className="h-auto max-w-full flex-wrap justify-start">
             <TabsTrigger value="bandeja">Bandeja</TabsTrigger>
             {isAdmin && <TabsTrigger value="ia">Configuración de la IA</TabsTrigger>}
             {isAdmin && <TabsTrigger value="conocimiento">Conocimiento</TabsTrigger>}
