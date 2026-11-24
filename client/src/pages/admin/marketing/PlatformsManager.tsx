@@ -732,7 +732,7 @@ export default function PlatformsManager() {
                                       {st?.customerNames && st.customerNames.length > 0 ? (
                                         <div className="flex flex-wrap gap-1 max-w-[180px]">
                                           {st.customerNames.slice(0, 3).map((name, i) => (
-                                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/50 border border-border text-foreground/70 text-[10px] truncate max-w-[85px]" title={name}>
+                                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted/50 border border-border text-foreground/70 text-[10px] overflow-hidden text-ellipsis whitespace-nowrap max-w-[85px]" title={name}>
                                               {name}
                                             </span>
                                           ))}

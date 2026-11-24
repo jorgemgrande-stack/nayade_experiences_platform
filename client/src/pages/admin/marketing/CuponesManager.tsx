@@ -945,7 +945,7 @@ export default function CuponesManager() {
                 {manualForm.attachmentUrl ? (
                   <div className="flex items-center gap-2 p-2 rounded bg-success/10 border border-success/20">
                     <CheckCircle className="w-4 h-4 text-success shrink-0" />
-                    <span className="text-success text-xs truncate flex-1">{manualAttachName}</span>
+                    <span className="text-success text-xs overflow-hidden text-ellipsis whitespace-nowrap flex-1">{manualAttachName}</span>
                     <button type="button" onClick={() => { setManualForm(f => ({ ...f, attachmentUrl: "" })); setManualAttachName(""); setManualAttachError(""); }} className="text-muted-foreground hover:text-foreground/70">
                       <X className="w-4 h-4" />
                     </button>
@@ -1197,7 +1197,7 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
             </label>
             {file && (
               <div className="mt-2 flex items-center justify-between p-2 rounded-lg bg-muted/50 text-xs">
-                <span className="text-foreground/70 truncate">{file.name}</span>
+                <span className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{file.name}</span>
                 <button onClick={() => { setFile(null); setFilePreview(null); }} className="text-muted-foreground hover:text-danger ml-2"><X className="w-3.5 h-3.5" /></button>
               </div>
             )}
@@ -1255,7 +1255,7 @@ function SettlementCard({ s }: { s: {
             <Banknote className="w-4 h-4 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-foreground font-semibold text-sm truncate">
+            <p className="text-foreground font-semibold text-sm overflow-hidden text-ellipsis whitespace-nowrap">
               {s.platformName ?? `Plataforma #${s.platformId}`}
               <span className="ml-2 text-muted-foreground font-normal">·</span>
               <span className="ml-2 text-muted-foreground font-normal">{s.periodLabel}</span>
@@ -1293,7 +1293,7 @@ function SettlementCard({ s }: { s: {
               </div>
               {coupons.map((c) => (
                 <div key={c.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center px-3 py-2 rounded-lg hover:bg-muted transition-colors">
-                  <span className="text-sm text-foreground truncate">{c.customerName}</span>
+                  <span className="text-sm text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{c.customerName}</span>
                   <span className="text-sm font-mono text-primary">{c.couponCode}</span>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
                     {c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—"}
