@@ -16,6 +16,7 @@ import { toastError } from "@/lib/errorMessage";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 import { TONE_SURFACE } from "@/lib/panelTones";
 
 type MenuItem = {
@@ -260,6 +261,7 @@ export default function MenusManager() {
   return (
     <AdminLayout title={tx("Gestión de Menús")}>
       <div className="px-6 py-6">
+      <CmsSectionNav />
       <PanelPageHeader
         icon={<Navigation />}
         title={tx("Menú de tu web")}

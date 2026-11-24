@@ -17,6 +17,7 @@ import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { useI18n } from "@/i18n/I18nProvider";
 import { PanelError } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 
 type Form = { id?: number; fromPath: string; toPath: string; statusCode: 301 | 302; isActive: boolean; note: string };
 const EMPTY: Form = { fromPath: "", toPath: "", statusCode: 301, isActive: true, note: "" };
@@ -45,6 +46,7 @@ export default function Redirecciones() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+        <CmsSectionNav />
         <PanelPageHeader
           className="mb-0"
           icon={<CornerDownRight />}

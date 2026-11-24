@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 import type { SitePage } from "@/components/admin/studio/PageSettings";
 import { cn } from "@/lib/utils";
 import { PAGE_TEMPLATES, SEO_LIMITS, pageSlugProblem, slugFromTitle, type PageTemplateKey } from "@shared/pageBlocks";
@@ -67,6 +68,7 @@ export default function PagesManager() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl p-4 md:p-6">
+        <CmsSectionNav />
         <PanelPageHeader
           icon={<FileText />}
           title={tx("Páginas de tu web")}

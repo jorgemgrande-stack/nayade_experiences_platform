@@ -749,6 +749,8 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuItem className="sm:hidden" disabled={!page} onSelect={openPreview}>
+              <Eye className="mr-2 h-4 w-4" />{" "}{tx("Vista previa del borrador")}</DropdownMenuItem>
             {page?.isPublished && (
               <DropdownMenuItem onSelect={() => window.open(page.isHome ? "/" : `/${page.slug}`, "_blank", "noopener")}>
                 <ExternalLink className="mr-2 h-4 w-4" />{" "}{tx("Ver la página publicada")}</DropdownMenuItem>
@@ -774,6 +776,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
         <Button variant="outline" size="sm" className="hidden h-9 sm:inline-flex" onClick={openPreview} disabled={!page} aria-label={tx("Vista previa")} title={tx("Vista previa del borrador")}>
           <Eye className="h-4 w-4 xl:mr-1.5" /> <span className="hidden xl:inline">{tx("Vista previa")}</span>
         </Button>

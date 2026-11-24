@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge as ToneBadge, type Tone } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 import { TONE_SURFACE } from "@/lib/panelTones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -307,6 +308,7 @@ export default function BlogManager() {
   return (
     <AdminLayout title={tx("Blog")}>
       <div className="p-4 md:p-6">
+        <CmsSectionNav />
         <PanelPageHeader
           icon={<Newspaper />}
           title={tx("Blog")}

@@ -6,6 +6,7 @@ import { useVocabulary } from "@/lib/vocabulary";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { PanelError } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 
 // ─── Constantes de módulos disponibles ───────────────────────────────────────
 const HOME_MODULES = [
@@ -202,6 +203,7 @@ export default function HomeModulesManager() {
   return (
     <AdminLayout title={title}>
       <div className="px-6 py-6">
+        <CmsSectionNav />
         <PanelPageHeader
           icon={<LayoutGrid />}
           title={title}
