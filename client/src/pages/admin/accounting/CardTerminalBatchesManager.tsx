@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
@@ -10,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -262,6 +263,50 @@ export default function CardTerminalBatchesManager() {
   const isSuggested = (s: string) => s === "suggested" || s === "auto_ready";
   const isReconciled = (s: string) => s === "reconciled" || s === "difference";
 
+  type Batch = (typeof batches)[number];
+  const netoTotal = batches.reduce((s, b) => s + (parseFloat(String(b.totalNet)) || 0), 0);
+  const defaultFrom = (() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); })();
+  const defaultTo = new Date().toISOString().slice(0, 10);
+  const clearFilters = () => { setFromDate(defaultFrom); setToDate(defaultTo); setStatusFilter(""); };
+  const chips: FilterChip[] = [
+    ...(statusFilter ? [{ id: "status", label: `Estado: ${STATUS_LABELS[statusFilter]}`, onRemove: () => setStatusFilter("") }] : []),
+    ...(fromDate !== defaultFrom ? [{ id: "from", label: fromDate ? `Desde ${fmtDate(fromDate)}` : "Sin fecha de inicio", onRemove: () => setFromDate(defaultFrom) }] : []),
+    ...(toDate !== defaultTo ? [{ id: "to", label: toDate ? `Hasta ${fmtDate(toDate)}` : "Sin fecha de fin", onRemove: () => setToDate(defaultTo) }] : []),
+  ];
+  const columns: EconomyColumn<Batch>[] = [
+    {
+      key: "fecha",
+      header: "Fecha",
+      mobile: "title",
+      cell: (b) => (
+        <>
+          <span className="whitespace-nowrap">{fmtDate(b.batchDate)}</span>
+          {b.suggestedScore != null && (
+            <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{scoreIcon(b.suggestedScore)} Coincidencia {b.suggestedScore}%</span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "estado",
+      header: "Estado",
+      cell: (b) => (
+        <StatusBadge tone={STATUS_TONES[b.status as BatchStatus] ?? "neutral"}>{STATUS_LABELS[b.status as BatchStatus] ?? b.status}</StatusBadge>
+      ),
+    },
+    { key: "terminal", header: "Terminal", priority: "md", cell: (b) => <span className="text-xs text-muted-foreground">{b.terminalCode ?? "—"}</span> },
+    { key: "ops", header: "Operaciones", align: "right", num: true, priority: "md", cell: (b) => b.operationCount },
+    {
+      key: "dif",
+      header: "Diferencia",
+      align: "right",
+      num: true,
+      priority: "lg",
+      cell: (b) => (b.differenceAmount ? <span className="text-warning">Δ {fmt(b.differenceAmount)}</span> : <span className="text-muted-foreground">—</span>),
+    },
+    { key: "neto", header: "Neto", align: "right", num: true, mobile: "amount", cell: (b) => <span className="font-semibold text-success">{fmt(b.totalNet)}</span> },
+  ];
+
   return (
     <AdminLayout>
       <div className="flex flex-col gap-6 p-6">
@@ -289,137 +334,81 @@ export default function CardTerminalBatchesManager() {
           }
         />
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "Total", value: stats.total, icon: Package, color: "text-foreground" },
-            { label: "Pendientes", value: stats.pending, icon: Clock, color: "text-warning" },
-            { label: "Acción requerida", value: stats.needsAction, icon: Zap, color: "text-info" },
-            { label: "Conciliadas", value: stats.reconciled, icon: CheckCircle2, color: "text-success" },
-          ].map(s => (
-            <MetricCard key={s.label} icon={<s.icon />} tone={toneOf(s.color)} label={s.label} value={s.value} />
-          ))}
-        </div>
+        {/* Resumen */}
+        <EconomySummary>
+          <MetricCard icon={<Package />} tone="neutral" label="Remesas del periodo" value={stats.total} detail={`neto ${fmt(netoTotal)}`} />
+          <MetricCard icon={<Clock />} tone="warning" label="Pendientes" value={stats.pending} detail="sin conciliar o a revisar" />
+          <MetricCard icon={<Zap />} tone="info" label="Acción requerida" value={stats.needsAction} detail="con propuesta de banco" />
+          <MetricCard icon={<CheckCircle2 />} tone="success" label="Conciliadas" value={stats.reconciled} detail="incluye con diferencia" />
+        </EconomySummary>
 
-        {/* Filters */}
-        <Card className="bg-card border-border">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-3 items-end">
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Desde</Label>
-                <Input
-                  type="date"
-                  value={fromDate}
-                  onChange={e => setFromDate(e.target.value)}
-                  className="bg-muted border-border text-foreground w-40"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Hasta</Label>
-                <Input
-                  type="date"
-                  value={toDate}
-                  onChange={e => setToDate(e.target.value)}
-                  className="bg-muted border-border text-foreground w-40"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Estado</Label>
-                <select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value as BatchStatus | "")}
-                  className="bg-muted border border-border text-foreground text-sm rounded-md px-3 py-2 h-10"
-                >
-                  <option value="">Todos</option>
-                  {(Object.keys(STATUS_LABELS) as BatchStatus[]).map(s => (
-                    <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                  ))}
-                </select>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => utils.cardTerminalBatches.list.invalidate()}
-                className="border-border text-foreground hover:text-foreground"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Filtros */}
+        <EconomyFilterBar
+          primary={
+            <>
+              <FilterField label="Desde" className="w-[calc(50%-0.375rem)] sm:w-40">
+                <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+              </FilterField>
+              <FilterField label="Hasta" className="w-[calc(50%-0.375rem)] sm:w-40">
+                <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+              </FilterField>
+              <FilterField label="Estado" className="w-full sm:w-48">
+                <Select value={statusFilter || "all"} onValueChange={(v) => setStatusFilter(v === "all" ? "" : (v as BatchStatus))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {(Object.keys(STATUS_LABELS) as BatchStatus[]).map(s => (
+                      <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FilterField>
+            </>
+          }
+          actions={
+            <Button variant="outline" onClick={() => utils.cardTerminalBatches.list.invalidate()} aria-label="Actualizar listado" className="gap-2">
+              <RefreshCw className="w-4 h-4" /> Actualizar
+            </Button>
+          }
+          chips={chips}
+          onClear={clearFilters}
+          summary={`${batches.length} ${batches.length === 1 ? "remesa" : "remesas"}`}
+        />
 
         {/* Main content: list + detail */}
-        <div className="flex gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
           {/* Batch list */}
-          <div className="flex-1 min-w-0">
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-foreground">
-                  {batches.length} remesa(s)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {listQ.isLoading ? (
-                  <PanelLoading />
-                ) : batches.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
-                    <Package className="w-8 h-8" />
-                    <span className="text-sm">No hay remesas en este período</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setGenOpen(true)}
-                      className="mt-2 border-border text-foreground"
-                    >
-                      Generar remesas
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-zinc-800">
-                    {batches.map(batch => (
-                      <button
-                        key={batch.id}
-                        onClick={() => setSelectedId(batch.id === selectedId ? null : batch.id)}
-                        className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-muted/50 transition-colors ${
-                          selectedId === batch.id ? "bg-muted/70" : ""
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-medium text-foreground">{fmtDate(batch.batchDate)}</span>
-                            <StatusBadge tone={STATUS_TONES[batch.status as BatchStatus] ?? "neutral"}>
-                              {STATUS_LABELS[batch.status as BatchStatus] ?? batch.status}
-                            </StatusBadge>
-                            {batch.suggestedScore != null && (
-                              <span className="text-xs text-muted-foreground">
-                                {scoreIcon(batch.suggestedScore)} {batch.suggestedScore}%
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span>Terminal: {batch.terminalCode ?? "—"}</span>
-                            <span>{batch.operationCount} ops</span>
-                            {batch.differenceAmount && (
-                              <span className="text-warning">Δ {fmt(batch.differenceAmount)}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-sm font-semibold text-success">{fmt(batch.totalNet)}</div>
-                          <div className="text-xs text-muted-foreground">neto</div>
-                        </div>
-                        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${selectedId === batch.id ? "rotate-90" : ""}`} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <div className="min-w-0 flex-1">
+            <EconomyTable
+              rows={batches}
+              columns={columns}
+              rowKey={(b) => b.id}
+              caption="Remesas del TPV"
+              loading={listQ.isLoading}
+              error={listQ.error}
+              errorTitle="No se han podido cargar las remesas"
+              onRetry={() => void listQ.refetch()}
+              emptyTitle="No hay remesas en este período"
+              emptyDescription="Genera las remesas a partir de las operaciones del datáfono."
+              emptyAction={<Button variant="outline" size="sm" onClick={() => setGenOpen(true)}>Generar remesas</Button>}
+              rowClassName={(b) => (selectedId === b.id ? "bg-muted/70" : undefined)}
+              onRowClick={(b) => setSelectedId(b.id === selectedId ? null : b.id)}
+              actions={(b) => (
+                <RowActions
+                  label={fmtDate(b.batchDate)}
+                  primary={{
+                    label: selectedId === b.id ? "Cerrar" : "Revisar",
+                    icon: <ChevronRight className={`h-4 w-4 transition-transform ${selectedId === b.id ? "rotate-90" : ""}`} />,
+                    onSelect: () => setSelectedId(b.id === selectedId ? null : b.id),
+                  }}
+                />
+              )}
+            />
           </div>
 
           {/* Detail panel */}
           {selectedId && detail && (
-            <div className="w-[420px] shrink-0 flex flex-col gap-3">
+            <div className="flex w-full shrink-0 flex-col gap-3 lg:w-[420px]">
               {/* Batch header */}
               <Card className="bg-card border-border">
                 <CardHeader className="pb-2">
@@ -600,7 +589,7 @@ export default function CardTerminalBatchesManager() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="max-h-48 overflow-y-auto divide-y divide-zinc-800">
+                  <div className="max-h-48 overflow-y-auto divide-y divide-border">
                     {(detail.operations ?? []).map(op => (
                       <div key={op.batchOpId} className="px-3 py-2 flex items-center gap-2">
                         {op.batchOpType === "VENTA" ? (
@@ -654,7 +643,7 @@ export default function CardTerminalBatchesManager() {
                         No se encontraron movimientos bancarios compatibles en ±4 días
                       </div>
                     ) : (
-                      <div className="divide-y divide-zinc-800 max-h-56 overflow-y-auto">
+                      <div className="divide-y divide-border max-h-56 overflow-y-auto">
                         {suggestions.map(bm => {
                           const score = bm.confidenceScore;
                           const scoreColor = score >= 70 ? "text-success" : score >= 40 ? "text-warning" : "text-muted-foreground";
