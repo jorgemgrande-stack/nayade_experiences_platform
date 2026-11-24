@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Calendar, List, Settings, Users, ChevronLeft, ChevronRight,
-  CheckCircle, XCircle, Clock, Loader2, Phone, Mail, RefreshCw,
+  CheckCircle, XCircle, Clock, Loader2, Phone, UtensilsCrossed, Mail, RefreshCw,
   AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban, Images, OctagonX,
 } from "lucide-react";
 import ImageUploader from "@/components/ImageUploader";
@@ -551,20 +554,20 @@ export default function RestaurantsManager() {
 
   if (loadingRest) return (
     <AdminLayout>
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
-      </div>
+      <PanelLoading className="h-64" />
     </AdminLayout>
   );
 
   // ── Selector de restaurante ──────────────────────────────────────────────
   if (!selectedRestaurantId) return (
     <AdminLayout>
-      <div className="p-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl font-heading font-bold text-foreground">Gestión de Restaurantes</h1>
-          {isAdmin && (
-            <div className="flex items-center gap-2">
+      <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+        <PanelPageHeader
+          icon={<UtensilsCrossed />}
+          title="Gestión de Restaurantes"
+          description="Selecciona un restaurante para gestionar sus reservas."
+          actions={isAdmin ? (
+            <>
               <Button
                 onClick={() => setShowNewRestaurant(true)}
                 className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
@@ -580,19 +583,22 @@ export default function RestaurantsManager() {
                   <Trash2 className="w-4 h-4" /> Eliminar
                 </Button>
               )}
-            </div>
-          )}
-        </div>
-        <p className="text-muted-foreground font-display mb-8">Selecciona un restaurante para gestionar sus reservas.</p>
+            </>
+          ) : undefined}
+        />
         {!restaurants || restaurants.length === 0 ? (
-          <div className="bg-warning/10 border border-warning/40 rounded-xl p-6 flex gap-3">
-            <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-warning">No hay restaurantes configurados</p>
-              <p className="text-sm text-warning mt-1">{isAdmin ? "Crea el primero con el botón de arriba." : "Aún no tienes restaurantes asignados. Contacta con un administrador."}</p>
-            </div>
-          </div>
+          <PanelEmpty
+            icon={<UtensilsCrossed />}
+            title="No hay restaurantes configurados"
+            description={isAdmin ? "Crea el primero con el botón «Nuevo restaurante»." : "Aún no tienes restaurantes asignados. Contacta con un administrador."}
+          />
         ) : (
+          <>
+          <div className="mb-5 grid grid-cols-3 gap-3">
+            <MetricCard icon={<UtensilsCrossed />} label="Restaurantes" value={restaurants.length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard icon={<CheckCircle />} tone="success" label="Activos" value={restaurants.filter(r => r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard icon={<Ban />} tone="neutral" label="Inactivos" value={restaurants.filter(r => !r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {restaurants.map(r => (
               <button
@@ -605,7 +611,7 @@ export default function RestaurantsManager() {
                     <h3 className="font-heading font-bold text-foreground group-hover:text-accent transition-colors">{r.name}</h3>
                     <p className="text-sm text-muted-foreground font-display">{r.cuisine}</p>
                   </div>
-                  <span className={`text-xs font-display font-semibold px-2 py-1 rounded-full ${r.isActive ? "bg-success/10 text-success" : "bg-gray-100 text-gray-500"}`}>
+                  <span className={`text-xs font-display font-semibold px-2 py-1 rounded-full ${r.isActive ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
                     {r.isActive ? "Activo" : "Inactivo"}
                   </span>
                 </div>
@@ -618,6 +624,7 @@ export default function RestaurantsManager() {
               </button>
             ))}
           </div>
+          </>
         )}
         {showNewRestaurant && (
           <NewRestaurantModal
@@ -638,19 +645,16 @@ export default function RestaurantsManager() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSelectedRestaurantId(null)} className="p-2 rounded-xl hover:bg-muted transition-colors">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-xl font-heading font-bold text-foreground">{selectedRestaurant?.name}</h1>
-              <p className="text-sm text-muted-foreground font-display">{selectedRestaurant?.cuisine}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+        <PanelPageHeader
+          icon={<UtensilsCrossed />}
+          title={selectedRestaurant?.name ?? "Restaurante"}
+          description={selectedRestaurant?.cuisine}
+          actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setSelectedRestaurantId(null)} className="rounded-full">
+              <ChevronLeft className="w-4 h-4 mr-1" /> Restaurantes
+            </Button>
             {/* Botón nueva reserva */}
             <Button
               onClick={() => setShowNewBooking(true)}
@@ -684,11 +688,12 @@ export default function RestaurantsManager() {
                 </button>
               ))}
             </div>
-            <button onClick={() => refetchBookings()} className="p-2 rounded-xl hover:bg-muted transition-colors" title="Actualizar">
+            <button onClick={() => refetchBookings()} className="p-2 rounded-xl hover:bg-muted transition-colors" title="Actualizar" aria-label="Actualizar">
               <RefreshCw className="w-4 h-4" />
             </button>
-          </div>
-        </div>
+          </>
+          }
+        />
 
         {/* Banner de éxito tras crear reserva */}
         {successLocator && (
@@ -709,6 +714,14 @@ export default function RestaurantsManager() {
         {/* ── VISTA LISTA ── */}
         {viewMode === "list" && (
           <div>
+            {!loadingBookings && bookings && bookings.length > 0 && (
+              <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <MetricCard icon={<Calendar />} label="Reservas en la lista" value={bookings.length} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<Users />} tone="info" label="Comensales" value={bookings.reduce((s, b) => s + (b.guests ?? 0), 0)} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<Clock />} tone="warning" label="Pendientes" value={bookings.filter(b => b.status === "pending_payment").length} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<CheckCircle />} tone="success" label="Confirmadas" value={bookings.filter(b => b.status === "confirmed").length} className="bg-gradient-to-br from-primary/5 to-card" />
+              </div>
+            )}
             {/* Filtros */}
             <div className="flex gap-2 mb-5 flex-wrap">
               {(["all","pending","confirmed","cancelled","no_show"] as StatusFilter[]).map(s => (
@@ -724,20 +737,16 @@ export default function RestaurantsManager() {
               ))}
             </div>
             {loadingBookings ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="w-6 h-6 animate-spin text-accent" />
-              </div>
+              <PanelLoading />
             ) : !bookings || bookings.length === 0 ? (
-              <div className="bg-muted/50 rounded-xl p-12 text-center">
-                <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground font-display">No hay reservas con este filtro.</p>
+              <PanelEmpty icon={<Calendar />} title="No hay reservas con este filtro" description="Cambia el filtro o crea una reserva desde recepción.">
                 <Button
                   onClick={() => setShowNewBooking(true)}
-                  className="mt-4 bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold"
+                  className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold"
                 >
                   <Plus className="w-4 h-4 mr-2" /> Crear primera reserva
                 </Button>
-              </div>
+              </PanelEmpty>
             ) : (
               <div className="space-y-3">
                 {bookings.map(b => (

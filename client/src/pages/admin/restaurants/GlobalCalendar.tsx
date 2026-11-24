@@ -1,8 +1,11 @@
 import { useState, useMemo } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import {
-  ChevronLeft, ChevronRight, Loader2, CreditCard, CheckCircle,
+  ChevronLeft, ChevronRight, CalendarDays, CreditCard, CheckCircle,
   Phone, Users, UtensilsCrossed, Clock, Filter, Ban,
 } from "lucide-react";
 
@@ -71,7 +74,7 @@ export default function GlobalCalendar() {
 
   const yearMonth = formatYearMonth(calMonth);
 
-  const { data, isLoading } = trpc.restaurants.adminGetGlobalCalendar.useQuery({
+  const { data, isLoading, error, refetch } = trpc.restaurants.adminGetGlobalCalendar.useQuery({
     yearMonth,
     restaurantId: filterRestaurantId ?? undefined,
   });
@@ -107,15 +110,12 @@ export default function GlobalCalendar() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-heading font-bold text-foreground">Calendario Global</h1>
-            <p className="text-sm text-muted-foreground font-display">Todas las reservas de restaurantes en una vista unificada</p>
-          </div>
-
-          {/* Filtro por restaurante */}
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+        <PanelPageHeader
+          icon={<CalendarDays />}
+          title="Calendario Global"
+          description="Todas las reservas de restaurantes en una vista unificada"
+          actions={
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-muted-foreground" />
             <select
@@ -132,7 +132,10 @@ export default function GlobalCalendar() {
               ))}
             </select>
           </div>
-        </div>
+          }
+        />
+
+        {error && <PanelError error={error} onRetry={() => void refetch()} className="mb-6" />}
 
         {/* Leyenda de restaurantes */}
         {data && data.restaurants.length > 0 && (
@@ -193,9 +196,7 @@ export default function GlobalCalendar() {
 
               {/* Celdas del calendario */}
               {isLoading ? (
-                <div className="flex items-center justify-center h-48">
-                  <Loader2 className="w-6 h-6 animate-spin text-accent" />
-                </div>
+                <PanelLoading />
               ) : (
                 <div className="grid grid-cols-7 gap-1">
                   {calDays().map((day, i) => {
@@ -253,28 +254,10 @@ export default function GlobalCalendar() {
             {/* Resumen del mes */}
             {data && (
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-card rounded-xl border border-border/40 p-3 text-center">
-                  <div className="text-2xl font-heading font-bold text-accent">{data.bookings.length}</div>
-                  <div className="text-xs text-muted-foreground font-display">Total reservas</div>
-                </div>
-                <div className="bg-card rounded-xl border border-border/40 p-3 text-center">
-                  <div className="text-2xl font-heading font-bold text-success">
-                    {data.bookings.filter(b => b.status === "confirmed").length}
-                  </div>
-                  <div className="text-xs text-muted-foreground font-display">Confirmadas</div>
-                </div>
-                <div className="bg-card rounded-xl border border-border/40 p-3 text-center">
-                  <div className="text-2xl font-heading font-bold text-warning">
-                    {data.bookings.filter(b => b.status === "pending" || b.status === "pending_payment").length}
-                  </div>
-                  <div className="text-xs text-muted-foreground font-display">Pendientes</div>
-                </div>
-                <div className="bg-card rounded-xl border border-border/40 p-3 text-center">
-                  <div className="text-2xl font-heading font-bold text-foreground">
-                    {data.bookings.reduce((s, b) => s + b.guests, 0)}
-                  </div>
-                  <div className="text-xs text-muted-foreground font-display">Comensales</div>
-                </div>
+                <MetricCard icon={<CalendarDays />} label="Total reservas" value={data.bookings.length} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<CheckCircle />} tone="success" label="Confirmadas" value={data.bookings.filter(b => b.status === "confirmed").length} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<Clock />} tone="warning" label="Pendientes" value={data.bookings.filter(b => b.status === "pending" || b.status === "pending_payment").length} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<Users />} tone="info" label="Comensales" value={data.bookings.reduce((s, b) => s + b.guests, 0)} className="bg-gradient-to-br from-primary/5 to-card" />
               </div>
             )}
           </div>
