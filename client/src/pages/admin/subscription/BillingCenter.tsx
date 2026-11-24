@@ -31,26 +31,13 @@ import type {
   TenantBillingCenter,
 } from "@shared/billingCenter";
 
-/**
- * TODO(integración): `subscription.billingCenter` y `subscription.billingInvoiceLinks` los implementa el router del
- * Core en otra rama; hasta integrarla no existen en los tipos de `trpc.subscription`, de ahí el `as any`. Al integrar,
- * sustituir por `trpc.subscription.billingCenter.useQuery()` y `trpc.subscription.billingInvoiceLinks.useMutation()`.
- */
+/** Centro de suscripción de ESTA empresa (el servidor lo resuelve desde la sesión; null sin canal con el plano de control). */
 export function useBillingCenter(enabled = true) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const q = (trpc.subscription as any).billingCenter.useQuery(undefined, { retry: false, staleTime: 60_000, enabled }) as {
-    data: TenantBillingCenter | null | undefined;
-    isLoading: boolean;
-    isError: boolean;
-  };
-  return q;
+  return trpc.subscription.billingCenter.useQuery(undefined, { retry: false, staleTime: 60_000, enabled });
 }
 
 function useInvoiceLinks() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (trpc.subscription as any).billingInvoiceLinks.useMutation() as {
-    mutateAsync: (input: { id: string }) => Promise<BillingInvoiceLinks>;
-  };
+  return trpc.subscription.billingInvoiceLinks.useMutation();
 }
 
 export const STAGE_TONE: Record<BillingStage, Tone> = {
