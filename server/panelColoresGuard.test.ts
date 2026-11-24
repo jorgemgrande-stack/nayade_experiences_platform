@@ -59,6 +59,20 @@ const MIGRATED = [
   "components/connect/SheetBlocks.tsx",
   "pages/admin/crm/ProposalsPage.tsx",
   "pages/admin/crm/CrmTags.tsx",
+  "pages/admin/gestoria/GestoriaAplazamientos.tsx",
+  "pages/admin/gestoria/GestoriaCalendario.tsx",
+  "pages/admin/gestoria/GestoriaConfiguracion.tsx",
+  "pages/admin/gestoria/GestoriaDashboard.tsx",
+  "pages/admin/gestoria/GestoriaExpedientes.tsx",
+  "pages/admin/gestoria/GestoriaIVA.tsx",
+  "pages/admin/gestoria/GestoriaLaboral.tsx",
+  "pages/admin/gestoria/GestoriaSociedades.tsx",
+  "pages/admin/gestoria/GestoriaParts.tsx",
+  "pages/admin/accounting/CostCentersManager.tsx",
+  "pages/admin/accounting/ExpenseCategoriesManager.tsx",
+  "pages/admin/accounting/ExpenseSuppliersManager.tsx",
+  "pages/admin/accounting/FinanceSyncSetup.tsx",
+  "pages/admin/accounting/RecurringExpensesManager.tsx",
 ];
 
 /** Pendientes de migrar (pantallas del panel de Essential): líneas con colores fijos hoy. Solo pueden bajar. */
