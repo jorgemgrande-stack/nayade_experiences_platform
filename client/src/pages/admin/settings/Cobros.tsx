@@ -97,11 +97,11 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
             </p>
           )}
           {m.accountHint && (
-            <dl className="grid grid-cols-2 gap-2 text-sm">
+            <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-x-4 gap-y-1.5 text-sm">
               <dt className="text-muted-foreground">{t("settingsPayments.linkedAccount")}</dt>
-              <dd className="font-mono">{m.accountHint}</dd>
+              <dd className="font-mono break-all">{m.accountHint}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.linkedOn")}</dt>
-              <dd>{fmt(m.connectedAt)}</dd>
+              <dd className="break-words">{fmt(m.connectedAt)}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.canCharge")}</dt>
               <dd>{m.chargesEnabled ? t("settingsPayments.yes") : t("settingsPayments.no")}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.canPayout")}</dt>
@@ -121,7 +121,14 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
+          {/* Acciones: la secundaria (comprobar) a la izquierda y la principal a la derecha */}
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            {m.accountHint && (
+              <Button variant="outline" onClick={() => refresh.mutate({ mode: m.mode })} disabled={refresh.isPending}>
+                {refresh.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {t("settingsPayments.checkStatus")}
+              </Button>
+            )}
             {isLive ? (
               <Button onClick={() => connectLive.mutate()} disabled={connectLive.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
                 {connectLive.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -131,12 +138,6 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
               <Button onClick={() => connect.mutate()} disabled={!platformReady || connect.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
                 {connect.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {m.accountHint ? t("settingsPayments.continueReview") : t("settingsPayments.connectAccount")}
-              </Button>
-            )}
-            {m.accountHint && (
-              <Button variant="outline" onClick={() => refresh.mutate({ mode: m.mode })} disabled={refresh.isPending}>
-                {refresh.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {t("settingsPayments.checkStatus")}
               </Button>
             )}
           </div>

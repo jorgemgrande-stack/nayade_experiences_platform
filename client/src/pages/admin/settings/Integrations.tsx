@@ -64,7 +64,7 @@ export function FieldInput({ p, f, value, onChange, error }: { p: PanelIntegrati
       ) : (
         <input
           id={id}
-          className={`w-full h-10 rounded-lg border bg-background px-3 text-sm ${error ? "border-danger/40" : "border-border/60"}`}
+          className={`w-full h-10 rounded-lg border bg-background px-3 text-sm ${error ? "border-danger ring-1 ring-danger/30" : "border-border/60"}`}
           type={f.secret ? "password" : "text"}
           autoComplete="off"
           spellCheck={false}
@@ -148,18 +148,31 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
         }}
       >
         {p.stateDetail && <p className={`text-xs ${p.state === "failing" ? "text-danger" : "text-muted-foreground"}`}>{L(p.stateDetail)}</p>}
-        {p.fields.map((f) => (
-          <FieldInput key={f.key} p={p} f={f} value={vals[f.key]} error={errors[f.key]} onChange={(v) => setVals({ ...vals, [f.key]: v })} />
-        ))}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {p.fields.map((f) => (
+            <div key={f.key} className={f.control === "text" || f.control === "secret" ? "" : "sm:col-span-2"}>
+              <FieldInput p={p} f={f} value={vals[f.key]} error={errors[f.key]} onChange={(v) => setVals({ ...vals, [f.key]: v })} />
+            </div>
+          ))}
+        </div>
 
-        <div className="flex flex-wrap gap-2 pt-1">
-          <button
-            type="submit"
-            disabled={!dirty || hasErrors || save.isPending}
-            className="h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
-          >
-            {save.isPending ? t("settingsPayments.integrations.saving") : t("settingsPayments.integrations.save")}
-          </button>
+        {/* Barra de acciones: lo discreto a la izquierda, «Guardar» (principal) a la derecha */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-4">
+          {p.configured && (
+            <button
+              type="button"
+              className="h-10 px-3 rounded-lg text-sm text-danger hover:bg-danger/10"
+              onClick={async () => {
+                if (!(await confirmAction({ description: t("settingsPayments.integrations.confirmClear", { title: L(p.title) }), destructive: true }))) return;
+                await clear.mutateAsync({ provider: p.id });
+                setResult(null);
+                toast.success(t("settingsPayments.integrations.clearedToast", { title: L(p.title) }));
+                onChanged();
+              }}
+            >
+              {t("settingsPayments.integrations.clear")}
+            </button>
+          )}
           {p.canTest && (
             <button
               type="button"
@@ -177,21 +190,16 @@ function ProviderCard({ p, onChanged }: { p: PanelIntegration; onChanged: () => 
               {test.isPending ? t("settingsPayments.integrations.testing") : t("settingsPayments.integrations.test")}
             </button>
           )}
-          {p.configured && (
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            {!dirty && <span className="text-xs text-muted-foreground">{t("settingsPayments.integrations.noChanges")}</span>}
             <button
-              type="button"
-              className="h-10 px-4 rounded-lg text-sm text-danger"
-              onClick={async () => {
-                if (!(await confirmAction({ description: t("settingsPayments.integrations.confirmClear", { title: L(p.title) }), destructive: true }))) return;
-                await clear.mutateAsync({ provider: p.id });
-                setResult(null);
-                toast.success(t("settingsPayments.integrations.clearedToast", { title: L(p.title) }));
-                onChanged();
-              }}
+              type="submit"
+              disabled={!dirty || hasErrors || save.isPending}
+              className="h-10 px-5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
             >
-              {t("settingsPayments.integrations.clear")}
+              {save.isPending ? t("settingsPayments.integrations.saving") : t("settingsPayments.integrations.save")}
             </button>
-          )}
+          </div>
         </div>
         {result && (
           <p role="status" className={`text-sm ${result.ok ? "text-success" : "text-danger"}`}>
