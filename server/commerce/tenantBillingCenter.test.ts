@@ -170,3 +170,25 @@ describe("centro de suscripción: aislamiento entre empresas", () => {
     await expect(svc.center("tenant-z")).rejects.toMatchObject({ code: "not_found" });
   });
 });
+
+describe("centro de suscripción: acuerdo aceptado (contracting)", () => {
+  const withContracting = (c: Partial<NonNullable<TenantCustomTerms["contracting"]>>): TenantCustomTerms => ({
+    ...terms(6292),
+    contracting: { planName: "Business", extensions: ["WhatsApp AI", "Campaigns"], acceptedAt: D("2026-11-19T10:00:00Z"), stage: "activation_scheduled", paymentMethodAuthorized: true, trialActive: true, trialEndsAt: D("2026-11-28T20:53:00Z"), nextChargeAt: D("2026-11-28T20:53:00Z"), recurring: { netCents: 5200, taxCents: 1092, totalCents: 6292, currency: "EUR" }, ...c },
+  });
+  it("Quantum: plan contratado y extensiones, primer cobro PREVISTO del 28/11 con IVA, método autorizado y sin cobro real", () => {
+    const c = deriveBillingCenter(base({ terms: withContracting({}), sub: sub(), row: row({ stripeStatus: "trialing", currentPeriodEnd: D("2026-11-28T20:53:00Z") }), stripeInvoices: [sinv({ stripeInvoiceId: "in_demo_0", number: "LV-0004", subtotalCents: 0, taxCents: 0, totalCents: 0, amountPaidCents: 0 })] }));
+    expect(c.stage).toBe("trial_authorized");
+    expect(c.contracted?.planName).toBe("Business");
+    expect(c.included).toEqual(["Business", "WhatsApp AI", "Campaigns"]);
+    expect(c.nextCharge).toMatchObject({ at: D("2026-11-28T20:53:00Z"), estimatedTotalCents: 6292, basis: "trial_end" });
+    expect(c.paymentMethod.state).toBe("authorized");
+    expect(c.lastPayment).toBeNull();
+  });
+  it("método de pago sin autorizar (sin webhook verificado): no se da por registrado", () => {
+    const c = deriveBillingCenter(base({ terms: withContracting({ paymentMethodAuthorized: false, stage: "payment_pending", nextChargeAt: null }), sub: sub() }));
+    expect(c.stage).toBe("contract_pending_payment");
+    expect(c.paymentMethod.state).toBe("missing");
+    expect(c.nextCharge?.at ?? null).toBeNull();
+  });
+});

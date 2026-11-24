@@ -2098,6 +2098,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       },
     });
     let customTermsOfTenant: ReturnType<typeof tenantTermsReader> | null = null;
+    // Estado de cobro de la contratación (se enlaza más abajo, cuando existe el cobro de condiciones personalizadas)
+    let contractingStageOf: ((subscriptionId: number) => Promise<import("../commercialTerms/stripeBilling").ContractingStage | null>) | null = null;
     // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
     const orderStoreForTerms = d.orders?.store;
     let termsBilling: TermsBillingService | null = null;
@@ -2206,7 +2208,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       router.use(createTermsBillingRouter(termsBilling));
     }
     // Lo que la empresa ve de sus condiciones (solo lectura, con la presentación elegida): lo usa «Mi plan»
-    customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now) : null;
+    customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now, (sid) => (contractingStageOf ? contractingStageOf(sid) : Promise.resolve(null))) : null;
     // Antes de calcular un periodo se resuelve el fin de las condiciones temporales (tarifa oficial vigente ese día)
     const shadowBilling = new ShadowBillingService({
       store: d.subscriptions.store,
@@ -2750,6 +2752,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             },
             stage: (sid) => nb.stage(sid),
           });
+          contractingStageOf = (sid) => nb.stage(sid);
         }
         const negotiated = negotiatedBilling;
         const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, negotiated: negotiated ? { handleSession: (id) => negotiated.handleSession(id), handleSubscription: (sub, hint) => negotiated.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => negotiated.handleCharge(c, inv, sub) } : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined, charges: { handleSession: (id) => (chargePaymentsRef.svc ? chargePaymentsRef.svc.handleSession(id) : Promise.resolve(null)) } });

@@ -163,11 +163,13 @@ export function deriveBillingCenter(i: BillingCenterInput): TenantBillingCenter 
     : i.order?.contract && i.order.contract.recurringNetCents !== null
       ? { netCents: i.order.contract.recurringNetCents, taxCents: 0, totalCents: i.order.contract.recurringNetCents, currency: i.order.contract.currency }
       : null;
-  const nextAt = row ? (cancelling || stage === "canceled" ? null : row.currentPeriodEnd) : (i.order?.period?.renewsAt ?? null);
+  const contracting = i.terms?.contracting ?? null;
+  // Con cobro de Stripe: su fecha (fin de la prueba o del periodo); sin él, la del acuerdo aceptado o la del pedido. Nunca el periodo interno del CRM
+  const nextAt = row ? (cancelling || stage === "canceled" ? null : row.currentPeriodEnd) : (contracting?.nextChargeAt ?? i.order?.period?.renewsAt ?? null);
   const nextCharge =
-    stage === "no_contract" || stage === "canceled" || (!nextAt && !feeSrc)
+    stage === "no_contract" || stage === "canceled" || cancelling || (!nextAt && !feeSrc)
       ? null
-      : { at: nextAt, estimatedTotalCents: i.terms ? i.terms.today.totalCents : null, currency: feeSrc?.currency ?? "EUR", basis: row ? (trialing ? ("trial_end" as const) : ("period_end" as const)) : nextAt ? ("period_end" as const) : null };
+      : { at: nextAt, estimatedTotalCents: contracting?.recurring?.totalCents ?? (i.terms ? i.terms.today.totalCents : null), currency: feeSrc?.currency ?? "EUR", basis: row ? (trialing ? ("trial_end" as const) : ("period_end" as const)) : nextAt ? (contracting?.trialActive ? ("trial_end" as const) : ("period_end" as const)) : null };
   const stripeStatus = row?.stripeStatus ?? null;
   const custom = !!i.terms;
   const selfService = !custom && stage !== "payment_issue" && stage !== "suspended" && stage !== "canceled";
@@ -175,16 +177,17 @@ export function deriveBillingCenter(i: BillingCenterInput): TenantBillingCenter 
     company: { name: i.companyName },
     stage,
     customTerms: custom,
-    trial: i.sub?.trialEnd || trialing ? { planName: null, endsAt: trialing ? row!.currentPeriodEnd : (i.sub?.trialEnd ?? null) } : null,
-    contracted: stage === "no_contract" ? null : { planName: i.planName ?? i.order?.contract?.plan ?? null, interval, reference: i.order?.contract?.reference ?? null },
+    trial: contracting?.trialActive || i.sub?.trialEnd || trialing ? { planName: null, endsAt: trialing ? row!.currentPeriodEnd : (contracting?.trialEndsAt ?? i.sub?.trialEnd ?? null) } : null,
+    contracted: stage === "no_contract" ? null : { planName: contracting?.planName ?? i.planName ?? i.order?.contract?.plan ?? null, interval, reference: i.order?.contract?.reference ?? null },
     stripeStatus,
-    included: i.terms ? i.terms.current.included.map((x) => x.name) : (i.order?.contract?.items ?? []),
+    included: i.terms ? (contracting ? [...(contracting.planName ? [contracting.planName] : []), ...contracting.extensions] : i.terms.current.included.map((x) => x.name)) : (i.order?.contract?.items ?? []),
     fee: feeSrc ? { ...feeSrc, interval } : null,
     nextCharge,
     lastPayment: lastReal && lastReal.status === "paid" ? { at: lastReal.at, amountCents: lastReal.amountCents, currency: lastReal.currency, invoiceNumber: lastReal.invoiceNumber } : null,
     // Periodo de facturación de Stripe (en prueba, hasta el fin de la prueba); sin Stripe, el de la suscripción
     billingPeriod: row ? { start: i.sub?.currentPeriodStart ?? null, end: row.currentPeriodEnd } : i.order?.period ? { start: i.order.period.start, end: i.order.period.end } : null,
-    paymentMethod: { state: row ? "authorized" : i.order?.billing.provider === "stripe" ? "authorized" : stage === "contract_pending_payment" ? "missing" : "unknown" },
+    // Con acuerdo aceptado, el método solo cuenta como autorizado si el cobro se enlazó por webhook verificado de Stripe
+    paymentMethod: { state: contracting ? (contracting.paymentMethodAuthorized ? "authorized" : "missing") : row ? "authorized" : i.order?.billing.provider === "stripe" ? "authorized" : stage === "contract_pending_payment" ? "missing" : "unknown" },
     payments,
     invoices,
     actions: {
