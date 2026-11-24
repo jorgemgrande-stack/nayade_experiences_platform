@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,9 +23,9 @@ const PRIORITY_LABEL: Record<string, string> = { baja: "Baja", media: "Media", a
 const INCIDENT_LABEL: Record<string, string> = { abierta: "Abierta", en_curso: "En curso", resuelta: "Resuelta" };
 
 function statusClass(s: string) {
-  if (s === "inspeccionada") return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300";
-  if (s === "hecha") return "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300";
-  if (s === "en_curso") return "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300";
+  if (s === "inspeccionada") return "border-success/40 bg-success/10 text-success";
+  if (s === "hecha") return "border-info/40 bg-info/10 text-info";
+  if (s === "en_curso") return "border-warning/40 bg-warning/10 text-warning";
   return "border-border bg-muted text-muted-foreground";
 }
 
@@ -49,7 +51,7 @@ function TaskCard({ t, canManage, assignees, onChanged, onIncident }: {
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <Badge variant="outline" className={statusClass(t.status)}>{STATUS_LABEL[t.status] ?? t.status}</Badge>
-          <Badge variant="outline" className={`text-[10px] ${roomStateClass(t.roomStatus)}`}>{ROOM_STATE_LABEL[t.roomStatus] ?? t.roomStatus}</Badge>
+          <Badge variant="outline" className={`text-xs ${roomStateClass(t.roomStatus)}`}>{ROOM_STATE_LABEL[t.roomStatus] ?? t.roomStatus}</Badge>
         </div>
       </div>
       {t.notes && <p className="text-xs text-muted-foreground">{t.notes}</p>}
@@ -68,7 +70,7 @@ function TaskCard({ t, canManage, assignees, onChanged, onIncident }: {
         {(t.status === "pendiente" || t.status === "en_curso") && <Button className="h-10 flex-1 min-w-[120px]" onClick={() => go("hecha")} disabled={busy}><CheckCircle2 className="h-4 w-4 mr-1" /> Hecha</Button>}
         {t.status === "hecha" && canManage && <Button className="h-10 flex-1 min-w-[120px]" onClick={() => go("inspeccionada")} disabled={busy}><ClipboardCheck className="h-4 w-4 mr-1" /> Inspeccionar</Button>}
         {t.status === "hecha" && <Button className="h-10" variant="outline" onClick={() => go("en_curso")} disabled={busy}>Reabrir</Button>}
-        <Button className="h-10" variant="ghost" onClick={() => onIncident(t)} title="Avisar de una incidencia"><AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" /><span className="sr-only">Incidencia</span></Button>
+        <Button className="h-10" variant="ghost" onClick={() => onIncident(t)} title="Avisar de una incidencia"><AlertTriangle className="h-4 w-4 text-warning" /><span className="sr-only">Incidencia</span></Button>
       </div>
     </div>
   );
@@ -139,7 +141,7 @@ function IncidentsPanel({ onReport }: { onReport: () => void }) {
         </Select>
         <Button size="sm" variant="outline" onClick={onReport}><AlertTriangle className="h-4 w-4 mr-1" /> Nueva incidencia</Button>
       </div>
-      {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : list.length === 0 ? (
+      {q.isLoading ? <PanelLoading /> : list.length === 0 ? (
         <p className="text-sm text-muted-foreground">{filter === "abiertas" ? "No hay incidencias abiertas." : "Sin incidencias resueltas."}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -234,20 +236,18 @@ export default function HotelHousekeeping() {
   return (
     <AdminLayout title="Housekeeping">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><Sparkles className="h-6 w-6 shrink-0" /> Housekeeping</h1>
-            <p className="text-muted-foreground text-sm">Limpieza y estado de las habitaciones del {shortDate(date)}. Cada cambio actualiza el estado de la habitación para recepción.</p>
-          </div>
+        <PanelPageHeader icon={<Sparkles />} title="Housekeeping" description={<>Limpieza y estado de las habitaciones del {shortDate(date)}. Cada cambio actualiza el estado de la habitación para recepción.</>}
+          actions={<>
           {dateBar}
-        </div>
+          </>}
+        />
 
         {isPmsNotInstalled(meQ.error) ? (
           <PmsNotInstalled />
         ) : meQ.isLoading ? (
-          <div className="text-center py-12 text-muted-foreground"><RefreshCw className="h-5 w-5 animate-spin inline mr-2" /> Cargando…</div>
+          <PanelLoading />
         ) : meQ.error ? (
-          <Card><CardContent className="p-6 text-sm text-destructive">{meQ.error.message}</CardContent></Card>
+          <PanelError error={meQ.error} onRetry={() => void meQ.refetch()} />
         ) : !canManage ? (
           <>
             {myList}
@@ -274,7 +274,7 @@ export default function HotelHousekeeping() {
                 </Select>
                 <span className="text-sm text-muted-foreground">{counts.done} de {counts.total} hechas · {counts.unassigned} sin asignar</span>
               </div>
-              {allQ.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : all.length === 0 ? (
+              {allQ.isLoading ? <PanelLoading /> : all.length === 0 ? (
                 <Card><CardContent className="p-0"><EmptyStep title="Sin tareas para este día" text="Pulsa «Generar tareas del día»: limpieza de salida para las habitaciones con salida, repaso para las ocupadas y limpieza para las sucias." /></CardContent></Card>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">

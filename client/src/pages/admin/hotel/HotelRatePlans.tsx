@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -77,13 +78,11 @@ export default function HotelRatePlans() {
   return (
     <AdminLayout title="Planes de tarifa">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><Tag className="h-6 w-6 shrink-0" /> Planes de tarifa</h1>
-            <p className="text-muted-foreground text-sm">Variantes de precio de cada tipología: tarifa flexible (BAR), no reembolsable, con desayuno… Se aplican sobre el precio de cada noche en la web y en recepción. Sin planes, el precio de siempre.</p>
-          </div>
+        <PanelPageHeader icon={<Tag />} title="Planes de tarifa" description={"Variantes de precio de cada tipología: tarifa flexible (BAR), no reembolsable, con desayuno… Se aplican sobre el precio de cada noche en la web y en recepción. Sin planes, el precio de siempre."}
+          actions={<>
           <Button onClick={() => setEdit(null)} disabled={!types.length || isPmsNotInstalled(q.error)}><Plus className="h-4 w-4 mr-1" /> Nuevo plan</Button>
-        </div>
+          </>}
+        />
         {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : !types.length && !typesQ.isLoading ? (
           <Card><CardContent className="p-0"><EmptyStep title="Crea primero una tipología" text="Los planes de tarifa son de cada tipología." href="/admin/hotel" action="Ir a tipologías" /></CardContent></Card>
         ) : plans.length === 0 && !q.isLoading ? (

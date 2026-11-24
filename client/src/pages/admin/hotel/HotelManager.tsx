@@ -2,6 +2,9 @@ import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +20,7 @@ import { toast } from "sonner";
 import ImageUploader from "@/components/ImageUploader";
 import {
   BedDouble, Plus, Pencil, Trash2, Eye, EyeOff, Star,
-  Users, Baby, Maximize2, ChevronLeft, ChevronRight, RefreshCw,
+  Users, Baby, Maximize2, ChevronLeft, ChevronRight, RefreshCw, CalendarDays,
 } from "lucide-react";
 import SupplierSelect from "@/components/SupplierSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -130,7 +133,8 @@ function RoomFormDialog({ open, onClose, editRoom }: {
           <DialogTitle>{editRoom ? "Editar tipología" : "Nueva tipología"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Datos básicos</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>Nombre *</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: slugify(e.target.value) }))} placeholder="Suite Junior" />
@@ -148,7 +152,8 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             <Label>Descripción completa</Label>
             <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={4} />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Capacidad y precio</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <Label>Precio base (€/noche) *</Label>
               <Input type="number" value={form.basePrice} onChange={e => setForm(f => ({ ...f, basePrice: e.target.value }))} placeholder="120" />
@@ -162,7 +167,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
               <Input type="number" min={0} value={form.maxChildren} onChange={e => setForm(f => ({ ...f, maxChildren: parseInt(e.target.value) || 0 }))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label>Superficie (m²)</Label>
               <Input type="number" value={form.surfaceM2} onChange={e => setForm(f => ({ ...f, surfaceM2: e.target.value }))} placeholder="28" />
@@ -172,23 +177,25 @@ function RoomFormDialog({ open, onClose, editRoom }: {
               <Input type="number" min={1} value={form.totalUnits} onChange={e => setForm(f => ({ ...f, totalUnits: parseInt(e.target.value) || 1 }))} />
             </div>
           </div>
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Imágenes</h3>
           <div>
             <Label>Imagen de portada</Label>
             <ImageUploader value={form.coverImageUrl} onChange={url => setForm(f => ({ ...f, coverImageUrl: url }))} />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div><Label>Imagen 2</Label><ImageUploader value={form.image1} onChange={url => setForm(f => ({ ...f, image1: url }))} /></div>
             <div><Label>Imagen 3</Label><ImageUploader value={form.image2} onChange={url => setForm(f => ({ ...f, image2: url }))} /></div>
             <div><Label>Imagen 4</Label><ImageUploader value={form.image3} onChange={url => setForm(f => ({ ...f, image3: url }))} /></div>
           </div>
+          <h3 className="border-b border-border pb-1 text-sm font-semibold text-foreground">Servicios y condiciones comerciales</h3>
           <div>
             <Label>Servicios incluidos (separados por coma)</Label>
             <Input value={form.amenities} onChange={e => setForm(f => ({ ...f, amenities: e.target.value }))} placeholder="WiFi, Desayuno, TV, Minibar..." />
           </div>
           {/* Descuento promocional */}
-          <div className="border rounded-lg p-4 space-y-3 bg-amber-50 dark:bg-amber-950/20">
-            <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-400">Descuento promocional</h4>
-            <div className="grid grid-cols-3 gap-3">
+          <div className="border rounded-lg p-4 space-y-3 bg-warning/10">
+            <h4 className="font-semibold text-sm text-warning">Descuento promocional</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <Label>Descuento (%)</Label>
                 <Input type="number" min={0} max={100} step={0.01} value={form.discountPercent}
@@ -207,9 +214,9 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             </div>
           </div>
           {/* Régimen fiscal */}
-          <div className="border rounded-lg p-4 space-y-3 bg-blue-50 dark:bg-blue-950/20">
-            <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-400">Régimen fiscal</h4>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="border rounded-lg p-4 space-y-3 bg-info/10">
+            <h4 className="font-semibold text-sm text-info">Régimen fiscal</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label>Régimen</Label>
                 <Select value={form.fiscalRegime} onValueChange={v => setForm(f => ({ ...f, fiscalRegime: v }))}>
@@ -245,9 +252,9 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             </div>
           </div>
           {/* Proveedor y liquidaciones */}
-          <div className="border rounded-lg p-4 space-y-3 bg-violet-50 dark:bg-violet-950/20">
-            <h4 className="font-semibold text-sm text-violet-700 dark:text-violet-400">Proveedor y liquidaciones</h4>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="border rounded-lg p-4 space-y-3 bg-primary/10">
+            <h4 className="font-semibold text-sm text-primary">Proveedor y liquidaciones</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="col-span-2">
                 <Label>Proveedor</Label>
                 <SupplierSelect value={form.supplierId} onChange={v => setForm(f => ({ ...f, supplierId: v }))} />
@@ -298,10 +305,11 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.isPresentialSale} onCheckedChange={v => setForm(f => ({ ...f, isPresentialSale: v }))} />
-              <Label className="text-violet-700 font-medium">Vendible en TPV</Label>
+              <Label className="text-primary font-medium">Vendible en TPV</Label>
             </div>
           </div>
         </div>
+        {(!form.name || !form.basePrice) && <p className="text-xs text-danger" role="alert">Para guardar, completa el nombre y el precio base (campos con *).</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleSubmit} disabled={isLoading || !form.name || !form.basePrice}>
@@ -371,9 +379,7 @@ function InventoryCalendar({ rooms }: { rooms: any[] }) {
             {DAYS.map(d => <div key={d} className="text-center text-xs text-muted-foreground font-medium py-1">{d}</div>)}
           </div>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Cargando...
-            </div>
+            <PanelLoading />
           ) : (
             <div className="grid grid-cols-7 gap-1">
               {blanks.map((_, i) => <div key={`b${i}`} />)}
@@ -386,10 +392,10 @@ function InventoryCalendar({ rooms }: { rooms: any[] }) {
                 const price = cell?.priceOverride ?? null;
                 const pct = total > 0 ? avail / total : 1;
                 const bgClass = avail === 0
-                  ? "bg-red-100 border-red-300 dark:bg-red-900/30 dark:border-red-700"
+                  ? "bg-danger/10 border-danger/40"
                   : pct < 0.4
-                    ? "bg-amber-50 border-amber-300 dark:bg-amber-900/20 dark:border-amber-700"
-                    : "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-700";
+                    ? "bg-warning/10 border-warning/40"
+                    : "bg-success/10 border-success/40";
 
                 return (
                   <button
@@ -398,19 +404,19 @@ function InventoryCalendar({ rooms }: { rooms: any[] }) {
                     className={`rounded-lg p-1.5 text-center border transition-all hover:scale-105 ${bgClass}`}
                   >
                     <div className="text-xs font-medium">{d}</div>
-                    <div className={`text-xs font-bold ${avail === 0 ? "text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-300"}`}>
+                    <div className={`text-xs font-bold ${avail === 0 ? "text-danger" : "text-muted-foreground"}`}>
                       {avail}/{total}
                     </div>
-                    {price && <div className="text-xs text-blue-600 dark:text-blue-400">{parseFloat(price).toFixed(0)}€</div>}
+                    {price && <div className="text-xs text-info">{parseFloat(price).toFixed(0)}€</div>}
                   </button>
                 );
               })}
             </div>
           )}
           <div className="flex gap-4 mt-4 justify-center text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-200 dark:bg-emerald-900 inline-block" /> Disponible</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-200 dark:bg-amber-900 inline-block" /> Pocas plazas</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-200 dark:bg-red-900 inline-block" /> Completo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-success/20 inline-block" /> Disponible</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-warning/20 inline-block" /> Pocas plazas</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-danger/20 inline-block" /> Completo</span>
           </div>
         </CardContent>
       </Card>
@@ -513,9 +519,9 @@ function RateSeasonsTab() {
       )}
 
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+        <PanelLoading />
       ) : (seasons ?? []).length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No hay temporadas configuradas.</div>
+        <PanelEmpty icon={<CalendarDays />} title="No hay temporadas configuradas" description="Las temporadas ajustan el precio de las noches en un rango de fechas." />
       ) : (
         <div className="space-y-2">
           {(seasons ?? []).map((s: any) => (
@@ -527,7 +533,7 @@ function RateSeasonsTab() {
                     {s.dateFrom} → {s.dateTo} · Multiplicador: ×{parseFloat(s.multiplier).toFixed(2)}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: s.id })} className="text-red-500 hover:text-red-700">
+                <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: s.id })} className="text-danger hover:text-danger/80">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </CardContent>
@@ -541,7 +547,7 @@ function RateSeasonsTab() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function HotelManager() {
-  const { data: rooms, isLoading } = trpc.hotel.adminGetRoomTypes.useQuery();
+  const { data: rooms, isLoading, error: roomsError, refetch: refetchRooms } = trpc.hotel.adminGetRoomTypes.useQuery();
   const [showForm, setShowForm] = useState(false);
   const [editRoom, setEditRoom] = useState<any>(null);
   const utils = trpc.useUtils();
@@ -558,18 +564,29 @@ export default function HotelManager() {
   return (
     <AdminLayout title="Hotel">
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Hotel</h1>
-          <p className="text-muted-foreground text-sm">Gestiona tipologías, tarifas e inventario</p>
+      <PanelPageHeader
+        icon={<BedDouble />}
+        title="Hotel"
+        description="Gestiona tipologías, tarifas e inventario"
+        actions={
+          <Button onClick={() => { setEditRoom(null); setShowForm(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> Nueva tipología
+          </Button>
+        }
+        className="mb-0"
+      />
+
+      {!isLoading && !roomsError && (rooms ?? []).length > 0 && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard icon={<BedDouble />} label="Tipologías" value={(rooms ?? []).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Eye />} tone="success" label="Activas" value={(rooms ?? []).filter((r: any) => r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<EyeOff />} tone="neutral" label="Inactivas" value={(rooms ?? []).filter((r: any) => !r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard icon={<Star />} tone="warning" label="Destacadas" value={(rooms ?? []).filter((r: any) => r.isFeatured).length} className="bg-gradient-to-br from-primary/5 to-card" />
         </div>
-        <Button onClick={() => { setEditRoom(null); setShowForm(true); }}>
-          <Plus className="h-4 w-4 mr-2" /> Nueva tipología
-        </Button>
-      </div>
+      )}
 
       <Tabs defaultValue="rooms">
-        <TabsList>
+        <TabsList className="h-auto max-w-full flex-wrap justify-start">
           <TabsTrigger value="rooms">Tipologías</TabsTrigger>
           <TabsTrigger value="inventory">Inventario / Calendario</TabsTrigger>
           <TabsTrigger value="rates">Temporadas de precio</TabsTrigger>
@@ -578,12 +595,13 @@ export default function HotelManager() {
         {/* ── Rooms ── */}
         <TabsContent value="rooms" className="mt-4">
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Cargando...</div>
+            <PanelLoading />
+          ) : roomsError ? (
+            <PanelError error={roomsError} onRetry={() => void refetchRooms()} />
           ) : (rooms ?? []).length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <BedDouble className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>No hay tipologías. Crea la primera.</p>
-            </div>
+            <PanelEmpty icon={<BedDouble />} title="Aún no hay tipologías" description="Crea la primera tipología (doble, suite…) con su precio y unidades para poder vender y gestionar habitaciones.">
+              <Button onClick={() => { setEditRoom(null); setShowForm(true); }}><Plus className="h-4 w-4 mr-2" /> Nueva tipología</Button>
+            </PanelEmpty>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {(rooms ?? []).map((room: any) => (
@@ -597,11 +615,11 @@ export default function HotelManager() {
                       </div>
                     )}
                     {room.isFeatured && (
-                      <Badge className="absolute top-2 left-2 bg-amber-500 text-white text-xs">
+                      <Badge className="absolute top-2 left-2 border border-warning/40 bg-warning/15 text-warning text-xs">
                         <Star className="h-3 w-3 mr-1" /> Destacado
                       </Badge>
                     )}
-                    <Badge className={`absolute top-2 right-2 text-xs ${room.isActive ? "bg-emerald-500" : "bg-slate-400"}`}>
+                    <Badge className={`absolute top-2 right-2 text-xs ${room.isActive ? "border border-success/40 bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
                       {room.isActive ? "Activo" : "Inactivo"}
                     </Badge>
                   </div>
@@ -625,7 +643,7 @@ export default function HotelManager() {
                       </Button>
                       <Button
                         size="sm" variant="outline"
-                        className="text-red-500 hover:text-red-700 ml-auto"
+                        className="text-danger hover:text-danger/80 ml-auto"
                         onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${room.name}"?`, destructive: true }))) deleteMut.mutate({ id: room.id }); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -641,7 +659,7 @@ export default function HotelManager() {
         {/* ── Inventory ── */}
         <TabsContent value="inventory" className="mt-4">
           {(rooms ?? []).length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">Primero crea al menos una tipología.</div>
+            <PanelEmpty icon={<BedDouble />} title="Primero crea una tipología" description="El inventario y el calendario se calculan sobre tus tipologías." />
           ) : (
             <InventoryCalendar rooms={rooms ?? []} />
           )}
