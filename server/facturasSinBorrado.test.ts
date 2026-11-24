@@ -5,9 +5,10 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 
 import { srcShows, esDictText } from "./i18nSource";
-const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/CRMDashboard.tsx"), "utf8");
+const src = crmDashboardFuentes();
 const router = fs.readFileSync(path.resolve(__dirname, "routers/crm.ts"), "utf8");
 
 describe("acciones de las facturas emitidas", () => {

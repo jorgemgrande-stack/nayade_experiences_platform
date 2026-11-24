@@ -145,10 +145,10 @@
     "geometriaAjena": 2
   },
   "pages/admin/crm/CRMDashboard.tsx": {
-    "coloresFijos": 27,
-    "hexEnClases": 74,
-    "textoMinusculo": 48,
-    "geometriaAjena": 11
+    "coloresFijos": 18,
+    "hexEnClases": 10,
+    "textoMinusculo": 9,
+    "geometriaAjena": 1
   },
   "pages/admin/crm/CancellationDetailModal.tsx": {
     "coloresFijos": 71,
@@ -176,6 +176,87 @@
   },
   "pages/admin/crm/ReservationTicket.tsx": {
     "coloresFijos": 2
+  },
+  "pages/admin/crm/modals/AnularReservaModal.tsx": {
+    "hexEnClases": 4,
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/modals/DirectQuoteModal.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 2,
+    "textoMinusculo": 2,
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/modals/LeadDetailModal.tsx": {
+    "coloresFijos": 2,
+    "hexEnClases": 2,
+    "textoMinusculo": 1
+  },
+  "pages/admin/crm/modals/LeadEditModal.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 6,
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/modals/NewLeadModal.tsx": {
+    "hexEnClases": 2
+  },
+  "pages/admin/crm/modals/NewReservationModal.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 6,
+    "geometriaAjena": 3
+  },
+  "pages/admin/crm/modals/QuoteBuilderModal.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 1,
+    "textoMinusculo": 2
+  },
+  "pages/admin/crm/modals/QuoteDetailModal.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 8,
+    "textoMinusculo": 3
+  },
+  "pages/admin/crm/modals/QuoteEditModal.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 3,
+    "textoMinusculo": 2
+  },
+  "pages/admin/crm/modals/ReservationDetailModal.tsx": {
+    "coloresFijos": 1,
+    "hexEnClases": 2,
+    "textoMinusculo": 3
+  },
+  "pages/admin/crm/shared/crmCommon.tsx": {
+    "hexEnClases": 4,
+    "textoMinusculo": 3,
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/tabs/BonosTab.tsx": {
+    "hexEnClases": 4,
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/tabs/CancellationsTab.tsx": {
+    "hexEnClases": 1,
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/tabs/InvoicesTab.tsx": {
+    "hexEnClases": 3,
+    "textoMinusculo": 4,
+    "geometriaAjena": 1
+  },
+  "pages/admin/crm/tabs/LeadsTab.tsx": {
+    "hexEnClases": 1,
+    "textoMinusculo": 3
+  },
+  "pages/admin/crm/tabs/PendingPaymentsTab.tsx": {
+    "hexEnClases": 5
+  },
+  "pages/admin/crm/tabs/QuotesTab.tsx": {
+    "hexEnClases": 7,
+    "textoMinusculo": 7
+  },
+  "pages/admin/crm/tabs/ReservationsTab.tsx": {
+    "hexEnClases": 3,
+    "textoMinusculo": 9
   },
   "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
     "coloresFijos": 2,

@@ -4,6 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import JSZip from "jszip";
 import { describe, it, expect } from "vitest";
 import { transactionDescription } from "../shared/transactionText";
@@ -69,9 +70,9 @@ describe("contraste AA", () => {
   });
 
   it("textos marcados por la prueba integral con tokens del panel", () => {
-    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('<span className="text-info">{t("crmQuotes.env")}');
+    expect(crmDashboardFuentes()).toContain('<span className="text-info">{t("crmQuotes.env")}');
     expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toContain('<span className="text-info">{t("crmProposals.list.sentOn"');
-    expect(read("client/src/pages/admin/crm/CRMDashboard.tsx")).toMatch(/aceptado: +\{ label: (?:"Aceptado"|t\("crmQuotes\.aceptado"\)), +className: TONE_BADGE\.success \}/);
+    expect(crmDashboardFuentes()).toMatch(/aceptado: +\{ label: (?:"Aceptado"|t\("crmQuotes\.aceptado"\)), +className: TONE_BADGE\.success \}/);
     expect(read("client/src/pages/admin/crm/ProposalsManager.tsx")).toMatch(/aceptado: +\{ className: TONE_BADGE\.success \}/);
     const reports = read("client/src/pages/admin/accounting/AccountingReports.tsx");
     expect(reports).toContain('className="gap-2 text-foreground">');

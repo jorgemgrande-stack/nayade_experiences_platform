@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { formatDayEs } from "../shared/formatDay";
 
 (globalThis as { React?: unknown }).React = React;
@@ -57,7 +58,7 @@ describe("formato de España", () => {
 
   it("ninguna pantalla del TPV, del CRM ni de pago pinta importes con toFixed seguido de €", () => {
     for (const f of FILES) {
-      const src = fs.readFileSync(path.resolve(__dirname, "..", f), "utf8");
+      const src = f.endsWith("crm/CRMDashboard.tsx") ? crmDashboardFuentes() : fs.readFileSync(path.resolve(__dirname, "..", f), "utf8");
       expect(src, f).not.toMatch(/toFixed\(2\)\}[\s\u00a0]?€/);
       expect(src, f).not.toMatch(/\{(amountEuros|depositEuros)\}[\s\u00a0]?€/);
     }
