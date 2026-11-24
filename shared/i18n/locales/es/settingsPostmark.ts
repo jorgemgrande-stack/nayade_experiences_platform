@@ -22,7 +22,16 @@ export default {
   introBefore:
     "Opcional. Tus confirmaciones, facturas y avisos salen por tu propia cuenta de Postmark, con tu dominio, y en la ficha de cada cliente ves si le han llegado. Mientras no lo actives, se envían igualmente desde el servicio de correo de Elephant Source. Las campañas comerciales no pasan por Postmark: se envían con ",
   introLink: "Brevo marketing",
+  stepDone: "Completado",
+  stepPending: "Pendiente",
+  progress: "{done} de {total} pasos completados",
+  saving: "Guardando…",
+  unsaved: "Tienes cambios sin guardar",
   routes: {
+    inUse: "En uso",
+    cardPostmark: "Esta pantalla. Solo para correos transaccionales; Postmark te factura directamente.",
+    cardSmtp: "Tu servidor SMTP, en",
+    cardElephant: "Si no configuras otra vía, y como respaldo si Postmark rechaza tu cuenta. Con los límites del servicio.",
     title: "Cómo salen tus correos",
     included: "Está incluido en tu plan (Essential, Business y Enterprise), sin coste adicional en Elephant Source. Puedes usar una de estas tres vías:",
     postmarkLead: "Tu cuenta de Postmark",
