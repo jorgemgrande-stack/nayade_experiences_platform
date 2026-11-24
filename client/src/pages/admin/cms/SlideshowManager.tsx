@@ -11,6 +11,7 @@ import { useVocabulary } from "@/lib/vocabulary";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { PanelError } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { Button } from "@/components/ui/button";
 
@@ -174,6 +175,7 @@ export default function SlideshowManager() {
   return (
     <AdminLayout title={tx("Carrusel de portada")}>
       <div className="px-6 py-6">
+        <CmsSectionNav />
         <PanelPageHeader
           icon={<SlidersHorizontal />}
           title={tx("Carrusel de portada")}
