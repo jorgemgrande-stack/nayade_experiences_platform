@@ -7,6 +7,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -44,22 +46,21 @@ export default function GestoriaDashboard() {
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-6xl mx-auto">
         {/* Cabecera */}
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Landmark className="w-6 h-6 text-primary" /> Dashboard Fiscal
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Situación fiscal del ejercicio · Modelos 303, 390, 111, 190, 200 y 202
-            </p>
-          </div>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        <PanelPageHeader
+          icon={<Landmark />}
+          title="Dashboard Fiscal"
+          description="Situación fiscal del ejercicio · Modelos 303, 390, 111, 190, 200 y 202"
+          actions={
+            <>
+            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            </>
+          }
+        />
 
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -99,7 +100,7 @@ export default function GestoriaDashboard() {
             <Wallet className="w-4 h-4" /> Tesorería fiscal — previsión de liquidez
           </h2>
           {!treasuryQ.data ? (
-            <p className="text-sm text-muted-foreground">Calculando…</p>
+            <PanelLoading className="py-4" label="Calculando…" />
           ) : (
             <div className="grid grid-cols-3 gap-3">
               {treasuryQ.data.buckets.map((b) => {
@@ -139,7 +140,7 @@ export default function GestoriaDashboard() {
             </button>
           </div>
           {!s || s.upcoming.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay vencimientos próximos.</p>
+            <PanelEmpty icon={<CalendarClock className="w-5 h-5" />} title="No hay vencimientos próximos" className="border-0" />
           ) : (
             <div className="space-y-1.5">
               {s.upcoming.map((o) => {

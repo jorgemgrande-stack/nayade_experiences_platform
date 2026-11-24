@@ -8,6 +8,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -67,26 +69,27 @@ export default function GestoriaSociedades() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-3xl mx-auto">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Building2 className="w-6 h-6 text-primary" /> Impuesto sobre Sociedades
-            </h1>
-            <p className="text-sm text-muted-foreground">Modelos 200 y 202 · estimación</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
-              <RefreshCw className={`w-4 h-4 ${recalcMut.isPending ? "animate-spin" : ""}`} />
-              Recalcular ejercicio
-            </Button>
-          </div>
-        </div>
+        <PanelPageHeader
+          icon={<Building2 />}
+          title="Impuesto sobre Sociedades"
+          description="Modelos 200 y 202 · estimación"
+          actions={
+            <>
+            <div className="flex items-center gap-2">
+              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
+                <RefreshCw className={`w-4 h-4 ${recalcMut.isPending ? "animate-spin" : ""}`} />
+                Recalcular ejercicio
+              </Button>
+            </div>
+            </>
+          }
+        />
 
         {/* Aviso de estimación */}
         <div className="flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
@@ -97,8 +100,10 @@ export default function GestoriaSociedades() {
           </span>
         </div>
 
-        {previewQ.isLoading || !c ? (
-          <div className="py-12 text-center"><RefreshCw className="w-5 h-5 animate-spin mx-auto text-muted-foreground" /></div>
+        {previewQ.isError ? (
+          <PanelError error={previewQ.error} onRetry={() => previewQ.refetch()} />
+        ) : previewQ.isLoading || !c ? (
+          <PanelLoading />
         ) : (
           <>
             {/* Cuenta de resultados */}
