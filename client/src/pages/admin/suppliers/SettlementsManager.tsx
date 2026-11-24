@@ -604,9 +604,9 @@ export default function SettlementsManager() {
                         {(preview?.lines ?? []).map((l: PreviewLine, i: number) => (
                           <tr key={i} className="border-b last:border-0">
                             <td className="py-2 px-3">{l.productName}</td>
-                            <td className="py-2 px-2 text-right">{fmt(l.saleAmount)} €</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right">{fmt(l.saleAmount)} €</td>
                             <td className="py-2 px-2 text-right text-warning">{fmt(l.commissionAmount)} € ({l.commissionPercent}%)</td>
-                            <td className="py-2 px-2 text-right font-semibold text-success">{fmt(l.netAmountProvider)} €</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right font-semibold text-success">{fmt(l.netAmountProvider)} €</td>
                           </tr>
                         ))}
                       </tbody>
@@ -614,9 +614,9 @@ export default function SettlementsManager() {
                         <tfoot className="bg-muted/40 font-semibold">
                           <tr>
                             <td className="py-2 px-3 text-foreground">TOTAL</td>
-                            <td className="py-2 px-2 text-right">{fmt(preview.totals.grossAmount)} €</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right">{fmt(preview.totals.grossAmount)} €</td>
                             <td className="py-2 px-2 text-right text-warning">{fmt(preview.totals.commissionAmount)} €</td>
-                            <td className="py-2 px-2 text-right text-success">{fmt(preview.totals.netAmountProvider)} €</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right text-success">{fmt(preview.totals.netAmountProvider)} €</td>
                           </tr>
                         </tfoot>
                       )}
