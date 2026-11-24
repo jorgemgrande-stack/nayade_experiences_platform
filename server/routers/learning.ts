@@ -11,10 +11,10 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
-import { LearningRuleError, START_MODES, courseOpensFor, evaluateAny } from "../../shared/learning";
+import { LearningRuleError, START_MODES, courseOpensFor, evaluateAny, moduleWindow } from "../../shared/learning";
 import { randomBytes } from "node:crypto";
 import {
-  LearningError, addModules, grantDemo, canAccessModule, enrollmentEvents, enrollmentViews, extendEnrollment, getEnrollment, grantAdmin, grantFromPayment, isMissingLearningSchema,
+  LearningError, addModules, extendModuleAccess, grantDemo, canAccessModule, enrollmentEvents, enrollmentViews, extendEnrollment, getEnrollment, grantAdmin, grantFromPayment, isMissingLearningSchema,
   grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
@@ -70,9 +70,14 @@ const my = router({
       return {
         course: { id: Number(course.id), slug: String(course.slug), title: String(course.title), description: course.description ?? null, language: String(course.language) },
         modules: modules.map((m) => {
-          const unlocked = evaluateAny(views, Number(m.id), now).allowed;
+          const dec = evaluateAny(views, Number(m.id), now);
+          const unlocked = dec.allowed;
+          // Módulo aún no desbloqueado: se informa de la fecha («se desbloquea el …»); nunca de su contenido
+          const unlocksAt = !dec.allowed && dec.reason === "not_started" ? dec.unlocksAt ?? null : null;
+          const win = views.filter((v) => v.moduleIds.includes(Number(m.id))).map((v) => moduleWindow(v, Number(m.id)));
+          const endsAt = unlocked || unlocksAt != null ? (win.some((w) => w.endsAt == null) ? null : win.length ? Math.max(...win.map((w) => w.endsAt as number)) : null) : null;
           return {
-            id: Number(m.id), position: Number(m.position), title: String(m.title), unlocked,
+            id: Number(m.id), position: Number(m.position), title: String(m.title), unlocked, unlocksAt, endsAt,
             lessons: lessons.filter((l) => Number(l.module_id) === Number(m.id)).map((l) => ({ id: Number(l.id), position: Number(l.position), title: String(l.title), completed: done.has(Number(l.id)) })),
           };
         }),
@@ -159,7 +164,9 @@ const admin = router({
     };
   })),
   saveRule: adminProcedure
-    .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean() }))
+    .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean(),
+      permanent: z.boolean().optional(),
+      moduleSettings: z.array(z.object({ moduleId: id, unlockOffsetDays: z.number().int().min(0).max(3650).nullable().optional(), durationDays: z.number().int().min(1).max(3650).nullable().optional() })).max(50).optional() }))
     .mutation(({ input }) => guard(async () => ({ id: await saveRule({ ...input }, input.id) }))),
 
   /** Concesión administrativa expresamente registrada: motivo obligatorio, autor y huella en el historial. */
@@ -289,6 +296,10 @@ const admin = router({
   extend: adminProcedure.input(z.object({ enrollmentId: id, newEndsAt: z.number().int().nullable(), reason })).mutation(({ ctx, input }) => guard(() => extendEnrollment(input.enrollmentId, input.newEndsAt, input.reason, ctx.user.id))),
   addModules: adminProcedure.input(z.object({ enrollmentId: id, moduleIds: z.array(id).min(1).max(50), reason, paymentRef: z.string().max(190).nullable().optional() }))
     .mutation(({ ctx, input }) => guard(() => addModules(input.enrollmentId, input.moduleIds, input.reason, ctx.user.id, { paymentRef: input.paymentRef ?? null }))),
+  /** Ampliación individual de un módulo (+30/+60 días del catálogo; otra duración, solo administración). Idempotente por pedido+módulo+días. */
+  extendModule: adminProcedure
+    .input(z.object({ enrollmentId: id, moduleId: id, days: z.number().int().min(1).max(365), paymentRef: z.string().max(190).nullable().optional(), orderRef: z.string().max(190).nullable().optional() }))
+    .mutation(({ ctx, input }) => guard(() => extendModuleAccess(input.enrollmentId, input.moduleId, input.days, { paymentRef: input.paymentRef ?? null, orderRef: input.orderRef ?? null }, { userId: ctx.user.id, isAdmin: ctx.user.role === "admin" }))),
   get: adminProcedure.input(z.object({ enrollmentId: id })).query(({ input }) => guard(async () => (await getEnrollment(input.enrollmentId)) ?? (() => { throw new LearningError("NOT_FOUND", "La matrícula no existe."); })())),
   /**
    * Editor de formación (lote 1): borrador, publicación y versiones de la estructura y los textos. Editar NO cambia lo que ven los
