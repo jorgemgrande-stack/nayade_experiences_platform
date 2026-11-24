@@ -8,7 +8,7 @@ import AdminLayout from "@/components/AdminLayout";
 import ImageUploader from "@/components/ImageUploader";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
-import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge as ToneBadge, type Tone } from "@/components/admin/PanelUi";
 import CmsSectionNav from "./CmsSectionNav";
 import { TONE_SURFACE } from "@/lib/panelTones";
@@ -330,57 +330,40 @@ export default function BlogManager() {
         ) : list.error ? (
           <PanelError title={tx("No se han podido cargar las entradas")} error={list.error} onRetry={() => void list.refetch()} />
         ) : posts.length === 0 ? (
-          <div className="text-center py-16 border-2 border-dashed border-border rounded-xl bg-background">
-            <Newspaper size={32} className="mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-            <p className="font-medium">{tx("Aún no hay entradas")}</p>
-            <p className="text-sm text-muted-foreground mt-1">{tx("Escribe noticias, novedades o consejos para tus clientes.")}</p>
-            {writable && <Button className="mt-4" size="sm" onClick={() => setEditing(null)}><Plus size={14} className="mr-1" aria-hidden="true" />{tx("Crear la primera entrada")}</Button>}
-          </div>
+          <PanelEmpty icon={<Newspaper className="h-6 w-6" />} title={tx("Aún no hay entradas")} description={tx("Escribe noticias, novedades o consejos para tus clientes.")}>
+            {writable && <Button size="sm" onClick={() => setEditing(null)}><Plus size={14} className="mr-1" aria-hidden="true" />{tx("Crear la primera entrada")}</Button>}
+          </PanelEmpty>
         ) : (
-          <div className="bg-background border border-border rounded-xl overflow-x-auto">
-            <table className="w-full min-w-[640px]">
-              <caption className="sr-only">{tx("Entradas del blog")}</caption>
-              <thead>
-                <tr className="border-b border-border bg-muted/50 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  <th scope="col" className="px-4 py-3">{tx("Entrada")}</th>
-                  <th scope="col" className="px-4 py-3">{tx("Estado")}</th>
-                  <th scope="col" className="px-4 py-3">{tx("Categoría")}</th>
-                  <th scope="col" className="px-4 py-3">{tx("Publicación")}</th>
-                  <th scope="col" className="px-4 py-3"><span className="sr-only">{tx("Acciones")}</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {posts.map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-sm">{p.title}</p>
-                      <code className="text-xs text-muted-foreground">{tx("/blog/{slug}", { slug: p.slug })}</code>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={p.visibleStatus} /></td>
-                    <td className="px-4 py-3 text-sm">{p.category ?? "—"}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{p.publishedAt ? format.dateTime(p.publishedAt, { dateStyle: "medium", timeStyle: "short" }) : "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {p.visibleStatus === "published" && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                            <a href={`/blog/${p.slug}`} target="_blank" rel="noopener noreferrer" aria-label={tx("Ver «{title}» en la web", { title: p.title })}><ExternalLink size={14} aria-hidden="true" /></a>
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(p.id)} aria-label={`${writable ? tx("Editar") : tx("Ver")} «${p.title}»`}>
-                          <Pencil size={14} aria-hidden="true" />
-                        </Button>
-                        {writable && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-danger hover:text-danger" onClick={() => setToDelete({ id: p.id, title: p.title })} aria-label={tx("Eliminar «{title}»", { title: p.title })}>
-                            <Trash2 size={14} aria-hidden="true" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul aria-label={tx("Entradas del blog")} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
+            {posts.map((p) => (
+              <li key={p.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                  <button type="button" className="min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-left font-medium hover:underline" onClick={() => setEditing(p.id)}>{p.title}</button>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <code className="mr-1">{tx("/blog/{slug}", { slug: p.slug })}</code>
+                    <StatusBadge status={p.visibleStatus} />
+                    {p.category && <span>{p.category}</span>}
+                    {p.publishedAt && <span>{format.dateTime(p.publishedAt, { dateStyle: "medium", timeStyle: "short" })}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setEditing(p.id)} aria-label={`${writable ? tx("Editar") : tx("Ver")} «${p.title}»`}>
+                    <Pencil size={14} className="mr-1.5" aria-hidden="true" />{writable ? tx("Editar") : tx("Ver")}
+                  </Button>
+                  {p.visibleStatus === "published" && (
+                    <Button variant="ghost" size="icon" className="h-9 w-9" asChild>
+                      <a href={`/blog/${p.slug}`} target="_blank" rel="noopener noreferrer" aria-label={tx("Ver «{title}» en la web", { title: p.title })}><ExternalLink size={14} aria-hidden="true" /></a>
+                    </Button>
+                  )}
+                  {writable && (
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-danger hover:text-danger" onClick={() => setToDelete({ id: p.id, title: p.title })} aria-label={tx("Eliminar «{title}»", { title: p.title })}>
+                      <Trash2 size={14} aria-hidden="true" />
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 

@@ -12,7 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
-import { consentSentence, siteUiText } from "@shared/siteUiText";
+import { consentSentence, fillUiText, siteUiText } from "@shared/siteUiText";
+import { formatIsoDayShort, plannedEndDay, requestedStartProblem, todayIso } from "@shared/requestDates";
 
 export interface ProductRequestTarget {
   productId: number;
@@ -26,6 +27,14 @@ export interface ProductRequestTarget {
   withSeats?: boolean;
   /** Texto del botón de envío (por defecto «Enviar solicitud») */
   submitLabel?: string;
+  /**
+   * Producto sin convocatoria que admite pedir una fecha de inicio: el periodo es un dato del producto
+   * (request_dates_from / request_dates_until). La fecha es una petición; no implica disponibilidad.
+   */
+  requestDates?: { from: string | null; until: string };
+  /** Límites de participantes por compra (de la opción elegida y del producto) */
+  minPeople?: number;
+  maxPeople?: number;
 }
 
 export function ProductRequestDialog({ target, open, onOpenChange, preview }: { target: ProductRequestTarget | null; open: boolean; onOpenChange: (o: boolean) => void; preview?: boolean }) {
@@ -36,6 +45,7 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
   const [seats, setSeats] = useState("1");
+  const [startDate, setStartDate] = useState("");
   const [consent, setConsent] = useState(false);
   const [trap, setTrap] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -63,6 +73,16 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) found.email = t.invalidEmail;
     if (phone.trim() && !/^[+0-9 ().-]{6,25}$/.test(phone.trim())) found.phone = t.invalidPhone;
     if (!consent) found.consent = t.consentRequired;
+    if (target.requestDates) {
+      const problem = requestedStartProblem(startDate, { from: target.requestDates.from, until: target.requestDates.until, durationDays: null }, Date.now());
+      if (problem) {
+        found.startDate = problem === "invalid" ? t.requestDateInvalid : problem === "past" ? t.requestDatePast : fillUiText(t.requestDateOutside, { from: target.requestDates.from ? formatIsoDayShort(target.requestDates.from) : formatIsoDayShort(plannedEndDay(todayIso(Date.now()), 2) as string), until: formatIsoDayShort(target.requestDates.until) });
+      }
+      const n = Math.trunc(Number(seats));
+      if (!Number.isInteger(n) || n < (target.minPeople ?? 1) || (target.maxPeople != null && n > target.maxPeople)) {
+        found.seats = target.maxPeople != null ? `${t.requestParticipantsLabel}: ${target.minPeople ?? 1}–${target.maxPeople}` : `${t.requestParticipantsLabel}: ≥ ${target.minPeople ?? 1}`;
+      }
+    }
     setErrors(found);
     const first = Object.keys(found)[0];
     if (first) {
@@ -82,7 +102,8 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
         productRequest: {
           experienceId: target.productId,
           editionId: target.editionId,
-          seats: target.withSeats ? Math.max(1, Math.min(50, Math.trunc(Number(seats)) || 1)) : undefined,
+          seats: target.withSeats || target.requestDates ? Math.max(1, Math.min(50, Math.trunc(Number(seats)) || 1)) : undefined,
+          startDate: target.requestDates ? startDate : undefined,
           consent,
           website: trap,
           elapsedMs: Date.now() - shownAt.current,
@@ -139,6 +160,21 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
               <Input id={`${id}-phone`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" className="mt-1" {...props("phone")} />
               {err("phone")}
             </div>
+            {target?.requestDates && (
+              <>
+                <div>
+                  <Label htmlFor={`${id}-startDate`}>{t.requestStartDateLabel}</Label>
+                  <Input id={`${id}-startDate`} type="date" value={startDate} min={target.requestDates.from && target.requestDates.from > todayIso(Date.now()) ? target.requestDates.from : plannedEndDay(todayIso(Date.now()), 2) ?? undefined} max={target.requestDates.until} onChange={(e) => setStartDate(e.target.value)} className="mt-1 w-48" {...props("startDate")} />
+                  {err("startDate")}
+                  <p className="mt-1 text-xs text-muted-foreground">{t.requestStartDateHelp}</p>
+                </div>
+                <div>
+                  <Label htmlFor={`${id}-seats`}>{t.requestParticipantsLabel}</Label>
+                  <Input id={`${id}-seats`} type="number" inputMode="numeric" min={target.minPeople ?? 1} max={target.maxPeople ?? 50} value={seats} onChange={(e) => setSeats(e.target.value)} className="mt-1 w-28" {...props("seats")} />
+                  {err("seats")}
+                </div>
+              </>
+            )}
             {target?.withSeats && (
               <div>
                 <Label htmlFor={`${id}-seats`}>{t.seatsLabel}</Label>

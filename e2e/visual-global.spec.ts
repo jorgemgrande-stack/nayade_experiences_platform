@@ -27,7 +27,7 @@ const overview = {
   trial: { endsAt: NOW + 6 * DAY, daysLeft: 6 },
   capabilities: CAPS.map((id) => ({ id, name: id, tier: "essential", group: id.split("-")[0], writable: true })),
   visible: CAPS, readOnly: [],
-  limits: [{ metric: "users", label: "Usuarios", included: 3, used: 1 }, { metric: "contacts", label: "Contactos", included: 500, used: 430 }, { metric: "storage_gb", label: "Almacenamiento (GB)", included: 5, used: 6 }, { metric: "sites", label: "Sedes", included: null, used: null }],
+  limits: [{ metric: "users", label: "Usuarios", included: 3, used: 1 }],
   upgradeUrl: "https://elephant.example/planes",
 };
 const steps = ["welcome", "company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms", "finish"];
@@ -57,12 +57,6 @@ const data: Record<string, unknown> = {
   "auth.me": { id: 1, openId: "o", name: "Jorge Grande", email: "jorge@empresa.example", role: "admin" },
   "subscription.overview": overview,
   "subscription.conversionStatus": { enabled: false },
-  "subscription.catalog": { plans: [
-    { key: "essential", name: "Essential", commercialStatus: "available", inherits: null, tagline: "Para empezar", description: null, forWho: "Autónomos y equipos pequeños", highlight: false, benefits: ["Clientes y presupuestos", "Facturación"], limits: [{ label: "Usuarios", value: "3", metric: "users" }], monthly: { amountCents: 2900, currency: "EUR", taxIncluded: false }, yearly: { amountCents: 29000, currency: "EUR", taxIncluded: false }, assisted: false, offerLabel: null },
-    { key: "business", name: "Business", commercialStatus: "available", inherits: "essential", tagline: "Para crecer", description: null, forWho: "Empresas en crecimiento", highlight: true, benefits: ["Todo Essential", "Web y tienda"], limits: [{ label: "Usuarios", value: "10", metric: "users" }], monthly: { amountCents: 7900, currency: "EUR", taxIncluded: false }, yearly: null, assisted: true, offerLabel: null },
-    { key: "enterprise", name: "Enterprise", commercialStatus: "on_request", inherits: "business", tagline: "A medida", description: null, forWho: "Grandes equipos", highlight: false, benefits: ["Todo Business"], limits: [], monthly: null, yearly: null, assisted: true, offerLabel: null },
-  ] },
-  "subscription.planRequests": [],
   "config.getPublicSettings": { brand_name: "Casa Ejemplo", panel_install_mode: "multi" },
   "config.listFeatureFlags": [],
   "modules.active": { modules: [], navigation: [] },
@@ -84,7 +78,6 @@ const data: Record<string, unknown> = {
     { kind: "lead", title: "Solicitud web", detail: "Laura Gómez Prieto", at: NOW - 30 * 3600_000, href: "/admin/crm" },
   ] },
   "crm.clients.list": { items: clients, total: clients.length },
-  "learning.admin.courses": [],
   "crm.clients.stats": { total: 7, companies: 2, individuals: 5, newThisMonth: 4 },
   "crmTags.list": [{ id: 1, name: "VIP", color: "#b99a73" }, { id: 2, name: "Retiro 2027", color: "#4f8ef7" }],
   "crmTags.forEntities": { 1: [{ id: 1, name: "VIP", color: "#b99a73" }], 2: [{ id: 2, name: "Retiro 2027", color: "#4f8ef7" }], 4: [{ id: 1, name: "VIP", color: "#b99a73" }, { id: 2, name: "Retiro 2027", color: "#4f8ef7" }] },
@@ -211,6 +204,40 @@ const centerOver = (k: string): Record<string, unknown> => ({
 });
 
 async function mock(page: Page, over: Record<string, unknown> = {}) {
+
+// CMS y Elephant Studio (feat/ux2-cms-studio): datos ficticios mínimos
+const sp = (id: number, slug: string, title: string, o: Record<string, unknown> = {}) => ({ id, slug, title, isPublished: true, metaTitle: null, metaDescription: null, updatedAt: new Date(NOW - id * DAY).toISOString(), hasDraft: false, isHome: false, isLegal: false, inHeader: false, inFooter: false, ...o });
+const sitePages = [
+  sp(1, "inicio", "Inicio", { isHome: true, inHeader: true }), sp(2, "servicios", "Servicios", { inHeader: true, hasDraft: true }),
+  sp(3, "quienes-somos", "Quiénes somos", { isPublished: false, hasDraft: true }), sp(4, "contacto", "Contacto", { inHeader: true }),
+  sp(5, "aviso-legal", "Aviso legal", { isLegal: true, inFooter: true }), sp(6, "retiros-otono", "Retiros de otoño en la costa", { isPublished: false }),
+];
+const hid = () => Math.random().toString(36).slice(2, 10);
+Object.assign(data, {
+  "cms.sitePages": sitePages,
+  "cms.i18nConfig": { defaultLocale: "es", fallback: "hide", locales: [{ locale: "es", isDefault: true, validated: true }, { locale: "de", isDefault: false, validated: false }] },
+  "cms.pageTranslations": [],
+  "cms.getMenuItems": [
+    { id: 1, label: "Inicio", url: "/", menuZone: "header", sortOrder: 0, parentId: null, isActive: true, openInNewTab: false },
+    { id: 2, label: "Servicios", url: "/servicios", menuZone: "header", sortOrder: 1, parentId: null, isActive: true, openInNewTab: false },
+    { id: 3, label: "Contacto", url: "/contacto", menuZone: "header", sortOrder: 2, parentId: null, isActive: true, openInNewTab: false },
+  ],
+  "cms.getMediaFiles": ["terraza.jpg", "retiro-otono.webp", "equipo.png", "logo.svg", "sala-yoga.jpg", "desayuno.jpg"].map((n, i) => ({ id: i + 1, filename: n, originalName: n, url: "/placeholder-" + i + ".jpg", mimeType: "image/jpeg", size: 120000 * (i + 1), fileSize: 120000 * (i + 1), createdAt: new Date(NOW - i * DAY).toISOString() })),
+  "cms.getSlideshowItems": [], "gallery.adminGetAll": [], "redirects.list": [{ id: 1, fromPath: "/retiro", toPath: "/retiros-otono", statusCode: 301, isActive: true, note: null, hits: 14 }], "redirects.log": [],
+  "homeModules.getModule": [],
+  "blog.list": [
+    { id: 1, title: "Cinco hábitos para empezar el otoño", slug: "cinco-habitos-otono", visibleStatus: "published", category: "Bienestar", publishedAt: new Date(NOW - 4 * DAY).toISOString() },
+    { id: 2, title: "Qué esperar de un retiro de silencio", slug: "retiro-silencio", visibleStatus: "draft", category: "Retiros", publishedAt: null },
+    { id: 3, title: "Recetas de temporada", slug: "recetas-temporada", visibleStatus: "scheduled", category: null, publishedAt: new Date(NOW + 6 * DAY).toISOString() },
+  ],
+  "cms.studioTokens": null, "cms.savedBlocks": [], "cms.pageVersions": [],
+  "cms.pageEditor": { page: sitePages[1], source: "draft", draftSavedAt: new Date(NOW - 60_000).toISOString(), blocks: [
+    { id: hid(), type: "heading", data: { eyebrow: "Servicios", title: "Acompañamos tu proceso", subtitle: "Retiros, talleres y sesiones individuales", align: "center" } },
+    { id: hid(), type: "text", data: { title: "", html: "<p>Texto de ejemplo para la página de servicios.</p>", align: "left" } },
+  ] },
+});
+
+async function mock(page: Page) {
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
     const names = decodeURIComponent(url.pathname.replace(/^.*\/api\/trpc\//, "")).split(",");
@@ -226,7 +253,7 @@ const VIEWS = [
   { name: "movil", width: 390, height: 844 },
   { name: "portatil", width: 1280, height: 800 },
 ];
-const SCREENS: { id: string; url: string; over?: Record<string, unknown> }[] = [
+const SCREENS: { id: string; url: string; over?: Record<string, unknown>; click?: RegExp }[] = [
   { id: "1-inicio", url: "/admin" },
   { id: "2-clientes", url: "/admin/crm/clientes" },
   { id: "2b-ficha-cliente", url: "/admin/crm/clientes/1" },
@@ -234,6 +261,8 @@ const SCREENS: { id: string; url: string; over?: Record<string, unknown> }[] = [
   { id: "4-facturacion", url: "/admin/crm?tab=invoices" },
   { id: "6-presupuestos", url: "/admin/crm?tab=quotes" },
   { id: "7-pedidos", url: "/admin/crm?tab=reservations" },
+  { id: "8-formacion", url: "/admin/formacion?tab=cursos" },
+  { id: "8-suscripcion", url: "/admin/suscripcion" },
   { id: "e1-gestoria-iva", url: "/admin/gestoria/iva" },
   { id: "e2-gestoria-expedientes", url: "/admin/gestoria/expedientes" },
   { id: "e3-gestoria-calendario", url: "/admin/gestoria/calendario" },
@@ -247,9 +276,15 @@ const SCREENS: { id: string; url: string; over?: Record<string, unknown> }[] = [
   { id: "e11-finance-sync", url: "/admin/contabilidad/finance-sync" },
   { id: "e12-sedes", url: "/admin/configuracion/sedes" },
   { id: "e13-correo", url: "/admin/configuracion/email" },
-  { id: "8-formacion", url: "/admin/formacion?tab=cursos" },
-  { id: "8-suscripcion", url: "/admin/suscripcion" },
   ...Object.keys(centers).map((k) => ({ id: k, url: "/admin/suscripcion", over: centerOver(k) })),
+  { id: "c1-paginas", url: "/admin/cms/paginas" },
+  { id: "c2-blog", url: "/admin/cms/blog" },
+  { id: "c3-multimedia", url: "/admin/cms/multimedia" },
+  { id: "c4-menus", url: "/admin/cms/menus" },
+  { id: "c5-redirecciones", url: "/admin/cms/redirecciones" },
+  { id: "c6-idiomas", url: "/admin/cms/idiomas" },
+  { id: "c7-galeria", url: "/admin/cms/galeria" },
+  { id: "c8-studio", url: "/admin/studio/servicios" },
 ];
 // Filtros opcionales: VISUAL_ONLY=regex de claves, VISUAL_VIEWS=nombres separados por coma
 const ONLY = process.env.VISUAL_ONLY ? new RegExp(process.env.VISUAL_ONLY) : null;
@@ -265,10 +300,12 @@ for (const v of VIEWS) {
         const c = process.env.VISUAL_PRIMARY;
         await page.addInitScript((col) => { const st = document.createElement("style"); st.textContent = `:root,.dark{--primary:${col};--sidebar-primary:${col};--ring:${col}}`; document.addEventListener("DOMContentLoaded", () => document.head.appendChild(st)); }, c);
       }
-      await page.addInitScript((th) => { try { localStorage.setItem("nayade-admin-theme", th); } catch { /* sin almacenamiento */ } }, process.env.VISUAL_SCHEME ?? "dark");
+      // El panel guarda su tema en localStorage: emulateMedia no basta para el claro
+      await page.addInitScript((t) => localStorage.setItem("nayade-admin-theme", t), process.env.VISUAL_SCHEME ?? "dark");
       await mock(page, s.over);
       await page.setViewportSize({ width: v.width, height: v.height });
       await page.goto(s.url);
+      if (s.url.startsWith("/admin/studio")) await page.locator("header").first().waitFor({ timeout: 40_000 }).catch(() => undefined);
       await page.waitForTimeout(4500);
       await page.screenshot({ path: path.join(OUT, `${TAG}-${s.id}-${v.name}.png`), fullPage: true });
     });

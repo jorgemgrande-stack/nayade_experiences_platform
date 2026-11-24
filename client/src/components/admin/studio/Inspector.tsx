@@ -554,11 +554,32 @@ const FONT_OPTIONS = [
   { value: "serif", label: "Clásica (Playfair Display)" },
 ] as const;
 
+/** Qué secciones del inspector están plegadas (se recuerda mientras dure la sesión, también al cambiar de bloque). */
+const COLLAPSED = new Set<string>();
+
+/** Sección plegable del inspector: el título es el botón que la abre y la cierra. */
 function StyleGroup({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(!COLLAPSED.has(title));
+  const bodyId = useId();
   return (
-    <section className="space-y-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      {children}
+    <section className="border-t border-border pt-2 first:border-t-0 first:pt-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => {
+          if (open) COLLAPSED.add(title);
+          else COLLAPSED.delete(title);
+          setOpen(!open);
+        }}
+        className="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <h3 className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{title}</h3>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", !open && "-rotate-90")} aria-hidden />
+      </button>
+      <div id={bodyId} hidden={!open} className="space-y-3 pt-2">
+        {children}
+      </div>
     </section>
   );
 }

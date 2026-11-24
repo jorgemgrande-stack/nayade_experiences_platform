@@ -191,6 +191,10 @@ export const experiences = mysqlTable("experiences", {
   // Migración 0069 (E-6): cómo se ofrece (precio fijo, bajo petición, próximamente) y texto del botón de petición
   offerMode: mysqlEnum("offer_mode", ["fixed", "on_request", "coming_soon", "priced_request"]).default("fixed").notNull(),
   requestCtaLabel: varchar("request_cta_label", { length: 80 }),
+  // Migración 0088: duración como dato y periodo en el que se admiten peticiones de fecha de inicio (NULL = sin calendario)
+  durationDays: int("duration_days"),
+  requestDatesFrom: date("request_dates_from", { mode: "string" }),
+  requestDatesUntil: date("request_dates_until", { mode: "string" }),
   sortOrder: int("sortOrder").default(0).notNull(),
   metaTitle: varchar("metaTitle", { length: 256 }),
   metaDescription: text("metaDescription"),
