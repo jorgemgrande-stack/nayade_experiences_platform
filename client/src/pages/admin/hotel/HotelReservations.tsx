@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import AdminLayout from "@/components/AdminLayout";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Ban, BedDouble, CalendarDays, IdCard, Link2, Link2Off, LogIn, LogOut, Plus, Receipt, RefreshCw, Wand2 } from "lucide-react";
+import { Ban, BedDouble, CalendarDays, IdCard, Link2, Link2Off, LogIn, LogOut, Plus, Receipt, RefreshCw, Wallet, Wand2 } from "lucide-react";
 import FolioDialog from "./FolioDialog";
 import GuestsDialog from "./GuestsDialog";
 import {
@@ -221,18 +224,25 @@ export default function HotelReservations() {
   return (
     <AdminLayout title="Reservas de hotel">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><CalendarDays className="h-6 w-6 shrink-0" /> Reservas de hotel</h1>
-            <p className="text-muted-foreground text-sm">Reservas web y de recepción, con su habitación física y su estado de estancia.</p>
-          </div>
+        <PanelPageHeader icon={<CalendarDays />} title="Reservas de hotel" description={"Reservas web y de recepción, con su habitación física y su estado de estancia."}
+          actions={<>
           <div className="flex gap-2">
             <Button variant="outline" size="icon" onClick={refresh} aria-label="Actualizar"><RefreshCw className="h-4 w-4" /></Button>
             <Button onClick={() => setNewOpen(true)} disabled={!roomTypes.length || isPmsNotInstalled(listQ.error)}><Plus className="h-4 w-4 mr-1" /> Nueva reserva</Button>
           </div>
-        </div>
+          </>}
+        />
 
-        <div className="flex flex-wrap gap-2 items-end">
+        {!listQ.isLoading && !listQ.error && rows.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <MetricCard icon={<CalendarDays />} label="Reservas en el rango" value={count} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard icon={<Receipt />} tone="warning" label="Pendientes de pago" value={rows.filter((r: any) => r.status === "pending_payment" && r.occupies).length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard icon={<BedDouble />} tone="info" label="En casa" value={rows.filter((r: any) => r.statusReservation === "EN_CURSO").length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard icon={<Wallet />} tone="success" label="Importe cobrado" value={eur(rows.reduce((n: number, r: any) => n + (r.status === "cancelled" || r.status === "failed" ? 0 : r.amountPaid ?? 0), 0))} className="bg-gradient-to-br from-primary/5 to-card" />
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3">
           <div className="space-y-1"><Label className="text-xs">Desde</Label><Input type="date" className="w-40" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} /></div>
           <div className="space-y-1"><Label className="text-xs">Hasta</Label><Input type="date" className="w-40" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} /></div>
           <div className="space-y-1">
@@ -258,23 +268,23 @@ export default function HotelReservations() {
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[860px]">
+                <table className="w-full text-sm min-w-[620px] lg:min-w-[860px]">
                   <thead className="border-b border-border bg-muted/40">
                     <tr className="text-left">
-                      <th className="p-3 font-medium">Nº</th>
+                      <th className="hidden p-3 font-medium lg:table-cell">Nº</th>
                       <th className="p-3 font-medium">Huésped</th>
-                      <th className="p-3 font-medium">Tipología</th>
+                      <th className="hidden p-3 font-medium md:table-cell">Tipología</th>
                       <th className="p-3 font-medium">Fechas</th>
                       <th className="p-3 font-medium">Importe</th>
                       <th className="p-3 font-medium">Pago</th>
                       <th className="p-3 font-medium">Estancia</th>
-                      <th className="p-3 font-medium">Habitación</th>
+                      <th className="hidden p-3 font-medium md:table-cell">Habitación</th>
                       <th className="sticky right-0 bg-muted p-3 font-medium text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {listQ.isLoading && <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">Cargando…</td></tr>}
-                    {listQ.error && !isPmsNotInstalled(listQ.error) && <tr><td colSpan={9} className="p-6 text-center text-destructive">{listQ.error.message}</td></tr>}
+                    {listQ.isLoading && <tr><td colSpan={9}><PanelLoading /></td></tr>}
+                    {listQ.error && !isPmsNotInstalled(listQ.error) && <tr><td colSpan={9} className="p-4"><PanelError error={listQ.error} onRetry={() => void listQ.refetch()} /></td></tr>}
                     {!listQ.isLoading && !listQ.error && rows.length === 0 && (
                       <tr><td colSpan={9} className="p-0"><EmptyStep title="Sin reservas en estas fechas" text="Amplía el rango de fechas o crea una reserva de recepción con «Nueva reserva»." /></td></tr>
                     )}
@@ -283,18 +293,18 @@ export default function HotelReservations() {
                       const canCheckIn = r.occupies && s !== "EN_CURSO" && s !== "FINALIZADA" && s !== "NO_SHOW";
                       return (
                         <tr key={r.id} className="border-b border-border hover:bg-muted/20 align-top">
-                          <td className="p-3 font-mono text-xs whitespace-nowrap">{r.reservationNumber ?? r.id}</td>
+                          <td className="hidden p-3 font-mono text-xs whitespace-nowrap lg:table-cell">{r.reservationNumber ?? r.id}</td>
                           <td className="p-3 max-w-[220px]">
                             <div className="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{r.customerName}</div>
                             <div className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{r.customerEmail || r.customerPhone || "—"} · {CHANNEL_LABEL[r.channel] ?? r.channel ?? "—"}</div>
                           </td>
-                          <td className="p-3">{r.roomName ?? "—"}</td>
+                          <td className="hidden p-3 md:table-cell">{r.roomName ?? "—"}</td>
                           <td className="p-3 whitespace-nowrap">{shortDate(r.checkIn)} → {shortDate(r.checkOut)}<div className="text-xs text-muted-foreground">{r.nights} noche{r.nights === 1 ? "" : "s"} · {r.people} pers.</div></td>
                           <td className="p-3 whitespace-nowrap">{eur(r.amountTotal)}{r.amountPaid > 0 && r.amountPaid < r.amountTotal && <div className="text-xs text-warning">pagado {eur(r.amountPaid)}</div>}</td>
                           <td className="p-3"><Badge variant={r.status === "paid" ? "default" : "outline"}>{PAYMENT_LABEL[r.status] ?? r.status}</Badge></td>
                           <td className="p-3">{stayBadge(r)}</td>
-                          <td className="p-3">{r.assignment ? <Badge variant="outline" className="gap-1"><BedDouble className="h-3 w-3" /> {r.assignment.roomCode}</Badge> : <span className="text-xs text-muted-foreground">Sin asignar</span>}</td>
-                          <td className="sticky right-0 bg-card p-3 whitespace-nowrap text-right shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.25)]">
+                          <td className="hidden p-3 md:table-cell">{r.assignment ? <Badge variant="outline" className="gap-1"><BedDouble className="h-3 w-3" /> {r.assignment.roomCode}</Badge> : <span className="text-xs text-muted-foreground">Sin asignar</span>}</td>
+                          <td className="sticky right-0 bg-card p-3 whitespace-nowrap text-right shadow-sm">
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => checkIn.mutate({ reservationId: r.id })} disabled={busy} title="Check-in"><LogIn className="h-4 w-4 text-success" /></Button>}
                             {s === "EN_CURSO" && <Button variant="ghost" size="sm" onClick={() => checkOut.mutate({ reservationId: r.id })} disabled={busy} title="Check-out"><LogOut className="h-4 w-4 text-primary" /></Button>}
                             {canCheckIn && <Button variant="ghost" size="sm" onClick={() => noShow.mutate({ reservationId: r.id })} disabled={busy} title="No-show"><Ban className="h-4 w-4" /></Button>}

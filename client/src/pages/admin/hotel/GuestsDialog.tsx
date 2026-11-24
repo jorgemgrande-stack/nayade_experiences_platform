@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,11 +31,11 @@ export default function GuestsDialog({ reservationId, title, onClose }: { reserv
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Huéspedes{title ? ` · ${title}` : ""}</DialogTitle></DialogHeader>
-        {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : q.error ? <p className="text-sm text-destructive">{q.error.message}</p> : (
+        {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : q.error ? <PanelError error={q.error} onRetry={() => void q.refetch()} /> : (
           <div className="space-y-3">
             <GdprNotice />
             <OnlineCheckin reservationId={reservationId} onApplied={refresh} />
-            {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : list.length === 0 && !editing ? (
+            {q.isLoading ? <PanelLoading /> : list.length === 0 && !editing ? (
               <p className="text-sm text-muted-foreground">Sin huéspedes registrados. Empieza por el titular de la reserva y añade después a los acompañantes.</p>
             ) : (
               <div className="space-y-2">

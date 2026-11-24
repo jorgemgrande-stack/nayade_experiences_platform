@@ -1,7 +1,9 @@
 import { Fragment, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -172,11 +174,8 @@ export default function HotelPlanning() {
   return (
     <AdminLayout title="Planning">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><CalendarRange className="h-6 w-6 shrink-0" /> Planning de habitaciones</h1>
-            <p className="text-muted-foreground text-sm">Ocupación por habitación física. Pulsa una estancia para cambiarla de habitación.</p>
-          </div>
+        <PanelPageHeader icon={<CalendarRange />} title="Planning de habitaciones" description={"Ocupación por habitación física. Pulsa una estancia para cambiarla de habitación."}
+          actions={<>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => autoAll.mutate({ from, to })} disabled={autoAll.isPending || isPmsNotInstalled(planQ.error)}><Wand2 className="h-4 w-4 mr-1" /> Asignar automáticamente</Button>
             <Button variant="outline" size="icon" onClick={() => setStart(addDays(start, -7))} aria-label="Semana anterior"><ChevronLeft className="h-4 w-4" /></Button>
@@ -184,7 +183,8 @@ export default function HotelPlanning() {
             <Input type="date" className="w-40" value={start} onChange={(e) => e.target.value && setStart(e.target.value)} aria-label="Primer día" />
             <Button variant="outline" size="icon" onClick={() => setStart(addDays(start, 7))} aria-label="Semana siguiente"><ChevronRight className="h-4 w-4" /></Button>
           </div>
-        </div>
+          </>}
+        />
 
         {isPmsNotInstalled(planQ.error) ? (
           <PmsNotInstalled />
@@ -219,9 +219,9 @@ export default function HotelPlanning() {
             <Card>
               <CardContent className="p-0 overflow-x-auto">
                 {planQ.isLoading ? (
-                  <div className="p-8 text-center text-muted-foreground">Cargando…</div>
+                  <PanelLoading />
                 ) : planQ.error ? (
-                  <div className="p-8 text-center text-destructive text-sm">{planQ.error.message}</div>
+                  <div className="p-4"><PanelError error={planQ.error} onRetry={() => void planQ.refetch()} /></div>
                 ) : rooms.length === 0 ? (
                   <EmptyStep title="Crea tu primera habitación" text="El planning muestra la ocupación de cada habitación física. Da de alta tus habitaciones para empezar." href="/admin/hotel/habitaciones" action="Ir a habitaciones" />
                 ) : (

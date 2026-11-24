@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -73,9 +74,9 @@ export default function FolioDialog({ reservationId, onClose }: { reservationId:
         {isPmsNotInstalled(q.error) ? (
           <PmsNotInstalled />
         ) : q.isLoading ? (
-          <p className="text-sm text-muted-foreground py-6">Cargando…</p>
+          <PanelLoading />
         ) : q.error ? (
-          <p className="text-sm text-destructive py-6">{q.error.message}</p>
+          <PanelError error={q.error} onRetry={() => void q.refetch()} className="my-3" />
         ) : d && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">

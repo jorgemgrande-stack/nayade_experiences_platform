@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import FolioDialog from "./FolioDialog";
 import GuestsDialog from "./GuestsDialog";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,18 +15,8 @@ import { Ban, BedDouble, ConciergeBell, IdCard, Lock, LogIn, LogOut, Percent, Re
 import type { LucideIcon } from "lucide-react";
 import { PmsNotInstalled, ROOM_STATE_LABEL, isPmsNotInstalled, roomStateClass, shortDate } from "./pmsShared";
 
-function Kpi({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string | number }) {
-  return (
-    <Card>
-      <CardContent className="p-3 sm:p-4 flex items-center gap-3 min-w-0">
-        <div className="rounded-lg p-2 bg-muted text-foreground shrink-0"><Icon className="h-5 w-5" /></div>
-        <div className="min-w-0">
-          <div className="text-xl sm:text-2xl font-bold leading-none">{value}</div>
-          <div className="text-xs text-muted-foreground mt-1 overflow-hidden text-ellipsis whitespace-nowrap">{label}</div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+function Kpi({ icon: Icon, label, value, tone = "brand" }: { icon: LucideIcon; label: string; value: string | number; tone?: Tone }) {
+  return <MetricCard icon={<Icon />} tone={tone} label={label} value={value} className="bg-gradient-to-br from-primary/5 to-card" />;
 }
 
 function Guest({ r, today }: { r: any; today: string }) {
@@ -58,23 +51,21 @@ export default function HotelReception() {
   return (
     <AdminLayout title="Recepción">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><ConciergeBell className="h-6 w-6 shrink-0" /> Recepción</h1>
-            <p className="text-muted-foreground text-sm">Llegadas, salidas y huéspedes en casa{d ? ` · hoy ${new Date(`${d.today}T00:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })}` : ""}.</p>
-          </div>
+        <PanelPageHeader icon={<ConciergeBell />} title="Recepción" description={<>Llegadas, salidas y huéspedes en casa{d ? ` · hoy ${new Date(`${d.today}T00:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })}` : ""}.</>}
+          actions={<>
           <div className="flex gap-2">
             <Button variant="outline" asChild><Link href="/admin/hotel/reservas">Reservas</Link></Button>
             <Button variant="outline" size="icon" onClick={refresh} aria-label="Actualizar"><RefreshCw className={`h-4 w-4 ${q.isFetching ? "animate-spin" : ""}`} /></Button>
           </div>
-        </div>
+          </>}
+        />
 
         {isPmsNotInstalled(q.error) ? (
           <PmsNotInstalled />
         ) : q.isLoading ? (
-          <div className="text-center py-12 text-muted-foreground"><RefreshCw className="h-5 w-5 animate-spin inline mr-2" /> Cargando…</div>
+          <PanelLoading />
         ) : q.error ? (
-          <Card><CardContent className="p-6 text-sm text-destructive">{q.error.message}</CardContent></Card>
+          <PanelError error={q.error} onRetry={() => void q.refetch()} />
         ) : d && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -82,9 +73,9 @@ export default function HotelReception() {
               <Kpi icon={LogOut} label="Salidas de hoy" value={d.departures.filter((r: any) => r.statusReservation === "EN_CURSO").length} />
               <Kpi icon={Users} label="Huéspedes en casa" value={d.inHouse.length} />
               <Kpi icon={Percent} label="Ocupación esta noche" value={`${d.occupancyPct}%`} />
-              <Kpi icon={Ban} label="No-shows de hoy" value={d.noShowsToday} />
-              <Kpi icon={Sparkles} label="Habitaciones sucias" value={d.roomsDirty} />
-              <Kpi icon={Lock} label="Fuera de servicio" value={d.roomsOutOfService} />
+              <Kpi icon={Ban} label="No-shows de hoy" value={d.noShowsToday} tone={d.noShowsToday > 0 ? "warning" : "neutral"} />
+              <Kpi icon={Sparkles} label="Habitaciones sucias" value={d.roomsDirty} tone={d.roomsDirty > 0 ? "warning" : "success"} />
+              <Kpi icon={Lock} label="Fuera de servicio" value={d.roomsOutOfService} tone={d.roomsOutOfService > 0 ? "danger" : "neutral"} />
               <Kpi icon={BedDouble} label="Habitaciones físicas" value={d.physicalRooms} />
             </div>
 

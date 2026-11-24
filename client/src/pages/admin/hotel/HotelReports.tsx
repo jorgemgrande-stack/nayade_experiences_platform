@@ -1,26 +1,22 @@
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import AdminLayout from "@/components/AdminLayout";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { BarChart3, CalendarCheck, Percent, RefreshCw } from "lucide-react";
+import { BarChart3, BedDouble, CalendarCheck, Percent, RefreshCw, TrendingUp, Wallet } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PmsNotInstalled, addDays, eur, isPmsNotInstalled, localToday, shortDate } from "./pmsShared";
 
 const pct = (bp: number) => `${(bp / 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`;
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <Card>
-      <CardContent className="p-3 sm:p-4 min-w-0">
-        <div className="text-xl sm:text-2xl font-bold leading-none">{value}</div>
-        <div className="text-xs text-muted-foreground mt-1">{label}</div>
-        {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
-      </CardContent>
-    </Card>
-  );
+function Stat({ label, value, hint, icon: Icon }: { label: string; value: string; hint?: string; icon: LucideIcon }) {
+  return <MetricCard icon={<Icon />} label={label} value={value} detail={hint} className="bg-gradient-to-br from-primary/5 to-card" />;
 }
 
 function TaxSetting() {
@@ -73,13 +69,11 @@ export default function HotelReports() {
   return (
     <AdminLayout title="Informes del hotel">
       <div className="space-y-5 max-w-full">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><BarChart3 className="h-6 w-6 shrink-0" /> Informes</h1>
-            <p className="text-muted-foreground text-sm">Ocupación, ingresos de alojamiento, ADR (ingreso medio por habitación ocupada) y RevPAR (ingreso por habitación disponible).</p>
-          </div>
+        <PanelPageHeader icon={<BarChart3 />} title="Informes" description={"Ocupación, ingresos de alojamiento, ADR (ingreso medio por habitación ocupada) y RevPAR (ingreso por habitación disponible)."}
+          actions={<>
           <Button variant="outline" size="icon" onClick={() => void utils.hotel.adminGetReport.invalidate()} aria-label="Actualizar"><RefreshCw className={`h-4 w-4 ${q.isFetching ? "animate-spin" : ""}`} /></Button>
-        </div>
+          </>}
+        />
 
         {isPmsNotInstalled(q.error) ? (
           <PmsNotInstalled />
@@ -92,16 +86,16 @@ export default function HotelReports() {
             </div>
 
             {q.isLoading ? (
-              <div className="text-center py-12 text-muted-foreground"><RefreshCw className="h-5 w-5 animate-spin inline mr-2" /> Cargando…</div>
+              <PanelLoading />
             ) : q.error ? (
-              <Card><CardContent className="p-6 text-sm text-destructive">{q.error.message}</CardContent></Card>
+              <PanelError error={q.error} onRetry={() => void q.refetch()} />
             ) : s && d && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Stat label="Ocupación media" value={pct(s.occupancyBp)} hint={`${s.roomNightsSold} de ${s.roomNightsAvailable} noches`} />
-                  <Stat label="Ingresos de alojamiento" value={eur(s.roomRevenueCents)} hint={`${s.nights} días`} />
-                  <Stat label="ADR" value={eur(s.adrCents)} hint="Por habitación ocupada" />
-                  <Stat label="RevPAR" value={eur(s.revparCents)} hint="Por habitación disponible" />
+                  <Stat icon={Percent} label="Ocupación media" value={pct(s.occupancyBp)} hint={`${s.roomNightsSold} de ${s.roomNightsAvailable} noches`} />
+                  <Stat icon={Wallet} label="Ingresos de alojamiento" value={eur(s.roomRevenueCents)} hint={`${s.nights} días`} />
+                  <Stat icon={BedDouble} label="ADR" value={eur(s.adrCents)} hint="Por habitación ocupada" />
+                  <Stat icon={TrendingUp} label="RevPAR" value={eur(s.revparCents)} hint="Por habitación disponible" />
                 </div>
 
                 <Card>

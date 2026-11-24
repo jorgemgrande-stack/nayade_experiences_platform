@@ -6,7 +6,9 @@
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -154,22 +156,20 @@ export default function HotelIcal() {
   return (
     <AdminLayout title="Canales iCal">
       <div className="space-y-5 max-w-full">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><CalendarDays className="h-6 w-6 shrink-0" /> Canales iCal</h1>
-          <p className="text-muted-foreground text-sm">
-            Sincroniza la disponibilidad con Booking.com, Airbnb, Vrbo, Google y cualquier calendario que acepte iCal. Exporta un enlace por tipología o habitación y canal
-            (solo dice «No disponible», nunca datos del huésped) e importa la URL iCal de cada canal: lo vendido allí bloquea la disponibilidad aquí, sin tocar tus reservas.
-            iCal sincroniza disponibilidad, no tarifas, y los canales lo leen cada cierto tiempo (de minutos a horas).
-          </p>
-          <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
-            Ojo: una reserva que llega por el iCal de un canal ya bloquea la disponibilidad. Si además la das de alta a mano en el PMS, cuenta dos veces.
-            En ese caso, no la crees como reserva o pausa la URL de ese canal.
-          </p>
+        <PanelPageHeader
+          icon={<CalendarDays />}
+          title="Canales iCal"
+          description="Sincroniza la disponibilidad con Booking.com, Airbnb, Vrbo, Google y cualquier calendario que acepte iCal. Exporta un enlace por tipología o habitación y canal (solo dice «No disponible», nunca datos del huésped) e importa la URL iCal de cada canal: lo vendido allí bloquea la disponibilidad aquí, sin tocar tus reservas. iCal sincroniza disponibilidad, no tarifas, y los canales lo leen cada cierto tiempo (de minutos a horas)."
+        />
+        <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground" role="note">
+          <span className="font-medium text-warning">Ojo: </span>
+          una reserva que llega por el iCal de un canal ya bloquea la disponibilidad. Si además la das de alta a mano en el PMS, cuenta dos veces.
+          En ese caso, no la crees como reserva o pausa la URL de ese canal.
         </div>
         {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : q.error ? (
-          <Card><CardContent className="p-6 text-sm text-danger">{q.error.message}</CardContent></Card>
+          <PanelError error={q.error} onRetry={() => void q.refetch()} />
         ) : !data ? (
-          <p className="text-sm text-muted-foreground">Cargando…</p>
+          <PanelLoading />
         ) : data.types.length === 0 ? (
           <Card><CardContent className="p-0"><EmptyStep title="Crea primero una tipología" text="Los calendarios iCal son de cada tipología o habitación." href="/admin/hotel" action="Ir a tipologías" /></CardContent></Card>
         ) : (
