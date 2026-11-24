@@ -606,6 +606,16 @@ export default {
     title: "Suscripción y pagos",
     description: "Tu contratación, tus pagos y tus facturas, con lo que ya se ha cobrado y lo que se cobrará.",
     loading: "Cargando tu contratación…",
+    hero: {
+      eyebrow: "Centro de suscripción",
+      activeTitle: "Suscripción activa",
+      activeText: "Tu cuota se cobra de forma automática en cada periodo.",
+      noChargeYet: "Todavía no se ha cobrado nada",
+      firstCharge: "Primer cobro previsto el {date}",
+      nextCharge: "Próximo cobro previsto el {date}",
+      estimatedLabel: "Importe estimado",
+      trialPlan: "Plan en prueba",
+    },
     stage: {
       no_contract: "Sin contratación",
       contract_pending_payment: "Falta autorizar el pago",

@@ -608,6 +608,16 @@ export default {
     title: "Abonnement und Zahlungen",
     description: "Dein Vertrag, deine Zahlungen und deine Rechnungen: was bereits abgebucht wurde und was noch abgebucht wird.",
     loading: "Dein Vertrag wird geladen…",
+    hero: {
+      eyebrow: "Abonnement-Center",
+      activeTitle: "Abonnement aktiv",
+      activeText: "Deine Gebühr wird in jedem Zeitraum automatisch abgebucht.",
+      noChargeYet: "Bisher wurde nichts abgebucht",
+      firstCharge: "Erste Abbuchung am {date} geplant",
+      nextCharge: "Nächste Abbuchung am {date} geplant",
+      estimatedLabel: "Geschätzter Betrag",
+      trialPlan: "Testtarif",
+    },
     stage: {
       no_contract: "Kein Vertrag",
       contract_pending_payment: "Zahlung noch nicht autorisiert",
