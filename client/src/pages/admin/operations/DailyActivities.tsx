@@ -139,7 +139,7 @@ function ActivitySubItem({
     )}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium text-foreground/90 truncate">{title}</p>
+          <p className="text-sm font-medium text-foreground/90 overflow-hidden text-ellipsis whitespace-nowrap">{title}</p>
           <span className="text-[10px] text-muted-foreground">{pax} {t("opsDaily.pax")}</span>
           {op.isInherited && (
             <Badge className="text-[9px] bg-info/10 text-info border-info/30">{t("opsDaily.inherited")}</Badge>
@@ -160,7 +160,7 @@ function ActivitySubItem({
             {op.arrivalTime || t("opsDaily.noTime")}
           </span>
           {op.opNotes && (
-            <span className="flex items-center gap-1 text-muted-foreground italic truncate max-w-xs">
+            <span className="flex items-center gap-1 text-muted-foreground italic overflow-hidden text-ellipsis whitespace-nowrap max-w-xs">
               <StickyNote className="w-3 h-3 shrink-0" />
               {op.opNotes}
             </span>
@@ -263,7 +263,7 @@ function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, mon
           <div key={line.lineId} className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="w-1.5 h-1.5 rounded-full bg-info shrink-0" />
-              <span className="text-sm text-foreground/85 truncate">{line.title}</span>
+              <span className="text-sm text-foreground/85 overflow-hidden text-ellipsis whitespace-nowrap">{line.title}</span>
               <span className="text-[11px] font-semibold text-info shrink-0">
                 {(packQty || 1) * (line.quantity || 1)} {t("opsDaily.pax")}
               </span>
@@ -710,7 +710,7 @@ export default function DailyActivities() {
                               </a>
                             )}
                             {res.clientEmail && (
-                              <span className="flex items-center gap-1 truncate max-w-xs">
+                              <span className="flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap max-w-xs">
                                 <Mail className="w-3 h-3" />{res.clientEmail}
                               </span>
                             )}

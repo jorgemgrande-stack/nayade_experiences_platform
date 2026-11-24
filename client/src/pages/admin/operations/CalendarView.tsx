@@ -74,11 +74,11 @@ function ReservationPill({ ev, onClick }: { ev: any; onClick: () => void }) {
     return (
       <button
         onClick={(e) => { e.stopPropagation(); onClick(); }}
-        className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border truncate
+        className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border overflow-hidden text-ellipsis whitespace-nowrap
           bg-success/15 text-success border-success/30 hover:bg-success/25 transition-colors text-left"
       >
         <Utensils className="w-2.5 h-2.5 shrink-0" />
-        <span className="truncate">{ev.clientName}</span>
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{ev.clientName}</span>
         <span className="shrink-0 opacity-70 ml-auto">·{ev.numberOfPersons}</span>
       </button>
     );
@@ -87,11 +87,11 @@ function ReservationPill({ ev, onClick }: { ev: any; onClick: () => void }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border-l-2 border border-border truncate
+      className={`w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border-l-2 border border-border overflow-hidden text-ellipsis whitespace-nowrap
         bg-muted/80 hover:bg-muted transition-colors text-left ${cfg.border}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
-      <span className="truncate text-foreground/90">{ev.clientName}</span>
+      <span className="overflow-hidden text-ellipsis whitespace-nowrap text-foreground/90">{ev.clientName}</span>
       <span className="shrink-0 text-muted-foreground ml-auto">·{ev.numberOfPersons}</span>
     </button>
   );
@@ -124,12 +124,12 @@ function SessionPill({ s, onClick }: { s: SessionEvent; onClick: () => void }) {
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       data-testid="sesion-convocatoria"
-      className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border border-dashed truncate
+      className="w-full flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] border border-dashed overflow-hidden text-ellipsis whitespace-nowrap
         bg-primary/15 text-primary border-primary/40 hover:bg-primary/25 transition-colors text-left"
     >
       <Layers className="w-2.5 h-2.5 shrink-0" />
       <span className="shrink-0" title={s.startTime ? undefined : t("opsCalendar.session.timeTbc")}>{s.startTime ?? t("opsCalendar.session.timeTbcShort")}</span>
-      <span className="truncate">{s.productTitle}</span>
+      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{s.productTitle}</span>
       <span className="shrink-0 opacity-70 ml-auto">·{s.participants}</span>
     </button>
   );
@@ -263,9 +263,9 @@ function ReservationModal({
                 </div>
               )}
               {ev.clientEmail && (
-                <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+                <div className="flex items-center gap-1.5 text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                   <Mail className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{ev.clientEmail}</span>
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap">{ev.clientEmail}</span>
                 </div>
               )}
               <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -291,7 +291,7 @@ function ReservationModal({
                   {item.icon}
                   <span>{item.label}</span>
                 </div>
-                <p className="text-foreground text-xs font-medium truncate">{item.value}</p>
+                <p className="text-foreground text-xs font-medium overflow-hidden text-ellipsis whitespace-nowrap">{item.value}</p>
               </div>
             ))}
           </div>
@@ -317,7 +317,7 @@ function ReservationModal({
                   <div className="bg-muted rounded-lg p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{ev.activityTitle || t("opsCalendar.res.mainActivity")}</p>
+                        <p className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{ev.activityTitle || t("opsCalendar.res.mainActivity")}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">{ev.numberOfPersons} {t("opsCalendar.pax")}</p>
                       </div>
                       {op.isInherited && <Badge className="text-[9px] bg-muted/50 text-muted-foreground border-border">{t("opsCalendar.res.inherited")}</Badge>}
@@ -343,7 +343,7 @@ function ReservationModal({
                   <div key={i} className="bg-muted rounded-lg p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
+                        <p className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                           {ex.experienceTitle || ex.name || t("opsCalendar.res.activityN", { n: i + 2 })}
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">{ex.participants || ex.pax || "—"} {t("opsCalendar.pax")}</p>
@@ -463,8 +463,8 @@ function DayDetailModal({
                       className={`w-full bg-muted rounded-lg p-3 text-left hover:bg-muted transition-colors border-l-2 ${cfg.border.replace("border-l-", "border-l-2 border-")}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-foreground text-sm truncate">{ev.clientName}</p>
-                          <p className="text-muted-foreground text-xs mt-0.5 truncate">{ev.activityTitle}</p>
+                          <p className="font-medium text-foreground text-sm overflow-hidden text-ellipsis whitespace-nowrap">{ev.clientName}</p>
+                          <p className="text-muted-foreground text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{ev.activityTitle}</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -495,7 +495,7 @@ function DayDetailModal({
                     className="w-full bg-muted rounded-lg p-3 text-left hover:bg-muted transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground text-sm truncate">{ev.activityTitle}</p>
+                        <p className="font-medium text-foreground text-sm overflow-hidden text-ellipsis whitespace-nowrap">{ev.activityTitle}</p>
                         <p className="text-muted-foreground text-xs mt-0.5">{ev.clientName}</p>
                       </div>
                       <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
