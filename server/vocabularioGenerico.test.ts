@@ -5,6 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { describe, expect, it } from "vitest";
 import { buildVocabulary, visibleCrmTabs, type Vocabulary } from "../shared/vocabulary";
 import { validateContact, validateOrder, validateQuote, hasErrors } from "../shared/crmForms";
@@ -159,7 +160,7 @@ describe("validación por campo de los formularios del CRM", () => {
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
 
 describe("cableado de las pantallas (texto de Náyade no fijo en modo pyme)", () => {
-  const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+  const crm = crmDashboardFuentes();
 
   it("CRM: pestañas, título y botones salen del vocabulario", () => {
     for (const fixed of [

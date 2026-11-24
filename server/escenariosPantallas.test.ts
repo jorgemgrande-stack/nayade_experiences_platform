@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 
 import { srcShows, esDictText } from "./i18nSource";
 const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
@@ -29,7 +30,7 @@ describe("pantallas de un usuario nuevo", () => {
   });
 
   it("CRM: las rutas directas abren su pestaña y los avisos bancarios solo se piden con su licencia", () => {
-    const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+    const crm = crmDashboardFuentes();
     expect(crm).toContain('{ "/admin/crm/presupuestos": "quotes", "/admin/crm/reservas": "reservations" }');
     const bank = crm.slice(crm.indexOf("const bankLicensed"), crm.indexOf("const deleteAnulMutation"));
     expect(bank).toContain('panelSub.can("bank-import-pos")');
@@ -48,14 +49,14 @@ describe("pantallas de un usuario nuevo", () => {
   });
 
   it("nuevo presupuesto en el móvil: la tabla de conceptos no ensancha el diálogo", () => {
-    const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+    const crm = crmDashboardFuentes();
     const modal = crm.slice(crm.indexOf("function DirectQuoteModal"));
     expect(modal).toMatch(/<DialogContent className="[^"]*\*:min-w-0[^"]*">/);
     expect(modal).toContain('className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">');
   });
 
   it("enviar o reenviar un presupuesto muestra lo que ha pasado con el correo, nunca un «enviado» fijo", () => {
-    const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+    const crm = crmDashboardFuentes();
     expect(crm).not.toMatch(/toast\.success\("Presupuesto (enviado|reenviado)/);
     expect(crm.match(/toastQuoteMail\(data, /g)?.length).toBe(6);
     const router = read("server/routers/crm.ts");
