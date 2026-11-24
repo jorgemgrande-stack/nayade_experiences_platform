@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import {
   Select,
   SelectContent,
@@ -40,8 +43,8 @@ function StarDisplay({ rating }: { rating: number }) {
           key={s}
           className={`w-3.5 h-3.5 ${
             s <= rating
-              ? "fill-amber-400 text-amber-400"
-              : "fill-transparent text-gray-300"
+              ? "fill-warning text-warning"
+              : "fill-transparent text-muted-foreground/40"
           }`}
         />
       ))}
@@ -49,30 +52,15 @@ function StarDisplay({ rating }: { rating: number }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function ReviewStatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
-  const map: Record<string, { label: string; className: string }> = {
-    pending: {
-      label: t("reviewsAdmin.status.pending"),
-      className: "bg-amber-100 text-amber-700 border-amber-200",
-    },
-    approved: {
-      label: t("reviewsAdmin.status.approved"),
-      className: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    },
-    rejected: {
-      label: t("reviewsAdmin.status.rejected"),
-      className: "bg-red-100 text-red-700 border-red-200",
-    },
+  const map: Record<string, { label: string; tone: Tone }> = {
+    pending: { label: t("reviewsAdmin.status.pending"), tone: "warning" },
+    approved: { label: t("reviewsAdmin.status.approved"), tone: "success" },
+    rejected: { label: t("reviewsAdmin.status.rejected"), tone: "danger" },
   };
   const cfg = map[status] ?? map.pending;
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.className}`}
-    >
-      {cfg.label}
-    </span>
-  );
+  return <StatusBadge tone={cfg.tone}>{cfg.label}</StatusBadge>;
 }
 
 // ─── Modal de respuesta ───────────────────────────────────────────────────────
@@ -99,18 +87,18 @@ function ReplyModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+      <div className="bg-card rounded-xl shadow-md w-full max-w-lg">
         <div className="flex items-center justify-between p-5 border-b">
-          <h3 className="font-bold text-gray-900">{t("reviewsAdmin.reply.title")}</h3>
+          <h3 className="font-bold text-foreground">{t("reviewsAdmin.reply.title")}</h3>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
           >
             ✕
           </button>
         </div>
         <div className="p-5 space-y-3">
-          <Label className="text-sm text-gray-600">
+          <Label className="text-sm text-muted-foreground">
             {t("reviewsAdmin.reply.label")}
           </Label>
           <Textarea
@@ -120,7 +108,7 @@ function ReplyModal({
             className="min-h-[120px] resize-none"
             maxLength={1000}
           />
-          <p className="text-xs text-gray-400 text-right">{reply.length}/1000</p>
+          <p className="text-xs text-muted-foreground text-right">{reply.length}/1000</p>
         </div>
         <div className="flex justify-end gap-2 p-5 border-t">
           <Button variant="ghost" onClick={onClose}>
@@ -129,7 +117,7 @@ function ReplyModal({
           <Button
             onClick={() => replyMutation.mutate({ id: reviewId, reply })}
             disabled={!reply.trim() || replyMutation.isPending}
-            className="bg-teal-600 hover:bg-teal-500 text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {replyMutation.isPending ? t("reviewsAdmin.reply.saving") : t("reviewsAdmin.reply.publish")}
           </Button>
@@ -155,7 +143,7 @@ export default function ReviewsManager() {
   } | null>(null);
   const LIMIT = 20;
 
-  const { data, isLoading, refetch } = trpc.reviews.adminGetReviews.useQuery({
+  const { data, isLoading, isError, error, refetch } = trpc.reviews.adminGetReviews.useQuery({
     entityType:
       filterType === "all" ? undefined : (filterType as "hotel" | "spa"),
     status:
@@ -185,87 +173,34 @@ export default function ReviewsManager() {
   return (
     <AdminLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-        {/* Cabecera */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {t("reviewsAdmin.title")}
-            </h1>
-            <p className="text-gray-500 text-sm mt-1">
-              {t("reviewsAdmin.subtitle")}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            className="gap-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-            {t("reviewsAdmin.refresh")}
-          </Button>
-        </div>
+        <PanelPageHeader
+          className="mb-0"
+          icon={<MessageSquare />}
+          title={t("reviewsAdmin.title")}
+          description={t("reviewsAdmin.subtitle")}
+          actions={
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              {t("reviewsAdmin.refresh")}
+            </Button>
+          }
+        />
 
-        {/* Tarjetas de estadísticas */}
+        {/* Resumen */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {[
-              {
-                label: t("reviewsAdmin.stats.total"),
-                value: stats.total,
-                icon: MessageSquare,
-                color: "text-gray-700",
-                bg: "bg-gray-50",
-              },
-              {
-                label: t("reviewsAdmin.stats.pending"),
-                value: stats.pending,
-                icon: Clock,
-                color: "text-amber-600",
-                bg: "bg-amber-50",
-              },
-              {
-                label: t("reviewsAdmin.stats.approved"),
-                value: stats.approved,
-                icon: CheckCircle2,
-                color: "text-emerald-600",
-                bg: "bg-emerald-50",
-              },
-              {
-                label: t("reviewsAdmin.stats.rejected"),
-                value: stats.rejected,
-                icon: XCircle,
-                color: "text-red-500",
-                bg: "bg-red-50",
-              },
-              {
-                label: t("reviewsAdmin.stats.average"),
-                value: stats.avgRating > 0 ? `${format.number(stats.avgRating, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ★` : "—",
-                icon: Star,
-                color: "text-amber-500",
-                bg: "bg-amber-50",
-              },
-            ].map((s) => (
-              <div
-                key={s.label}
-                className={`rounded-xl p-4 ${s.bg} border border-gray-100`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <s.icon className={`w-4 h-4 ${s.color}`} />
-                  <span className="text-xs text-gray-500 font-medium">
-                    {s.label}
-                  </span>
-                </div>
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <MetricCard tone="brand" icon={<MessageSquare />} label={t("reviewsAdmin.stats.total")} value={stats.total} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone="warning" icon={<Clock />} label={t("reviewsAdmin.stats.pending")} value={stats.pending} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone="success" icon={<CheckCircle2 />} label={t("reviewsAdmin.stats.approved")} value={stats.approved} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone="danger" icon={<XCircle />} label={t("reviewsAdmin.stats.rejected")} value={stats.rejected} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard tone="warning" icon={<Star />} label={t("reviewsAdmin.stats.average")} value={stats.avgRating > 0 ? `${format.number(stats.avgRating, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ★` : "—"} className="bg-gradient-to-br from-primary/5 to-card" />
           </div>
         )}
 
         {/* Filtros */}
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex items-center gap-2">
-            <Label className="text-sm text-gray-600 whitespace-nowrap">
+            <Label className="text-sm text-muted-foreground whitespace-nowrap">
               {t("reviewsAdmin.filter.type")}
             </Label>
             <Select
@@ -286,7 +221,7 @@ export default function ReviewsManager() {
             </Select>
           </div>
           <div className="flex items-center gap-2">
-            <Label className="text-sm text-gray-600 whitespace-nowrap">
+            <Label className="text-sm text-muted-foreground whitespace-nowrap">
               {t("reviewsAdmin.filter.status")}
             </Label>
             <Select
@@ -307,32 +242,24 @@ export default function ReviewsManager() {
               </SelectContent>
             </Select>
           </div>
-          <span className="text-sm text-gray-400 ml-auto">
+          <span className="text-sm text-muted-foreground ml-auto">
             {t("reviewsAdmin.filter.results", { n: total })}
           </span>
         </div>
 
         {/* Tabla / listado */}
         {isLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-24 bg-gray-100 rounded-xl animate-pulse"
-              />
-            ))}
-          </div>
+          <PanelLoading />
+        ) : isError ? (
+          <PanelError error={error} onRetry={() => refetch()} />
         ) : reviews.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">{t("reviewsAdmin.empty")}</p>
-          </div>
+          <PanelEmpty icon={<MessageSquare />} title={t("reviewsAdmin.empty")} />
         ) : (
           <div className="space-y-3">
             {reviews.map((review) => (
               <div
                 key={review.id}
-                className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-sm transition-shadow"
+                className="bg-card border border-border rounded-xl p-5 hover:shadow-sm transition-shadow"
               >
                 {/* Fila superior */}
                 <div className="flex flex-wrap items-start gap-3 mb-3">
@@ -340,8 +267,8 @@ export default function ReviewsManager() {
                   <div
                     className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium ${
                       review.entityType === "hotel"
-                        ? "bg-blue-50 text-blue-600"
-                        : "bg-teal-50 text-teal-600"
+                        ? "bg-info/10 text-info"
+                        : "bg-primary/10 text-primary"
                     }`}
                   >
                     {review.entityType === "hotel" ? (
@@ -354,30 +281,30 @@ export default function ReviewsManager() {
 
                   {/* Autor y fecha */}
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">
+                    <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center">
+                      <span className="text-primary-foreground text-xs font-bold">
                         {review.authorName.charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <div>
-                      <span className="font-semibold text-sm text-gray-900">
+                      <span className="font-semibold text-sm text-foreground">
                         {review.authorName}
                       </span>
                       {review.authorEmail && (
-                        <span className="text-gray-400 text-xs ml-1.5">
+                        <span className="text-muted-foreground text-xs ml-1.5">
                           {review.authorEmail}
                         </span>
                       )}
                     </div>
                     {review.verifiedBooking && (
-                      <ThumbsUp className="w-3.5 h-3.5 text-teal-500" aria-label={t("reviewsAdmin.verifiedBooking")} />
+                      <ThumbsUp className="w-3.5 h-3.5 text-primary" aria-label={t("reviewsAdmin.verifiedBooking")} />
                     )}
                   </div>
 
                   <div className="ml-auto flex items-center gap-2 flex-wrap">
                     <StarDisplay rating={review.rating} />
-                    <StatusBadge status={review.status} />
-                    <span className="text-xs text-gray-400">
+                    <ReviewStatusBadge status={review.status} />
+                    <span className="text-xs text-muted-foreground">
                       {format.date(review.createdAt)}
                     </span>
                   </div>
@@ -385,28 +312,28 @@ export default function ReviewsManager() {
 
                 {/* Contenido */}
                 {review.title && (
-                  <p className="font-semibold text-gray-800 text-sm mb-1">
+                  <p className="font-semibold text-foreground text-sm mb-1">
                     {review.title}
                   </p>
                 )}
-                <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
+                <p className="text-muted-foreground text-sm leading-relaxed line-clamp-3">
                   {review.body}
                 </p>
 
                 {/* Respuesta admin existente */}
                 {review.adminReply && (
-                  <div className="mt-3 bg-teal-50 border border-teal-200 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-teal-600 mb-1">
+                  <div className="mt-3 bg-primary/5 border border-primary/30 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-primary mb-1">
                       {t("reviewsAdmin.teamReply")}
                     </p>
-                    <p className="text-xs text-teal-700 leading-relaxed">
+                    <p className="text-xs text-foreground leading-relaxed">
                       {review.adminReply}
                     </p>
                   </div>
                 )}
 
                 {/* Acciones */}
-                <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-100">
+                <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-border">
                   {review.status === "pending" && (
                     <>
                       <Button
@@ -415,7 +342,7 @@ export default function ReviewsManager() {
                           approveMutation.mutate({ id: review.id })
                         }
                         disabled={approveMutation.isPending}
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 h-8"
+                        className="bg-success hover:bg-success/90 text-primary-foreground gap-1.5 h-8"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         {t("reviewsAdmin.action.approve")}
@@ -427,7 +354,7 @@ export default function ReviewsManager() {
                           rejectMutation.mutate({ id: review.id })
                         }
                         disabled={rejectMutation.isPending}
-                        className="border-red-200 text-red-600 hover:bg-red-50 gap-1.5 h-8"
+                        className="border-danger/40 text-danger hover:bg-danger/10 gap-1.5 h-8"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         {t("reviewsAdmin.action.reject")}
@@ -442,7 +369,7 @@ export default function ReviewsManager() {
                         rejectMutation.mutate({ id: review.id })
                       }
                       disabled={rejectMutation.isPending}
-                      className="border-gray-200 text-gray-500 hover:bg-gray-50 gap-1.5 h-8"
+                      className="border-border text-muted-foreground hover:bg-muted gap-1.5 h-8"
                     >
                       <XCircle className="w-3.5 h-3.5" />
                       {t("reviewsAdmin.action.withdraw")}
@@ -456,7 +383,7 @@ export default function ReviewsManager() {
                         approveMutation.mutate({ id: review.id })
                       }
                       disabled={approveMutation.isPending}
-                      className="border-emerald-200 text-emerald-600 hover:bg-emerald-50 gap-1.5 h-8"
+                      className="border-success/40 text-success hover:bg-success/10 gap-1.5 h-8"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       {t("reviewsAdmin.action.approve")}
@@ -471,7 +398,7 @@ export default function ReviewsManager() {
                         reply: review.adminReply ?? null,
                       })
                     }
-                    className="border-teal-200 text-teal-600 hover:bg-teal-50 gap-1.5 h-8"
+                    className="border-primary/40 text-primary hover:bg-primary/10 gap-1.5 h-8"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     {review.adminReply ? t("reviewsAdmin.action.editReply") : t("reviewsAdmin.action.reply")}
@@ -487,7 +414,7 @@ export default function ReviewsManager() {
                       }
                     }}
                     disabled={deleteMutation.isPending}
-                    className="text-red-400 hover:text-red-600 hover:bg-red-50 gap-1.5 h-8 ml-auto"
+                    className="text-danger/70 hover:text-danger hover:bg-danger/10 gap-1.5 h-8 ml-auto"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     {t("reviewsAdmin.action.delete")}
@@ -511,7 +438,7 @@ export default function ReviewsManager() {
               <ChevronLeft className="w-4 h-4" />
               {t("reviewsAdmin.pager.previous")}
             </Button>
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-muted-foreground">
               {t("reviewsAdmin.pager.page", { page: page + 1, pages: Math.ceil(total / LIMIT) })}
             </span>
             <Button
