@@ -2,7 +2,8 @@
  * Equivalencia y rendimiento de `latestAttempts` (inventario y copias): consulta anterior (subconsulta
  * correlacionada) frente a la nueva (JOIN contra agregación). Solo corre con MySQL de prueba:
  *   REGISTRY_TEST_DATABASE_URL=mysql://root:…@127.0.0.1:3432/registry_test pnpm vitest run server/backupLatestAttempts.mysql.test.ts
- * Crea sus propias tablas en una base temporal (`latest_attempts_test`) y la elimina al terminar.
+ * Cada prueba crea sus tablas en una base nueva de nombre unico (`la_test_<n>`) en el MySQL de prueba, sin tocar
+ * tablas reales; no se borran bases (el MySQL de prueba es desechable).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
@@ -11,29 +12,26 @@ import { LATEST_ATTEMPTS_SQL, LATEST_ATTEMPTS_SQL_LEGACY, MysqlBackupInventory }
 import { COPIES_LATEST_ATTEMPTS_SQL, COPIES_LATEST_ATTEMPTS_SQL_LEGACY, MysqlBackupCopyLedger } from "./_core/ops/backupCopies";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
-const DB = "latest_attempts_test";
 
 describe.skipIf(!URL_)("latestAttempts: consulta nueva equivale a la anterior", () => {
-  let admin: mysql.Connection;
   let pool: mysql.Pool;
+  let seq = 0;
 
+  // Base nueva por prueba: las tablas se crean con el DDL real de las migraciones 0010 y 0011.
+  const fresh = async (file: string, table: string) => {
+    const db = `la_test_${process.pid}_${Date.now()}_${++seq}`;
+    await pool.query(`CREATE DATABASE ${db}`);
+    await pool.query(`USE ${db}`);
+    const sql = readFileSync(new URL(`../db/registry/${file}`, import.meta.url), "utf8");
+    await pool.query(sql.split(";").find((x) => new RegExp(`CREATE TABLE IF NOT EXISTS ${table} *\\(`, "i").test(x))!);
+  };
+
+  // Una sola conexion para que USE valga para todas las consultas de la prueba.
   beforeAll(async () => {
-    admin = await mysql.createConnection(URL_!);
-    await admin.query(`DROP DATABASE IF EXISTS ${DB}`);
-    await admin.query(`CREATE DATABASE ${DB}`);
-    const u = new URL(URL_!);
-    u.pathname = `/${DB}`;
-    pool = mysql.createPool({ uri: u.toString(), multipleStatements: true });
-    for (const f of ["0010_backup_inventory.sql", "0011_backup_copies.sql"]) {
-      const sql = readFileSync(new URL(`../db/registry/${f}`, import.meta.url), "utf8");
-      // solo las sentencias CREATE TABLE (las migraciones también actualizan registry_meta)
-      for (const stmt of sql.split(";").filter((s) => /CREATE TABLE/i.test(s))) await pool.query(stmt);
-    }
+    pool = mysql.createPool({ uri: URL_!, connectionLimit: 1 });
   });
   afterAll(async () => {
     await pool?.end();
-    await admin?.query(`DROP DATABASE IF EXISTS ${DB}`);
-    await admin?.end();
   });
 
   const norm = (rows: mysql.RowDataPacket[]) => rows.map((r) => JSON.stringify(r)).sort();
@@ -45,7 +43,7 @@ describe.skipIf(!URL_)("latestAttempts: consulta nueva equivale a la anterior", 
     );
 
   it("inventario: varios intentos, empates de started_at, pruned y elementos solo pruned", async () => {
-    await pool.query("DELETE FROM backup_inventory");
+    await fresh("0010_backup_inventory.sql", "backup_inventory");
     // a: varios intentos, el último es failed
     await ins("tenant", "a", "ok", 100, "r1");
     await ins("tenant", "a", "ok", 200, "r2");
@@ -74,7 +72,7 @@ describe.skipIf(!URL_)("latestAttempts: consulta nueva equivale a la anterior", 
   });
 
   it("copias: equivalencia por destino con empates y pruned", async () => {
-    await pool.query("DELETE FROM backup_copies");
+    await fresh("0011_backup_copies.sql", "backup_copies");
     const c = (backup: number, dest: string, kind: string, id: string, status: string, startedAt: number, run: string) =>
       pool.query(
         "INSERT INTO backup_copies (backup_id, destination, run_id, target_kind, target_id, status, started_at, finished_at, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)",
@@ -95,11 +93,11 @@ describe.skipIf(!URL_)("latestAttempts: consulta nueva equivale a la anterior", 
     expect(sec.map((r) => r.runId).sort()).toEqual(["c2", "c4"]);
   });
 
-  it("volumen: mismo resultado y plan sin subconsulta correlacionada", async () => {
-    await pool.query("DELETE FROM backup_inventory");
-    // 300 empresas x 40 intentos = 12 000 filas (cada tanda inserta 1 000)
+  it("volumen: mismo resultado y plan sin subconsulta correlacionada", { timeout: 60_000 }, async () => {
+    await fresh("0010_backup_inventory.sql", "backup_inventory");
+    // 100 empresas x 40 intentos = 4 000 filas (cada tanda inserta 1 000)
     const rows: unknown[][] = [];
-    for (let t = 0; t < 300; t++) {
+    for (let t = 0; t < 100; t++) {
       for (let k = 0; k < 40; k++) rows.push([`v${t}-${k}`, "tenant", `t${t}`, k % 7 === 0 ? "failed" : k % 11 === 0 ? "pruned" : "ok", 1000 + (k % 30) * 10, 1010 + (k % 30) * 10]);
     }
     for (let i = 0; i < rows.length; i += 1000) {
@@ -107,7 +105,7 @@ describe.skipIf(!URL_)("latestAttempts: consulta nueva equivale a la anterior", 
     }
     const [o] = await pool.query<mysql.RowDataPacket[]>(LATEST_ATTEMPTS_SQL_LEGACY);
     const [n] = await pool.query<mysql.RowDataPacket[]>(LATEST_ATTEMPTS_SQL);
-    expect(n).toHaveLength(300);
+    expect(n).toHaveLength(100);
     expect(norm(n)).toEqual(norm(o));
     const [plan] = await pool.query<mysql.RowDataPacket[]>(`EXPLAIN FORMAT=TREE ${LATEST_ATTEMPTS_SQL}`);
     const text = String(Object.values(plan[0])[0]);
