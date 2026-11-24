@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
 import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { MetricCard } from "@/components/admin/PanelVisual";
-import { PanelError } from "@/components/admin/PanelStates";
+import { PanelLoading } from "@/components/admin/PanelStates";
+import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { transactionDescription } from "@shared/transactionText";
 import { useVocabulary } from "@/lib/vocabulary";
@@ -14,26 +15,26 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  Search, Download, TrendingUp, TrendingDown, RefreshCw, Receipt,
-  ChevronLeft, ChevronRight, User, ShoppingBag, Calendar,
+  Download, TrendingUp, TrendingDown, Receipt, Clock,
+  ChevronLeft, ChevronRight, User, ShoppingBag,
   CreditCard, Banknote, Smartphone, Store, Globe, Monitor,
   Eye, Trash2,
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
 
 // ─── Configuraciones visuales ────────────────────────────────────────────────
-const typeConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  ingreso:   { label: "Ingreso",   color: "bg-success/10 text-success",   icon: <TrendingUp className="w-3 h-3" /> },
-  reembolso: { label: "Reembolso", color: "bg-danger/10 text-danger",           icon: <TrendingDown className="w-3 h-3" /> },
-  comision:  { label: "Comisión",  color: "bg-info/10 text-info",       icon: <Receipt className="w-3 h-3" /> },
-  gasto:     { label: "Gasto",     color: "bg-warning/10 text-warning",   icon: <TrendingDown className="w-3 h-3" /> },
+const typeConfig: Record<string, { label: string; tone: Tone; icon: React.ReactNode }> = {
+  ingreso:   { label: "Ingreso",   tone: "success", icon: <TrendingUp /> },
+  reembolso: { label: "Reembolso", tone: "danger",  icon: <TrendingDown /> },
+  comision:  { label: "Comisión",  tone: "info",    icon: <Receipt /> },
+  gasto:     { label: "Gasto",     tone: "warning", icon: <TrendingDown /> },
 };
 
-const statusConfig: Record<string, { label: string; color: string }> = {
-  pendiente:   { label: "Pendiente",   color: "bg-warning/10 text-warning" },
-  completado:  { label: "Completado",  color: "bg-success/10 text-success" },
-  fallido:     { label: "Fallido",     color: "bg-danger/10 text-danger" },
-  reembolsado: { label: "Reembolsado", color: "bg-muted text-foreground" },
+const statusConfig: Record<string, { label: string; tone: Tone }> = {
+  pendiente:   { label: "Pendiente",   tone: "warning" },
+  completado:  { label: "Completado",  tone: "success" },
+  fallido:     { label: "Fallido",     tone: "danger" },
+  reembolsado: { label: "Reembolsado", tone: "neutral" },
 };
 
 const channelConfig: Record<string, { label: string; icon: React.ReactNode }> = {
@@ -50,6 +51,8 @@ const methodIcons: Record<string, React.ReactNode> = {
   redsys:   <CreditCard className="w-3 h-3" />,
   otro:     <Receipt className="w-3 h-3" />,
 };
+
+const FISCAL_LABEL: Record<string, string> = { general: "IVA 21%", reav: "REAV", mixed: "Mixto" };
 
 const PAGE_SIZE = 50;
 
@@ -155,6 +158,133 @@ export default function TransactionsList() {
     toast.success("Exportación CSV completada");
   };
 
+  const pendientes = txList.filter(t => t.status === "pendiente").length;
+  const dateLabel = (v: string) => new Date(`${v}T00:00:00`).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
+  const chips: FilterChip[] = [
+    ...(debouncedSearch ? [{ id: "q", label: `Búsqueda: ${debouncedSearch}`, onRemove: () => { setSearch(""); setDebouncedSearch(""); setPage(0); } }] : []),
+    ...(typeFilter !== "all" ? [{ id: "type", label: `Tipo: ${typeConfig[typeFilter]?.label ?? typeFilter}`, onRemove: () => { setTypeFilter("all"); setPage(0); } }] : []),
+    ...(statusFilter !== "all" ? [{ id: "status", label: `Estado: ${statusConfig[statusFilter]?.label ?? statusFilter}`, onRemove: () => { setStatusFilter("all"); setPage(0); } }] : []),
+    ...(channelFilter !== "all" ? [{ id: "channel", label: `Canal: ${channelConfig[channelFilter]?.label ?? channelFilter}`, onRemove: () => { setChannelFilter("all"); setPage(0); } }] : []),
+    ...(fiscalFilter !== "all" ? [{ id: "fiscal", label: `Régimen: ${FISCAL_LABEL[fiscalFilter] ?? fiscalFilter}`, onRemove: () => { setFiscalFilter("all"); setPage(0); } }] : []),
+    ...(fromDate ? [{ id: "from", label: `Desde ${dateLabel(fromDate)}`, onRemove: () => { setFromDate(""); setPage(0); } }] : []),
+    ...(toDate ? [{ id: "to", label: `Hasta ${dateLabel(toDate)}`, onRemove: () => { setToDate(""); setPage(0); } }] : []),
+  ];
+
+  const columns: EconomyColumn<(typeof txList)[number]>[] = [
+    {
+      key: "num",
+      header: "Nº / Fecha",
+      mobile: "title",
+      cell: (t) => (
+        <>
+          <p className="font-mono text-xs font-bold text-foreground">{t.transactionNumber}</p>
+          <p className="mt-0.5 text-xs font-normal text-muted-foreground">
+            {new Date(t.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}
+          </p>
+        </>
+      ),
+    },
+    {
+      key: "type",
+      header: "Tipo",
+      priority: "md",
+      cell: (t) => {
+        const tp = typeConfig[t.type] ?? typeConfig.ingreso;
+        return <StatusBadge tone={tp.tone} icon={tp.icon}>{tp.label}</StatusBadge>;
+      },
+    },
+    {
+      key: "party",
+      header: "Cliente / Producto",
+      priority: "lg",
+      className: "max-w-xs",
+      cell: (t) => (
+        <>
+          {(t as any).clientName && (
+            <p className="flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium text-foreground">
+              <User className="h-3 w-3 shrink-0" />{(t as any).clientName}
+            </p>
+          )}
+          {(t as any).productName && (
+            <p className="mt-0.5 flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">
+              <ShoppingBag className="h-3 w-3 shrink-0" />{(t as any).productName}
+            </p>
+          )}
+          {!(t as any).clientName && !(t as any).productName && (
+            <p className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{transactionDescription(t.description) ?? "—"}</p>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "method",
+      header: "Método",
+      priority: "xl",
+      cell: (t) => (
+        <Badge variant="outline" className="gap-1 text-xs">
+          {methodIcons[t.paymentMethod ?? "otro"]}
+          {formatPaymentMethod(t.paymentMethod)}
+        </Badge>
+      ),
+    },
+    {
+      key: "channel",
+      header: "Canal",
+      priority: "xl",
+      cell: (t) => {
+        const ch = channelConfig[(t as any).saleChannel ?? "otro"] ?? channelConfig.otro;
+        return <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">{ch.icon} {ch.label}</span>;
+      },
+    },
+    {
+      key: "fiscal",
+      header: "Fiscal",
+      priority: "xl",
+      cell: (t) => {
+        const regime = (t as any).fiscalRegime ?? null;
+        return regime ? (
+          <Badge variant="outline" className={`text-xs ${regime === "reav" ? "border-primary/40 text-primary" : regime === "mixed" ? "border-warning/40 text-warning" : "border-info/40 text-info"}`}>
+            {regime === "reav" ? "REAV" : regime === "mixed" ? "Mixto" : "IVA 21%"}
+          </Badge>
+        ) : <span className="text-xs text-muted-foreground">—</span>;
+      },
+    },
+    {
+      key: "amount",
+      header: "Importe",
+      align: "right",
+      num: true,
+      mobile: "amount",
+      cell: (t) => {
+        const taxBase   = parseFloat(String((t as any).taxBase   ?? "0"));
+        const taxAmount = parseFloat(String((t as any).taxAmount ?? "0"));
+        const reavMargin= parseFloat(String((t as any).reavMargin?? "0"));
+        const regime    = (t as any).fiscalRegime ?? null;
+        return (
+          <>
+            <span className={`text-sm font-bold ${t.type === "ingreso" ? "text-success" : "text-danger"}`}>
+              {t.type === "ingreso" ? "+" : "-"}€{parseFloat(String(t.amount)).toFixed(2)}
+            </span>
+            {regime && (
+              <div className="mt-0.5 hidden text-xs font-normal text-muted-foreground @5xl:block">
+                {regime === "reav" && reavMargin > 0 && <span>Margen REAV: €{reavMargin.toFixed(2)}</span>}
+                {regime !== "reav" && taxBase > 0 && <span>Base: €{taxBase.toFixed(2)} · IVA: €{taxAmount.toFixed(2)}</span>}
+              </div>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      key: "status",
+      header: "Estado",
+      cell: (t) => {
+        const st = statusConfig[t.status] ?? statusConfig.pendiente;
+        return <StatusBadge tone={st.tone}>{st.label}</StatusBadge>;
+      },
+    },
+  ];
+
   return (
     <AdminLayout title="Transacciones">
       <PanelPageHeader
@@ -168,273 +298,167 @@ export default function TransactionsList() {
         }
       />
 
-      {/* KPIs rápidos */}
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos (página)" value={`€${totalIngresos.toFixed(2)}`} />
-        <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos/Reembolsos" value={`€${totalGastos.toFixed(2)}`} />
-        <MetricCard icon={<Receipt />} tone={totalIngresos - totalGastos >= 0 ? "success" : "danger"} label="Balance neto" value={`€${(totalIngresos - totalGastos).toFixed(2)}`} />
-      </div>
+      <div className="space-y-5">
+        <EconomySummary>
+          <MetricCard icon={<Receipt />} tone={totalIngresos - totalGastos >= 0 ? "success" : "danger"} label="Balance neto (página)" value={`€${(totalIngresos - totalGastos).toFixed(2)}`} detail="ingresos − gastos y reembolsos" />
+          <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos (página)" value={`€${totalIngresos.toFixed(2)}`} detail="solo completados" />
+          <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos/Reembolsos" value={`€${totalGastos.toFixed(2)}`} detail="solo completados" />
+          <MetricCard icon={<Clock />} tone={pendientes > 0 ? "warning" : "neutral"} label="Pendientes (página)" value={pendientes} detail={`de ${txList.length} mostradas`} />
+        </EconomySummary>
 
-      {/* Filtros */}
-      <div className="bg-card border border-border rounded-xl p-4 mb-5 space-y-3">
-        <div className="flex flex-wrap gap-3">
-          {/* Búsqueda */}
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input value={search} onChange={e => handleSearch(e.target.value)}
-              placeholder="Buscar por nº, cliente, producto..." className="pl-9" />
-          </div>
-          {/* Tipo */}
-          <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Tipo" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los tipos</SelectItem>
-              <SelectItem value="ingreso">Ingreso</SelectItem>
-              <SelectItem value="reembolso">Reembolso</SelectItem>
-              <SelectItem value="comision">Comisión</SelectItem>
-              <SelectItem value="gasto">Gasto</SelectItem>
-            </SelectContent>
-          </Select>
-          {/* Estado */}
-          <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Estado" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="pendiente">Pendiente</SelectItem>
-              <SelectItem value="completado">Completado</SelectItem>
-              <SelectItem value="fallido">Fallido</SelectItem>
-              <SelectItem value="reembolsado">Reembolsado</SelectItem>
-            </SelectContent>
-          </Select>
-          {/* Canal */}
-          <Select value={channelFilter} onValueChange={v => { setChannelFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Canal" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los canales</SelectItem>
-              <SelectItem value="tpv">TPV</SelectItem>
-              <SelectItem value="web">Web</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="otro">Otro</SelectItem>
-            </SelectContent>
-          </Select>
-          {/* Régimen fiscal */}
-          <Select value={fiscalFilter} onValueChange={v => { setFiscalFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-44"><SelectValue placeholder="Régimen fiscal" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los regímenes</SelectItem>
-              <SelectItem value="general">IVA General 21%</SelectItem>
-              {voc.showReav && <SelectItem value="reav">REAV</SelectItem>}
-              <SelectItem value="mixed">Mixto</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          {/* Fechas */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-muted-foreground" />
-            <Input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPage(0); }}
-              className="w-36 text-sm" placeholder="Desde" />
-            <span className="text-muted-foreground text-sm">—</span>
-            <Input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPage(0); }}
-              className="w-36 text-sm" placeholder="Hasta" />
-          </div>
-          <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground gap-1">
-            <RefreshCw className="w-3 h-3" /> Limpiar filtros
-          </Button>
-        </div>
-      </div>
+        <EconomyFilterBar
+          search={{ value: search, onChange: handleSearch, placeholder: "Buscar por nº, cliente, producto..." }}
+          primary={
+            <>
+              <FilterField label="Tipo" className="w-full sm:w-40">
+                <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(0); }}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    <SelectItem value="ingreso">Ingreso</SelectItem>
+                    <SelectItem value="reembolso">Reembolso</SelectItem>
+                    <SelectItem value="comision">Comisión</SelectItem>
+                    <SelectItem value="gasto">Gasto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FilterField>
+              <FilterField label="Estado" className="w-full sm:w-40">
+                <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Estado" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los estados</SelectItem>
+                    <SelectItem value="pendiente">Pendiente</SelectItem>
+                    <SelectItem value="completado">Completado</SelectItem>
+                    <SelectItem value="fallido">Fallido</SelectItem>
+                    <SelectItem value="reembolsado">Reembolsado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FilterField>
+            </>
+          }
+          more={
+            <>
+              <FilterField label="Canal">
+                <Select value={channelFilter} onValueChange={v => { setChannelFilter(v); setPage(0); }}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Canal" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los canales</SelectItem>
+                    <SelectItem value="tpv">TPV</SelectItem>
+                    <SelectItem value="web">Web</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FilterField>
+              <FilterField label="Régimen fiscal">
+                <Select value={fiscalFilter} onValueChange={v => { setFiscalFilter(v); setPage(0); }}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Régimen fiscal" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los regímenes</SelectItem>
+                    <SelectItem value="general">IVA General 21%</SelectItem>
+                    {voc.showReav && <SelectItem value="reav">REAV</SelectItem>}
+                    <SelectItem value="mixed">Mixto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FilterField>
+              <FilterField label="Desde">
+                <Input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPage(0); }} />
+              </FilterField>
+              <FilterField label="Hasta">
+                <Input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPage(0); }} />
+              </FilterField>
+            </>
+          }
+          chips={chips}
+          onClear={resetFilters}
+          summary={`${total} ${total === 1 ? "transacción" : "transacciones"}`}
+        />
 
-      {/* Tabla */}
-      {transactionsError ? (
-        <PanelError title="No se han podido cargar las transacciones" error={transactionsError} onRetry={() => void refetchTransactions()} />
-      ) : isLoading ? (
-        <div className="space-y-3">
-          {[...Array(8)].map((_, i) => <div key={i} className="h-14 bg-muted animate-pulse rounded-xl" />)}
-        </div>
-      ) : txList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <RefreshCw className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-muted-foreground font-medium">No hay transacciones con estos filtros</p>
-          <Button variant="ghost" size="sm" onClick={resetFilters} className="mt-3">Limpiar filtros</Button>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Nº / Fecha</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipo</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Importe</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Método</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Canal</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fiscal</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cliente / Producto</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {txList.map((t) => {
-                  const tp = typeConfig[t.type]   ?? typeConfig.ingreso;
-                  const st = statusConfig[t.status] ?? statusConfig.pendiente;
-                  const ch = channelConfig[(t as any).saleChannel ?? "otro"] ?? channelConfig.otro;
-                  const taxBase   = parseFloat(String((t as any).taxBase   ?? "0"));
-                  const taxAmount = parseFloat(String((t as any).taxAmount ?? "0"));
-                  const reavMargin= parseFloat(String((t as any).reavMargin?? "0"));
-                  const regime    = (t as any).fiscalRegime ?? null;
-                  return (
-                    <tr key={t.id} className="hover:bg-muted/20 transition-colors">
-                      {/* Nº / Fecha */}
-                      <td className="px-4 py-3">
-                        <p className="font-mono text-xs font-bold text-foreground">{t.transactionNumber}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(t.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}
-                        </p>
-                      </td>
-                      {/* Tipo */}
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${tp.color}`}>
-                          {tp.icon} {tp.label}
-                        </span>
-                      </td>
-                      {/* Importe */}
-                      <td className="px-4 py-3 text-right">
-                        <span className={`text-sm font-bold ${t.type === "ingreso" ? "text-success" : "text-danger"}`}>
-                          {t.type === "ingreso" ? "+" : "-"}€{parseFloat(String(t.amount)).toFixed(2)}
-                        </span>
-                        {regime && (
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {regime === "reav" && reavMargin > 0 && <span>Margen REAV: €{reavMargin.toFixed(2)}</span>}
-                            {regime !== "reav" && taxBase > 0 && <span>Base: €{taxBase.toFixed(2)} · IVA: €{taxAmount.toFixed(2)}</span>}
-                          </div>
-                        )}
-                      </td>
-                      {/* Método */}
-                      <td className="px-4 py-3">
-                        <Badge variant="outline" className="text-xs gap-1">
-                          {methodIcons[t.paymentMethod ?? "otro"]}
-                          {formatPaymentMethod(t.paymentMethod)}
-                        </Badge>
-                      </td>
-                      {/* Canal */}
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          {ch.icon} {ch.label}
-                        </span>
-                      </td>
-                      {/* Fiscal */}
-                      <td className="px-4 py-3">
-                        {regime ? (
-                          <Badge variant="outline" className={`text-xs ${
-                            regime === "reav" ? "border-primary/40 text-primary" :
-                            regime === "mixed" ? "border-warning/40 text-warning" :
-                            "border-info/40 text-info"
-                          }`}>
-                            {regime === "reav" ? "REAV" : regime === "mixed" ? "Mixto" : "IVA 21%"}
-                          </Badge>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      {/* Cliente / Producto */}
-                      <td className="px-4 py-3 max-w-xs">
-                        {(t as any).clientName && (
-                          <p className="text-xs font-medium text-foreground flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                            <User className="w-3 h-3 shrink-0" />{(t as any).clientName}
-                          </p>
-                        )}
-                        {(t as any).productName && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">
-                            <ShoppingBag className="w-3 h-3 shrink-0" />{(t as any).productName}
-                          </p>
-                        )}
-                        {!(t as any).clientName && !(t as any).productName && (
-                          <p className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{transactionDescription(t.description) ?? "—"}</p>
-                        )}
-                      </td>
-                      {/* Estado */}
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${st.color}`}>
-                          {st.label}
-                        </span>
-                      </td>
-                      {/* Acciones */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-info hover:text-info hover:bg-info/10"
-                            onClick={() => setViewTxId(t.id)} title="Ver transacción">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-danger hover:text-danger hover:bg-danger/10"
-                            onClick={() => setDeleteTx({ id: t.id, number: t.transactionNumber })} title="Borrar transacción">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginación */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
+        <EconomyTable
+          rows={txList}
+          columns={columns}
+          rowKey={(t) => t.id}
+          caption="Transacciones"
+          loading={isLoading}
+          error={transactionsError}
+          errorTitle="No se han podido cargar las transacciones"
+          onRetry={() => void refetchTransactions()}
+          emptyTitle="No hay transacciones con estos filtros"
+          emptyDescription="Cambia o quita algún filtro para ver más resultados."
+          emptyAction={chips.length > 0 ? <Button variant="outline" size="sm" onClick={resetFilters}>Limpiar filtros</Button> : undefined}
+          actions={(t) => (
+            <RowActions
+              label={t.transactionNumber}
+              primary={{ label: "Ver", icon: <Eye className="h-4 w-4" />, onSelect: () => setViewTxId(t.id) }}
+              menu={[{ label: "Borrar transacción", icon: <Trash2 />, destructive: true, onSelect: () => setDeleteTx({ id: t.id, number: t.transactionNumber }) }]}
+            />
+          )}
+          footer={totalPages > 1 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/30 px-4 py-3">
               <p className="text-xs text-muted-foreground">
                 Mostrando {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} de {total}
               </p>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)} aria-label="Página anterior">
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
-                <span className="text-xs text-muted-foreground px-2">{page + 1} / {totalPages}</span>
-                <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                <span className="px-2 text-xs tabular-nums text-muted-foreground">{page + 1} / {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} aria-label="Página siguiente">
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
-          )}
-        </div>
-      )}
+          ) : undefined}
+        />
+      </div>
+
       {/* Modal Ver transacción */}
       <Dialog open={viewTxId !== null} onOpenChange={open => { if (!open) setViewTxId(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle de transacción</DialogTitle>
           </DialogHeader>
           {txDetail ? (
-            <div className="space-y-3 text-sm">
-              {[
-                ["Nº Transacción", txDetail.transactionNumber],
-                ["Tipo", typeConfig[txDetail.type]?.label ?? txDetail.type],
-                ["Estado", statusConfig[txDetail.status]?.label ?? txDetail.status],
-                ["Importe", `€${parseFloat(String(txDetail.amount)).toFixed(2)}`],
-                ["Método de pago", txDetail.paymentMethod ?? "—"],
-                ["Canal de venta", (txDetail as any).saleChannel ?? "—"],
-                ["Régimen fiscal", (txDetail as any).fiscalRegime ?? "—"],
-                ["Base imponible", (txDetail as any).taxBase ? `€${parseFloat(String((txDetail as any).taxBase)).toFixed(2)}` : "—"],
-                ["IVA", (txDetail as any).taxAmount ? `€${parseFloat(String((txDetail as any).taxAmount)).toFixed(2)}` : "—"],
-                ...(voc.showReav ? [["Margen REAV", (txDetail as any).reavMargin ? `€${parseFloat(String((txDetail as any).reavMargin)).toFixed(2)}` : "—"]] : []),
-                ["Cliente", (txDetail as any).clientName ?? "—"],
-                ["Producto", (txDetail as any).productName ?? "—"],
-                ["Vendedor", (txDetail as any).sellerName ?? "—"],
-                ["Centro operativo", (txDetail as any).operativeCenter ?? "—"],
-                ["Descripción", transactionDescription(txDetail.description) ?? "—"],
-                [`Ref. ${voc.order}`, (txDetail as any).reservationRef ?? "—"],
-                ["Ref. externa", (txDetail as any).externalRef ?? "—"],
-                ["Nº factura", (txDetail as any).invoiceNumber ?? "—"],
-                ["Fecha", new Date(txDetail.createdAt).toLocaleString("es-ES")],
-              ].map(([label, value]) => (
-                <div key={label as string} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0">
-                  <span className="text-muted-foreground shrink-0">{label}</span>
-                  <span className="font-medium text-right overflow-hidden text-ellipsis whitespace-nowrap">{value as string}</span>
-                </div>
+            <div className="space-y-4 text-sm">
+              {([
+                ["General", [
+                  ["Nº Transacción", txDetail.transactionNumber],
+                  ["Tipo", typeConfig[txDetail.type]?.label ?? txDetail.type],
+                  ["Estado", statusConfig[txDetail.status]?.label ?? txDetail.status],
+                  ["Fecha", new Date(txDetail.createdAt).toLocaleString("es-ES")],
+                  ["Descripción", transactionDescription(txDetail.description) ?? "—"],
+                ]],
+                ["Importes y fiscalidad", [
+                  ["Importe", `€${parseFloat(String(txDetail.amount)).toFixed(2)}`],
+                  ["Método de pago", txDetail.paymentMethod ?? "—"],
+                  ["Régimen fiscal", (txDetail as any).fiscalRegime ?? "—"],
+                  ["Base imponible", (txDetail as any).taxBase ? `€${parseFloat(String((txDetail as any).taxBase)).toFixed(2)}` : "—"],
+                  ["IVA", (txDetail as any).taxAmount ? `€${parseFloat(String((txDetail as any).taxAmount)).toFixed(2)}` : "—"],
+                  ...(voc.showReav ? [["Margen REAV", (txDetail as any).reavMargin ? `€${parseFloat(String((txDetail as any).reavMargin)).toFixed(2)}` : "—"]] : []),
+                ]],
+                ["Origen y referencias", [
+                  ["Canal de venta", (txDetail as any).saleChannel ?? "—"],
+                  ["Cliente", (txDetail as any).clientName ?? "—"],
+                  ["Producto", (txDetail as any).productName ?? "—"],
+                  ["Vendedor", (txDetail as any).sellerName ?? "—"],
+                  ["Centro operativo", (txDetail as any).operativeCenter ?? "—"],
+                  [`Ref. ${voc.order}`, (txDetail as any).reservationRef ?? "—"],
+                  ["Ref. externa", (txDetail as any).externalRef ?? "—"],
+                  ["Nº factura", (txDetail as any).invoiceNumber ?? "—"],
+                ]],
+              ] as [string, string[][]][]).map(([title, items]) => (
+                <FormSection key={title} title={title}>
+                  {items.map(([label, value]) => (
+                    <div key={label} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0 last:pb-0">
+                      <span className="shrink-0 text-muted-foreground">{label}</span>
+                      <span className="min-w-0 break-words text-right font-medium tabular-nums">{value}</span>
+                    </div>
+                  ))}
+                </FormSection>
               ))}
             </div>
           ) : (
-            <div className="h-32 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
+            <PanelLoading className="h-32 py-0" />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewTxId(null)}>Cerrar</Button>
