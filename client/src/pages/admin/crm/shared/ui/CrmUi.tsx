@@ -43,7 +43,8 @@ export function CrmSummaryCard({ icon, tone = "brand", label, value, detail, her
 }) {
   const big = hero && !compact;
   const base = cn(
-    "block min-w-0 rounded-xl border bg-card/90 p-3 text-left shadow-sm transition sm:p-4",
+    "min-w-0 rounded-xl border bg-card/90 p-3 text-left shadow-sm transition sm:p-4",
+    big ? "flex flex-col justify-between" : "block",
     active ? "border-primary ring-1 ring-primary/40" : "border-border",
     onClick && "w-full hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     className,

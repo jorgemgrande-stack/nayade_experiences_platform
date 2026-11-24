@@ -52,5 +52,11 @@ export default {
   seccionOrigenNotas: "Herkunft und Notizen",
   seccionDatos: "Angebotsdaten",
   seccionCliente: "Kunde",
+  campoObligatorio: "Dieses Feld ist erforderlich.",
+  seccionEstadoNotas: "Status, Herkunft und Notizen",
+  seccionLineas: "Angebotspositionen",
+  seccionCondiciones: "Bedingungen und Zahlung",
+  seccionResumen: "Beträge",
+  seccionSolicitud: "Anfrage",
   camposObligatorios: "Felder mit * sind Pflichtfelder.",
 } satisfies Mirror<typeof es>;

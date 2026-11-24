@@ -11,6 +11,7 @@ import { LeadWebRequestBlock } from "../LeadWebRequestBlock";
 import { FileText, XCircle, Phone, Mail, MessageSquare, RefreshCw, BellOff, Bell } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { DT_FULL, EUR2, OpportunityStatus, Priority, QuoteStatus, OpportunityBadge, QuoteStatusBadge, PriorityDot, ScheduledJobsMini } from "../shared/crmCommon";
+import { CrmFormSection } from "../shared/ui/CrmUi";
 
 // ─── LEAD DETAIL MODAL ────────────────────────────────────────────────────────
 export function LeadDetailModal({
@@ -88,7 +89,7 @@ export function LeadDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
@@ -102,10 +103,10 @@ export function LeadDetailModal({
 
   return (
     <>
-    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-3 text-white">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center font-bold text-sm">
+        <DialogTitle className="flex items-center gap-3 text-foreground">
+          <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
             {lead.name.charAt(0).toUpperCase()}
           </div>
           <div>
@@ -129,7 +130,7 @@ export function LeadDetailModal({
         </div>
 
         {/* Contact info */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {lead.phone && (
             <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm text-foreground/70 hover:text-warning transition-colors">
               <Phone className="w-3.5 h-3.5" /> {lead.phone}
@@ -144,35 +145,35 @@ export function LeadDetailModal({
         <LeadWebRequestBlock request={data.webRequest} />
 
         {/* Request details */}
-        <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-2">
+        <CrmFormSection title={t("crmOpps.seccionSolicitud")} className="space-y-2">
           {lead.selectedCategory && (
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">{t("crmLeads.categoria")}</span>
-              <span className="text-white font-medium">{lead.selectedCategory}</span>
+              <span className="text-foreground font-medium">{lead.selectedCategory}</span>
             </div>
           )}
           {lead.selectedProduct && (
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">{t("crmLeads.producto")}</span>
-              <span className="text-white font-medium">{lead.selectedProduct}</span>
+              <span className="text-foreground font-medium">{lead.selectedProduct}</span>
             </div>
           )}
           {lead.preferredDate && (
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">{voc.serviceDate}</span>
-              <span className="text-white font-medium">{format.date(lead.preferredDate, {})}</span>
+              <span className="text-foreground font-medium">{format.date(lead.preferredDate, {})}</span>
             </div>
           )}
           {(lead as any).preferredTime && (
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">{t("crmLeads.horaSolicitada")}</span>
-              <span className="text-white font-medium">{(lead as any).preferredTime}</span>
+              <span className="text-foreground font-medium">{(lead as any).preferredTime}</span>
             </div>
           )}
           {(lead.numberOfAdults || lead.numberOfPersons) && (
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">{t("crmLeads.personas")}</span>
-              <span className="text-white font-medium">
+              <span className="text-foreground font-medium">
                 {lead.numberOfAdults ? t("crmLeads.adultos2", { numberOfAdults: lead.numberOfAdults }) : ""}{lead.numberOfChildren ? t("crmLeads.ninos2", { numberOfChildren: lead.numberOfChildren }) : ""}
                 {!lead.numberOfAdults && lead.numberOfPersons ? t("crmLeads.personas2", { numberOfPersons: lead.numberOfPersons }) : ""}
               </span>
@@ -184,9 +185,9 @@ export function LeadDetailModal({
               <p className="text-xs text-foreground/50 uppercase tracking-wider mb-2">{voc.requestedItems}</p>
               <div className="space-y-2">
                 {(lead.activitiesJson as any[]).map((act: any, i: number) => (
-                  <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2.5">
+                  <div key={i} className="bg-foreground/[0.06] rounded-lg px-3 py-2.5">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-semibold text-white">{act.experienceTitle}</span>
+                      <span className="text-sm font-semibold text-foreground">{act.experienceTitle}</span>
                       <span className="text-xs text-warning font-bold bg-warning/10 px-2 py-0.5 rounded-full">{t("crmLeads.pax", { participants: act.participants })}</span>
                     </div>
                     {act.details && Object.keys(act.details).length > 0 && (
@@ -215,12 +216,11 @@ export function LeadDetailModal({
               <p className="text-sm text-foreground/80 whitespace-pre-line break-words" data-testid="lead-message">{lead.message}</p>
             </div>
           )}
-        </div>
+        </CrmFormSection>
 
         {/* Related quotes */}
         {relatedQuotes.length > 0 && (
-          <div>
-            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.presupuestosAsociados")}</h4>
+          <CrmFormSection title={t("crmLeads.presupuestosAsociados")}>
             <div className="space-y-2">
               {relatedQuotes.map((q: any) => (
                 <div key={q.id} className="flex items-center justify-between bg-foreground/[0.05] rounded-lg px-3 py-2">
@@ -235,19 +235,18 @@ export function LeadDetailModal({
                 </div>
               ))}
             </div>
-          </div>
+          </CrmFormSection>
         )}
 
         {/* Email automation preferences */}
-        <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.emailsAutomaticos")}</h4>
+        <CrmFormSection title={t("crmLeads.emailsAutomaticos")}>
           <div className={`rounded-lg border px-4 py-3 flex items-start justify-between gap-3 ${emailPrefs?.automationsPaused ? "bg-warning/30 border-warning/40" : "bg-foreground/[0.04] border-foreground/[0.10]"}`}>
             <div className="flex items-start gap-2.5">
               {emailPrefs?.automationsPaused
                 ? <BellOff className="w-4 h-4 text-warning mt-0.5 shrink-0" />
                 : <Bell className="w-4 h-4 text-success mt-0.5 shrink-0" />}
               <div>
-                <div className="text-sm font-medium text-white">
+                <div className="text-sm font-medium text-foreground">
                   {emailPrefs?.automationsPaused ? t("crmLeads.automatizacionesPausadas") : t("crmLeads.automatizacionesActivas")}
                 </div>
                 {emailPrefs?.automationsPaused && emailPrefs.pauseReason && (
@@ -289,7 +288,7 @@ export function LeadDetailModal({
                 value={pauseReason}
                 onChange={e => setPauseReason(e.target.value)}
                 placeholder={t("crmLeads.motivoOpcional")}
-                className="h-8 text-xs bg-foreground/[0.05] border-foreground/[0.12] text-white"
+                className="h-8 text-xs bg-foreground/[0.05] border-foreground/[0.12] text-foreground"
               />
               <Button
                 size="sm"
@@ -299,18 +298,15 @@ export function LeadDetailModal({
               >{t("crmLeads.confirmarPausa")}</Button>
             </div>
           )}
-        </div>
+        </CrmFormSection>
 
         {/* Emails automáticos programados para este lead */}
-        <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-2">
-            <Mail className="w-3 h-3" />{" "}{t("crmLeads.emailsProgramados")}</h4>
+        <CrmFormSection title={t("crmLeads.emailsProgramados")}>
           <ScheduledJobsMini entityType="lead" entityId={leadId} />
-        </div>
+        </CrmFormSection>
 
         {/* Notes */}
-        <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.notasInternas")}</h4>
+        <CrmFormSection title={t("crmLeads.notasInternas")}>
           {Array.isArray(lead.internalNotes) && lead.internalNotes.length > 0 ? (
             <div className="space-y-2 mb-3">
               {(lead.internalNotes as { text: string; authorName: string; createdAt: string }[]).map((n, i) => (
@@ -328,7 +324,7 @@ export function LeadDetailModal({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t("crmLeads.anadirNotaInterna")}
-              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none h-16"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm resize-none h-16"
             />
             <Button
               size="sm"
@@ -339,25 +335,24 @@ export function LeadDetailModal({
               <MessageSquare className="w-4 h-4" />
             </Button>
           </div>
-        </div>
+        </CrmFormSection>
 
         {/* Change status */}
-        <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmLeads.cambiarEstado")}</h4>
+        <CrmFormSection title={t("crmLeads.cambiarEstado")}>
           <div className="flex gap-2 flex-wrap">
             {(["nueva", "enviada", "ganada", "perdida"] as OpportunityStatus[]).map((s) => (
               <Button
                 key={s}
                 size="sm"
                 variant="outline"
-                className={`border-foreground/[0.15] text-foreground/70 hover:text-foreground text-xs capitalize ${lead.opportunityStatus === s ? "bg-foreground/[0.08] text-white" : ""}`}
+                className={`border-foreground/[0.15] text-foreground/70 hover:text-foreground text-xs capitalize ${lead.opportunityStatus === s ? "bg-foreground/[0.08] text-foreground" : ""}`}
                 onClick={() => updateStatus.mutate({ id: leadId, opportunityStatus: s })}
               >
                 {s}
               </Button>
             ))}
           </div>
-        </div>
+        </CrmFormSection>
       </div>
 
       <DialogFooter className="flex gap-2 flex-wrap">
@@ -371,7 +366,6 @@ export function LeadDetailModal({
         {/* Botón 'Generar presupuesto' eliminado — flujo correcto es 'Crear Presupuesto' que abre el modal */}
         <Button
           size="sm"
-          className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
           onClick={() => { onClose(); onConvert(leadId, undefined); }}
         >
           <FileText className="w-4 h-4 mr-1" />{" "}{t("crmLeads.crearPresupuesto")}</Button>

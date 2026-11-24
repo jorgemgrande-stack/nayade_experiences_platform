@@ -50,5 +50,11 @@ export default {
   seccionOrigenNotas: "Origen y notas",
   seccionDatos: "Datos del presupuesto",
   seccionCliente: "Cliente",
+  campoObligatorio: "Este campo es obligatorio.",
+  seccionEstadoNotas: "Estado, origen y notas",
+  seccionLineas: "Líneas del presupuesto",
+  seccionCondiciones: "Condiciones y pago",
+  seccionResumen: "Importes",
+  seccionSolicitud: "Solicitud",
   camposObligatorios: "Los campos con * son obligatorios.",
 };

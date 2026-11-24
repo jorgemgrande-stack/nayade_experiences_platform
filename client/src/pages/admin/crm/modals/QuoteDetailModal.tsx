@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { FileText, Search, Eye, Send, CheckCircle, XCircle, Clock, Mail, Download, RefreshCw, Copy, ArrowUpRight, Banknote, FileDown, Sparkles, Receipt, CreditCard, Upload, ExternalLink, X } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { EUR2, toastQuoteMail, QuoteStatus, ConfirmDialog, QuoteStatusBadge, ScheduledJobsMini } from "../shared/crmCommon";
+import { CrmFormSection } from "../shared/ui/CrmUi";
 
 // ─── QUOTE DETAIL MODAL ───────────────────────────────────────────────────────
 
@@ -389,7 +390,7 @@ export function QuoteDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
@@ -407,12 +408,12 @@ export function QuoteDetailModal({
 
   return (
     <>
-    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+    <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
       <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-700/20 border border-warning/30 flex items-center justify-center">
-            <FileText className="w-4 h-4 text-warning" />
+        <DialogTitle className="text-foreground flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
+            <FileText className="w-4 h-4 text-primary" />
           </div>
           <div>
             <div className="font-bold">{quote.quoteNumber}</div>
@@ -437,7 +438,7 @@ export function QuoteDetailModal({
 
         <div className="bg-foreground/[0.05] rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-foreground/[0.12]">
-            <h3 className="font-semibold text-white text-sm">{quote.title}</h3>
+            <h3 className="font-semibold text-foreground text-sm">{quote.title}</h3>
             {quote.description && <p className="text-xs text-foreground/60 mt-0.5">{quote.description}</p>}
           </div>
           <table className="w-full">
@@ -509,15 +510,14 @@ export function QuoteDetailModal({
             )}
             <div className="flex justify-between items-center pt-1">
               <span className="font-bold text-foreground">{t("crmQuotes.total2")}</span>
-              <span className="text-xl font-bold text-warning">{format.currency(Number(quote.total), "EUR", EUR2)}</span>
+              <span className="text-xl font-bold text-primary">{format.currency(Number(quote.total), "EUR", EUR2)}</span>
             </div>
           </div>
         </div>
 
         {/* Invoices */}
         {relatedInvoices.length > 0 && (
-          <div>
-            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">{t("crmQuotes.facturasGeneradas")}</h4>
+          <CrmFormSection title={t("crmQuotes.facturasGeneradas")}>
             {relatedInvoices.map((inv: any) => (
               <div key={inv.id} className="flex items-center justify-between bg-success/10 border border-success/20 rounded-lg px-3 py-2">
                 <div>
@@ -532,15 +532,13 @@ export function QuoteDetailModal({
                 )}
               </div>
             ))}
-          </div>
+          </CrmFormSection>
         )}
 
         {/* Emails automáticos programados */}
-        <div>
-          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-2">
-            <Mail className="w-3 h-3" />{" "}{t("crmQuotes.emailsAutomaticos")}</h4>
+        <CrmFormSection title={t("crmQuotes.emailsAutomaticos")}>
           <ScheduledJobsMini entityType="quote" entityId={quoteId} />
-        </div>
+        </CrmFormSection>
 
         {/* Timeline de actividad */}
         <div>
@@ -564,15 +562,15 @@ export function QuoteDetailModal({
 
         {/* Payment link input */}
         {showPaymentInput && (
-          <div>
-            <Label className="text-foreground/65 text-xs">{t("crmQuotes.linkDePagoOpcional")}</Label>
+          <CrmFormSection title={t("crmQuotes.linkDePagoOpcional")}>
+            <Label className="sr-only">{t("crmQuotes.linkDePagoOpcional")}</Label>
             <Input
               value={paymentLink}
               onChange={(e) => setPaymentLink(e.target.value)}
               placeholder="https://..."
-              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1 text-sm"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 mt-1 text-sm"
             />
-          </div>
+          </CrmFormSection>
         )}
 
         {/* ─── RESUMEN PLAN DE PAGOS (siempre visible si existe) ─── */}
@@ -650,7 +648,7 @@ export function QuoteDetailModal({
         {showPlanEditor && (
           <div className="bg-foreground/[0.04] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-primary" />{t("crmQuotes.planDePagoFraccionado2")}</h4>
               <div className="flex items-center gap-2">
                 {planQuery.data && !planEditMode && (
@@ -688,7 +686,7 @@ export function QuoteDetailModal({
                   return (
                     <div key={inst.id} className="flex items-center gap-3 py-2 border-b border-foreground/[0.08] last:border-0">
                       <span className="text-xs text-foreground/40 w-5">#{inst.installmentNumber}</span>
-                      <span className="text-sm font-semibold text-white flex-1">{format.number((inst.amountCents / 100), { minimumFractionDigits: 2 })} €</span>
+                      <span className="text-sm font-semibold text-foreground flex-1">{format.number((inst.amountCents / 100), { minimumFractionDigits: 2 })} €</span>
                       <span className="text-xs text-foreground/55">{inst.dueDate}</span>
                       {inst.isRequiredForConfirmation && <span className="text-xs bg-primary/15 text-primary border border-primary/25 px-1.5 py-0.5 rounded">{t("crmQuotes.requerida")}</span>}
                       {inst.status === "paid" ? (
@@ -711,7 +709,7 @@ export function QuoteDetailModal({
                   const quoteTotalCents = Math.round(Number(quote.total ?? 0) * 100);
                   return (
                     <div className="flex justify-between items-center pt-1 text-xs text-foreground/50">
-                      <span>{t("crmQuotes.totalPlan")}{" "}<strong className="text-white">{format.number((total / 100), { minimumFractionDigits: 2 })} €</strong></span>
+                      <span>{t("crmQuotes.totalPlan")}{" "}<strong className="text-foreground">{format.number((total / 100), { minimumFractionDigits: 2 })} €</strong></span>
                       {Math.abs(total - quoteTotalCents) > 1 && (
                         <span className="text-warning">{t("crmQuotes.diferenciaConPresupuesto", { formatEur: format.currency((quoteTotalCents / 100), "EUR", EUR2) })}</span>
                       )}
@@ -749,7 +747,7 @@ export function QuoteDetailModal({
                           }
                           setDraftInstallments(updated);
                         }}
-                        className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-primary/50"
+                        className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none focus:border-primary/50"
                       />
                       <input
                         type="date"
@@ -759,7 +757,7 @@ export function QuoteDetailModal({
                           updated[idx] = { ...updated[idx], dueDate: e.target.value };
                           setDraftInstallments(updated);
                         }}
-                        className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary/50"
+                        className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:border-primary/50"
                       />
                     </div>
                     <div className="flex items-center justify-between pl-7">
@@ -841,7 +839,7 @@ export function QuoteDetailModal({
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && !quote.paymentPlanId && (
           <Button
             size="sm"
-            className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold"
+            className="text-xs font-semibold"
             onClick={() => setShowConfirmPaymentModal(true)}
           >
             <CheckCircle className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.confirmarPago2")}</Button>
@@ -856,14 +854,14 @@ export function QuoteDetailModal({
             <Button
               size="sm"
               variant="outline"
-              className="border-foreground/[0.15] text-foreground/65 text-xs"
+              className="text-xs"
               onClick={() => setShowPaymentInput(!showPaymentInput)}
             >
               <ArrowUpRight className="w-3.5 h-3.5 mr-1" /> {showPaymentInput ? t("crmQuotes.sinLink") : t("crmQuotes.linkPago")}
             </Button>
             <Button
               size="sm"
-              className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
+              className="text-xs"
               onClick={() => sendQuote.mutate({ id: quoteId, origin: window.location.origin })}
               disabled={sendQuote.isPending}
             >
@@ -871,7 +869,7 @@ export function QuoteDetailModal({
           </>
         )}
         {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
-          <Button size="sm" variant="outline" className="border-info/30 text-info hover:bg-info/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
+          <Button size="sm" variant="outline" className="text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
             {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}{t("crmQuotes.reenviar")}</Button>
         )}
         {/* Pago Pendiente */}
@@ -879,7 +877,7 @@ export function QuoteDetailModal({
           <Button
             size="sm"
             variant="outline"
-            className="border-warning/30 text-warning hover:bg-warning/10 text-xs"
+            className="text-xs"
             onClick={() => setShowPendingPaymentModal(true)}
           >
             <Clock className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.pagoPendiente")}</Button>
@@ -903,7 +901,7 @@ export function QuoteDetailModal({
             <CreditCard className="w-3.5 h-3.5 mr-1" />{t("crmQuotes.planFraccionado")}</Button>
         )}
         {/* Descargar PDF */}
-        <Button size="sm" variant="outline" className="border-warning/30 text-warning hover:bg-warning/10 text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
+        <Button size="sm" variant="outline" className="text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
           {generatePdf.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1" />}{t("crmQuotes.descargarPdf")}</Button>
         {/* Duplicar */}
         <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground text-xs" onClick={() => duplicate.mutate({ id: quoteId })} disabled={duplicate.isPending}>
@@ -921,9 +919,9 @@ export function QuoteDetailModal({
         setShowTransferModal(o);
         if (!o) { setTransferFile(null); setTransferProofUrl(null); setSelectedBankMovementId(null); setShowBankMovementSearch(false); setBankMovementSearch(""); }
       }}>
-        <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <Banknote className="w-5 h-5 text-info" />{t("crmQuotes.confirmarPagoPorTransferencia")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1071,13 +1069,13 @@ export function QuoteDetailModal({
 
       {/* ─── MODAL: Confirmar pago de cuota individual ─── */}
       <Dialog open={!!confirmingInstallment} onOpenChange={(o) => { if (!o) { setConfirmingInstallment(null); setInstPayMethod("transferencia"); setInstTpvOp(""); setInstPayNote(""); setInstProofUrl(null); setInstProofKey(null); } }}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-success" />{t("crmQuotes.confirmarCuota", { installmentNumber: confirmingInstallment?.installmentNumber })}
             </DialogTitle>
             {confirmingInstallment && (
-              <p className="text-foreground/60 text-sm pt-1">{t("crmQuotes.importe2")}{" "}<strong className="text-white">{format.number((confirmingInstallment.amountCents / 100), { minimumFractionDigits: 2 })} €</strong>
+              <p className="text-foreground/60 text-sm pt-1">{t("crmQuotes.importe2")}{" "}<strong className="text-foreground">{format.number((confirmingInstallment.amountCents / 100), { minimumFractionDigits: 2 })} €</strong>
               </p>
             )}
           </DialogHeader>
@@ -1096,7 +1094,7 @@ export function QuoteDetailModal({
             {instPayMethod === "tarjeta_fisica" && (
               <div className="space-y-1.5">
                 <Label className="text-foreground/70 text-xs">{t("crmQuotes.nOperacionTpv")}</Label>
-                <Input value={instTpvOp} onChange={(e) => setInstTpvOp(e.target.value)} placeholder={t("crmQuotes.ej12345")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
+                <Input value={instTpvOp} onChange={(e) => setInstTpvOp(e.target.value)} placeholder={t("crmQuotes.ej12345")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm" />
               </div>
             )}
             {instPayMethod === "transferencia" && (
@@ -1144,7 +1142,7 @@ export function QuoteDetailModal({
             {instPayMethod === "efectivo" && (
               <div className="space-y-1.5">
                 <Label className="text-foreground/70 text-xs">{t("crmQuotes.notas")}</Label>
-                <Textarea value={instPayNote} onChange={(e) => setInstPayNote(e.target.value)} placeholder={t("crmQuotes.ejCobradoEnRecepcion")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
+                <Textarea value={instPayNote} onChange={(e) => setInstPayNote(e.target.value)} placeholder={t("crmQuotes.ejCobradoEnRecepcion")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
@@ -1179,9 +1177,9 @@ export function QuoteDetailModal({
       <Dialog open={showConfirmPaymentModal} onOpenChange={(o) => {
         if (!o) { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); }
       }}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-success" />{t("crmQuotes.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1192,7 +1190,7 @@ export function QuoteDetailModal({
                 <button key={m}
                   onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    paymentMethodSelected === m ? "border-success bg-success/15 text-success" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
+                    paymentMethodSelected === m ? "border-success bg-success/15 text-success" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-border hover:text-foreground/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -1207,7 +1205,7 @@ export function QuoteDetailModal({
               <div className="space-y-2">
                 <div className="space-y-1.5">
                   <Label className="text-foreground/70 text-xs">{t("crmQuotes.nOperacionTpv2")}{" "}{!selectedTpvOpIdForConfirm ? "*" : "(auto)"}</Label>
-                  <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder={t("crmQuotes.ej000123456789")} disabled={!!selectedTpvOpIdForConfirm} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
+                  <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder={t("crmQuotes.ej000123456789")} disabled={!!selectedTpvOpIdForConfirm} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm disabled:opacity-50" />
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
@@ -1239,12 +1237,12 @@ export function QuoteDetailModal({
                 ) : showTpvOpSearchForConfirm ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                      className="w-full text-xs bg-background border border-border rounded-md px-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/50"
                       placeholder={t("crmQuotes.buscarPorNOperacion")}
                       value={tpvOpSearchForConfirm}
                       onChange={(e) => setTpvOpSearchForConfirm(e.target.value)}
                     />
-                    <div className="max-h-40 overflow-y-auto rounded-md border border-white/10 divide-y divide-white/5">
+                    <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-white/5">
                       {tpvOpsForConfirmQ.isLoading ? (
                         <div className="p-3 text-xs text-foreground/40 text-center">{t("crmQuotes.buscando")}</div>
                       ) : (tpvOpsForConfirmQ.data?.data as any[] | undefined)?.length === 0 ? (
@@ -1253,11 +1251,11 @@ export function QuoteDetailModal({
                         (tpvOpsForConfirmQ.data?.data as any[] | undefined)?.map((op: any) => (
                           <button
                             key={op.id}
-                            className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors"
+                            className="w-full text-left px-3 py-2 hover:bg-foreground/5 transition-colors"
                             onClick={() => { setSelectedTpvOpIdForConfirm(op.id); setViewTpvOp(op.operationNumber ?? ""); setShowTpvOpSearchForConfirm(false); }}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
+                              <span className="text-xs font-mono text-foreground/80">{op.operationNumber}</span>
                               <span className="text-xs text-primary font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
                             </div>
                             <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {format.date(op.operationDatetime, {})}</div>
@@ -1331,7 +1329,7 @@ export function QuoteDetailModal({
                 ) : showBankMovementSearchForConfirm ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-info/50"
+                      className="w-full text-xs bg-background border border-border rounded-md px-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-info/50"
                       placeholder={t("crmQuotes.buscarPorConceptoImporte")}
                       value={bankMovementSearchForConfirm}
                       onChange={(e) => setBankMovementSearchForConfirm(e.target.value)}
@@ -1345,11 +1343,11 @@ export function QuoteDetailModal({
                         {(bankMovementsForConfirmQ.data?.data as any[] | undefined)?.map((mv: any) => (
                           <button
                             key={mv.id}
-                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-info/40 hover:bg-info/5 transition-colors"
+                            className="w-full text-left px-2.5 py-2 rounded border border-border hover:border-info/40 hover:bg-info/5 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForConfirm(mv.id); setShowBankMovementSearchForConfirm(false); }}
                           >
-                            <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
-                            <div className="flex gap-3 mt-0.5 text-xs text-white/50">
+                            <div className="text-xs text-foreground/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
+                            <div className="flex gap-3 mt-0.5 text-xs text-foreground/50">
                               <span>{mv.fecha ?? "–"}</span>
                               <span className="text-success">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                             </div>
@@ -1364,7 +1362,7 @@ export function QuoteDetailModal({
             {paymentMethodSelected === "efectivo" && (
               <div className="space-y-1.5">
                 <Label className="text-foreground/70 text-xs">{t("crmQuotes.justificacion")}</Label>
-                <Textarea value={viewPayNote} onChange={(e) => setViewPayNote(e.target.value)} placeholder={t("crmQuotes.ejCobradoEnRecepcion2")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
+                <Textarea value={viewPayNote} onChange={(e) => setViewPayNote(e.target.value)} placeholder={t("crmQuotes.ejCobradoEnRecepcion2")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
@@ -1406,9 +1404,9 @@ export function QuoteDetailModal({
 
       {/* ─── MODAL: Pago Pendiente ─── */}
       <Dialog open={showPendingPaymentModal} onOpenChange={setShowPendingPaymentModal}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <Clock className="w-5 h-5 text-warning" />{t("crmQuotes.registrarPagoPendiente")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1419,7 +1417,7 @@ export function QuoteDetailModal({
                 type="date"
                 value={pendingDueDate}
                 onChange={(e) => setPendingDueDate(e.target.value)}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm"
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
@@ -1429,7 +1427,7 @@ export function QuoteDetailModal({
                 value={pendingReason}
                 onChange={(e) => setPendingReason(e.target.value)}
                 placeholder={t("crmQuotes.ejClienteConfirmaPago")}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm resize-none"
                 rows={3}
               />
             </div>
