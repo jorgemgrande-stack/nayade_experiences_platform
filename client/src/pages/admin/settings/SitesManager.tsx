@@ -8,6 +8,7 @@ import { Building2, MapPin, Pencil, Plus, RotateCcw, Archive, Phone, Mail } from
 import { toast } from "sonner";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,21 +109,19 @@ export default function SitesManager() {
   return (
     <AdminLayout>
       <div className="p-4 sm:p-6 space-y-6 max-w-5xl">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Building2 className="w-6 h-6 text-primary" aria-hidden="true" />
-              {t("settingsSites.title")}
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">{t("settingsSites.intro")}</p>
-          </div>
-          {d?.canManage && (
+        <PanelPageHeader
+          icon={<Building2 />}
+          title={t("settingsSites.title")}
+          description={t("settingsSites.intro")}
+          actions={
+          d?.canManage && (
             <Button onClick={() => setEditing("new")} disabled={!d.canAdd} title={d.canAdd ? undefined : t("settingsSites.limitReached")} className="gap-2">
               <Plus className="w-4 h-4" aria-hidden="true" />
               {t("settingsSites.newSite")}
             </Button>
-          )}
-        </div>
+          )
+          }
+        />
 
         {q.isLoading ? (
           <PanelLoading label={t("settingsSites.loading")} />

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelEmpty, PanelError, PanelLoading, errorMessage } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { validateEmail } from "@shared/formValidation";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -579,18 +580,16 @@ export default function UsersManager() {
       <div className="space-y-6">
 
         {/* ── Header ── */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">{t("usersAdmin.header.title")}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {t("usersAdmin.header.count", { n: users.length })}
-            </p>
-          </div>
-          <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="gap-2">
-            <UserPlus className="w-4 h-4" />
-            {t("usersAdmin.header.newUser")}
-          </Button>
-        </div>
+        <PanelPageHeader
+          title={t("usersAdmin.header.title")}
+          description={t("usersAdmin.header.count", { n: users.length })}
+          actions={
+            <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="gap-2">
+              <UserPlus className="w-4 h-4" />
+              {t("usersAdmin.header.newUser")}
+            </Button>
+          }
+        />
 
         {/* Estado vacío útil: solo existe el usuario actual */}
         {users.length <= 1 && (
@@ -650,8 +649,8 @@ export default function UsersManager() {
         )}
 
         {/* ── Table ── */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto shadow-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">{t("usersAdmin.table.user")}</th>

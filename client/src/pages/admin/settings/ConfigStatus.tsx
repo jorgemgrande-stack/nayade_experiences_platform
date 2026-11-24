@@ -1,4 +1,5 @@
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
@@ -120,12 +121,7 @@ export default function ConfigStatus() {
     <AdminLayout>
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsStatus.title")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("settingsStatus.intro")}
-          </p>
-        </div>
+        <PanelPageHeader title={t("settingsStatus.title")} description={t("settingsStatus.intro")} />
 
         {/* Estado de la configuración: el mismo recorrido que «Primeros pasos» */}
         {wizard.data && <SetupStatusCard plan={wizard.data.plan} />}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useId, cloneElement, isValidElement } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelError } from "@/components/admin/PanelStates";
 import { validateEmail, validateFiscalData, validatePhone, validateUrl, type FiscalData } from "@shared/formValidation";
@@ -222,12 +223,7 @@ export default function Settings() {
     return (
       <AdminLayout title={t("settingsGeneral.companyTitle")}>
         <div className="max-w-3xl mx-auto px-4 py-8">
-          <div className="mb-6">
-            <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsGeneral.companyTitle")}</h1>
-            <p className="text-sm text-muted-foreground font-display mt-1">
-              {t("settingsGeneral.companyIntro")}
-            </p>
-          </div>
+          <PanelPageHeader title={t("settingsGeneral.companyTitle")} description={t("settingsGeneral.companyIntro")} />
           <CompanyData />
         </div>
       </AdminLayout>
@@ -259,12 +255,7 @@ export default function Settings() {
       <div className="max-w-5xl mx-auto px-4 py-8">
 
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsGeneral.businessTitle")}</h1>
-          <p className="text-sm text-muted-foreground font-display mt-1">
-            {t("settingsGeneral.businessIntro")}
-          </p>
-        </div>
+        <PanelPageHeader title={t("settingsGeneral.businessTitle")} description={t("settingsGeneral.businessIntro")} />
 
         {/* Banner */}
         <div className="mb-5 flex items-start gap-3 bg-muted border border-border rounded-xl p-4">

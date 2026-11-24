@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { configSectionsFor, type SectionDef, type SectionId } from "./configSections";
@@ -673,12 +674,7 @@ export default function ConfigPanel() {
   return (
     <AdminLayout>
       <div className="max-w-5xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsConfig.title")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {licensed ? t("settingsConfig.introLicensed") : t("settingsConfig.introLegacy")}
-          </p>
-        </div>
+        <PanelPageHeader title={t("settingsConfig.title")} description={licensed ? t("settingsConfig.introLicensed") : t("settingsConfig.introLegacy")} />
         <WorkplaceLocks place="admin" className="mb-6" />
 
         {isLoading && (

@@ -6,6 +6,8 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarDays } from "lucide-react";
@@ -23,22 +25,21 @@ export default function GestoriaCalendario() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <CalendarDays className="w-6 h-6 text-primary" /> Calendario Fiscal
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Vencimientos del ejercicio según el calendario de la AEAT
-            </p>
-          </div>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        <PanelPageHeader
+          icon={<CalendarDays />}
+          title="Calendario Fiscal"
+          description="Vencimientos del ejercicio según el calendario de la AEAT"
+          actions={
+            <>
+            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            </>
+          }
+        />
 
         <div className="space-y-2">
           {obligations.map((o) => {
@@ -80,10 +81,10 @@ export default function GestoriaCalendario() {
               </div>
             );
           })}
-          {obligations.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              {obligationsQ.isLoading ? "Cargando…" : "Sin obligaciones para este ejercicio."}
-            </p>
+          {obligationsQ.isLoading && <PanelLoading />}
+          {obligationsQ.isError && <PanelError error={obligationsQ.error} onRetry={() => obligationsQ.refetch()} />}
+          {obligations.length === 0 && !obligationsQ.isLoading && !obligationsQ.isError && (
+            <PanelEmpty icon={<CalendarDays className="w-5 h-5" />} title="Sin obligaciones para este ejercicio" description="Cuando haya vencimientos fiscales del ejercicio aparecerán aquí." />
           )}
         </div>
       </div>
