@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -224,11 +225,11 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          {d.stage !== "disconnected" && d.stage !== "active" && (
-            <Button onClick={onCheck} disabled={busy}>
-              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              {d.stage === "pending_verification" ? t("settingsDomains.alreadyCreated") : t("settingsDomains.checkNow")}
+        {/* Barra de acciones: lo destructivo y discreto a la izquierda, la acción principal a la derecha */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-4">
+          {d.stage !== "disconnected" && (
+            <Button variant="ghost" className="text-danger hover:text-danger sm:mr-auto" onClick={onDisconnect} disabled={busy}>
+              <Unplug className="mr-2 h-4 w-4" /> {d.stage === "active" ? t("settingsDomains.disconnect") : t("settingsDomains.cancelConnection")}
             </Button>
           )}
           {d.stage === "active" && (
@@ -238,19 +239,20 @@ function DomainWizard({ d, busy, onCheck, onPrimary, onDisconnect }: { d: Custom
                   <ExternalLink className="mr-2 h-4 w-4" /> {t("settingsDomains.openSite")}
                 </a>
               </Button>
+              <Button variant="outline" onClick={onCheck} disabled={busy}>
+                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} {t("settingsDomains.check")}
+              </Button>
               {!d.primary && (
                 <Button onClick={onPrimary} disabled={busy}>
                   <Star className="mr-2 h-4 w-4" /> {t("settingsDomains.usePrimary")}
                 </Button>
               )}
-              <Button variant="outline" onClick={onCheck} disabled={busy}>
-                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} {t("settingsDomains.check")}
-              </Button>
             </>
           )}
-          {d.stage !== "disconnected" && (
-            <Button variant="ghost" className="text-danger hover:text-danger" onClick={onDisconnect} disabled={busy}>
-              <Unplug className="mr-2 h-4 w-4" /> {d.stage === "active" ? t("settingsDomains.disconnect") : t("settingsDomains.cancelConnection")}
+          {d.stage !== "disconnected" && d.stage !== "active" && (
+            <Button onClick={onCheck} disabled={busy}>
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              {d.stage === "pending_verification" ? t("settingsDomains.alreadyCreated") : t("settingsDomains.checkNow")}
             </Button>
           )}
         </div>
@@ -385,8 +387,11 @@ export default function CustomDomains() {
                       if (domain.trim()) add.mutate({ domain: domain.trim() });
                     }}
                   >
-                    <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="www.tuempresa.es" aria-label={t("settingsDomains.domainAria")} autoComplete="off" spellCheck={false} inputMode="url" className="sm:flex-1" />
-                    <Button type="submit" disabled={add.isPending || !domain.trim()}>
+                    <div className="space-y-1.5 sm:flex-1">
+                      <Label htmlFor="dominio-nuevo" className="text-sm font-medium">{t("settingsDomains.domainAria")}</Label>
+                      <Input id="dominio-nuevo" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="www.tuempresa.es" autoComplete="off" spellCheck={false} inputMode="url" />
+                    </div>
+                    <Button type="submit" disabled={add.isPending || !domain.trim()} className="sm:self-end">
                       {add.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {t("settingsDomains.continue")}
                     </Button>
                   </form>
