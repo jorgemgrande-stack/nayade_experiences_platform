@@ -127,7 +127,7 @@ export default function DocumentNumbersAdmin() {
                 {(counters ?? []).length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="p-2">
-                      <PanelEmpty icon={<Hash className="h-5 w-5" />} title={t("documentNumbers.noCounters")} className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" />
+                      <PanelEmpty icon={<Hash className="h-5 w-5" />} title={t("documentNumbers.noCounters")} className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" />
                     </TableCell>
                   </TableRow>
                 )}
@@ -351,7 +351,7 @@ export default function DocumentNumbersAdmin() {
                   {(logs ?? []).length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="p-2">
-                        <PanelEmpty icon={<History className="h-5 w-5" />} title={t("documentNumbers.noLogs")} className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" />
+                        <PanelEmpty icon={<History className="h-5 w-5" />} title={t("documentNumbers.noLogs")} className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" />
                       </TableCell>
                     </TableRow>
                   )}

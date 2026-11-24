@@ -461,7 +461,7 @@ export default function CashRegisterManager() {
                 </thead>
                 <tbody>
                   {movements.length === 0 && (
-                    <tr><td colSpan={7} className="p-2"><PanelEmpty title="No hay movimientos con los filtros actuales" className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
+                    <tr><td colSpan={7} className="p-2"><PanelEmpty title="No hay movimientos con los filtros actuales" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                   )}
                   {movements.map(mv => {
                     const meta = movTypeMeta(mv.type);
@@ -585,7 +585,7 @@ export default function CashRegisterManager() {
                 </thead>
                 <tbody>
                   {closures.length === 0 && (
-                    <tr><td colSpan={8} className="p-2"><PanelEmpty title="No hay cierres registrados" className="sticky left-0 mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
+                    <tr><td colSpan={8} className="p-2"><PanelEmpty title="No hay cierres registrados" className="sticky left-0 md:mx-auto w-[calc(100vw-7rem)] max-w-lg border-0 bg-transparent" /></td></tr>
                   )}
                   {closures.map(cl => {
                     const acc = accounts.find(a => a.id === cl.accountId);
