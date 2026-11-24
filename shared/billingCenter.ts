@@ -108,4 +108,6 @@ export interface TenantBillingCenter {
 export interface BillingInvoiceLinks {
   pdfUrl: string | null;
   hostedUrl: string | null;
+  /** Facturas del sistema (source "crm"): documento imprimible para mostrar en un iframe aislado (sandbox, sin scripts). */
+  documentHtml: string | null;
 }
