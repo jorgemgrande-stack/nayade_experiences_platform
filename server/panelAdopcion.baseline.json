@@ -158,12 +158,6 @@
     "coloresFijos": 3,
     "textoMinusculo": 1
   },
-  "pages/admin/marketing/CuponesManager.tsx": {
-    "textoMinusculo": 1
-  },
-  "pages/admin/marketing/PlatformsManager.tsx": {
-    "textoMinusculo": 2
-  },
   "pages/admin/netReports/ReportParts.tsx": {
     "textoMinusculo": 1
   },
