@@ -14,6 +14,7 @@ import type { CommercialOrder } from "../orchestrator/types";
 import type { Subscription as SubscriptionRecord } from "../subscriptions/types";
 import type { Invoice } from "../invoicing/types";
 import type { TenantCustomTerms } from "../commercialTerms/tenantView";
+import { BillingCenterError, type TenantBillingCenterService } from "./tenantBillingCenter";
 
 /** Estados de un pedido con contrato en curso (de más a menos preferente). */
 const LIVE_STATES = ["active", "past_due", "cancel_scheduled", "suspended", "licensed", "subscribed", "confirmed", "contracted"] as const;
@@ -134,7 +135,7 @@ export class TenantPlanService {
 }
 
 /** Rutas para el Core (token de comercio, tenant de la sesión). */
-export function createTenantPlanRouter(svc: TenantPlanService): Router {
+export function createTenantPlanRouter(svc: TenantPlanService, center?: TenantBillingCenterService): Router {
   const r = express.Router();
   const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Request, res: Response) =>
     fn(req, res).catch((e) => {
@@ -152,5 +153,21 @@ export function createTenantPlanRouter(svc: TenantPlanService): Router {
     res.setHeader("Cache-Control", "no-store");
     res.json({ html: await svc.invoiceDocument(String(req.params.tenantId), id.data) });
   }));
+  // Centro de suscripción, pagos y facturas (solo lectura; todo del tenant de la sesión)
+  if (center) {
+    const guard = (fn: (req: Request, res: Response) => Promise<void>) => (req: Request, res: Response) =>
+      fn(req, res).catch((e) => {
+        if (e instanceof BillingCenterError) return void res.status(e.code === "not_found" ? 404 : 400).json({ error: e.code, message: e.message });
+        res.status(500).json({ error: "internal_error", message: "Error interno" });
+      });
+    r.get("/tenants/:tenantId/billing-center", requireScope("commerce:purchase"), guard(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ center: await center.center(String(req.params.tenantId)) });
+    }));
+    r.get("/tenants/:tenantId/billing-center/invoices/:id/links", requireScope("commerce:purchase"), guard(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ links: await center.invoiceLinks(String(req.params.tenantId), String(req.params.id)) });
+    }));
+  }
   return r;
 }

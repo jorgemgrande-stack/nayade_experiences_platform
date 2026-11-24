@@ -166,6 +166,7 @@ import { ChargeService, type ChargeStore } from "../invoicing/charges";
 import { createInvoicingRouter } from "../invoicing/api";
 import { invoiceHtml } from "../invoicing/document";
 import { TenantPlanService, createTenantPlanRouter } from "../commerce/tenantPlan";
+import { TenantBillingCenterService } from "../commerce/tenantBillingCenter";
 import { ChargePaymentService, type ChargePaymentStore } from "../invoicing/chargePayments";
 import { ExternalOperationsService, type OperationStore } from "../external/operations";
 import { EXTERNAL_UPLOAD_PATHS, createExternalOperationsRouter } from "../external/operationsApi";
@@ -3092,7 +3093,35 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           : undefined,
         billingPortalEnabled: stripe?.billingPortal?.enabled ?? false,
       });
-      router.use("/commerce", createTenantPlanRouter(plan));
+      // Centro de suscripción, pagos y facturas: reutiliza «Mi plan», las condiciones vigentes, el cobro por condiciones
+      // personalizadas (Stripe) y las facturas expedidas. No crea ningún libro nuevo ni escribe nada.
+      const billingRows = d.subscriptions?.termsBilling?.store;
+      const center = new TenantBillingCenterService({
+        companyOfTenant: async (t) => {
+          const c = (await crmStore.list("companies", { tenantId: t }, { limit: 2 })) as Array<{ id: number; name: string }>;
+          return c.length === 1 ? { id: c[0].id, name: c[0].name } : null;
+        },
+        subscriptionsOf: async (companyId, tenantId) => ((await d.subscriptions?.store.list({ companyId })) ?? []).filter((s) => s.companyId === companyId && (s.tenantId === tenantId || s.tenantId === null)),
+        billingRow: async (sid) => (billingRows ? billingRows.bySubscription(sid) : null),
+        billingInvoices: async (bid) => (billingRows ? billingRows.invoices(bid, 100) : []),
+        customTerms: customTermsOfTenant ? (t, companyId, sid) => customTermsOfTenant!(t, companyId, sid) : undefined,
+        planName: async (sid) => {
+          const live = await d.subscriptions?.terms?.list({ subscriptionId: sid, status: ["active", "scheduled"] }).catch(() => []);
+          return (live ?? []).flatMap((x) => x.lines).find((l) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan")?.name ?? null;
+        },
+        order: (t) => plan.summary(t).catch(() => null),
+        crmInvoices: inv ? (companyId) => inv.store.list({ companyId, limit: 100 }) : undefined,
+        invoiceHtml: inv ? (i) => invoiceHtml(i, issuer) : undefined,
+        stripeInvoiceLinks: stripe
+          ? async (id) => {
+              const g = await stripe.gateway.invoice(id);
+              return g ? { pdfUrl: g.invoicePdf ?? null, hostedUrl: g.hostedInvoiceUrl ?? null, customerId: g.customerId } : null;
+            }
+          : undefined,
+        portalEnabled: stripe?.billingPortal?.enabled ?? false,
+        now: d.subscriptions?.now ?? Date.now,
+      });
+      router.use("/commerce", createTenantPlanRouter(plan, center));
     }
     // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
     router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
