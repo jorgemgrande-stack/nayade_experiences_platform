@@ -98,6 +98,20 @@ export interface BackupCopyLedger {
 
 const COLS = `id, backup_id, destination, run_id, target_kind, target_id, status, storage, location, manifest_key, bytes, sha256,
   started_at, finished_at, duration_ms, error, pruned_at`;
+/** Último intento (no `pruned`) por destino/almacenamiento sin subconsulta correlacionada. Parámetros: destination x2. */
+export const COPIES_LATEST_ATTEMPTS_SQL = `SELECT ${COLS.split(",").map((c) => "b." + c.trim()).join(", ")} FROM backup_copies b
+  JOIN (
+    SELECT MAX(b1.id) AS id FROM backup_copies b1
+    JOIN (SELECT target_kind, target_id, MAX(started_at) AS ms FROM backup_copies WHERE destination = ? AND status <> 'pruned' GROUP BY target_kind, target_id) m
+      ON m.target_kind = b1.target_kind AND m.target_id = b1.target_id AND m.ms = b1.started_at
+    WHERE b1.destination = ? AND b1.status <> 'pruned'
+    GROUP BY b1.target_kind, b1.target_id
+  ) w ON w.id = b.id`;
+
+/** Consulta anterior (subconsulta correlacionada); solo para pruebas de equivalencia. Parámetro: destination. */
+export const COPIES_LATEST_ATTEMPTS_SQL_LEGACY = `SELECT ${COLS} FROM backup_copies b WHERE b.destination = ? AND b.id = (
+         SELECT b2.id FROM backup_copies b2 WHERE b2.destination = b.destination AND b2.target_kind = b.target_kind AND b2.target_id = b.target_id
+           AND b2.status <> 'pruned' ORDER BY b2.started_at DESC, b2.id DESC LIMIT 1)`;
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
 function fromRow(r: mysql.RowDataPacket): BackupCopyRecord {
@@ -213,12 +227,7 @@ export class MysqlBackupCopyLedger implements BackupCopyLedger {
   }
 
   async latestAttempts(destination: BackupDestination) {
-    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
-      `SELECT ${COLS} FROM backup_copies b WHERE b.destination = ? AND b.id = (
-         SELECT b2.id FROM backup_copies b2 WHERE b2.destination = b.destination AND b2.target_kind = b.target_kind AND b2.target_id = b.target_id
-           AND b2.status <> 'pruned' ORDER BY b2.started_at DESC, b2.id DESC LIMIT 1)`,
-      [destination],
-    );
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(COPIES_LATEST_ATTEMPTS_SQL, [destination, destination]);
     return rows.map(fromRow);
   }
 
