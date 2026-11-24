@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatDayEs } from "@shared/formatDay";
 import { validateTicketInvoiceRecipient, type TicketInvoiceRecipient } from "@shared/ticketInvoice";
@@ -12,10 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import ReservationTicket from "../ReservationTicket";
-import { Calendar, Eye, Send, XCircle, Phone, Mail, AlertTriangle, RefreshCw, Trash2, Pencil, FileDown, Printer, Receipt, FilePlus, X, MoreHorizontal } from "lucide-react";
+import { Calendar, Eye, Send, XCircle, Phone, Mail, AlertTriangle, RefreshCw, Trash2, Pencil, FileDown, Printer, Receipt, FilePlus, X, CheckCircle2, Clock, PlayCircle, Wallet } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/i18n/I18nProvider";
 import { EUR2, Tab, FieldError, invalidProps, CHANNEL_META, CHANNEL_FALLBACK, CrmTableState, PAGE_SIZE } from "../shared/crmCommon";
+import { BPill, BMoney, BStat, BSummary, BTable, BRowActions, BBulkBar, BPager, type BChip, type BColumn, type BTone } from "../shared/ui/bCrmUi";
 import { NewReservationModal } from "../modals/NewReservationModal";
 import { ReservationDetailModal } from "../modals/ReservationDetailModal";
 
@@ -166,329 +167,226 @@ export function ReservationsTab({ ctrl, tab, setBulkConfirm, filterStatus, searc
   const voc = useVocabulary();
   const panelSub = usePanelSubscription();
   const { selectedRes, bulkResStatus, bulkUpdateResStatus, bulkDeleteRes, setSelectedRes, resData, resLoading, resError, refetchResList, resChannelFilter, setResChannelFilter, ordersWord, setShowNewReservationModal, getPaymentMethodLabel, setViewResId, setEditResData, setEditResStatus, setEditResNotes, setEditResStatusReservation, setEditResStatusPayment, setEditResChannel, setEditResChannelDetail, setEditResNewDate, setEditResDateReason, setShowChangeDateSection, setEditResId, resendResMutation, setPrintTicketRes, setGenInvoiceResId, setDeleteResId, resPage, setResPage } = ctrl;
+  // Mismos contadores que el panel de indicadores del contenedor (misma consulta, misma caché): solo lectura
+  const { data: counters } = trpc.crm.reservations.counters.useQuery(undefined, { enabled: tab === "reservations" });
+  const money = (v: number) => format.currency(v, "EUR", EUR2);
+  const channelLabel = (res: any): string =>
+    res.originSource === "coupon_redemption" ? (res.platformName ?? t("crmReservations.cupon")) :
+    res.channel === "TPV_FISICO" ? t("crmReservations.tpv") :
+    res.channel === "VENTA_DELEGADA" ? t("crmReservations.delegada") :
+    res.channel === "ONLINE_DIRECTO" ? t("crmReservations.online") :
+    res.channel === "ONLINE_ASISTIDO" ? t("crmReservations.asistido") :
+    res.channel === "TELEFONO" ? t("crmReservations.tel") :
+    res.channel === "EMAIL" ? t("crmReservations.email3") :
+    res.channel === "PARTNER" ? t("crmReservations.partner") :
+    res.channel === "TICKETING" ? t("crmReservations.ticketing") :
+    res.channel === "MANUAL" ? t("crmReservations.manual2") :
+    res.channel === "API" ? t("crmReservations.api2") :
+    res.channel ?? "—";
+  const statusFilterLabel: Record<string, string> = { paid: t("crmReservations.pagada"), pending_payment: t("crmReservations.pendientePago"), cancelled: t("crmReservations.cancelada") };
+  const clearAll = () => { setFilterStatus("all"); setResChannelFilter("all"); setSearch(""); };
+  const chips: BChip[] = [
+    ...(filterStatus !== "all" ? [{ id: "status", label: `${t("crmShared.filtroEstado")}: ${statusFilterLabel[filterStatus] ?? filterStatus}`, onRemove: () => setFilterStatus("all") }] : []),
+    ...(resChannelFilter !== "all" ? [{ id: "channel", label: `${t("crmShared.filtroCanal")}: ${resChannelFilter === "coupon" ? t("crmDashboard.cuponOrigen") : channelLabel({ channel: resChannelFilter })}`, onRemove: () => setResChannelFilter("all") }] : []),
+    ...(search.trim() ? [{ id: "search", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
+  ];
+  const stateBadge = (res: any) => {
+    const sr = res.statusReservation;
+    if (sr) {
+      const cfg: [BTone, ReactNode, string] =
+        sr === "CONFIRMADA" ? ["success", <CheckCircle2 />, voc.agree("Confirmado", "Confirmada")] :
+        sr === "PENDIENTE_CONFIRMACION" ? ["warning", <Clock />, t("crmReservations.pendConf")] :
+        sr === "EN_CURSO" ? ["info", <PlayCircle />, t("crmReservations.enCurso2")] :
+        sr === "FINALIZADA" ? ["muted", <CheckCircle2 />, voc.agree("Finalizado", "Finalizada")] :
+        sr === "NO_SHOW" ? ["warning", <AlertTriangle />, t("crmReservations.noShow2")] :
+        sr === "ANULADA" ? ["danger", <XCircle />, voc.agree("Anulado", "Anulada")] :
+        ["muted", <Clock />, sr];
+      return <BPill tone={cfg[0]} icon={cfg[1]}>{cfg[2]}</BPill>;
+    }
+    const ok = res.status === "paid" || res.status === "confirmed";
+    return ok ? <BPill tone="success" icon={<CheckCircle2 />}>{voc.agree("Confirmado", "Confirmada")}</BPill>
+      : res.status === "pending_payment" ? <BPill tone="warning" icon={<Clock />}>{t("crmReservations.pendiente3")}</BPill>
+      : res.status === "cancelled" ? <BPill tone="danger" icon={<XCircle />}>{voc.agree("Cancelado", "Cancelada")}</BPill>
+      : <BPill tone="muted">{res.status}</BPill>;
+  };
+  const payBadge = (res: any) => {
+    const sp = res.statusPayment;
+    if (sp) {
+      return sp === "PAGADO" ? <BPill tone="success" icon={<Wallet />}>{t("crmReservations.pagado2")}</BPill>
+        : sp === "PAGO_PARCIAL" ? <BPill tone="info" icon={<Wallet />}>{t("crmReservations.parcial")}</BPill>
+        : sp === "PENDIENTE_VALIDACION" ? <BPill tone="primary" icon={<Clock />}>{t("crmReservations.validacion")}</BPill>
+        : <BPill tone="warning" icon={<Clock />}>{t("crmReservations.pendiente3")}</BPill>;
+    }
+    return res.status === "paid" ? <BPill tone="success" icon={<Wallet />}>{t("crmReservations.pagado2")}</BPill> : <BPill tone="warning" icon={<Clock />}>{t("crmReservations.pendiente3")}</BPill>;
+  };
+  const openEdit = (res: any) => {
+    setEditResData(res);
+    setEditResStatus(res.status ?? "");
+    setEditResNotes(res.notes ?? "");
+    setEditResStatusReservation("");
+    setEditResStatusPayment("");
+    setEditResChannel("");
+    setEditResChannelDetail("");
+    setEditResNewDate("");
+    setEditResDateReason("");
+    setShowChangeDateSection(false);
+    setEditResId(res.id);
+  };
+  const customerOf = (res: any) => orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName });
+  const rows: any[] = resData?.rows ?? [];
+  const columns: BColumn<any>[] = [
+    { key: "number", header: voc.orderNumber, mobile: "hidden", cell: (res) => (
+      <div className="space-y-1">
+        {res.reservationNumber ? <span className="font-mono text-xs font-semibold text-foreground">{res.reservationNumber}</span> : <span className="text-muted-foreground">—</span>}
+        <div className="text-xs text-muted-foreground tabular-nums">{format.date(res.createdAt, {})}</div>
+        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs font-medium ${res.originSource === "coupon_redemption" ? "border-warning/30 bg-warning/10 text-warning" : (CHANNEL_META[res.channel ?? ""]?.tone ?? CHANNEL_FALLBACK)}`}>
+          {res.originSource !== "coupon_redemption" && CHANNEL_META[res.channel ?? ""] ? (() => { const I = CHANNEL_META[res.channel ?? ""].Icon; return <I className="h-3 w-3 shrink-0" aria-hidden />; })() : null}
+          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{channelLabel(res)}</span>
+        </span>
+        {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
+          <a href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`} className="block font-mono text-xs text-primary hover:underline">#{(res as any).tpvOperationNumber}</a>
+        ) : res.channelDetail ? <div className="max-w-[9rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{res.channelDetail}</div> : null}
+      </div>
+    ) },
+    { key: "customer", header: t("crmReservations.cliente"), mobile: "title", cell: (res) => (
+      <div className="min-w-0">
+        {(res as typeof res & { clientId?: number }).clientId ? (
+          <a href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`} onClick={(e) => e.stopPropagation()} className="block break-words font-medium text-foreground hover:text-primary hover:underline">{customerOf(res)}</a>
+        ) : (
+          <div className="break-words font-medium text-foreground">{customerOf(res)}</div>
+        )}
+        {res.reservationNumber && <div className="font-mono text-xs text-muted-foreground @2xl:hidden">{res.reservationNumber}</div>}
+        <div className="break-all text-xs text-muted-foreground">{res.customerEmail}</div>
+        {res.customerPhone && <div className="text-xs text-muted-foreground">{res.customerPhone}</div>}
+        {res.merchantOrder && <div className="font-mono text-xs text-muted-foreground">{res.merchantOrder}</div>}
+      </div>
+    ) },
+    { key: "product", header: `${t("crmReservations.producto")} / ${voc.serviceDateShort}`, priority: "md", cell: (res) => (
+      <div className="min-w-0 space-y-0.5">
+        <div className="break-words text-foreground">{res.productName}</div>
+        <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          {res.bookingDate && <span className="inline-flex items-center gap-1 tabular-nums"><Calendar className="h-3 w-3" aria-hidden="true" />{formatDayEs(res.bookingDate)}</span>}
+          {res.paymentMethod && <span>{getPaymentMethodLabel(res.paymentMethod)}</span>}
+        </div>
+        {res.invoiceNumber && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }} className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline">
+            <Receipt className="h-3 w-3" aria-hidden="true" />{res.invoiceNumber}
+          </button>
+        )}
+      </div>
+    ) },
+    { key: "state", header: voc.orderStatus, cell: (res) => (
+      <div className="flex flex-col items-start gap-1">
+        {stateBadge(res)}
+        {payBadge(res)}
+        {res.cancellationRequestId && <BPill tone="warning" icon={<AlertTriangle />}>{t("crmReservations.anulacion", { cancellationRequestId: res.cancellationRequestId })}</BPill>}
+        {res.dateModified && <BPill tone="warning" icon={<Calendar />}>{t("crmReservations.fechaMod")}</BPill>}
+      </div>
+    ) },
+    { key: "amount", header: t("crmReservations.importe"), align: "right", num: true, mobile: "amount", cell: (res) => (
+      <div className="flex flex-col items-end leading-tight">
+        <BMoney tone={res.amountPaid >= res.amountTotal ? "success" : undefined}>{money((res.amountPaid ?? 0) / 100)}</BMoney>
+        {res.amountPaid !== res.amountTotal && <span className="whitespace-nowrap text-xs font-normal text-muted-foreground">{t("crmReservations.total2", { formatEur: money((res.amountTotal ?? 0) / 100) })}</span>}
+      </div>
+    ) },
+  ];
+  const rowActions = (res: any) => (
+    <BRowActions
+      label={customerOf(res)}
+      primary={{ label: t("crmShared.ver"), icon: <Eye className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => setViewResId(res.id) }}
+      menu={[
+        { label: voc.editOrder, icon: <Pencil />, onSelect: () => openEdit(res) },
+        { label: t("crmReservations.reenviarConfirmacionAlCliente"), icon: <Send />, onSelect: () => resendResMutation.mutate({ id: res.id }), disabled: resendResMutation.isPending },
+        { label: t("crmReservations.imprimirTicket80mm"), icon: <Printer />, onSelect: () => setPrintTicketRes(res) },
+        { label: (res as any).invoicePdfUrl ? t("crmReservations.descargarFacturaPdf") : t("crmReservations.sinFacturaPdf"), icon: <FileDown />, onSelect: () => (res as any).invoicePdfUrl && window.open((res as any).invoicePdfUrl, "_blank"), disabled: !(res as any).invoicePdfUrl },
+        ...(!res.invoiceId && !res.invoiceNumber ? [{ label: t("crmReservations.generarFactura"), icon: <FilePlus />, onSelect: () => setGenInvoiceResId(res.id) }] : []),
+        ...(res.status !== "cancelled" ? [{ label: voc.cancelOrder, icon: <XCircle />, onSelect: () => { setCancelReservationId(res.id); setCancelReservationName(res.customerName); } }] : []),
+        { label: voc.deleteOrder, icon: <Trash2 />, destructive: true, separatorBefore: true, onSelect: () => setDeleteResId(res.id) },
+      ]}
+    />
+  );
   return (
     <>
 {tab === "reservations" && (
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            {/* Barra acción masiva reservas */}
-            {selectedRes.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-info/10 border-b border-info/20">
-                <span className="text-xs text-info font-medium shrink-0">{t("crmReservations.seleccionadoS", { size: selectedRes.size })}</span>
-                <select value={bulkResStatus} onChange={e => { if (e.target.value) bulkUpdateResStatus.mutate({ ids: Array.from(selectedRes), status: e.target.value as any }); }} disabled={bulkUpdateResStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                  <option value="">{t("crmReservations.cambiarEstado")}</option>
-                  <option value="paid">{t("crmReservations.pagada")}</option>
-                  <option value="pending_payment">{t("crmReservations.pendientePago")}</option>
-                  <option value="cancelled">{t("crmReservations.cancelada")}</option>
-                </select>
-                <button type="button" onClick={() => setBulkConfirm("reservations")} disabled={bulkDeleteRes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-danger/40 text-danger hover:bg-danger/10 transition-colors disabled:opacity-40">
-                  <Trash2 className="w-3.5 h-3.5" />{" "}{t("crmReservations.eliminar")}</button>
-                <button onClick={() => setSelectedRes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
-              </div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1210px] table-fixed">
-                <colgroup>
-                  {/* Cliente (col 3) sin ancho fijo: es la columna flexible que
-                      absorbe el espacio sobrante. El resto llevan su ancho real
-                      (ajustado a su contenido), así la tabla iguala al contenedor
-                      y la columna Acciones nunca se corta. */}
-                  <col style={{width:"40px"}} />
-                  <col style={{width:"134px"}} />
-                  <col />
-                  <col style={{width:"158px"}} className="hidden md:table-column" />
-                  <col style={{width:"124px"}} />
-                  <col style={{width:"104px"}} />
-                  <col style={{width:"84px"}} className="hidden xl:table-column" />
-                  <col style={{width:"92px"}} className="hidden lg:table-column" />
-                  <col style={{width:"100px"}} className="hidden lg:table-column" />
-                  <col style={{width:"104px"}} />
-                  <col style={{width:"254px"}} />
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                    <th className="w-10 px-3 py-3">
-                      <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!resData?.rows?.length && selectedRes.size === resData.rows.length} onChange={e => setSelectedRes(e.target.checked ? new Set(resData?.rows?.map((r: any) => r.id)) : new Set())} />
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{voc.orderNumber}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmReservations.cliente")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmReservations.producto")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{voc.orderStatus}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{t("crmReservations.estPago")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell whitespace-nowrap">{t("crmReservations.canal")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">{t("crmReservations.fCompra")}</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">{voc.serviceDateShort}</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{t("crmReservations.importe")}</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{t("crmReservations.acciones")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resLoading || resError || !resData?.rows?.length ? (
-                    <CrmTableState
-                      colSpan={11}
-                      loading={resLoading}
-                      error={resError}
-                      onRetry={() => refetchResList()}
-                      filtered={filterStatus !== "all" || resChannelFilter !== "all" || !!search.trim()}
-                      onClearFilters={() => { setFilterStatus("all"); setResChannelFilter("all"); setSearch(""); }}
-                      emptyTitle={t("crmEmpty.empty.orders", { ordersLower: ordersWord })}
-                      emptyHint={panelSub.isLicensed
-                        ? t("crmEmpty.empty.ordersHint")
-                        : undefined}
-                      actionLabel={panelSub.isLicensed ? t("crmEmpty.empty.ordersActionLicensed") : t("crmEmpty.empty.ordersActionLegacy")}
-                      onAction={() => setShowNewReservationModal(true)}
-                    />
-                  ) : resData.rows.map((res: any) => (
-                    <tr key={res.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedRes.has(res.id) ? "bg-info/5" : ""}`}>
-                      {/* Checkbox */}
-                      <td className="w-10 px-3 py-3">
-                        <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedRes.has(res.id)} onChange={e => setSelectedRes(prev => { const s = new Set(prev); e.target.checked ? s.add(res.id) : s.delete(res.id); return s; })} />
-                      </td>
-                      {/* Nº Reserva */}
-                      <td className="px-4 py-3 shrink-0">
-                        {res.reservationNumber ? (
-                          <span className="font-mono text-xs font-bold text-warning bg-warning/10 border border-warning/20 rounded px-2 py-0.5 whitespace-nowrap">
-                            {res.reservationNumber}
-                          </span>
-                        ) : (
-                          <span className="font-mono text-xs text-foreground/30">—</span>
-                        )}
-                      </td>
-                      {/* Cliente */}
-                      <td className="px-4 py-3 overflow-hidden">
-                        {(res as typeof res & { clientId?: number }).clientId ? (
-                          <a
-                            href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-sm font-medium text-foreground hover:text-info hover:underline transition-colors block overflow-hidden text-ellipsis whitespace-nowrap"
-                          >{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</a>
-                        ) : (
-                          <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{orderCustomerLabel({ customerName: res.customerName, invoiceClientName: (res as { invoiceClientName?: string | null }).invoiceClientName })}</div>
-                        )}
-                        <div className="text-xs text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerEmail}</div>
-                        {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerPhone}</div>}
-                        {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{res.merchantOrder}</div>}
-                      </td>
-                      {/* Producto */}
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-foreground/65 overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px]">{res.productName}</div>
-                        {res.paymentMethod && (
-                          <div className="text-xs text-foreground/40 mt-0.5">{getPaymentMethodLabel(res.paymentMethod)}</div>
-                        )}
-                        {res.invoiceNumber && (
-                          <button
-                            onClick={() => { setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }}
-                            className="text-xs font-mono text-info/60 hover:text-info transition-colors flex items-center gap-1 mt-0.5">
-                            <Receipt className="w-2.5 h-2.5" />{res.invoiceNumber}
-                          </button>
-                        )}
-                      </td>
-                      {/* Estado Reserva */}
-                      <td className="px-4 py-3">
-                        {res.statusReservation ? (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.statusReservation === "CONFIRMADA" ? "bg-success/15 text-success border-success/30" :
-                            res.statusReservation === "PENDIENTE_CONFIRMACION" ? "bg-warning/15 text-warning border-warning/30" :
-                            res.statusReservation === "EN_CURSO" ? "bg-info/15 text-info border-info/30" :
-                            res.statusReservation === "FINALIZADA" ? "bg-slate-500/15 text-slate-400 border-slate-500/30" :
-                            res.statusReservation === "NO_SHOW" ? "bg-warning/15 text-warning border-warning/30" :
-                            res.statusReservation === "ANULADA" ? "bg-danger/15 text-danger border-danger/30" :
-                            "bg-slate-500/15 text-slate-400 border-slate-500/30"
-                          }`}>
-                            {res.statusReservation === "PENDIENTE_CONFIRMACION" ? t("crmReservations.pendConf") :
-                             res.statusReservation === "CONFIRMADA" ? `✅ ${voc.agree("Confirmado", "Confirmada")}` :
-                             res.statusReservation === "EN_CURSO" ? t("crmReservations.enCurso2") :
-                             res.statusReservation === "FINALIZADA" ? voc.agree("Finalizado", "Finalizada") :
-                             res.statusReservation === "NO_SHOW" ? t("crmReservations.noShow2") :
-                             res.statusReservation === "ANULADA" ? `❌ ${voc.agree("Anulado", "Anulada")}` :
-                             res.statusReservation}
-                          </span>
-                        ) : (
-                          // Fallback al status legacy
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.status === "paid" || res.status === "confirmed" ? "bg-success/15 text-success border-success/30" :
-                            res.status === "pending_payment" ? "bg-warning/15 text-warning border-warning/30" :
-                            res.status === "cancelled" ? "bg-danger/15 text-danger border-danger/30" :
-                            "bg-slate-500/15 text-slate-400 border-slate-500/30"
-                          }`}>
-                            {res.status === "paid" || res.status === "confirmed" ? `✅ ${voc.agree("Confirmado", "Confirmada")}` :
-                             res.status === "pending_payment" ? t("crmReservations.pendiente3") :
-                             res.status === "cancelled" ? `❌ ${voc.agree("Cancelado", "Cancelada")}` : res.status}
-                          </span>
-                        )}
-                        {res.cancellationRequestId && (
-                          <div className="mt-1">
-                            <span className="inline-flex items-center text-[9px] font-bold text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">{t("crmReservations.anulacion", { cancellationRequestId: res.cancellationRequestId })}</span>
-                          </div>
-                        )}
-                        {res.dateModified && (
-                          <div className="mt-1">
-                            <span className="inline-flex items-center text-[9px] font-bold text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">{t("crmReservations.fechaMod")}</span>
-                          </div>
-                        )}
-                      </td>
-                      {/* Estado Pago */}
-                      <td className="px-4 py-3">
-                        {res.statusPayment ? (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.statusPayment === "PAGADO" ? "bg-success/15 text-success border-success/30" :
-                            res.statusPayment === "PAGO_PARCIAL" ? "bg-info/15 text-info border-info/30" :
-                            res.statusPayment === "PENDIENTE_VALIDACION" ? "bg-primary/15 text-primary border-primary/30" :
-                            "bg-warning/15 text-warning border-warning/30"
-                          }`}>
-                            {res.statusPayment === "PAGADO" ? t("crmReservations.pagado2") :
-                             res.statusPayment === "PAGO_PARCIAL" ? t("crmReservations.parcial") :
-                             res.statusPayment === "PENDIENTE_VALIDACION" ? t("crmReservations.validacion") :
-                             t("crmReservations.pendiente3")}
-                          </span>
-                        ) : (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            res.status === "paid" ? "bg-success/15 text-success border-success/30" :
-                            "bg-warning/15 text-warning border-warning/30"
-                          }`}>
-                            {res.status === "paid" ? t("crmReservations.pagado2") : t("crmReservations.pendiente3")}
-                          </span>
-                        )}
-                      </td>
-                      {/* Canal */}
-                      <td className="px-4 py-3 hidden xl:table-cell">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
-                          res.originSource === "coupon_redemption" ? "text-warning bg-warning/15 border-warning/30" : (CHANNEL_META[res.channel ?? ""]?.tone ?? CHANNEL_FALLBACK)
-                        }`}>
-                          {res.originSource !== "coupon_redemption" && CHANNEL_META[res.channel ?? ""] ? (() => { const I = CHANNEL_META[res.channel ?? ""].Icon; return <I className="h-3 w-3 shrink-0" aria-hidden />; })() : null}
-                          {res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? t("crmReservations.cupon")}` :
-                           res.channel === "TPV_FISICO" ? t("crmReservations.tpv") :
-                           res.channel === "VENTA_DELEGADA" ? t("crmReservations.delegada") :
-                           res.channel === "ONLINE_DIRECTO" ? t("crmReservations.online") :
-                           res.channel === "ONLINE_ASISTIDO" ? t("crmReservations.asistido") :
-                           res.channel === "TELEFONO" ? t("crmReservations.tel") :
-                           res.channel === "EMAIL" ? t("crmReservations.email3") :
-                           res.channel === "PARTNER" ? t("crmReservations.partner") :
-                           res.channel === "TICKETING" ? t("crmReservations.ticketing") :
-                           res.channel === "MANUAL" ? t("crmReservations.manual2") :
-                           res.channel === "API" ? t("crmReservations.api2") :
-                           res.channel ?? "—"}
-                        </span>
-                        {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
-                          <a
-                            href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`}
-                            className="block text-[9px] text-primary/70 hover:text-primary hover:underline mt-0.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-[80px]"
-                          >
-                            #{(res as any).tpvOperationNumber}
-                          </a>
-                        ) : res.channelDetail ? (
-                          <div className="text-[9px] text-foreground/40 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[80px]">{res.channelDetail}</div>
-                        ) : null}
-                      </td>
-                      {/* F. Compra */}
-                      <td className="px-4 py-3 hidden lg:table-cell">
-                        <div className="text-xs text-foreground/60">{format.date(res.createdAt, {})}</div>
-                      </td>
-                      {/* F. Actividad */}
-                      <td className="px-4 py-3 hidden lg:table-cell">
-                        {res.bookingDate ? (
-                          <div className="text-xs text-foreground/70 font-medium">{formatDayEs(res.bookingDate)}</div>
-                        ) : (
-                          <span className="text-xs text-foreground/30">—</span>
-                        )}
-                      </td>
-                      {/* Importe */}
-                      <td className="px-4 py-3 text-right whitespace-nowrap align-top">
-                        <div className="flex flex-col items-end leading-tight">
-                          <span className="text-sm font-bold text-warning">{format.currency(((res.amountPaid ?? 0) / 100), "EUR", EUR2)}</span>
-                          {res.amountPaid !== res.amountTotal && (
-                            <span className="text-xs text-foreground/40 whitespace-nowrap">{t("crmReservations.total2", { formatEur: format.currency(((res.amountTotal ?? 0) / 100), "EUR", EUR2) })}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-2 py-3 text-right whitespace-nowrap align-top">
-                        <div className="flex items-center justify-end gap-0.5">
-                          {/* Ver detalles */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-info h-7 w-7 p-0"
-                            onClick={() => setViewResId(res.id)}
-                            title={t("crmReservations.verDetalles")}>
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                          {/* Editar */}
-                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-warning h-7 w-7 p-0"
-                            onClick={() => {
-                              setEditResData(res);
-                              setEditResStatus(res.status ?? "");
-                              setEditResNotes(res.notes ?? "");
-                              setEditResStatusReservation("");
-                              setEditResStatusPayment("");
-                              setEditResChannel("");
-                              setEditResChannelDetail("");
-                              setEditResNewDate("");
-                              setEditResDateReason("");
-                              setShowChangeDateSection(false);
-                              setEditResId(res.id);
-                            }}
-                            title={voc.editOrder}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" aria-label={`${t("crmReservations.acciones")}: ${res.customerName}`}>
-                                <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem disabled={resendResMutation.isPending} onSelect={() => resendResMutation.mutate({ id: res.id })}>
-                                <Send className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmReservations.reenviarConfirmacionAlCliente")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => setPrintTicketRes(res)}>
-                                <Printer className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmReservations.imprimirTicket80mm")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem disabled={!(res as any).invoicePdfUrl} onSelect={() => (res as any).invoicePdfUrl && window.open((res as any).invoicePdfUrl, "_blank")}>
-                                <FileDown className="mr-2 h-4 w-4" aria-hidden="true" />{(res as any).invoicePdfUrl ? t("crmReservations.descargarFacturaPdf") : t("crmReservations.sinFacturaPdf")}
-                              </DropdownMenuItem>
-                              {!res.invoiceId && !res.invoiceNumber && (
-                                <DropdownMenuItem onSelect={() => setGenInvoiceResId(res.id)}>
-                                  <FilePlus className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmReservations.generarFactura")}
-                                </DropdownMenuItem>
-                              )}
-                              {res.status !== "cancelled" && (
-                                <DropdownMenuItem onSelect={() => { setCancelReservationId(res.id); setCancelReservationName(res.customerName); }}>
-                                  <XCircle className="mr-2 h-4 w-4" aria-hidden="true" />{voc.cancelOrder}
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem variant="destructive" onSelect={() => setDeleteResId(res.id)}>
-                                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />{voc.deleteOrder}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {resData && resData.total > 0 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
-                <span className="text-sm text-foreground/50">
-                  {resData.total <= PAGE_SIZE
-                    ? t("crmReservations.mostrandoDe", { total: resData.total, total2: resData.total, ordersLower: voc.ordersLower })
-                    : t("crmReservations.paginaDe", { v: resPage + 1, ceil: Math.ceil(resData.total / PAGE_SIZE), total: resData.total, ordersLower: voc.ordersLower })}
-                </span>
-                {resData.total > PAGE_SIZE && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setResPage(p => p - 1)}
-                    disabled={resPage === 0}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >{t("crmReservations.anterior")}</button>
-                  <button
-                    onClick={() => setResPage(p => p + 1)}
-                    disabled={(resPage + 1) * PAGE_SIZE >= resData.total}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >{t("crmReservations.siguiente")}</button>
-                </div>
-                )}
-              </div>
-            )}
-            </div>
-          )}
+      <div className="space-y-4">
+        {counters && (
+          <BSummary>
+            <BStat tone="primary" icon={<Wallet />} label={t("crmShared.cobrado")} value={money(Number(counters.ingresos ?? 0))}
+              hint={`${Number(counters.confirmadas ?? 0) + Number(counters.pendientePago ?? 0) + Number(counters.canceladas ?? 0)} ${voc.ordersLower}`}
+              onClick={() => setFilterStatus("all")} />
+            <BStat tone="success" icon={<CheckCircle2 />} label={t("crmReservations.pagada")} value={Number(counters.confirmadas ?? 0)}
+              hint={Number(counters.importeConfirmadas ?? 0) > 0 ? money(Number(counters.importeConfirmadas)) : undefined}
+              onClick={() => setFilterStatus(filterStatus === "paid" ? "all" : "paid")} active={filterStatus === "paid"} />
+            <BStat tone="warning" icon={<Clock />} label={t("crmReservations.pendientePago")} value={Number(counters.pendientePago ?? 0)}
+              hint={Number(counters.importePendientePago ?? 0) > 0 ? money(Number(counters.importePendientePago)) : undefined}
+              onClick={() => setFilterStatus(filterStatus === "pending_payment" ? "all" : "pending_payment")} active={filterStatus === "pending_payment"} />
+            <BStat tone="danger" icon={<XCircle />} label={t("crmReservations.cancelada")} value={Number(counters.canceladas ?? 0)}
+              onClick={() => setFilterStatus(filterStatus === "cancelled" ? "all" : "cancelled")} active={filterStatus === "cancelled"} />
+          </BSummary>
+        )}
+        {(chips.length > 0 || resData) && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {resData && <span className="mr-1 text-muted-foreground">{resData.total} {ordersWord}</span>}
+            {chips.map((c) => (
+              <span key={c.id} className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-foreground">
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap">{c.label}</span>
+                <button type="button" onClick={c.onRemove} aria-label={t("crmShared.quitarFiltro", { label: c.label })} className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/20 hover:text-foreground">
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+            {chips.length > 0 && <Button type="button" variant="ghost" size="sm" onClick={clearAll} className="h-7 gap-1 px-2 text-muted-foreground"><X className="h-3.5 w-3.5" aria-hidden="true" /> {t("crmShared.limpiarFiltros")}</Button>}
+          </div>
+        )}
+        <BBulkBar count={selectedRes.size} label={t("crmReservations.seleccionadoS", { size: selectedRes.size })} onClear={() => setSelectedRes(new Set())}>
+          <select value={bulkResStatus} onChange={e => { if (e.target.value) bulkUpdateResStatus.mutate({ ids: Array.from(selectedRes), status: e.target.value as any }); }} disabled={bulkUpdateResStatus.isPending} aria-label={t("crmReservations.cambiarEstado")} className="rounded-md border border-border bg-background px-2 py-1 text-xs disabled:opacity-40">
+            <option value="">{t("crmReservations.cambiarEstado")}</option>
+            <option value="paid">{t("crmReservations.pagada")}</option>
+            <option value="pending_payment">{t("crmReservations.pendientePago")}</option>
+            <option value="cancelled">{t("crmReservations.cancelada")}</option>
+          </select>
+          <Button type="button" size="sm" variant="outline" onClick={() => setBulkConfirm("reservations")} disabled={bulkDeleteRes.isPending} className="h-7 gap-1 border-danger/40 px-2.5 text-xs text-danger hover:bg-danger/10">
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />{t("crmReservations.eliminar")}
+          </Button>
+        </BBulkBar>
+        <BTable
+          rows={rows}
+          columns={columns}
+          rowKey={(r) => r.id}
+          caption={voc.orders}
+          loading={resLoading}
+          error={resError}
+          onRetry={() => refetchResList()}
+          filtered={filterStatus !== "all" || resChannelFilter !== "all" || !!search.trim()}
+          onClearFilters={clearAll}
+          emptyTitle={t("crmEmpty.empty.orders", { ordersLower: ordersWord })}
+          emptyDescription={panelSub.isLicensed ? t("crmEmpty.empty.ordersHint") : undefined}
+          emptyAction={<Button type="button" onClick={() => setShowNewReservationModal(true)}>{panelSub.isLicensed ? t("crmEmpty.empty.ordersActionLicensed") : t("crmEmpty.empty.ordersActionLegacy")}</Button>}
+          actions={rowActions}
+          onRowClick={(r) => setViewResId(r.id)}
+          selection={{
+            isSelected: (r) => selectedRes.has(r.id),
+            onToggle: (r, checked) => setSelectedRes((prev) => { const s = new Set(prev); if (checked) s.add(r.id); else s.delete(r.id); return s; }),
+            allSelected: rows.length > 0 && selectedRes.size === rows.length,
+            onToggleAll: (checked) => setSelectedRes(checked ? new Set(rows.map((r: any) => r.id)) : new Set()),
+            rowLabel: (r) => r.reservationNumber ?? customerOf(r),
+          }}
+          footer={resData && resData.total > 0 ? (
+            <BPager
+              page={resPage}
+              onPrev={() => setResPage(p => p - 1)}
+              onNext={() => setResPage(p => p + 1)}
+              hasNext={(resPage + 1) * PAGE_SIZE < resData.total}
+              prevLabel={t("crmReservations.anterior")}
+              nextLabel={t("crmReservations.siguiente")}
+              text={resData.total <= PAGE_SIZE
+                ? t("crmReservations.mostrandoDe", { total: resData.total, total2: resData.total, ordersLower: voc.ordersLower })
+                : t("crmReservations.paginaDe", { v: resPage + 1, ceil: Math.ceil(resData.total / PAGE_SIZE), total: resData.total, ordersLower: voc.ordersLower })}
+            />
+          ) : undefined}
+        />
+      </div>
+    )}
     </>
   );
 }

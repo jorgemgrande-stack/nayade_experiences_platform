@@ -1,18 +1,20 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { useVocabulary } from "@/lib/vocabulary";
 import { errorToastMessage } from "@/lib/errorMessage";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import NewInvoiceDialog from "../NewInvoiceDialog";
 import CreditNoteDialog from "../CreditNoteDialog";
 import GestoriaExportDialog from "../GestoriaExportDialog";
-import { Calendar, Plus, Eye, Send, CheckCircle, AlertTriangle, Download, RefreshCw, FileDown, Receipt, CreditCard, RotateCcw, Ban, Paperclip, FilePlus } from "lucide-react";
+import { Calendar, Plus, Eye, Send, CheckCircle, AlertTriangle, Download, RefreshCw, FileDown, Receipt, CreditCard, RotateCcw, Ban, Paperclip, FilePlus, FileText, Landmark, Banknote, HelpCircle } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import { EUR2, Tab, CrmTableState, PAGE_SIZE } from "../shared/crmCommon";
+import { EUR2, Tab, PAGE_SIZE } from "../shared/crmCommon";
+import { BPill, BMoney, BStat, BSummary, BFilterBar, BFilterField, BTable, BRowActions, BPager, type BChip, type BColumn, type BTone, type BAction } from "../shared/ui/bCrmUi";
 
 
 export function useInvoicesController({ tab }: { tab: Tab }) {
@@ -146,316 +148,227 @@ export type InvoicesController = ReturnType<typeof useInvoicesController>;
 
 export function InvoicesTab({ ctrl, tab }: { ctrl: InvoicesController; tab: Tab }) {
   const { t, format } = useI18n();
-  const { setGestoriaExportOpen, gestoriaExportOpen, setNewInvoiceOpen, newInvoiceOpen, refetchInvoices, setInvoiceStatusFilter, invoiceStatusFilter, setInvoiceTypeFilter, invoiceTypeFilter, setInvoiceDateFrom, setInvoiceDateTo, invoiceDateFrom, invoiceDateTo, invoicesData, invoicesLoading, invoicesError, invoiceSearch, setInvoiceSearch, getPaymentMethodBadge, getInvoiceStatusBadge, viewInvoicePdf, regenerateInvoicePdfMutation, downloadInvoicePdf, downloadingInvoiceId, resendInvoiceMutation, setConfirmPaymentInvoiceId, setCreditNoteInvoiceId, setVoidInvoiceId, invoicesPage, setInvoicesPage } = ctrl;
+  const voc = useVocabulary();
+  const { setGestoriaExportOpen, gestoriaExportOpen, setNewInvoiceOpen, newInvoiceOpen, refetchInvoices, setInvoiceStatusFilter, invoiceStatusFilter, setInvoiceTypeFilter, invoiceTypeFilter, setInvoiceDateFrom, setInvoiceDateTo, invoiceDateFrom, invoiceDateTo, invoicesData, invoicesLoading, invoicesError, invoiceSearch, setInvoiceSearch, viewInvoicePdf, regenerateInvoicePdfMutation, downloadInvoicePdf, downloadingInvoiceId, resendInvoiceMutation, setConfirmPaymentInvoiceId, setCreditNoteInvoiceId, setVoidInvoiceId, invoicesPage, setInvoicesPage } = ctrl;
+  const money = (v: number) => format.currency(v, "EUR", EUR2);
+  const rows: any[] = invoicesData?.items ?? [];
+  const summary = invoicesData?.summary as any;
+  const pageNote = invoicesData && invoicesData.total > PAGE_SIZE ? t("crmShared.soloPagina") : t("crmShared.enLaLista");
+  // Solo cuenta lo ya cargado en la lista (sin recalcular nada contable)
+  const pendingRows = rows.filter((r) => ["generada", "enviada"].includes(r.status) && r.invoiceType !== "abono");
+  const pendingAmount = pendingRows.reduce((a, r) => a + (Number(r.total) || 0), 0);
+  const paidCount = rows.filter((r) => r.status === "cobrada").length;
+  const creditCount = rows.filter((r) => r.invoiceType === "abono").length;
+  const statusLabel = (s: string) => t(`crmDashboard.${s}`);
+  const statusCfg = (s: string): [BTone, ReactNode] =>
+    s === "generada" ? ["muted", <FileText />] : s === "enviada" ? ["info", <Send />] : s === "cobrada" ? ["success", <CheckCircle />]
+      : s === "anulada" ? ["danger", <Ban />] : s === "abonada" ? ["info", <RotateCcw />] : ["muted", <FileText />];
+  const methodCfg = (m: string | null): { label: string; tone: BTone; icon: ReactNode } | null => {
+    if (!m) return null;
+    const online = voc.licensed ? t("crmDashboard.tarjetaPagoOnline2") : t("crmDashboard.tarjetaRedsys2");
+    const map: Record<string, { label: string; tone: BTone; icon: ReactNode }> = {
+      tarjeta_fisica: { label: t("crmDashboard.tarjetaFisica2"), tone: "primary", icon: <CreditCard /> },
+      tarjeta_redsys: { label: online, tone: "primary", icon: <CreditCard /> },
+      redsys: { label: online, tone: "primary", icon: <CreditCard /> },
+      tarjeta: { label: t("crmDashboard.tarjeta2"), tone: "primary", icon: <CreditCard /> },
+      transferencia: { label: t("crmDashboard.transferencia2"), tone: "info", icon: <Landmark /> },
+      efectivo: { label: t("crmDashboard.efectivo2"), tone: "success", icon: <Banknote /> },
+      otro: { label: t("crmDashboard.otro2"), tone: "muted", icon: <HelpCircle /> },
+      abono: { label: t("crmDashboard.abono"), tone: "muted", icon: <RotateCcw /> },
+    };
+    return map[m] ?? { label: m, tone: "muted", icon: <HelpCircle /> };
+  };
+  const setRange = (from: string, to: string) => { setInvoiceDateFrom(from); setInvoiceDateTo(to); };
+  const quick: { label: string; fn: () => void }[] = [
+    { label: t("crmInvoices.hoy"), fn: () => { const d = new Date().toISOString().slice(0,10); setRange(d, d); } },
+    { label: t("crmInvoices.estaSemana"), fn: () => { const now = new Date(); const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); setRange(mon.toISOString().slice(0,10), sun.toISOString().slice(0,10)); } },
+    { label: t("crmInvoices.esteMes"), fn: () => { const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth(), 1); const last = new Date(now.getFullYear(), now.getMonth() + 1, 0); setRange(first.toISOString().slice(0,10), last.toISOString().slice(0,10)); } },
+    { label: t("crmInvoices.t1"), fn: () => { const y = new Date().getFullYear(); setRange(`${y}-01-01`, `${y}-03-31`); } },
+    { label: t("crmInvoices.t2"), fn: () => { const y = new Date().getFullYear(); setRange(`${y}-04-01`, `${y}-06-30`); } },
+    { label: t("crmInvoices.t3"), fn: () => { const y = new Date().getFullYear(); setRange(`${y}-07-01`, `${y}-09-30`); } },
+    { label: t("crmInvoices.t4"), fn: () => { const y = new Date().getFullYear(); setRange(`${y}-10-01`, `${y}-12-31`); } },
+    { label: t("crmInvoices.esteAno"), fn: () => { const y = new Date().getFullYear(); setRange(`${y}-01-01`, `${y}-12-31`); } },
+  ];
+  const clearAll = () => { setInvoiceStatusFilter("all"); setInvoiceTypeFilter("all"); setInvoiceSearch(""); setInvoiceDateFrom(""); setInvoiceDateTo(""); };
+  const chips: BChip[] = [
+    ...(invoiceStatusFilter !== "all" ? [{ id: "status", label: `${t("crmShared.filtroEstado")}: ${statusLabel(invoiceStatusFilter)}`, onRemove: () => setInvoiceStatusFilter("all") }] : []),
+    ...(invoiceTypeFilter !== "all" ? [{ id: "type", label: `${t("crmShared.filtroTipo")}: ${invoiceTypeFilter === "factura" ? t("crmInvoices.tipoFactura") : t("crmInvoices.tipoAbono")}`, onRemove: () => setInvoiceTypeFilter("all") }] : []),
+    ...(invoiceDateFrom || invoiceDateTo ? [{ id: "period", label: `${t("crmShared.filtroPeriodo")}: ${invoiceDateFrom || "…"} → ${invoiceDateTo || "…"}`, onRemove: () => setRange("", "") }] : []),
+    ...(invoiceSearch ? [{ id: "search", label: `“${invoiceSearch}”`, onRemove: () => setInvoiceSearch("") }] : []),
+  ];
+  const columns: BColumn<any>[] = [
+    { key: "number", header: t("crmInvoices.numero"), mobile: "title", cell: (inv) => (
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="whitespace-nowrap font-mono text-sm font-semibold text-foreground">{inv.invoiceNumber}</span>
+          {inv.invoiceType === "abono" && <BPill tone="info" icon={<RotateCcw />}>{t("crmInvoices.abono")}</BPill>}
+        </div>
+        {inv.status === "abonada" && inv.creditNoteNumber && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); setInvoiceSearch(inv.creditNoteNumber); }} title={t("crmInvoices.verFacturaDeAbono")} className="mt-0.5 flex items-center gap-1 whitespace-nowrap text-xs text-info hover:underline">
+            <RotateCcw className="h-3 w-3" aria-hidden="true" />{t("crmInvoices.abono2", { creditNoteNumber: inv.creditNoteNumber })}
+          </button>
+        )}
+        {inv.invoiceType === "abono" && inv.originalInvoiceNumber && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); setInvoiceSearch(inv.originalInvoiceNumber); }} title={t("crmInvoices.verFacturaOriginal")} className="mt-0.5 flex items-center gap-1 whitespace-nowrap text-xs text-warning hover:underline">
+            <Receipt className="h-3 w-3" aria-hidden="true" />{t("crmInvoices.rectifica", { originalInvoiceNumber: inv.originalInvoiceNumber })}
+          </button>
+        )}
+      </div>
+    ) },
+    { key: "client", header: t("crmInvoices.cliente"), cell: (inv) => (
+      <div className="min-w-0">
+        <div className="break-words font-medium text-foreground">{inv.clientName}</div>
+        <div className="break-all text-xs text-muted-foreground">{inv.clientEmail}</div>
+      </div>
+    ) },
+    { key: "method", header: t("crmInvoices.metodoPago"), priority: "lg", cell: (inv) => {
+      const m = methodCfg(inv.paymentMethodShown ?? inv.paymentMethod);
+      return (
+        <div className="flex flex-col items-start gap-1">
+          {m ? <BPill tone={m.tone} icon={m.icon}>{m.label}</BPill> : <span className="text-muted-foreground">—</span>}
+          {inv.transferProofUrl && (
+            <a href={inv.transferProofUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title={t("crmInvoices.verJustificanteDeTransferencia")} className="inline-flex items-center gap-1 text-xs text-info hover:underline">
+              <Paperclip className="h-3 w-3" aria-hidden="true" />{t("crmInvoices.justificante")}
+            </a>
+          )}
+        </div>
+      );
+    } },
+    { key: "status", header: t("crmInvoices.estado"), cell: (inv) => {
+      const [tone, icon] = statusCfg(inv.status);
+      return (
+        <div className="flex flex-col items-start gap-1">
+          <BPill tone={tone} icon={icon}>{statusLabel(inv.status)}</BPill>
+          {inv.invoiceType === "abono" && <BPill tone="info">{t("crmInvoices.factRectificativa")}</BPill>}
+        </div>
+      );
+    } },
+    { key: "date", header: t("crmInvoices.fecha"), priority: "lg", num: true, cell: (inv) => <span className="text-xs text-muted-foreground">{format.date(inv.createdAt, {})}</span> },
+    { key: "total", header: t("crmInvoices.total"), align: "right", num: true, mobile: "amount", cell: (inv) => <BMoney tone={inv.invoiceType === "abono" ? "info" : undefined}>{money(Number(inv.total))}</BMoney> },
+  ];
+  const rowActions = (inv: any) => {
+    const isCredit = inv.invoiceType === "abono";
+    const primary: BAction = inv.pdfUrl
+      ? { label: t("crmShared.ver"), icon: <Eye className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => viewInvoicePdf(inv) }
+      : { label: t("crmInvoices.generarPdf"), icon: regenerateInvoicePdfMutation.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <FilePlus className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => regenerateInvoicePdfMutation.mutate({ invoiceId: inv.id }), disabled: regenerateInvoicePdfMutation.isPending };
+    return (
+      <BRowActions
+        label={inv.invoiceNumber}
+        primary={primary}
+        menu={[
+          { label: isCredit ? t("crmInvoices.descargarAbono") : t("crmInvoices.descargarFactura"), icon: downloadingInvoiceId === inv.id ? <RefreshCw className="animate-spin" /> : <FileDown />, onSelect: () => downloadInvoicePdf(inv), disabled: downloadingInvoiceId === inv.id },
+          ...(["generada", "enviada"].includes(inv.status) ? [{ label: t("crmInvoices.reenviarPorEmail"), icon: <Send />, onSelect: () => resendInvoiceMutation.mutate({ invoiceId: inv.id }) }] : []),
+          ...(["generada", "enviada"].includes(inv.status) && !isCredit ? [{ label: t("crmInvoices.confirmarPagoManual"), icon: <CreditCard />, onSelect: () => setConfirmPaymentInvoiceId(inv.id) }] : []),
+          ...(["generada", "enviada", "cobrada"].includes(inv.status) && !isCredit ? [{ label: t("crmInvoices.emitirAbono"), icon: <RotateCcw />, onSelect: () => setCreditNoteInvoiceId(inv.id), separatorBefore: true }] : []),
+          ...(!["anulada", "abonada"].includes(inv.status) ? [{ label: t("crmInvoices.anularFactura"), icon: <Ban />, destructive: true, onSelect: () => setVoidInvoiceId(inv.id) }] : []),
+        ]}
+      />
+    );
+  };
   return (
     <>
 {/* ─── TABLA DE FACTURAS ──────────────────────────────────────────────── */}
 {tab === "invoices" && (
-            <div>
-              <div className="flex justify-end gap-2 mb-3">
-                <Button size="sm" variant="outline" onClick={() => setGestoriaExportOpen(true)}>
-                  <Download className="w-4 h-4 mr-1" />{" "}{t("crmInvoices.exportarParaLaGestoria")}</Button>
-                <GestoriaExportDialog open={gestoriaExportOpen} onOpenChange={setGestoriaExportOpen} />
-                <Button size="sm" onClick={() => setNewInvoiceOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Plus className="w-4 h-4 mr-1" />{" "}{t("crmInvoices.nuevaFactura")}</Button>
-                <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
-              </div>
-              {/* Filtros de facturas */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                {(["all", "generada", "enviada", "cobrada", "anulada", "abonada"] as const).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setInvoiceStatusFilter(s)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
-                      invoiceStatusFilter === s
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
-                    }`}
-                  >
-                    {s === "all" ? t("crmInvoices.todas") : s.charAt(0).toUpperCase() + s.slice(1)}
-                  </button>
+      <div className="space-y-4">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => setGestoriaExportOpen(true)}>
+            <Download className="mr-1 h-4 w-4" aria-hidden="true" />{" "}{t("crmInvoices.exportarParaLaGestoria")}</Button>
+          <GestoriaExportDialog open={gestoriaExportOpen} onOpenChange={setGestoriaExportOpen} />
+          <Button size="sm" onClick={() => setNewInvoiceOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" aria-hidden="true" />{" "}{t("crmInvoices.nuevaFactura")}</Button>
+          <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
+        </div>
+        {summary && (
+          <BSummary>
+            <BStat tone="primary" icon={<Receipt />} label={t("crmInvoices.brutoIvaIncl")} value={money(summary.grandTotal)}
+              hint={`${invoicesData!.total} ${t("crmInvoices.docsEnPeriodo").toLowerCase()} · ${t("crmInvoices.iva", { formatEur: money(summary.tax) })}`} />
+            <BStat label={t("crmInvoices.baseImponible")} value={money(summary.subtotal)} tone="info" />
+            <BStat label={t("crmShared.pendienteCobro")} value={pendingRows.length} tone="warning" icon={<Send />}
+              hint={`${money(pendingAmount)} · ${pageNote}`} />
+            <BStat label={t("crmDashboard.cobrada")} value={paidCount} tone="success" icon={<CheckCircle />} hint={pageNote}
+              onClick={() => setInvoiceStatusFilter(invoiceStatusFilter === "cobrada" ? "all" : "cobrada")} active={invoiceStatusFilter === "cobrada"} />
+            {summary.abonosTotal > 0 && (
+              <BStat label={t("crmInvoices.totalAbonos")} value={`-${money(summary.abonosTotal)}`} tone="info" icon={<RotateCcw />} hint={`${creditCount} · ${pageNote}`}
+                onClick={() => setInvoiceTypeFilter(invoiceTypeFilter === "abono" ? "all" : "abono")} active={invoiceTypeFilter === "abono"} />
+            )}
+            {summary.abonosTotal > 0 && <BStat label={t("crmInvoices.netoReal")} value={money(summary.netTotal)} tone="success" />}
+          </BSummary>
+        )}
+        <BFilterBar
+          search={{ value: invoiceSearch, onChange: setInvoiceSearch, placeholder: t("crmEmpty.search.invoices") }}
+          primary={(
+            <>
+              <BFilterField label={t("crmShared.filtroEstado")} className="w-full sm:w-44">
+                <Select value={invoiceStatusFilter} onValueChange={(v) => setInvoiceStatusFilter(v as typeof invoiceStatusFilter)}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("crmInvoices.todas")}</SelectItem>
+                    {(["generada", "enviada", "cobrada", "anulada", "abonada"] as const).map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </BFilterField>
+              <BFilterField label={t("crmShared.filtroTipo")} className="w-full sm:w-44">
+                <Select value={invoiceTypeFilter} onValueChange={(v) => setInvoiceTypeFilter(v as typeof invoiceTypeFilter)}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("crmInvoices.todosLosTipos")}</SelectItem>
+                    <SelectItem value="factura">{t("crmInvoices.tipoFactura")}</SelectItem>
+                    <SelectItem value="abono">{t("crmInvoices.tipoAbono")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </BFilterField>
+            </>
+          )}
+          more={(
+            <div className="space-y-3 sm:col-span-2 lg:col-span-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Calendar className="h-3.5 w-3.5" aria-hidden="true" />{t("crmInvoices.periodo")}</span>
+                {quick.map(({ label, fn }) => (
+                  <Button key={label} type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={fn}>{label}</Button>
                 ))}
-                <div className="ml-auto flex gap-2">
-                  {(["all", "factura", "abono"] as const).map(ty => (
-                    <button
-                      key={ty}
-                      onClick={() => setInvoiceTypeFilter(ty)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
-                        invoiceTypeFilter === ty
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
-                      }`}
-                    >
-                      {ty === "all" ? t("crmInvoices.todosLosTipos") : ty === "factura" ? t("crmInvoices.tipoFactura") : t("crmInvoices.tipoAbono")}
-                    </button>
-                  ))}
-                </div>
               </div>
-
-              {/* Filtro por rango de fechas + accesos rápidos */}
-              <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 mb-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 text-foreground/60 text-xs">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span className="font-medium">{t("crmInvoices.periodo")}</span>
-                  </div>
-                  {/* Accesos rápidos */}
-                  {([
-                    { label: t("crmInvoices.hoy"), fn: () => { const d = new Date().toISOString().slice(0,10); setInvoiceDateFrom(d); setInvoiceDateTo(d); } },
-                    { label: t("crmInvoices.estaSemana"), fn: () => { const now = new Date(); const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); setInvoiceDateFrom(mon.toISOString().slice(0,10)); setInvoiceDateTo(sun.toISOString().slice(0,10)); } },
-                    { label: t("crmInvoices.esteMes"), fn: () => { const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth(), 1); const last = new Date(now.getFullYear(), now.getMonth() + 1, 0); setInvoiceDateFrom(first.toISOString().slice(0,10)); setInvoiceDateTo(last.toISOString().slice(0,10)); } },
-                    { label: t("crmInvoices.t1"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-03-31`); } },
-                    { label: t("crmInvoices.t2"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-04-01`); setInvoiceDateTo(`${y}-06-30`); } },
-                    { label: t("crmInvoices.t3"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-07-01`); setInvoiceDateTo(`${y}-09-30`); } },
-                    { label: t("crmInvoices.t4"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-10-01`); setInvoiceDateTo(`${y}-12-31`); } },
-                    { label: t("crmInvoices.esteAno"), fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-12-31`); } },
-                  ]).map(({ label, fn }) => (
-                    <button key={label} onClick={fn}
-                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-foreground/[0.05] text-foreground/65 border border-foreground/[0.12] hover:bg-info/30 hover:text-info hover:border-info/40 transition-all">
-                      {label}
-                    </button>
-                  ))}
-                  {/* Inputs de fecha */}
-                  <div className="flex items-center gap-2 ml-auto">
-                    <input
-                      type="date"
-                      value={invoiceDateFrom}
-                      onChange={e => setInvoiceDateFrom(e.target.value)}
-                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-info/50 [color-scheme:dark]"
-                    />
-                    <span className="text-foreground/40 text-xs">→</span>
-                    <input
-                      type="date"
-                      value={invoiceDateTo}
-                      onChange={e => setInvoiceDateTo(e.target.value)}
-                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-info/50 [color-scheme:dark]"
-                    />
-                    {(invoiceDateFrom || invoiceDateTo) && (
-                      <button onClick={() => { setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
-                        className="text-foreground/40 hover:text-foreground/65 transition-colors text-xs px-1.5 py-1 rounded hover:bg-foreground/[0.05]">
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input type="date" value={invoiceDateFrom} onChange={(e) => setInvoiceDateFrom(e.target.value)} className="w-40" aria-label={t("crmInvoices.periodo")} />
+                <span className="text-xs text-muted-foreground" aria-hidden="true">→</span>
+                <Input type="date" value={invoiceDateTo} onChange={(e) => setInvoiceDateTo(e.target.value)} className="w-40" aria-label={t("crmInvoices.periodo")} />
               </div>
-
-              {/* Panel de resumen del período */}
-              {invoicesData?.summary && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
-                  <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
-                    <div className="text-xs text-foreground/50 mb-1">{t("crmInvoices.docsEnPeriodo")}</div>
-                    <div className="text-lg font-bold text-foreground">{invoicesData.total}</div>
-                  </div>
-                  <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
-                    <div className="text-xs text-foreground/50 mb-1">{t("crmInvoices.baseImponible")}</div>
-                    <div className="text-lg font-bold text-info">{format.currency(invoicesData.summary.subtotal, "EUR", EUR2)}</div>
-                  </div>
-                  <div className="bg-warning/10 border border-warning/40 rounded-xl p-3 text-center">
-                    <div className="text-xs text-warning mb-1">{t("crmInvoices.brutoIvaIncl")}</div>
-                    <div className="text-lg font-bold text-warning">{format.currency(invoicesData.summary.grandTotal, "EUR", EUR2)}</div>
-                    <div className="text-xs text-muted-foreground">{t("crmInvoices.iva", { formatEur: format.currency(invoicesData.summary.tax, "EUR", EUR2) })}</div>
-                  </div>
-                  {(invoicesData.summary as any).abonosTotal > 0 && (
-                    <div className="bg-info/10 border border-info/40 rounded-xl p-3 text-center">
-                      <div className="text-xs text-info mb-1">{t("crmInvoices.totalAbonos")}</div>
-                      <div className="text-lg font-bold text-info">-{format.currency((invoicesData.summary as any).abonosTotal, "EUR", EUR2)}</div>
-                    </div>
-                  )}
-                  {(invoicesData.summary as any).abonosTotal > 0 && (
-                    <div className="bg-success/10 border border-success/40 rounded-xl p-3 text-center">
-                      <div className="text-xs text-success mb-1">{t("crmInvoices.netoReal")}</div>
-                      <div className="text-lg font-bold text-success">{format.currency((invoicesData.summary as any).netTotal, "EUR", EUR2)}</div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.numero")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.cliente")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">{t("crmInvoices.metodoPago")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.estado")}</th>
-                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.total")}</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">{t("crmInvoices.fecha")}</th>
-                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">{t("crmInvoices.acciones")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoicesLoading || invoicesError || !invoicesData?.items?.length ? (
-                      <CrmTableState
-                        colSpan={7}
-                        loading={invoicesLoading}
-                        error={invoicesError}
-                        onRetry={() => refetchInvoices()}
-                        filtered={invoiceStatusFilter !== "all" || invoiceTypeFilter !== "all" || !!invoiceSearch || !!invoiceDateFrom || !!invoiceDateTo}
-                        onClearFilters={() => { setInvoiceStatusFilter("all"); setInvoiceTypeFilter("all"); setInvoiceSearch(""); setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
-                        emptyTitle={t("crmEmpty.empty.invoices")}
-                        emptyHint={t("crmEmpty.empty.invoicesHint")}
-                        actionLabel={t("crmEmpty.empty.invoicesAction")}
-                        onAction={() => setNewInvoiceOpen(true)}
-                      />
-                    ) : invoicesData.items.map((inv: any) => (
-                      <tr key={inv.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${inv.invoiceType === "abono" ? "bg-info/[0.03]" : ""}`}>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-sm font-mono font-bold text-foreground whitespace-nowrap">{inv.invoiceNumber}</span>
-                            {inv.invoiceType === "abono" && (
-                              <span className="inline-flex items-center text-[10px] font-bold text-info bg-info/10 border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">{t("crmInvoices.abono")}</span>
-                            )}
-                          </div>
-                          {/* Factura abonada → mostrar el nº del abono emitido */}
-                          {inv.status === "abonada" && inv.creditNoteNumber && (
-                            <div className="mt-0.5">
-                              <button
-                                onClick={() => setInvoiceSearch(inv.creditNoteNumber)}
-                                className="text-[11px] text-info hover:underline transition-colors flex items-center gap-1 whitespace-nowrap"
-                                title={t("crmInvoices.verFacturaDeAbono")}
-                              >
-                                <RotateCcw className="w-2.5 h-2.5" />{t("crmInvoices.abono2", { creditNoteNumber: inv.creditNoteNumber })}
-                              </button>
-                            </div>
-                          )}
-                          {/* Abono → mostrar la factura original que rectifica */}
-                          {inv.invoiceType === "abono" && inv.originalInvoiceNumber && (
-                            <div className="mt-0.5">
-                              <button
-                                onClick={() => setInvoiceSearch(inv.originalInvoiceNumber)}
-                                className="text-[11px] text-warning hover:underline transition-colors flex items-center gap-1 whitespace-nowrap"
-                                title={t("crmInvoices.verFacturaOriginal")}
-                              >
-                                <Receipt className="w-2.5 h-2.5" />{t("crmInvoices.rectifica", { originalInvoiceNumber: inv.originalInvoiceNumber })}
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-sm font-medium text-foreground">{inv.clientName}</div>
-                          <div className="text-xs text-foreground/50">{inv.clientEmail}</div>
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <div className="flex flex-col gap-1">
-                            {getPaymentMethodBadge(inv.paymentMethodShown ?? inv.paymentMethod)}
-                            {inv.transferProofUrl && (
-                              <a
-                                href={inv.transferProofUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-info hover:underline transition-colors"
-                                title={t("crmInvoices.verJustificanteDeTransferencia")}
-                              >
-                                <Paperclip className="w-3 h-3" />{t("crmInvoices.justificante")}</a>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {getInvoiceStatusBadge(inv.status)}
-                          {inv.invoiceType === "abono" && (
-                            <div className="mt-1">
-                              <span className="inline-flex items-center text-[10px] font-bold text-info border border-info/40 px-1.5 py-0.5 rounded whitespace-nowrap">{t("crmInvoices.factRectificativa")}</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {inv.invoiceType === "abono" ? (
-                            <span className="text-sm font-bold text-info whitespace-nowrap">{format.currency(Number(inv.total), "EUR", EUR2)}</span>
-                          ) : (
-                            <span className="text-sm font-bold text-foreground whitespace-nowrap">{format.currency(Number(inv.total), "EUR", EUR2)}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 hidden sm:table-cell">
-                          <div className="text-xs text-foreground/50">{format.date(inv.createdAt, {})}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            {/* PDF: ver si existe (o generarlo); descargar siempre, también los abonos */}
-                            {inv.pdfUrl ? (
-                              <button onClick={() => viewInvoicePdf(inv)} title={inv.invoiceType === "abono" ? t("crmInvoices.visualizarAbono") : t("crmInvoices.visualizarFactura")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-info transition-colors">
-                                <Eye className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => regenerateInvoicePdfMutation.mutate({ invoiceId: inv.id })}
-                                disabled={regenerateInvoicePdfMutation.isPending}
-                                title={t("crmInvoices.generarPdf")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-warning transition-colors disabled:opacity-40">
-                                {regenerateInvoicePdfMutation.isPending
-                                  ? <RefreshCw className="w-4 h-4 animate-spin" />
-                                  : <FilePlus className="w-4 h-4" />}
-                              </button>
-                            )}
-                            <button onClick={() => downloadInvoicePdf(inv)} disabled={downloadingInvoiceId === inv.id}
-                              title={inv.invoiceType === "abono" ? t("crmInvoices.descargarAbono") : t("crmInvoices.descargarFactura")}
-                              aria-label={`Descargar ${inv.invoiceType === "abono" ? "abono" : "factura"} ${inv.invoiceNumber} en PDF`}
-                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-success transition-colors disabled:opacity-40">
-                              {downloadingInvoiceId === inv.id
-                                ? <RefreshCw className="w-4 h-4 animate-spin" />
-                                : <FileDown className="w-4 h-4" />}
-                            </button>
-                            {/* Reenviar */}
-                            {["generada", "enviada"].includes(inv.status) && (
-                              <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title={t("crmInvoices.reenviarPorEmail")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-info transition-colors">
-                                <Send className="w-4 h-4" />
-                              </button>
-                            )}
-                            {/* Confirmar pago manual */}
-                            {["generada", "enviada"].includes(inv.status) && inv.invoiceType !== "abono" && (
-                              <button onClick={() => setConfirmPaymentInvoiceId(inv.id)} title={t("crmInvoices.confirmarPagoManual")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-success transition-colors">
-                                <CreditCard className="w-4 h-4" />
-                              </button>
-                            )}
-                            {/* Emitir abono (total o parcial) */}
-                            {["generada", "enviada", "cobrada"].includes(inv.status) && inv.invoiceType !== "abono" && (
-                              <button onClick={() => setCreditNoteInvoiceId(inv.id)} title={t("crmInvoices.emitirAbono")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-primary transition-colors">
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            )}
-                            {/* Anular */}
-                            {!["anulada", "abonada"].includes(inv.status) && (
-                              <button onClick={() => setVoidInvoiceId(inv.id)} title={t("crmInvoices.anularFactura")}
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-danger transition-colors">
-                                <Ban className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {invoicesData && invoicesData.total > 0 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
-                  <span className="text-sm text-foreground/50">
-                    {invoicesData.total <= PAGE_SIZE
-                      ? t("crmInvoices.mostrandoDeFacturas", { total: invoicesData.total, total2: invoicesData.total })
-                      : t("crmInvoices.paginaDeFacturas", { v: invoicesPage + 1, ceil: Math.ceil(invoicesData.total / PAGE_SIZE), total: invoicesData.total })}
-                  </span>
-                  {invoicesData.total > PAGE_SIZE && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setInvoicesPage(p => p - 1)}
-                        disabled={invoicesPage === 0}
-                        className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                      >{t("crmInvoices.anterior")}</button>
-                      <button
-                        onClick={() => setInvoicesPage(p => p + 1)}
-                        disabled={(invoicesPage + 1) * PAGE_SIZE >= invoicesData.total}
-                        className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                      >{t("crmInvoices.siguiente")}</button>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
+          chips={chips}
+          onClear={clearAll}
+          summary={invoicesData ? `${invoicesData.total} ${voc.invoices.toLowerCase()}` : undefined}
+        />
+        <BTable
+          rows={rows}
+          columns={columns}
+          rowKey={(r) => r.id}
+          caption={voc.invoices}
+          loading={invoicesLoading}
+          error={invoicesError}
+          onRetry={() => refetchInvoices()}
+          filtered={chips.length > 0}
+          onClearFilters={clearAll}
+          emptyTitle={t("crmEmpty.empty.invoices")}
+          emptyDescription={t("crmEmpty.empty.invoicesHint")}
+          emptyAction={<Button type="button" onClick={() => setNewInvoiceOpen(true)}>{t("crmEmpty.empty.invoicesAction")}</Button>}
+          rowClassName={(inv) => (inv.invoiceType === "abono" ? "bg-info/[0.03]" : undefined)}
+          actions={rowActions}
+          footer={invoicesData && invoicesData.total > 0 ? (
+            <BPager
+              page={invoicesPage}
+              onPrev={() => setInvoicesPage(p => p - 1)}
+              onNext={() => setInvoicesPage(p => p + 1)}
+              hasNext={(invoicesPage + 1) * PAGE_SIZE < invoicesData.total}
+              prevLabel={t("crmInvoices.anterior")}
+              nextLabel={t("crmInvoices.siguiente")}
+              text={invoicesData.total <= PAGE_SIZE
+                ? t("crmInvoices.mostrandoDeFacturas", { total: invoicesData.total, total2: invoicesData.total })
+                : t("crmInvoices.paginaDeFacturas", { v: invoicesPage + 1, ceil: Math.ceil(invoicesData.total / PAGE_SIZE), total: invoicesData.total })}
+            />
+          ) : undefined}
+        />
+      </div>
+    )}
     </>
   );
 }
@@ -470,22 +383,22 @@ export function InvoicesModals({ ctrl }: { ctrl: InvoicesController }) {
 {/* ─── MODALES DE FACTURAS ──────────────────────────────────────────────── */}
 {/* Confirmar pago manual */}
 <Dialog open={confirmPaymentInvoiceId !== null} onOpenChange={(o) => !o && setConfirmPaymentInvoiceId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-success" />{" "}{t("crmInvoices.confirmarPagoManual")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
               <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmInvoices.metodoDePago")}</Label>
               <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
-                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white">
+                <SelectTrigger >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="transferencia" className="text-white">{t("crmInvoices.transferenciaBancaria")}</SelectItem>
-                  <SelectItem value="efectivo" className="text-white">{t("crmInvoices.efectivo")}</SelectItem>
-                  <SelectItem value="otro" className="text-white">{t("crmInvoices.otro")}</SelectItem>
+                <SelectContent>
+                  <SelectItem value="transferencia">{t("crmInvoices.transferenciaBancaria")}</SelectItem>
+                  <SelectItem value="efectivo">{t("crmInvoices.efectivo")}</SelectItem>
+                  <SelectItem value="otro">{t("crmInvoices.otro")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -504,9 +417,9 @@ export function InvoicesModals({ ctrl }: { ctrl: InvoicesController }) {
 <CreditNoteDialog invoiceId={creditNoteInvoiceId} onClose={() => setCreditNoteInvoiceId(null)} onIssued={() => refetchInvoices()} />
 {/* Anular factura */}
 <Dialog open={voidInvoiceId !== null} onOpenChange={(o) => !o && setVoidInvoiceId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-danger" />{" "}{t("crmInvoices.anularFactura")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-foreground/65 py-2">{t("crmInvoices.seEmitiraUnAbono")}</p>
@@ -515,7 +428,7 @@ export function InvoicesModals({ ctrl }: { ctrl: InvoicesController }) {
             <Button size="sm"
               onClick={() => voidInvoiceId !== null && voidInvoiceMutation.mutate({ invoiceId: voidInvoiceId })}
               disabled={voidInvoiceMutation.isPending}
-              className="bg-destructive hover:bg-destructive/90 text-white">
+              variant="destructive">
               {voidInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}{t("crmInvoices.anular")}</Button>
           </DialogFooter>
         </DialogContent>

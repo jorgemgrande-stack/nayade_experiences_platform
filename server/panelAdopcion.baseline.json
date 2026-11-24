@@ -150,13 +150,7 @@
     "textoMinusculo": 9,
     "geometriaAjena": 1
   },
-  "pages/admin/crm/CancellationDetailModal.tsx": {
-    "coloresFijos": 71,
-    "hexEnClases": 32
-  },
   "pages/admin/crm/CancellationsManager.tsx": {
-    "coloresFijos": 34,
-    "hexEnClases": 17,
     "geometriaAjena": 2
   },
   "pages/admin/crm/CreditNoteDialog.tsx": {
@@ -170,15 +164,10 @@
     "coloresFijos": 4,
     "textoMinusculo": 2
   },
-  "pages/admin/crm/NewInvoiceDialog.tsx": {
-    "coloresFijos": 4,
-    "hexEnClases": 2
-  },
   "pages/admin/crm/ReservationTicket.tsx": {
     "coloresFijos": 2
   },
   "pages/admin/crm/modals/AnularReservaModal.tsx": {
-    "hexEnClases": 4,
     "geometriaAjena": 1
   },
   "pages/admin/crm/modals/DirectQuoteModal.tsx": {
@@ -219,24 +208,11 @@
     "hexEnClases": 4,
     "geometriaAjena": 1
   },
-  "pages/admin/crm/tabs/CancellationsTab.tsx": {
-    "hexEnClases": 1,
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/tabs/InvoicesTab.tsx": {
-    "hexEnClases": 3,
-    "textoMinusculo": 4,
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/tabs/PendingPaymentsTab.tsx": {
-    "hexEnClases": 5
-  },
   "pages/admin/crm/tabs/QuotesTab.tsx": {
     "hexEnClases": 4
   },
   "pages/admin/crm/tabs/ReservationsTab.tsx": {
-    "hexEnClases": 3,
-    "textoMinusculo": 9
+    "hexEnClases": 3
   },
   "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
     "coloresFijos": 2,
