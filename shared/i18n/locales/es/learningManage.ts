@@ -166,6 +166,8 @@ export default {
     needsDurationWarning: "No se puede activar esta regla: {n} módulo(s) sin duración de acceso. Indica la duración (general o por módulo) o marca «Acceso permanente».",
     scheduleLine: "Día {offset} · {duration}",
     permanentTag: "Permanente",
+    activationLabel: "Activación voluntaria: el derecho se concede pendiente y los días (los de la regla) empiezan cuando el alumno lo activa",
+    activationTag: "Activación voluntaria "
   },
   progress: {
     noActivity: "Sin actividad",

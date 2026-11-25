@@ -168,6 +168,8 @@ export default {
     needsDurationWarning: "Diese Regel kann nicht aktiviert werden: {n} Modul(e) ohne Zugangsdauer. Gib die Dauer an (allgemein oder pro Modul) oder wähle «Dauerhafter Zugang».",
     scheduleLine: "Tag {offset} · {duration}",
     permanentTag: "Dauerhaft",
+    activationLabel: "Freiwillige Aktivierung: das Recht wird als ausstehend gewährt und die Tage (die der Regel) beginnen, wenn die Teilnehmerin oder der Teilnehmer aktiviert",
+    activationTag: "Freiwillige Aktivierung "
   },
   progress: {
     noActivity: "Keine Aktivität",

@@ -14,7 +14,7 @@ import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { LearningRuleError, START_MODES, courseOpensFor, evaluateAny, moduleWindow } from "../../shared/learning";
 import { randomBytes } from "node:crypto";
 import {
-  LearningError, addModules, extendModuleAccess, grantDemo, canAccessModule, enrollmentEvents, enrollmentViews, extendEnrollment, getEnrollment, grantAdmin, grantFromPayment, isMissingLearningSchema,
+  LearningError, activateEnrollment, addModules, extendModuleAccess, grantDemo, canAccessModule, enrollmentEvents, enrollmentViews, extendEnrollment, getEnrollment, grantAdmin, grantFromPayment, isMissingLearningSchema,
   grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
@@ -65,6 +65,8 @@ const my = router({
       // Un borrador no existe para quien no tiene matrícula técnica (no se revela ni su existencia)
       if (!views.length && String(course.status) === "draft") throw new LearningError("NOT_FOUND", "El curso no existe.");
       if (!views.length) throw new LearningError("FORBIDDEN", "No tienes una matrícula de este curso.");
+      const pendingView = views.find((v) => v.pendingActivationDays != null && v.id != null);
+      const pendingActivation = pendingView ? { enrollmentId: pendingView.id as number, days: Number(pendingView.pendingActivationDays) } : null;
       const offers = await extensionOffers().catch(() => []);
       const extendable = offers.length ? await extendableModules(ctx.user.id, input.courseId) : new Map<number, unknown>();
       const modules = await rowsOf(sql`SELECT id, position, title FROM learning_modules WHERE course_id = ${input.courseId} ORDER BY position`);
@@ -74,6 +76,8 @@ const my = router({
         course: { id: Number(course.id), slug: String(course.slug), title: String(course.title), description: course.description ?? null, language: String(course.language) },
         /** Ampliaciones del catálogo (días y precio fijados por el servidor). Vacío si la empresa no las ha configurado. */
         extensionOffers: offers,
+        /** Derecho concedido y pendiente de activar por la persona (días que empezarán al activar); null si no hay. */
+        pendingActivation,
         modules: modules.map((m) => {
           const dec = evaluateAny(views, Number(m.id), now);
           const unlocked = dec.allowed;
@@ -82,7 +86,8 @@ const my = router({
           const win = views.filter((v) => v.moduleIds.includes(Number(m.id))).map((v) => moduleWindow(v, Number(m.id)));
           const endsAt = win.length ? (win.some((w) => w.endsAt == null) ? null : Math.max(...win.map((w) => w.endsAt as number))) : null;
           // open: abierto; locked: aún no desbloqueado (con fecha); closed: caducado; not_included: no está en su modalidad
-          const state: "open" | "locked" | "closed" | "not_included" = unlocked ? "open" : unlocksAt != null ? "locked" : win.length ? "closed" : "not_included";
+          const pendingHere = !unlocked && views.some((v) => v.pendingActivationDays != null && v.moduleIds.includes(Number(m.id)));
+          const state: "open" | "locked" | "closed" | "not_included" | "pending_activation" = unlocked ? "open" : pendingHere ? "pending_activation" : unlocksAt != null ? "locked" : win.length ? "closed" : "not_included";
           return {
             id: Number(m.id), position: Number(m.position), title: String(m.title), unlocked, unlocksAt, endsAt, state, canExtend: extendable.has(Number(m.id)),
             lessons: lessons.filter((l) => Number(l.module_id) === Number(m.id)).map((l) => ({ id: Number(l.id), position: Number(l.position), title: String(l.title), completed: done.has(Number(l.id)) })),
@@ -116,6 +121,9 @@ const my = router({
    * catálogo del servidor; un módulo que no sea suyo (otra persona, no incluido, revocado) se rechaza. El acceso se amplía solo
    * cuando el aviso firmado de la pasarela confirma el pago.
    */
+  /** Activación voluntaria: el alumno inicia los días de un derecho concedido y aún pendiente (solo el titular). */
+  activate: protectedProcedure.input(z.object({ enrollmentId: id })).mutation(({ ctx, input }) => guard(() => activateEnrollment(input.enrollmentId, ctx.user.id))),
+
   startExtension: protectedProcedure
     .input(z.object({ courseId: id, moduleId: id, days: z.union([z.literal(30), z.literal(60)]), provider: z.enum(["redsys", "stripe"]).default("redsys") }))
     .mutation(({ ctx, input }) => guard(async () => {
@@ -197,7 +205,7 @@ const admin = router({
     };
   })),
   saveRule: adminProcedure
-    .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean(),
+    .input(z.object({ id: id.optional(), activationRequired: z.boolean().optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean(),
       permanent: z.boolean().optional(),
       moduleSettings: z.array(z.object({ moduleId: id, unlockOffsetDays: z.number().int().min(0).max(3650).nullable().optional(), durationDays: z.number().int().min(1).max(3650).nullable().optional() })).max(50).optional() }))
     .mutation(({ input }) => guard(async () => ({ id: await saveRule({ ...input }, input.id) }))),

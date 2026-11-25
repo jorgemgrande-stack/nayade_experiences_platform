@@ -35,6 +35,8 @@ export interface AccessRule {
   active: boolean;
   /** true = la regla declara de forma EXPRESA acceso sin caducidad para los módulos sin duración (por defecto false). */
   permanent?: boolean;
+  /** true = concede un derecho PENDIENTE DE ACTIVAR: `durationDays` se cuenta desde que el alumno lo activa (sin fecha automática). */
+  activationRequired?: boolean;
   /** Calendario por módulo: desbloqueo progresivo y duración propia. Sin entrada = desde el primer día y duración de la regla. */
   moduleSchedule?: Record<number, ModuleSchedule>;
 }
@@ -109,6 +111,11 @@ export function matchRules(rules: AccessRule[], experienceId: number, variantId:
   return exact.length ? exact : own.filter((r) => r.variantId == null);
 }
 
+/** Ventana que arranca al ACTIVAR: empieza en ese instante exacto y dura los días del derecho. */
+export function activationWindow(days: number, activatedAt: number): { startsAt: number; endsAt: number } {
+  return { startsAt: activatedAt, endsAt: activatedAt + Math.round(days) * DAY_MS };
+}
+
 /** Ventana de la matrícula: inicio (ahora o fecha fija) y fin (inicio + duración, o sin límite). */
 export function computeWindow(p: { startMode: StartMode; fixedStart: number | null; durationDays: number | null; grantedAt: number }): { startsAt: number; endsAt: number | null } {
   const startsAt = p.startMode === "fixed_date" && p.fixedStart != null ? p.fixedStart : p.grantedAt;
@@ -117,6 +124,10 @@ export function computeWindow(p: { startMode: StartMode; fixedStart: number | nu
 }
 
 export interface EnrollmentView {
+  /** Id de la matrícula (para activarla desde el aula) */
+  id?: number;
+  /** Días de acceso que empezarán cuando el alumno la active; null/undefined = matrícula normal o ya activada. */
+  pendingActivationDays?: number | null;
   status: EnrollmentStatus;
   startsAt: number;
   endsAt: number | null;
@@ -129,7 +140,7 @@ export interface EnrollmentView {
 
 export type AccessDecision =
   | { allowed: true }
-  | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted"; unlocksAt?: number };
+  | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted" | "pending_activation"; unlocksAt?: number };
 
 /** Ventana efectiva de un módulo: la propia o, en cada extremo que no tenga, la de la matrícula. */
 export function moduleWindow(e: Pick<EnrollmentView, "startsAt" | "endsAt" | "moduleWindows">, moduleId: number): { startsAt: number; endsAt: number | null } {
@@ -146,6 +157,8 @@ export function evaluateAccess(e: EnrollmentView | null | undefined, moduleId: n
     if (e.endsAt != null && now >= e.endsAt) return { allowed: false, reason: "expired" };
     return { allowed: false, reason: "module_not_granted" };
   }
+  // Derecho concedido pero sin activar: no hay ventana hasta que el alumno lo activa
+  if (e.pendingActivationDays != null) return { allowed: false, reason: "pending_activation" };
   if (now < e.startsAt) return { allowed: false, reason: "not_started" };
   const w = moduleWindow(e, moduleId);
   if (now < w.startsAt) return { allowed: false, reason: "not_started", unlocksAt: w.startsAt };
@@ -154,8 +167,9 @@ export function evaluateAccess(e: EnrollmentView | null | undefined, moduleId: n
 }
 
 /** Estado de la matrícula para mostrar teniendo en cuenta las ventanas por módulo: activa si algún módulo está abierto. */
-export function effectiveEnrollmentStatus(e: EnrollmentView, now: number): EnrollmentStatus | "scheduled" {
+export function effectiveEnrollmentStatus(e: EnrollmentView, now: number): EnrollmentStatus | "scheduled" | "pending_activation" {
   if (e.status !== "active") return e.status;
+  if (e.pendingActivationDays != null) return "pending_activation";
   if (!e.moduleWindows || !Object.keys(e.moduleWindows).length) return effectiveStatus(e, now);
   const ds = e.moduleIds.map((m) => evaluateAccess(e, m, now));
   if (ds.some((d) => d.allowed)) return "active";
@@ -254,8 +268,9 @@ export function moduleAccessNotice(m: ModuleAccessInput, now: number): ModuleAcc
 }
 
 /** Estado derivado para mostrar: una matrícula «active» fuera de ventana se enseña como caducada o futura. */
-export function effectiveStatus(e: Pick<EnrollmentView, "status" | "startsAt" | "endsAt">, now: number): EnrollmentStatus | "scheduled" {
+export function effectiveStatus(e: Pick<EnrollmentView, "status" | "startsAt" | "endsAt" | "pendingActivationDays">, now: number): EnrollmentStatus | "scheduled" | "pending_activation" {
   if (e.status !== "active") return e.status;
+  if (e.pendingActivationDays != null) return "pending_activation";
   if (now < e.startsAt) return "scheduled";
   if (e.endsAt != null && now >= e.endsAt) return "expired";
   return "active";

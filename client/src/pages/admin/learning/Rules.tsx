@@ -17,7 +17,7 @@ import { experienceLabel, variantLabel, modulesLabel } from "@shared/learningRul
 import { modulesWithoutDuration } from "@shared/learning";
 import { Pencil, Plus, ShieldCheck } from "lucide-react";
 
-type Rule = { id: number; experienceId: number; variantId: number | null; courseId: number; moduleIds: number[]; permanent?: boolean; moduleSchedule?: Record<number, { unlockOffsetDays: number | null; durationDays: number | null }>; durationDays: number | null; startMode: "on_grant" | "fixed_date"; fixedStart: number | null; active: boolean; experienceName: string | null; variantName: string | null; courseTitle: string | null; moduleTitles: string[] };
+type Rule = { id: number; experienceId: number; variantId: number | null; courseId: number; moduleIds: number[]; permanent?: boolean; activationRequired?: boolean; moduleSchedule?: Record<number, { unlockOffsetDays: number | null; durationDays: number | null }>; durationDays: number | null; startMode: "on_grant" | "fixed_date"; fixedStart: number | null; active: boolean; experienceName: string | null; variantName: string | null; courseTitle: string | null; moduleTitles: string[] };
 
 function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
@@ -29,6 +29,7 @@ function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () =
   const [days, setDays] = useState<string>(rule?.durationDays != null ? String(rule.durationDays) : "");
   const [active, setActive] = useState<boolean>(rule?.active ?? false);
   const [permanent, setPermanent] = useState<boolean>(rule?.permanent ?? false);
+  const [activationRequired, setActivationRequired] = useState<boolean>(rule?.activationRequired ?? false);
   const [sched, setSched] = useState<Record<number, { offset: string; dur: string }>>(() => Object.fromEntries(Object.entries(rule?.moduleSchedule ?? {}).map(([k, v]) => [Number(k), { offset: v.unlockOffsetDays != null ? String(v.unlockOffsetDays) : "", dur: v.durationDays != null ? String(v.durationDays) : "" }])));
   const setField = (m: number, f: "offset" | "dur", v: string) => setSched((s) => ({ ...s, [m]: { offset: s[m]?.offset ?? "", dur: s[m]?.dur ?? "", [f]: v.replace(/\D/g, "") } }));
   const moduleSettings = moduleIds.map((m) => ({ moduleId: m, unlockOffsetDays: sched[m]?.offset ? Number(sched[m].offset) : null, durationDays: sched[m]?.dur ? Number(sched[m].dur) : null }));
@@ -42,7 +43,7 @@ function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () =
   const wasActive = rule?.active ?? false;
   async function submit() {
     if (active && !wasActive && !(await confirmAction({ description: t("learningManage.rules.activateConfirm") }))) return;
-    save.mutate({ id: rule?.id, experienceId: Number(experienceId), variantId: variantId === "" ? null : Number(variantId), courseId: Number(courseId), moduleIds, durationDays: days === "" ? null : Number(days), startMode: "on_grant", fixedStart: null, active, permanent, moduleSettings });
+    save.mutate({ id: rule?.id, experienceId: Number(experienceId), variantId: variantId === "" ? null : Number(variantId), courseId: Number(courseId), moduleIds, durationDays: days === "" ? null : Number(days), startMode: "on_grant", fixedStart: null, active, permanent, activationRequired, moduleSettings });
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -88,6 +89,7 @@ function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () =
               </fieldset>
             )}
             <label className="flex items-center gap-2"><input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />{t("learningManage.rules.permanentLabel")}</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={activationRequired} onChange={(e) => setActivationRequired(e.target.checked)} />{t("learningManage.rules.activationLabel")}</label>
             <label className="block">{t("learningManage.rules.duration")}<Input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} placeholder={t("learningManage.rules.durationPlaceholder")} /></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />{t("learningManage.rules.activeLabel")}</label>
             {!active && <p className="text-xs text-muted-foreground">{t("learningManage.rules.inactiveNote")}</p>}
@@ -130,7 +132,7 @@ export default function Rules() {
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.course")}</dt><dd>{r.courseTitle ?? "—"}</dd></div>
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.opens")}</dt><dd>{modulesLabel(r)}</dd></div>
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.durationLabel")}</dt><dd>{r.durationDays ? t("learningManage.rules.days", { n: r.durationDays }) : t("learningManage.rules.noLimit")}</dd></div>
-                {(r.permanent || r.moduleSchedule) && <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.moduleCalendar")}</dt><dd>{r.permanent ? t("learningManage.rules.permanentTag") : ""}{r.moduleSchedule ? Object.entries(r.moduleSchedule).map(([m, s]) => `#${m}: ${t("learningManage.rules.scheduleLine", { offset: s.unlockOffsetDays ?? 0, duration: s.durationDays != null ? t("learningManage.rules.days", { n: s.durationDays }) : "—" })}`).join(" · ") : ""}</dd></div>}
+                {(r.permanent || r.activationRequired || r.moduleSchedule) && <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.moduleCalendar")}</dt><dd>{r.permanent ? t("learningManage.rules.permanentTag") : ""}{r.activationRequired ? t("learningManage.rules.activationTag") : ""}{r.moduleSchedule ? Object.entries(r.moduleSchedule).map(([m, s]) => `#${m}: ${t("learningManage.rules.scheduleLine", { offset: s.unlockOffsetDays ?? 0, duration: s.durationDays != null ? t("learningManage.rules.days", { n: s.durationDays }) : "—" })}`).join(" · ") : ""}</dd></div>}
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.start")}</dt><dd>{r.startMode === "fixed_date" ? fmtDate(r.fixedStart) : t("learningManage.rules.onGrant")}</dd></div>
               </dl>
               <div className="mt-3"><Button size="sm" variant="outline" onClick={() => setEditing(r)}><Pencil className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.rules.edit")}</Button></div>
