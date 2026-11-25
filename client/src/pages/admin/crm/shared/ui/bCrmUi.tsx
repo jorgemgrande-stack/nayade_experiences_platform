@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
-import { CompactEmpty } from "@/components/admin/SalesFamilyShell";
+import { CompactEmpty, useShellMobileAction } from "@/components/admin/SalesFamilyShell";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -61,7 +61,7 @@ export function BSummary({ children, className, hero = true }: { children: React
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-r from-primary/[0.14] via-primary/[0.04] to-transparent" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-primary/60 via-primary/15 to-transparent" />
       <div className="relative grid grid-cols-2 gap-px bg-border/70 sm:flex">
-        {items.map((c, i) => (isValidElement(c) ? cloneElement(c as ReactElement<{ hero?: boolean }>, { hero: hero && i === 0 }) : c))}
+        {items.map((c, i) => (isValidElement(c) ? cloneElement(c as ReactElement<{ hero?: boolean; className?: string }>, { hero: hero && i === 0, className: cn((c.props as { className?: string }).className, items.length % 2 === 1 && i === 0 && "max-sm:col-span-2") }) : c))}
       </div>
     </section>
   );
@@ -101,7 +101,7 @@ export interface BChip { id: string; label: string; onRemove: () => void }
 
 export function BFilterField({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <div className={cn("min-w-0 space-y-1", className)}>
+    <div className={cn("min-w-0 space-y-1 max-sm:grow max-sm:basis-[calc(50%-0.25rem)]", className)}>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
     </div>
@@ -115,6 +115,7 @@ export function BFilterBar({ search, primary, more, chips, onClear, summary, act
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const mobileAction = useShellMobileAction(!!(primary || more));
   return (
     <section aria-label={t("crmShared.filtros")} className={cn("space-y-2", className)}>
       <div className="flex flex-wrap items-center gap-2 [&_label]:sr-only [&_button[role=combobox]]:h-9 [&_input]:h-9">
@@ -128,11 +129,13 @@ export function BFilterBar({ search, primary, more, chips, onClear, summary, act
         {more && (
           <Button type="button" variant="outline" size="sm" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="h-9 gap-2">
             <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-            {t("crmShared.masFiltros")}
+            <span className="sm:hidden">{t("salesShell.filters")}</span>
+            <span className="hidden sm:inline">{t("crmShared.masFiltros")}</span>
             <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
           </Button>
         )}
         {actions}
+        {mobileAction && <div className="ml-auto flex flex-wrap items-center justify-end gap-2 sm:hidden">{mobileAction}</div>}
       </div>
       {more && open && <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:not-sr-only">{more}</div>}
       {(chips.length > 0 || summary) && (
@@ -171,7 +174,7 @@ export interface BColumn<T> {
   num?: boolean;
   priority?: BPriority;
   /** Tarjeta móvil: «title» cabecera, «amount» a la derecha del título, «hidden» no se repite. */
-  mobile?: "title" | "amount" | "hidden";
+  mobile?: "title" | "amount" | "hidden" | "footer";
   className?: string;
 }
 
@@ -203,7 +206,8 @@ export function BTable<T>({ rows, columns, rowKey, caption, loading, error, onRe
   }
   const titleCol = columns.find((c) => c.mobile === "title") ?? columns[0];
   const amountCol = columns.find((c) => c.mobile === "amount");
-  const bodyCols = columns.filter((c) => c !== titleCol && c !== amountCol && c.mobile !== "hidden");
+  const footerCols = columns.filter((c) => c.mobile === "footer");
+  const bodyCols = columns.filter((c) => c !== titleCol && c !== amountCol && c.mobile !== "hidden" && c.mobile !== "footer");
   const al = (a?: "left" | "right") => (a === "right" ? "text-right" : "text-left");
   const checkCls = "h-4 w-4 cursor-pointer rounded border-border accent-primary";
   return (
@@ -249,8 +253,8 @@ export function BTable<T>({ rows, columns, rowKey, caption, loading, error, onRe
               <div className="min-w-0 flex-1 font-medium text-foreground">{titleCol.cell(r)}</div>
               {amountCol && <div className="shrink-0 text-right font-semibold tabular-nums">{amountCol.cell(r)}</div>}
             </div>
-            <div className="mt-1 flex items-end justify-between gap-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground [&>div]:min-w-0 [&>div]:max-w-full">
+            <div className={cn("mt-1 flex gap-2", footerCols.length > 0 ? "flex-col" : "items-end justify-between")}>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground [&>div]:min-w-0 [&>div]:max-w-full [&_span.rounded-full]:px-1.5 [&_span.rounded-full]:py-0 [&_span.rounded-full]:leading-5">
                 {bodyCols.map((c) => (
                   <div key={c.key} className={cn(c.num && "tabular-nums")}>
                     <span className="sr-only">{c.header}: </span>
@@ -258,7 +262,21 @@ export function BTable<T>({ rows, columns, rowKey, caption, loading, error, onRe
                   </div>
                 ))}
               </div>
-              {actions && <div className="shrink-0" onClick={(e) => e.stopPropagation()}>{actions(r)}</div>}
+              {footerCols.length > 0 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground">
+                    {footerCols.map((c) => (
+                      <div key={c.key} className={cn("min-w-0", c.num && "tabular-nums")}>
+                        <span className="sr-only">{c.header}: </span>
+                        {c.cell(r)}
+                      </div>
+                    ))}
+                  </div>
+                  {actions && <div className="shrink-0" onClick={(e) => e.stopPropagation()}>{actions(r)}</div>}
+                </div>
+              ) : (
+                actions && <div className="shrink-0" onClick={(e) => e.stopPropagation()}>{actions(r)}</div>
+              )}
             </div>
           </li>
         ))}

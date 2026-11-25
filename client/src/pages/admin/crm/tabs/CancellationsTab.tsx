@@ -127,7 +127,7 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
     { key: "state", header: t("crmCancellations.estadoOp"), cell: (row) => (
       <div className="flex flex-col items-start gap-1">{opPill(row.operationalStatus)}{resPill(row.resolutionStatus)}{finPill(row.financialStatus)}</div>
     ) },
-    { key: "date", header: t("crmCancellations.fecha"), priority: "lg", num: true, cell: (row) => <span className="text-xs text-muted-foreground">{format.date(row.createdAt, {})}</span> },
+    { key: "date", header: t("crmCancellations.fecha"), priority: "lg", num: true, mobile: "footer", cell: (row) => <span className="text-xs text-muted-foreground">{format.date(row.createdAt, {})}</span> },
   ];
   const statCards = anulKpis ? (
     <>
@@ -183,7 +183,7 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
           summary={anulData ? `${anulData.total} ${voc.cancellations.toLowerCase()}` : undefined}
           actions={(
             <>
-              <Button type="button" variant="outline" onClick={() => refetchAnul()} className="gap-1.5"><RefreshCw className="h-4 w-4" aria-hidden="true" />{t("crmCancellations.actualizar")}</Button>
+              <Button type="button" variant="outline" onClick={() => refetchAnul()} aria-label={t("crmCancellations.actualizar")} title={t("crmCancellations.actualizar")} className="gap-1.5 max-sm:px-2.5"><RefreshCw className="h-4 w-4" aria-hidden="true" /><span className="max-sm:sr-only">{t("crmCancellations.actualizar")}</span></Button>
             </>
           )}
         />

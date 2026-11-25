@@ -11,7 +11,7 @@
  *     <CrmTable … /> o <CompactEmpty title="…" action={<Button/>} />
  *   </SalesFamilyShell>
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -92,7 +92,7 @@ export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey
   const scroll = useScrollFade<HTMLElement>(`${active}-${visible.length}`);
   return (
     <nav ref={scroll.ref} onScroll={scroll.onScroll} aria-label={t("salesShell.navLabel")} style={scroll.style} className={cn(SCROLL_NAV, className)}>
-      <div className="inline-flex min-w-max gap-0.5 rounded-xl border border-border bg-card/80 p-1 shadow-sm">
+      <div className="inline-flex min-w-max gap-0.5 rounded-xl border border-border bg-card/80 p-1 shadow-sm max-sm:shadow-none">
         {tabs.filter((x) => visible.includes(x.key)).map(({ key, label, count, attention }) => {
           const on = active === key;
           const showCount = count !== undefined && count > 0;
@@ -128,6 +128,12 @@ export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey
  * Contenedor de la familia: fila de cabecera (pestañas a la izquierda; indicadores extra y acción principal a la
  * derecha) y debajo el contenido. Mismos márgenes y ancho en todas las pantallas.
  */
+/**
+ * En móvil la acción principal no ocupa una fila propia: si la pantalla tiene barra de herramientas con filtros, la acción
+ * se coloca allí, a la derecha del botón «Filtros» (la barra la «reclama» y la cabecera la oculta por debajo de 640 px).
+ */
+const ShellActionContext = createContext<{ action: ReactNode; claim: (on: boolean) => void } | null>(null);
+
 export function SalesFamilyShell({ active, onSelect, action, headerExtra, children, className }: {
   active: SalesTabKey;
   onSelect?: (key: SalesTabKey) => void;
@@ -138,20 +144,22 @@ export function SalesFamilyShell({ active, onSelect, action, headerExtra, childr
   children: ReactNode;
   className?: string;
 }) {
+  const [claimed, setClaimed] = useState(false);
+  const ctx = useMemo(() => ({ action, claim: setClaimed }), [action]);
   return (
-    <div className={cn("space-y-3 px-4 pb-8 pt-1.5 sm:px-6 sm:pt-2", className)}>
-      {/* Una sola fila desde 640 px: las pestañas ocupan el espacio libre (con desplazamiento y desvanecido si no caben) y la acción queda a la derecha. */}
+    <ShellActionContext.Provider value={ctx}>
+    <div data-sales-shell="" className={cn("space-y-3 px-4 pb-8 pt-1.5 sm:px-6 sm:pt-2", className)}>
+      {/* Móvil: fila de pestañas (con su botón de indicadores, si lo hay) y la acción en la barra de herramientas. Desde 640 px, una sola fila: pestañas y, a la derecha, la acción. */}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-        <SalesTabs active={active} onSelect={onSelect} className="min-w-0 sm:flex-1" />
-        {(action || headerExtra) && (
-          <div className="flex shrink-0 items-center justify-end gap-2 max-sm:pb-1">
-            {headerExtra}
-            {action}
-          </div>
-        )}
+        <div className="flex min-w-0 items-center gap-1 sm:flex-1">
+          <SalesTabs active={active} onSelect={onSelect} className="min-w-0 flex-1" />
+          {headerExtra && <div className="flex shrink-0 items-center">{headerExtra}</div>}
+        </div>
+        {action && <div className={cn("shrink-0 items-center justify-end gap-2", claimed ? "hidden sm:flex" : "flex")}>{action}</div>}
       </div>
       {children}
     </div>
+    </ShellActionContext.Provider>
   );
 }
 
@@ -185,7 +193,7 @@ export function SummaryStrip({ items, label, trailing, className }: { items: Sum
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary/[0.14] via-primary/[0.04] to-transparent" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/60 via-primary/15 to-transparent" />
       <div className="relative -mb-px -mr-px grid grid-cols-2 sm:flex">
-        {items.map((it) => {
+        {items.map((it, idx) => {
           const body = (
             <>
               <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -200,6 +208,10 @@ export function SummaryStrip({ items, label, trailing, className }: { items: Sum
           );
           const cls = cn(
             "block min-w-0 border-b border-r border-border/70 px-4 py-2.5 text-left sm:flex-1 sm:border-b-0",
+            // Móvil: con número impar de cifras la primera ocupa el ancho completo (sin celda vacía en la rejilla de dos columnas).
+            items.length % 2 === 1 && idx === 0 && "max-sm:col-span-2",
+            // El botón de indicadores flota en la esquina superior derecha: deja sitio en la celda que queda bajo él.
+            trailing && idx === (items.length % 2 === 1 ? 0 : 1) && "max-sm:pr-10",
             it.onClick && "transition hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
             it.active && "bg-primary/10 shadow-[inset_0_-2px_0_0_var(--primary)]",
           );
@@ -236,6 +248,7 @@ export function ToolbarRow({ search, filters, trailing, chips = [], onClear, sum
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const mobileAction = useShellMobileAction(!!filters);
   return (
     <div className={cn("space-y-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
@@ -252,6 +265,7 @@ export function ToolbarRow({ search, filters, trailing, chips = [], onClear, sum
             <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
           </Button>
         )}
+        {mobileAction && <div className="ml-auto flex flex-wrap items-center justify-end gap-2 sm:hidden">{mobileAction}</div>}
         {filters && <div className={cn("flex-wrap items-center gap-2 max-sm:w-full max-sm:[&>*]:w-full", open ? "flex" : "hidden sm:flex")}>{filters}</div>}
         {trailing && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{trailing}</div>}
       </div>
@@ -296,4 +310,16 @@ export function CompactEmpty({ icon, title, description, action, className }: { 
       {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
     </div>
   );
+}
+
+/** Para las barras de filtros propias (p. ej. `BFilterBar`): devuelve la acción principal de la cabecera para pintarla en móvil junto a «Filtros». */
+export function useShellMobileAction(enabled: boolean): ReactNode {
+  const shell = useContext(ShellActionContext);
+  const claim = shell?.claim;
+  useLayoutEffect(() => {
+    if (!claim || !enabled) return;
+    claim(true);
+    return () => claim(false);
+  }, [claim, enabled]);
+  return enabled ? shell?.action : undefined;
 }

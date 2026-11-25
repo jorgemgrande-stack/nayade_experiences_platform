@@ -255,10 +255,10 @@ export default function CRMDashboard() {
   ) : tab === "reservations" ? (
     <Button onClick={() => setShowNewReservationModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.newOrder}</Button>
   ) : tab === "anulaciones" ? (
-    <Button onClick={() => window.open("/solicitar-anulacion", "_blank")}><ExternalLink className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmCancellations.verFormularioPublico")}</Button>
+    <Button onClick={() => window.open("/solicitar-anulacion", "_blank")} aria-label={t("crmCancellations.verFormularioPublico")} className="max-sm:px-3"><ExternalLink className="mr-1.5 h-4 w-4 max-sm:hidden" aria-hidden="true" /> <span className="sm:hidden">{t("crmCancellations.formularioPublicoCorto")}</span><span className="max-sm:hidden">{t("crmCancellations.verFormularioPublico")}</span></Button>
   ) : tab === "invoices" ? (
     <>
-      <Button variant="outline" onClick={() => invoices.setGestoriaExportOpen(true)}><Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmInvoices.exportarParaLaGestoria")}</Button>
+      <Button variant="outline" onClick={() => invoices.setGestoriaExportOpen(true)} aria-label={t("crmInvoices.exportarParaLaGestoria")} title={t("crmInvoices.exportarParaLaGestoria")} className="max-sm:px-2.5"><Download className="h-4 w-4 sm:mr-1.5" aria-hidden="true" /> <span className="max-sm:sr-only">{t("crmInvoices.exportarParaLaGestoria")}</span></Button>
       <Button onClick={() => setNewInvoiceOpen(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmInvoices.nuevaFactura")}</Button>
     </>
   ) : undefined;

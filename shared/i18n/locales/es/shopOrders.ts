@@ -23,6 +23,7 @@ export default {
     searchLabel: "Buscar pedidos",
     searchPlaceholder: "Número, cliente, correo o producto",
     filterByStatus: "Filtrar por estado",
+    statusLabel: "Estado",
     all: "Todos",
     loading: "Cargando",
     loadError: "No se han podido cargar los pedidos. Vuelve a intentarlo en unos segundos.",

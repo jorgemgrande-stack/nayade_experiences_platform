@@ -25,6 +25,7 @@ export default {
     searchLabel: "Bestellungen suchen",
     searchPlaceholder: "Nummer, Kunde, E-Mail oder Produkt",
     filterByStatus: "Nach Status filtern",
+    statusLabel: "Status",
     all: "Alle",
     loading: "Wird geladen",
     loadError: "Die Bestellungen konnten nicht geladen werden. Versuche es in ein paar Sekunden erneut.",
