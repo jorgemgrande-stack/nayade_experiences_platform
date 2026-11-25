@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TONE_SURFACE, TONE_TEXT, type Tone } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { FLOOR_H, FLOOR_W, RESTAURANT_NET_CAPABILITY, formatEur, type TableState } from "@shared/restaurantNet";
@@ -103,14 +105,50 @@ export function NoRestaurants({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
+export function PageHeader({ title, description, actions, icon }: { title: string; description: string; actions?: ReactNode; icon?: ReactNode }) {
+  return <PanelPageHeader className="mb-4 pb-4" icon={icon} title={title} description={<span className="block max-w-3xl">{description}</span>} actions={actions} />;
+}
+
+/**
+ * Pestañas en píldora con área táctil de 44 px (tablet y móvil de sala o cocina). `count` es una cifra opcional que
+ * acompaña a la etiqueta; con `scroll` la fila se desplaza en horizontal en vez de partirse en varias líneas.
+ */
+export function PillTabs<T extends string | number>({
+  value,
+  onChange,
+  options,
+  label,
+  scroll = false,
+  className,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: Array<{ value: T; label: string; count?: number | null }>;
+  label: string;
+  scroll?: boolean;
+  className?: string;
+}) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="break-words text-2xl font-bold text-foreground">{title}</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>
-      </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    <div className={cn("flex gap-2 pb-1", scroll ? "overflow-x-auto [scrollbar-width:thin]" : "flex-wrap", className)} role="tablist" aria-label={label}>
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <button
+            key={String(o.value)}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              on ? "border-primary bg-primary text-primary-foreground shadow-sm" : "border-border bg-card text-foreground hover:bg-muted",
+            )}
+          >
+            {o.label}
+            {o.count != null && <span className={cn("rounded-full px-1.5 text-xs tabular-nums", on ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground")}>{o.count}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -138,23 +176,24 @@ export interface PlanBadge {
 
 /** Contenido de una mesa (plano y listado). */
 function TableFace({ t, badge, codeOf }: { t: PlanTable; badge?: PlanBadge; codeOf: (id: number) => string }) {
+  const { t: tr } = useI18n();
   return (
     <>
       <span className="text-sm font-bold leading-none text-foreground">{t.code}</span>
-      <span className="mt-1 flex items-center gap-0.5 text-[11px] text-muted-foreground">
+      <span className="mt-1 flex items-center gap-0.5 text-xs text-muted-foreground">
         <Users className="h-3 w-3" aria-hidden="true" />
         {badge?.guests ?? t.capacity}
       </span>
       {t.mergedInto != null && (
-        <span className="mt-0.5 flex items-center gap-0.5 text-[10px] text-muted-foreground">
+        <span className="mt-0.5 flex items-center gap-0.5 text-xs text-muted-foreground">
           <Link2 className="h-3 w-3" aria-hidden="true" />
           {codeOf(t.mergedInto)}
         </span>
       )}
       {badge && badge.state !== "libre" && badge.total != null && t.mergedInto == null && (
-        <span className={cn("mt-0.5 text-[11px] font-semibold", TONE_TEXT[STATE_TONE[badge.state]])}>{formatEur(badge.total)}</span>
+        <span className={cn("mt-0.5 text-xs font-semibold", TONE_TEXT[STATE_TONE[badge.state]])}>{formatEur(badge.total)}</span>
       )}
-      {badge?.ready ? <span className="mt-0.5 rounded-full bg-success/15 px-1.5 text-[10px] font-semibold text-success">{badge.ready === 1 ? "1 lista" : `${badge.ready} listas`}</span> : null}
+      {badge?.ready ? <span className="mt-0.5 rounded-full bg-success/15 px-1.5 text-xs font-semibold text-success">{tr("restaurantNet.parts.readyDishes", { count: badge.ready })}</span> : null}
     </>
   );
 }
@@ -271,6 +310,7 @@ export function TableGrid({ tables, badges, onSelect, selectedId }: { tables: Pl
             key={t.id}
             type="button"
             onClick={() => onSelect(t)}
+            aria-label={`Mesa ${t.code}${b ? `, ${b.state === "libre" ? "libre" : b.state === "ocupada" ? "ocupada" : "pide la cuenta"}` : ""}`}
             aria-pressed={selectedId === t.id}
             className={cn(
               "flex min-h-[84px] min-w-0 flex-col items-center justify-center rounded-xl border-2 p-2 text-center hover:ring-2 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

@@ -16,10 +16,9 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
-import { cn } from "@/lib/utils";
 import { ROOM_KINDS, ROOM_KIND_LABELS, TABLE_SHAPES, TABLE_SHAPE_LABELS, type RoomKind, type TableShape } from "@shared/restaurantNet";
 import { TableQrButton } from "./CartaQr";
-import { FloorPlan, NoRestaurants, PageHeader, RestaurantPicker, SALA_PATH, useRestaurantChoice, useRestaurantNetWrite, type PlanTable } from "./RestaurantNetParts";
+import { FloorPlan, NoRestaurants, PageHeader, PillTabs, RestaurantPicker, SALA_PATH, useRestaurantChoice, useRestaurantNetWrite, type PlanTable } from "./RestaurantNetParts";
 
 type RoomForm = { id?: number; name: string; kind: RoomKind };
 type TableForm = { id?: number; roomId: number; code: string; shape: TableShape; capacity: string };
@@ -81,6 +80,7 @@ export default function SalasMesas() {
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-5">
         <PageHeader
+          icon={<LayoutGrid />}
           title="Salas y mesas"
           description="Crea las salas del restaurante (salón, terraza, barra…) y sus mesas. Arrastra las mesas en el plano para colocarlas como están en el local."
           actions={
@@ -115,28 +115,17 @@ export default function SalasMesas() {
           </PanelEmpty>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Salas">
-              {activeRooms.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={roomTab === r.id}
-                  onClick={() => setRoomTab(r.id)}
-                  className={cn("rounded-lg border px-3 py-1.5 text-sm", roomTab === r.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-muted")}
-                >
-                  {r.name}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <PillTabs scroll className="min-w-0 max-w-full" label="Salas" value={roomTab ?? -1} onChange={(v) => setRoomTab(v)} options={activeRooms.map((r) => ({ value: r.id, label: r.name }))} />
               {canWrite && (
-                <Button variant="outline" size="sm" onClick={() => setRoomForm({ name: "", kind: "salon" })}>
+                <Button variant="outline" className="mb-1 h-11 rounded-full" onClick={() => setRoomForm({ name: "", kind: "salon" })}>
                   <Plus className="mr-1 h-4 w-4" aria-hidden="true" />Sala
                 </Button>
               )}
             </div>
 
             {currentRoom && (
-              <section className="space-y-3 rounded-2xl border border-border bg-card p-4 sm:p-5" aria-labelledby="rnet-room-title">
+              <section className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="rnet-room-title">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <h2 id="rnet-room-title" className="break-words text-lg font-bold text-foreground">{currentRoom.name}</h2>

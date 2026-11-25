@@ -39,7 +39,7 @@ export function QuickInsert({
     >
       <BlockThumb blocks={blocks} width={112} ratio={16 / 10} />
       <span className="px-0.5 text-xs font-medium leading-tight">{label}</span>
-      {sub && <span className="-mt-1 px-0.5 text-[11px] text-muted-foreground">{sub}</span>}
+      {sub && <span className="-mt-1 px-0.5 text-xs text-muted-foreground">{sub}</span>}
     </button>
   );
   return (
@@ -64,7 +64,7 @@ export function QuickInsert({
         <div className="max-h-[60vh] space-y-5 overflow-y-auto p-4">
           {!q.trim() && saved.length > 0 && (
             <section className="space-y-2">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tx("Mis diseños")}</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx("Mis diseños")}</h3>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{saved.map((s) => tile(s.id, s.name, [s.block], `saved:${s.id}`, tx(blockLabel(s.block.type))))}</div>
             </section>
           )}
@@ -73,7 +73,7 @@ export function QuickInsert({
             if (!list.length) return null;
             return (
               <section key={group.key} className="space-y-2">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tx(group.label)}</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx(group.label)}</h3>
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{list.map((m) => tile(m.type, tx(m.label), samples.get(m.type) ?? [], `module:${m.type}`))}</div>
               </section>
             );

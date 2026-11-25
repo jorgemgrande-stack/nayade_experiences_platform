@@ -156,7 +156,7 @@ function Group({ id, label, hint, count, open, onToggle, children }: { id: Group
           <span className="block text-sm font-semibold">{label}</span>
           {!open && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{hint}</span>}
         </span>
-        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground" aria-label={tx("{count} disponibles", { count: count })}>
+        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground" aria-label={tx("{count} disponibles", { count: count })}>
           {count}
         </span>
       </button>
@@ -235,7 +235,7 @@ function Library({
       <button type="button" draggable onDragStart={(e) => startDrag(e, payload)} onClick={() => onInsert(payload)} aria-label={tx("{label}: {description}", { label: label, description: description })} className={cn(tileClass, "cursor-grab active:cursor-grabbing")}>
         <BlockThumb blocks={blocks} width={106} ratio={16 / 10} />
         <span className="px-0.5 text-xs font-medium leading-tight">{label}</span>
-        {sub && <span className="-mt-1 px-0.5 text-[11px] leading-tight text-muted-foreground">{sub}</span>}
+        {sub && <span className="-mt-1 px-0.5 text-xs leading-tight text-muted-foreground">{sub}</span>}
       </button>
     </Preview>
   );
@@ -245,7 +245,7 @@ function Library({
       <div className="sticky top-0 z-10 border-b border-border bg-background p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx("Buscar: foto, precios, contacto…")} aria-label={tx("Buscar en la biblioteca")} className="h-9 pl-8" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx("Buscar: foto, precios, contacto…")} aria-label={tx("Buscar en la biblioteca")} className="h-10 pl-8" />
         </div>
       </div>
       {nothing && <p className="p-4 text-sm text-muted-foreground">{tx("Nada coincide con «{q}». Prueba con otra palabra, como «foto», «precio» o «contacto».", { q: q })}</p>}
@@ -271,7 +271,7 @@ function Library({
             {g.key === "sections" &&
               categories.map((c) => (
                 <div key={c.key} className="space-y-2">
-                  <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tx(c.label)}</h3>
+                  <h3 className="px-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx(c.label)}</h3>
                   <div className="grid grid-cols-2 gap-2">
                     {c.presetList.map((p) => {
                       const blocks = presetSamples.get(p.key) ?? [];
@@ -298,7 +298,7 @@ function Library({
                         <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
                           <Icon className="h-4 w-4" />
                         </span>
-                        <span className="text-[11px] font-medium leading-tight">{tx(m.label)}</span>
+                        <span className="text-xs font-medium leading-tight">{tx(m.label)}</span>
                       </button>
                     </Preview>
                   );
@@ -400,7 +400,7 @@ function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, 
                 <Icon className={cn("h-4 w-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
                 <span className="min-w-0">
                   <span className="block text-xs font-medium">{tx(blockLabel(b.type))}</span>
-                  <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
+                  <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
                 </span>
               </button>
               {hidden && <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={tx("Oculto en este dispositivo")} />}
@@ -428,8 +428,8 @@ function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDel
     <div className="ml-4 border-l border-border pl-2">
       {section.data.columns.map((col, ci) => (
         <div key={ci} className="py-0.5">
-          <span className="block px-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">{section.type === "modal" ? tx("Contenido de la ventana") : tx("Columna {v}", { v: ci + 1 })}</span>
-          {!col.blocks.length && <span className="block px-1.5 py-1 text-[11px] italic text-muted-foreground">{tx("Vacía")}</span>}
+          <span className="block px-1.5 pt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{section.type === "modal" ? tx("Contenido de la ventana") : tx("Columna {v}", { v: ci + 1 })}</span>
+          {!col.blocks.length && <span className="block px-1.5 py-1 text-xs italic text-muted-foreground">{tx("Vacía")}</span>}
           <ol aria-label={tx("Columna {v}", { v: ci + 1 })}>
             {col.blocks.map((b) => {
               const Icon = moduleIcon(moduleDef(b.type)?.icon);
@@ -441,7 +441,7 @@ function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDel
                       <Icon className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
                       <span className="min-w-0">
                         <span className="block text-xs font-medium">{tx(blockLabel(b.type))}</span>
-                        <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
+                        <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
                       </span>
                     </button>
                     {b.style?.hideOn.includes(device) && <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={tx("Oculto en este dispositivo")} />}
@@ -474,8 +474,8 @@ const SITE_SETTINGS = [
 /** Estado de una página con lo que ya sabe el sistema (publicada, borrador, cambios pendientes de publicar). */
 function pageStatus(p: SitePage): { label: string; className: string } {
   if (!p.isPublished) return { label: "Borrador", className: "bg-muted text-muted-foreground" };
-  if (p.hasDraft) return { label: "Cambios pendientes", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" };
-  return { label: "Publicada", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+  if (p.hasDraft) return { label: "Cambios pendientes", className: "bg-warning/15 text-warning" };
+  return { label: "Publicada", className: "bg-success/15 text-success" };
 }
 
 function PageRow({ p, current, onOpen }: { p: SitePage; current: boolean; onOpen: () => void }) {
@@ -497,7 +497,7 @@ function PageRow({ p, current, onOpen }: { p: SitePage; current: boolean; onOpen
         {current && <span className="sr-only">{" "}{tx("(abierta)")}</span>}
       </span>
       {p.isHome && <span className="sr-only">{" "}{tx("(página de inicio)")}</span>}
-      <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", st.className)} title={p.hasDraft && p.isPublished ? tx("Has guardado cambios que aún no se ven en tu web") : undefined}>{tx(st.label)}</span>
+      <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-xs font-medium", st.className)} title={p.hasDraft && p.isPublished ? tx("Has guardado cambios que aún no se ven en tu web") : undefined}>{tx(st.label)}</span>
     </button>
   );
 }
@@ -511,7 +511,7 @@ function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: {
   const sub = (title: string, list: SitePage[]) =>
     list.length > 0 && (
       <div className="space-y-0.5">
-        <h4 className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground">{title}</h4>
+        <h4 className="px-2 pb-0.5 pt-2 text-xs font-medium text-muted-foreground">{title}</h4>
         {list.map((p) => (
           <PageRow key={p.slug} p={p} current={p.slug === currentSlug} onOpen={() => onOpenPage(p.slug)} />
         ))}
@@ -523,7 +523,7 @@ function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: {
       <section className="rounded-xl border border-border p-1.5" aria-labelledby="sitio-paginas">
         <div className="flex items-center justify-between px-2 pb-1 pt-1">
           <h3 id="sitio-paginas" className="text-sm font-semibold">{tx("Páginas")}</h3>
-          <Link href="/admin/cms/paginas?nueva=1" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-[#7c7cff] hover:bg-muted">
+          <Link href="/admin/cms/paginas?nueva=1" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-primary hover:bg-muted">
             <Plus className="h-3.5 w-3.5" />{" "}{tx("Nueva página")}</Link>
         </div>
         {sub(tx("Página de inicio"), home)}
@@ -535,14 +535,14 @@ function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: {
         <h3 id="sitio-ajustes" className="px-2 pb-1 pt-1 text-sm font-semibold">{tx("Configuración del sitio")}</h3>
         <p className="px-2 pb-1 text-xs text-muted-foreground">{tx("Afecta a todas las páginas de tu web.")}</p>
         <button type="button" onClick={onGlobalStyle} className={settingClass}>
-          <Palette className="mt-0.5 h-4 w-4 shrink-0 text-[#7c7cff]" aria-hidden />
+          <Palette className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
           <span>
             <span className="block text-sm font-medium">{tx("Estilo global")}</span>
             <span className="block text-xs text-muted-foreground">{tx("Colores, tipo de letra y bordes")}</span>
           </span>
         </button>
         <button type="button" onClick={onSiteChrome} className={settingClass}>
-          <PanelsTopLeft className="mt-0.5 h-4 w-4 shrink-0 text-[#7c7cff]" aria-hidden />
+          <PanelsTopLeft className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
           <span>
             <span className="block text-sm font-medium">{tx("Cabecera y pie")}</span>
             <span className="block text-xs text-muted-foreground">{tx("Botón principal, menús que muestran y estilo")}</span>
