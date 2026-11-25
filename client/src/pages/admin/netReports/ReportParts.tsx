@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Download } from "lucide-react";
+import { BarChart3, Download, TriangleAlert } from "lucide-react";
+import { MetricCard } from "@/components/admin/PanelVisual";
 
 export const eur = (cents: number) => (cents / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
 export const pct = (bp: number) => `${(bp / 100).toLocaleString("es-ES", { maximumFractionDigits: 1 })} %`;
@@ -40,14 +41,14 @@ export function usePeriod(siteRequired = false) {
   const valid = from <= to && (!siteRequired || !!effectiveSite);
   const value: Period = { from, to, ...(effectiveSite ? { siteId: effectiveSite } : {}) };
   const bar = (
-    <div className="flex flex-wrap items-end gap-2">
-      <div className="space-y-1"><Label className="text-xs">Desde</Label><Input type="date" className="w-40" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} /></div>
-      <div className="space-y-1"><Label className="text-xs">Hasta</Label><Input type="date" className="w-40" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} /></div>
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
+      <div className="space-y-1"><Label className="text-sm">Desde</Label><Input type="date" className="h-10 w-full sm:w-40" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} /></div>
+      <div className="space-y-1"><Label className="text-sm">Hasta</Label><Input type="date" className="h-10 w-full sm:w-40" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} /></div>
       {(sites.length > 1 || siteRequired) && (
         <div className="space-y-1">
-          <Label className="text-xs">Sede</Label>
+          <Label className="text-sm">Sede</Label>
           <Select value={effectiveSite || "all"} onValueChange={(v) => setSiteId(v === "all" ? "" : v)}>
-            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-full sm:w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               {!siteRequired && <SelectItem value="all">Todas las sedes</SelectItem>}
               {sites.map((s) => <SelectItem key={s.siteId} value={s.siteId}>{s.name}</SelectItem>)}
@@ -55,7 +56,7 @@ export function usePeriod(siteRequired = false) {
           </Select>
         </div>
       )}
-      {from > to && <span className="text-sm text-destructive pb-2">La fecha inicial debe ser anterior a la final.</span>}
+      {from > to && <span role="alert" className="flex items-center gap-1 pb-2 text-sm text-danger"><TriangleAlert className="h-4 w-4" aria-hidden="true" />La fecha inicial debe ser anterior a la final.</span>}
     </div>
   );
   return { value, valid, bar };
@@ -63,15 +64,9 @@ export function usePeriod(siteRequired = false) {
 
 export function Kpis({ items }: { items: Array<{ label: string; value: string; hint?: string }> }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {items.map((k) => (
-        <Card key={k.label}>
-          <CardContent className="p-3 sm:p-4 min-w-0">
-            <div className="text-xl sm:text-2xl font-bold leading-none">{k.value}</div>
-            <div className="text-xs text-muted-foreground mt-1">{k.label}</div>
-            {k.hint && <div className="text-[11px] text-muted-foreground mt-0.5">{k.hint}</div>}
-          </CardContent>
-        </Card>
+        <MetricCard key={k.label} compact tone="brand" icon={<BarChart3 />} label={k.label} value={k.value} detail={k.hint} />
       ))}
     </div>
   );
@@ -90,7 +85,7 @@ export function downloadCsv(fileName: string, csv: string) {
 export function CsvButton({ load }: { load: () => Promise<{ fileName: string; csv: string }> }) {
   const [busy, setBusy] = useState(false);
   return (
-    <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
+    <Button variant="outline" className="h-10" disabled={busy} onClick={async () => {
       setBusy(true);
       try {
         const r = await load();
@@ -125,15 +120,15 @@ export function ReportTable<T>({ title, rows, columns, empty, csv, bar }: {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[520px]">
               <thead className="border-b border-border bg-muted/40 text-left">
-                <tr>{columns.map((c) => <th key={c.title} className={`p-2 font-medium ${c.right ? "text-right" : ""}`}>{c.title}</th>)}{bar && <th className="p-2 w-40" />}</tr>
+                <tr>{columns.map((c) => <th key={c.title} className={`p-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground ${c.right ? "text-right" : ""}`}>{c.title}</th>)}{bar && <th className="p-2.5 w-40" />}</tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={i} className="border-b border-border last:border-0">
-                    {columns.map((c) => <td key={c.title} className={`p-2 ${c.right ? "text-right whitespace-nowrap" : ""}`}>{c.cell(r)}</td>)}
+                  <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30">
+                    {columns.map((c) => <td key={c.title} className={`p-2.5 ${c.right ? "text-right whitespace-nowrap tabular-nums" : ""}`}>{c.cell(r)}</td>)}
                     {bar && (
                       <td className="p-2">
-                        <div className="h-2 rounded bg-muted"><div className="h-2 rounded bg-primary" style={{ width: `${Math.round((bar(r) / max) * 100)}%` }} /></div>
+                        <div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${Math.round((bar(r) / max) * 100)}%` }} /></div>
                       </td>
                     )}
                   </tr>
@@ -148,5 +143,9 @@ export function ReportTable<T>({ title, rows, columns, empty, csv, bar }: {
 }
 
 export function ReportError({ error }: { error: { message: string } }) {
-  return <Card><CardContent className="p-6 text-sm text-destructive">{error.message}</CardContent></Card>;
+  return (
+    <Card className="border-danger/40 bg-danger/5">
+      <CardContent role="alert" className="flex items-start gap-2 p-4 text-sm text-danger sm:p-6"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{error.message}</CardContent>
+    </Card>
+  );
 }

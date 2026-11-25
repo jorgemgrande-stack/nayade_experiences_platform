@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Archive, ArrowDown, ArrowUp, BookOpen, Pencil, Plus, RotateCcw, Search } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, BookOpen, Layers, Pencil, Plus, RotateCcw, Search, Utensils } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import ImageUploader from "@/components/ImageUploader";
@@ -19,8 +19,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { useI18n } from "@/i18n/I18nProvider";
+import { TONE_BADGE } from "@/lib/panelTones";
+import { cn } from "@/lib/utils";
 import { ALLERGENS, ALLERGEN_LABEL, DEFAULT_MENU_TAX_RATE, MENU_TAX_RATES, formatEur } from "@shared/restaurantNet";
-import { NoRestaurants, PageHeader, RestaurantPicker, SALA_PATH, useRestaurantChoice, useRestaurantNetWrite } from "./RestaurantNetParts";
+import { NoRestaurants, PageHeader, PillTabs, RestaurantPicker, SALA_PATH, useRestaurantChoice, useRestaurantNetWrite } from "./RestaurantNetParts";
 
 interface Form {
   id?: number;
@@ -35,8 +39,10 @@ interface Form {
 }
 const EMPTY: Form = { name: "", description: "", category: "", price: "", taxRate: DEFAULT_MENU_TAX_RATE, station: "", imageUrl: "", allergens: [] };
 const NO_CATEGORY = "Sin categoría";
+const ALL_CATS = "__todas";
 
 export default function Carta() {
+  const { t } = useI18n();
   const choice = useRestaurantChoice();
   const { canWrite, isAdmin } = useRestaurantNetWrite();
   const restaurantId = choice.restaurantId;
@@ -46,6 +52,7 @@ export default function Carta() {
   const stations = trpc.restaurantNet.listStations.useQuery({ restaurantId: restaurantId! }, { enabled: restaurantId != null, retry: false });
   const [form, setForm] = useState<Form | null>(null);
   const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState(ALL_CATS);
   const refresh = () => utils.restaurantNet.listMenu.invalidate();
   const upsert = trpc.restaurantNet.upsertMenuItem.useMutation({ onSuccess: () => { toast.success("Plato guardado"); setForm(null); refresh(); }, onError: (e) => toastError(e) });
   const setActive = trpc.restaurantNet.setMenuItemActive.useMutation({ onSuccess: refresh, onError: (e) => toastError(e) });
@@ -56,7 +63,14 @@ export default function Carta() {
   const archived = all.filter((m) => !m.isActive);
   const categories = useMemo(() => Array.from(new Set(all.map((m) => m.category).filter((c): c is string => !!c))), [all]);
   const term = search.trim().toLowerCase();
-  const shown = term ? active.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(term)) : active;
+  const inCategory = catFilter === ALL_CATS ? active : active.filter((m) => (m.category || NO_CATEGORY) === catFilter);
+  const shown = term ? inCategory.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(term)) : inCategory;
+  const categoryCounts = useMemo(() => {
+    const g = new Map<string, number>();
+    for (const m of active) g.set(m.category || NO_CATEGORY, (g.get(m.category || NO_CATEGORY) ?? 0) + 1);
+    return Array.from(g.entries());
+  }, [active]);
+  const avgPrice = active.length ? active.reduce((s, m) => s + m.price, 0) / active.length : 0;
   const groups = useMemo(() => {
     const g = new Map<string, typeof shown>();
     for (const m of shown) {
@@ -89,13 +103,14 @@ export default function Carta() {
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-5">
         <PageHeader
+          icon={<BookOpen />}
           title="Carta"
           description="Platos y bebidas que el equipo añade a las comandas. El precio lleva el IVA incluido; el tipo de IVA y los alérgenos salen en la comanda y en el ticket del TPV."
           actions={
             <>
               <RestaurantPicker choice={choice} />
               {canWrite && restaurantId != null && (
-                <Button onClick={() => setForm({ ...EMPTY })}>
+                <Button className="h-10" onClick={() => setForm({ ...EMPTY })}>
                   <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />Nuevo plato
                 </Button>
               )}
@@ -119,51 +134,63 @@ export default function Carta() {
           </PanelEmpty>
         ) : (
           <>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" role="group" aria-label={t("restaurantNet.carta.summary")}>
+              <MetricCard compact tone="brand" icon={<Utensils />} label={t("restaurantNet.carta.dishes")} value={active.length} detail={t("restaurantNet.carta.dishesHint")} />
+              <MetricCard compact tone="info" icon={<Layers />} label={t("restaurantNet.carta.categories")} value={categoryCounts.length} detail={t("restaurantNet.carta.categoriesHint")} />
+              <MetricCard compact tone="success" icon={<BookOpen />} label={t("restaurantNet.carta.avgPrice")} value={formatEur(avgPrice)} detail={t("restaurantNet.carta.vatIncluded")} />
+              <MetricCard compact tone="neutral" icon={<Archive />} label={t("restaurantNet.carta.archived")} value={archived.length} detail={t("restaurantNet.carta.archivedHint")} />
+            </div>
+            {categoryCounts.length > 1 && (
+              <PillTabs scroll label={t("restaurantNet.carta.filterByCategory")} value={catFilter} onChange={setCatFilter} options={[{ value: ALL_CATS, label: "Todas", count: active.length }, ...categoryCounts.map(([c, n]) => ({ value: c, label: c, count: n }))]} />
+            )}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="relative w-full sm:w-72">
-                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                <Input aria-label="Buscar en la carta" placeholder="Buscar plato o categoría" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+                <Search className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <Input aria-label="Buscar en la carta" placeholder="Buscar plato o categoría" value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 pl-8" />
               </div>
-              <Button asChild variant="outline" size="sm"><Link href={SALA_PATH}>Ir a la sala</Link></Button>
+              <Button asChild variant="outline" className="h-10"><Link href={SALA_PATH}>Ir a la sala</Link></Button>
             </div>
             {groups.length === 0 && <p className="text-sm text-muted-foreground">Ningún plato coincide con «{search}».</p>}
             {groups.map(([cat, items]) => (
-              <section key={cat} className="rounded-2xl border border-border bg-card" aria-label={cat}>
-                <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">{cat} <span className="font-normal text-muted-foreground">· {items.length}</span></h2>
+              <section key={cat} className="overflow-hidden rounded-xl border border-border bg-card shadow-sm" aria-label={cat}>
+                <h2 className="border-b border-border bg-muted/40 px-4 py-3 text-sm font-semibold text-foreground">{cat} <span className="font-normal text-muted-foreground">· {items.length}</span></h2>
                 <ul className="divide-y divide-border">
                   {items.map((m) => (
-                    <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                    <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap">
                       {m.imageUrl ? (
                         <img src={m.imageUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg border border-border object-cover" loading="lazy" />
                       ) : (
                         <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground"><BookOpen className="h-4 w-4" /></span>
                       )}
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 basis-44">
                         <p className="break-words font-medium text-foreground">{m.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          IVA {m.taxRate.toLocaleString("es-ES")} %{m.station ? ` · ${m.station}` : ""}
-                          {m.allergens.length > 0 && ` · Alérgenos: ${m.allergens.map((a) => ALLERGEN_LABEL[a] ?? a).join(", ")}`}
-                        </p>
+                        <p className="text-xs text-muted-foreground">IVA {m.taxRate.toLocaleString("es-ES")} %{m.station ? ` · ${m.station}` : ""}</p>
+                        {m.allergens.length > 0 && (
+                          <p className="mt-1 flex flex-wrap gap-1" aria-label="Alérgenos">
+                            {m.allergens.map((a) => <span key={a} className={cn("rounded-full border px-2 py-0.5 text-xs", TONE_BADGE.warning)}>{ALLERGEN_LABEL[a] ?? a}</span>)}
+                          </p>
+                        )}
                         {m.description && <p className="mt-0.5 break-words text-xs text-muted-foreground">{m.description}</p>}
                       </div>
-                      <span className="shrink-0 font-semibold tabular-nums text-foreground">{formatEur(m.price)}</span>
+                      <span className="shrink-0 text-base font-semibold tabular-nums text-primary">{formatEur(m.price)}</span>
                       {canWrite && (
                         <span className="flex shrink-0 gap-0.5">
                           {!term && (
                             <>
-                              <Button size="icon" variant="ghost" aria-label={`Subir ${m.name}`} onClick={() => moveItem(m.id, -1)} disabled={reorder.isPending}><ArrowUp className="h-4 w-4" aria-hidden="true" /></Button>
-                              <Button size="icon" variant="ghost" aria-label={`Bajar ${m.name}`} onClick={() => moveItem(m.id, 1)} disabled={reorder.isPending}><ArrowDown className="h-4 w-4" aria-hidden="true" /></Button>
+                              <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={`Subir ${m.name}`} onClick={() => moveItem(m.id, -1)} disabled={reorder.isPending}><ArrowUp className="h-4 w-4" aria-hidden="true" /></Button>
+                              <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={`Bajar ${m.name}`} onClick={() => moveItem(m.id, 1)} disabled={reorder.isPending}><ArrowDown className="h-4 w-4" aria-hidden="true" /></Button>
                             </>
                           )}
                           <Button
                             size="icon"
                             variant="ghost"
+                            className="h-10 w-10"
                             aria-label={`Editar ${m.name}`}
                             onClick={() => setForm({ id: m.id, name: m.name, description: m.description ?? "", category: m.category ?? "", price: String(m.price), taxRate: m.taxRate, station: m.station ?? "", imageUrl: m.imageUrl ?? "", allergens: m.allergens })}
                           >
                             <Pencil className="h-4 w-4" aria-hidden="true" />
                           </Button>
-                          <Button size="icon" variant="ghost" aria-label={`Archivar ${m.name}`} onClick={() => setActive.mutate({ id: m.id, active: false }, { onSuccess: () => toast.success(`«${m.name}» archivado`) })}>
+                          <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={`Archivar ${m.name}`} onClick={() => setActive.mutate({ id: m.id, active: false }, { onSuccess: () => toast.success(`«${m.name}» archivado`) })}>
                             <Archive className="h-4 w-4" aria-hidden="true" />
                           </Button>
                         </span>
@@ -183,7 +210,7 @@ export default function Carta() {
               {archived.map((m) => (
                 <li key={m.id} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 break-words text-muted-foreground">{m.name} · {formatEur(m.price)}</span>
-                  {canWrite && <Button size="sm" variant="ghost" onClick={() => setActive.mutate({ id: m.id, active: true })}><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />Recuperar</Button>}
+                  {canWrite && <Button variant="ghost" className="h-10" onClick={() => setActive.mutate({ id: m.id, active: true })}><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />Recuperar</Button>}
                 </li>
               ))}
             </ul>
