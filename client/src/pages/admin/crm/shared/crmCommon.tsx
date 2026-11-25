@@ -181,7 +181,7 @@ export function ProductSearchInput({
       value={value}
       onChange={onChange}
       onSelectProduct={onSelect}
-      inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
+      inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm"
       showBadge={false}
     />
   );
@@ -216,7 +216,7 @@ export function RegimeCell({ item, onChange }: {
     return (
       <div className="col-span-2 flex items-center justify-center"
         title={t("crmLeads.regimenFiscalHeredadoDel")}>
-        <span className={`text-[10px] font-semibold px-2 py-1 rounded-md border whitespace-nowrap ${
+        <span className={`text-xs font-semibold px-2 py-1 rounded-md border whitespace-nowrap ${
           isReav ? "bg-warning/15 text-warning border-warning/30"
                  : "bg-foreground/[0.06] text-foreground/70 border-foreground/[0.12]"}`}>
           {regimeLabel(item)}
@@ -226,7 +226,7 @@ export function RegimeCell({ item, onChange }: {
   }
   return (
     <select
-      className="col-span-2 bg-foreground/[0.05] border border-warning/30 text-white text-xs rounded-md px-1 py-1.5 h-9"
+      className="col-span-2 bg-foreground/[0.05] border border-warning/30 text-foreground text-xs rounded-md px-1 py-1.5 h-9"
       title={t("crmLeads.lineaManualElRegimen")}
       value={isReav ? "reav" : ((item as any).taxRate === 10 ? "general_10" : "general")}
       onChange={(e) => {
@@ -236,9 +236,9 @@ export function RegimeCell({ item, onChange }: {
         else onChange("general", 21);
       }}
     >
-      <option value="general" className="bg-[#0d1526]">{t("crmLeads.iva21Manual")}</option>
-      <option value="general_10" className="bg-[#0d1526]">{t("crmLeads.iva10Manual")}</option>
-      {(voc.showReav || isReav) && <option value="reav" className="bg-[#0d1526]">{t("crmLeads.reavManual")}</option>}
+      <option value="general" className="bg-popover">{t("crmLeads.iva21Manual")}</option>
+      <option value="general_10" className="bg-popover">{t("crmLeads.iva10Manual")}</option>
+      {(voc.showReav || isReav) && <option value="reav" className="bg-popover">{t("crmLeads.reavManual")}</option>}
     </select>
   );
 }
@@ -296,7 +296,7 @@ export function ProductAutocompleteInput({
   return (
     <div ref={containerRef} className="relative col-span-4">
       <Input
-        className="w-full bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
+        className="w-full bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm"
         placeholder={placeholder}
         value={query}
         onChange={(e) => {
@@ -307,7 +307,7 @@ export function ProductAutocompleteInput({
         onFocus={() => { if (query.trim().length >= 1) setOpen(true); }}
       />
       {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-2xl overflow-hidden">
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden">
           {isFetching && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-foreground/50">
               <RefreshCw className="w-3 h-3 animate-spin" />{" "}{t("crmQuotes.buscando")}</div>
@@ -329,14 +329,14 @@ export function ProductAutocompleteInput({
               }}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className={`text-[10px] font-semibold shrink-0 ${TYPE_COLORS[r.type] ?? "text-foreground/50"}`}>
+                <span className={`text-xs font-semibold shrink-0 ${TYPE_COLORS[r.type] ?? "text-foreground/50"}`}>
                   {TYPE_LABELS[r.type] ?? r.type}
                 </span>
-                <span className="text-sm text-white overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-warning transition-colors">{r.title}</span>
+                <span className="text-sm text-foreground overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-warning transition-colors">{r.title}</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {r.fiscalRegime === "reav" && (
-                  <span className="text-[10px] text-warning font-semibold">{t("crmQuotes.reav")}</span>
+                  <span className="text-xs text-warning font-semibold">{t("crmQuotes.reav")}</span>
                 )}
                 <span className="text-sm font-semibold text-warning">{format.currency(r.unitPrice, "EUR", EUR2)}</span>
               </div>

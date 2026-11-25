@@ -212,7 +212,7 @@ export function LeadDetailModal({
           )}
           {lead.message && (
             <div className="pt-2 border-t border-foreground/[0.12]">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">{t("crmLeads.mensaje")}</p>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-foreground/45">{t("crmLeads.mensaje")}</p>
               <p className="text-sm text-foreground/80 whitespace-pre-line break-words" data-testid="lead-message">{lead.message}</p>
             </div>
           )}
@@ -240,7 +240,7 @@ export function LeadDetailModal({
 
         {/* Email automation preferences */}
         <CrmFormSection title={t("crmLeads.emailsAutomaticos")}>
-          <div className={`rounded-lg border px-4 py-3 flex items-start justify-between gap-3 ${emailPrefs?.automationsPaused ? "bg-warning/30 border-warning/40" : "bg-foreground/[0.04] border-foreground/[0.10]"}`}>
+          <div className={`rounded-lg border px-4 py-3 flex items-start justify-between gap-3 ${emailPrefs?.automationsPaused ? "bg-warning/10 border-warning/40" : "bg-foreground/[0.04] border-foreground/[0.10]"}`}>
             <div className="flex items-start gap-2.5">
               {emailPrefs?.automationsPaused
                 ? <BellOff className="w-4 h-4 text-warning mt-0.5 shrink-0" />
@@ -266,7 +266,7 @@ export function LeadDetailModal({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-xs h-7 border-success/50 text-success hover:bg-success/30"
+                  className="text-xs h-7 border-success/50 text-success hover:bg-success/15"
                   onClick={() => setPrefs.mutate({ email: lead.email, automationsPaused: false })}
                   disabled={setPrefs.isPending}
                 >
@@ -275,7 +275,7 @@ export function LeadDetailModal({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-xs h-7 border-warning/50 text-warning hover:bg-warning/30"
+                  className="text-xs h-7 border-warning/50 text-warning hover:bg-warning/15"
                   onClick={() => setShowPauseInput(v => !v)}
                 >
                   <BellOff className="w-3 h-3 mr-1" />{" "}{t("crmLeads.pausar")}</Button>

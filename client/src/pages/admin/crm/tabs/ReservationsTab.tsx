@@ -444,9 +444,9 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
       </Dialog>
 {/* ─── EDITAR RESERVA (Fase 3) ──────────────────────────────────────────── */}
 <Dialog open={editResId !== null} onOpenChange={(o) => { if (!o) { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); } }}>
-        <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-xl bg-card border-border text-foreground max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <Pencil className="w-5 h-5 text-warning" /> {voc.editOrder}
             </DialogTitle>
           </DialogHeader>
@@ -455,7 +455,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
           {editResData && (
             <div className="bg-foreground/[0.05] rounded-xl p-3 mb-2 flex flex-col gap-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="font-semibold text-white text-sm">{editResData.customerName}</div>
+                <div className="font-semibold text-foreground text-sm">{editResData.customerName}</div>
                 {editResData.reservationNumber && (
                   <span className="font-mono text-xs font-bold text-warning bg-warning/10 border border-warning/20 rounded px-1.5 py-0.5">
                     {editResData.reservationNumber}
@@ -485,7 +485,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                 <select
                   value={editResStatusReservation}
                   onChange={(e) => setEditResStatusReservation(e.target.value)}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-warning/50">
                   <option value="">{t("crmReservations.sinCambiar")}</option>
                   <option value="PENDIENTE_CONFIRMACION">{t("crmReservations.pendienteConfirmacion")}</option>
                   <option value="CONFIRMADA">{t("crmReservations.confirmada")}</option>
@@ -500,7 +500,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                 <select
                   value={editResStatusPayment}
                   onChange={(e) => setEditResStatusPayment(e.target.value)}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-warning/50">
                   <option value="">{t("crmReservations.sinCambiar")}</option>
                   <option value="PENDIENTE">{t("crmReservations.pendiente2")}</option>
                   <option value="PAGO_PARCIAL">{t("crmReservations.pagoParcial")}</option>
@@ -517,7 +517,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                 <select
                   value={editResChannel}
                   onChange={(e) => setEditResChannel(e.target.value)}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-warning/50">
                   <option value="">{t("crmReservations.sinCambiar")}</option>
                   <option value="ONLINE_DIRECTO">{t("crmReservations.onlineDirecto2")}</option>
                   <option value="ONLINE_ASISTIDO">{t("crmReservations.onlineAsistido2")}</option>
@@ -535,7 +535,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                   value={editResChannelDetail}
                   onChange={(e) => setEditResChannelDetail(e.target.value)}
                   placeholder={t("crmReservations.ejGrouponBooking")}
-                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-warning/50" />
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-warning/50" />
               </div>
             </div>
 
@@ -547,7 +547,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                 onChange={(e) => setEditResNotes(e.target.value)}
                 rows={2}
                 placeholder={voc.agree(t("crmEmpty.hint.notesM", { order: voc.order }), t("crmEmpty.hint.notesF", { order: voc.order }))}
-                className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-warning/50 resize-none" />
+                className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-warning/50 resize-none" />
             </div>
 
             {/* ── Cambio de fecha ── */}
@@ -568,7 +568,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                       type="date"
                       value={editResNewDate}
                       onChange={(e) => setEditResNewDate(e.target.value)}
-                      className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-warning/50" />
+                      className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-warning/50" />
                   </div>
                   <div>
                     <label className="block text-xs text-foreground/60 mb-1.5">{t("crmReservations.motivoDelCambioObligatorio")}</label>
@@ -577,7 +577,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                       onChange={(e) => setEditResDateReason(e.target.value)}
                       rows={2}
                       placeholder={t("crmReservations.ejSolicitudDelCliente")}
-                      className="w-full bg-foreground/[0.05] border border-warning/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-warning/50 resize-none" />
+                      className="w-full bg-foreground/[0.05] border border-warning/20 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-warning/50 resize-none" />
                   </div>
                   <Button
                     size="sm"
@@ -634,9 +634,9 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
       </Dialog>
 {/* ─── ELIMINAR RESERVA ───────────────────────────────────────────────── */}
 <Dialog open={deleteResId !== null} onOpenChange={(o) => !o && setDeleteResId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-danger" /> {voc.deleteOrder}
             </DialogTitle>
           </DialogHeader>
@@ -656,9 +656,9 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
       </Dialog>
 {/* ─── Diálogo: Generar Factura desde reserva ──────────────────────────── */}
 <Dialog open={genInvoiceResId !== null} onOpenChange={(o) => { if (!o) closeGenInvoice(); }}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-md bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <FilePlus className="w-5 h-5 text-primary" />{" "}{t("crmReservations.generarFactura")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -680,7 +680,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                   value={genInvoiceRecipient[f.k]}
                   onChange={(e) => setGenInvoiceRecipient((r) => ({ ...r, [f.k]: e.target.value }))}
                   placeholder={f.ph}
-                  className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
+                  className="bg-foreground/[0.05] border-foreground/[0.15] text-foreground text-sm"
                   {...invalidProps(genInvoiceTried ? genInvoiceErrors[f.k] : undefined, `gen-inv-${f.k}-error`)}
                 />
                 <FieldError id={`gen-inv-${f.k}-error`} msg={genInvoiceTried ? genInvoiceErrors[f.k] : null} />
@@ -700,7 +700,7 @@ export function ReservationsModals({ ctrl, setCancelReservationId, setCancelRese
                     value={genInvoiceRecipient[f.k]}
                     onChange={(e) => setGenInvoiceRecipient((r) => ({ ...r, [f.k]: e.target.value }))}
                     placeholder={f.ph}
-                    className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
+                    className="bg-foreground/[0.05] border-foreground/[0.15] text-foreground text-sm"
                     {...invalidProps(genInvoiceTried ? genInvoiceErrors[f.k] : undefined, `gen-inv-${f.k}-error`)}
                   />
                   <FieldError id={`gen-inv-${f.k}-error`} msg={genInvoiceTried ? genInvoiceErrors[f.k] : null} />

@@ -218,7 +218,7 @@ export function LeadEditModal({
                       className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground text-sm h-8"
                     />
                     {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-foreground/[0.15] rounded-lg shadow-lg max-h-40 overflow-y-auto">
                         {(productSuggestions as any[]).map((p: any) => (
                           <button key={`${p.productType}-${p.id}`} type="button"
                             className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-xs text-foreground flex items-center gap-2"

@@ -97,7 +97,7 @@ function ActionButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${colorMap[color] ?? colorMap.gray} ${active ? "ring-1 ring-white/20 bg-foreground/5" : ""}`}
+      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${colorMap[color] ?? colorMap.gray} ${active ? "ring-1 ring-border bg-foreground/5" : ""}`}
     >
       {icon}
       <span>{label}</span>
@@ -436,7 +436,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 </div>
 
                 {/* Líneas */}
-                <div className="divide-y divide-white/5">
+                <div className="divide-y divide-border">
                   {/* Servicio principal */}
                   <div className="flex items-center gap-3 px-4 py-3">
                     <ShoppingBag className="w-4 h-4 text-muted-foreground flex-shrink-0" />

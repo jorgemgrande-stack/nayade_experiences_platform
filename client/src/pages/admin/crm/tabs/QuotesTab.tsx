@@ -449,9 +449,9 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
       </Dialog>
 {/* Confirm Payment — con paso previo por método */}
 <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => { if (!o) { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); } }}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-md bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-success" />{" "}{t("crmInvoices.confirmarPagoRecibido")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -463,7 +463,7 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
                   key={m}
                   onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setTpvOpSearchForRow(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    confirmPayMethodRow === m ? "border-success bg-success/15 text-success" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
+                    confirmPayMethodRow === m ? "border-success bg-success/15 text-success" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-foreground/30 hover:text-foreground/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -478,7 +478,7 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
               <div className="space-y-2">
                 <div className="space-y-1.5">
                   <Label className="text-foreground/70 text-xs">{t("crmInvoices.nOperacionTpv")}{" "}{!selectedTpvOpIdForRow ? "*" : "(auto)"}</Label>
-                  <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder={t("crmInvoices.ej000123456789")} disabled={!!selectedTpvOpIdForRow} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
+                  <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder={t("crmInvoices.ej000123456789")} disabled={!!selectedTpvOpIdForRow} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm disabled:opacity-50" />
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
@@ -510,12 +510,12 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
                 ) : showTpvOpSearchForRow ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                      className="w-full text-xs bg-background border border-border rounded-md px-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/50"
                       placeholder={t("crmInvoices.buscarPorNOperacion")}
                       value={tpvOpSearchForRow}
                       onChange={(e) => setTpvOpSearchForRow(e.target.value)}
                     />
-                    <div className="max-h-40 overflow-y-auto rounded-md border border-white/10 divide-y divide-white/5">
+                    <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border">
                       {tpvOpsForRowQ.isLoading ? (
                         <div className="p-3 text-xs text-foreground/40 text-center">{t("crmInvoices.buscando")}</div>
                       ) : (tpvOpsForRowQ.data?.data as any[] | undefined)?.length === 0 ? (
@@ -524,11 +524,11 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
                         (tpvOpsForRowQ.data?.data as any[] | undefined)?.map((op: any) => (
                           <button
                             key={op.id}
-                            className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors"
+                            className="w-full text-left px-3 py-2 hover:bg-muted transition-colors"
                             onClick={() => { setSelectedTpvOpIdForRow(op.id); setConfirmPayTpvOp(op.operationNumber ?? ""); setShowTpvOpSearchForRow(false); }}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
+                              <span className="text-xs font-mono text-foreground/80">{op.operationNumber}</span>
                               <span className="text-xs text-primary font-medium shrink-0">{format.number(Number(op.amount), { minimumFractionDigits: 2 })} €</span>
                             </div>
                             <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {format.date(op.operationDatetime, {})}</div>
@@ -596,7 +596,7 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
                 ) : showBankMovementSearchForRow ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-info/50"
+                      className="w-full text-xs bg-background border border-border rounded-md px-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-info/50"
                       placeholder={t("crmInvoices.buscarPorConceptoImporte")}
                       value={bankMovementSearchForRow}
                       onChange={(e) => setBankMovementSearchForRow(e.target.value)}
@@ -610,11 +610,11 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
                         {(bankMovementsForRowQ.data?.data as any[] | undefined)?.map((mv: any) => (
                           <button
                             key={mv.id}
-                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-info/40 hover:bg-info/5 transition-colors"
+                            className="w-full text-left px-2.5 py-2 rounded border border-border hover:border-info/40 hover:bg-info/5 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForRow(mv.id); setShowBankMovementSearchForRow(false); }}
                           >
-                            <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
-                            <div className="flex gap-3 mt-0.5 text-xs text-white/50">
+                            <div className="text-xs text-foreground/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
+                            <div className="flex gap-3 mt-0.5 text-xs text-foreground/50">
                               <span>{mv.fecha ?? "–"}</span>
                               <span className="text-success">{mv.importe != null ? `${format.number(Number(mv.importe), { minimumFractionDigits: 2 })} €` : "–"}</span>
                             </div>
@@ -629,7 +629,7 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
             {confirmPayMethodRow === "efectivo" && (
               <div className="space-y-1.5">
                 <Label className="text-foreground/70 text-xs">{t("crmInvoices.justificacion")}</Label>
-                <Textarea value={confirmPayNote} onChange={(e) => setConfirmPayNote(e.target.value)} placeholder={t("crmInvoices.ejCobradoEnRecepcion")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
+                <Textarea value={confirmPayNote} onChange={(e) => setConfirmPayNote(e.target.value)} placeholder={t("crmInvoices.ejCobradoEnRecepcion")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
@@ -670,9 +670,9 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
         open={rowPendingPayQuoteId !== null}
         onOpenChange={(o) => { if (!o) { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); } }}
       >
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <Clock className="w-5 h-5 text-warning" />{" "}{t("crmInvoices.registrarPagoPendiente")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -683,7 +683,7 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
                 type="date"
                 value={rowPendingPayDueDate}
                 onChange={(e) => setRowPendingPayDueDate(e.target.value)}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm"
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
@@ -693,7 +693,7 @@ export function QuotesModals({ ctrl }: { ctrl: QuotesController }) {
                 value={rowPendingPayReason}
                 onChange={(e) => setRowPendingPayReason(e.target.value)}
                 placeholder={t("crmInvoices.ejClienteConfirmaPago")}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-sm resize-none"
                 rows={3}
               />
             </div>

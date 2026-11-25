@@ -43,99 +43,6 @@ function useCountUp(target: number, duration = 800) {
   return count;
 }
 
-const COUNTER_STYLES = {
-  blue: {
-    bg: "bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/80 dark:via-blue-900/40 dark:to-[#080e1c]",
-    border: "border-info",
-    activeBorder: "border-info shadow-[0_0_20px_rgba(59,130,246,0.35)]",
-    glow: "bg-info/10",
-    icon: "text-info",
-    number: "text-info",
-    label: "text-info/70",
-    dot: "bg-info",
-  },
-  amber: {
-    bg: "bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/80 dark:via-amber-900/30 dark:to-[#080e1c]",
-    border: "border-warning",
-    activeBorder: "border-warning shadow-[0_0_20px_rgba(245,158,11,0.35)]",
-    glow: "bg-warning/10",
-    icon: "text-warning",
-    number: "text-warning",
-    label: "text-warning/70",
-    dot: "bg-warning",
-  },
-  green: {
-    bg: "bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/80 dark:via-emerald-900/30 dark:to-[#080e1c]",
-    border: "border-success",
-    activeBorder: "border-success shadow-[0_0_20px_rgba(16,185,129,0.35)]",
-    glow: "bg-success/10",
-    icon: "text-success",
-    number: "text-success",
-    label: "text-success/70",
-    dot: "bg-success",
-  },
-  red: {
-    bg: "bg-gradient-to-br from-red-50 to-white dark:from-red-950/80 dark:via-red-900/30 dark:to-[#080e1c]",
-    border: "border-danger",
-    activeBorder: "border-danger shadow-[0_0_20px_rgba(239,68,68,0.35)]",
-    glow: "bg-danger/10",
-    icon: "text-danger",
-    number: "text-danger",
-    label: "text-danger/70",
-    dot: "bg-danger",
-  },
-  slate: {
-    bg: "bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:via-slate-700/30 dark:to-[#080e1c]",
-    border: "border-slate-200 dark:border-slate-500/30",
-    activeBorder: "border-slate-400 shadow-[0_0_20px_rgba(148,163,184,0.25)]",
-    glow: "bg-slate-500/10",
-    icon: "text-slate-600 dark:text-slate-400",
-    number: "text-slate-700 dark:text-slate-300",
-    label: "text-slate-600/70 dark:text-slate-300/70",
-    dot: "bg-slate-500 dark:bg-slate-400",
-  },
-  orange: {
-    bg: "bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/80 dark:via-orange-900/30 dark:to-[#080e1c]",
-    border: "border-warning",
-    activeBorder: "border-warning shadow-[0_0_20px_rgba(249,115,22,0.35)]",
-    glow: "bg-warning/10",
-    icon: "text-warning",
-    number: "text-warning",
-    label: "text-warning/70",
-    dot: "bg-warning",
-  },
-  indigo: {
-    bg: "bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/80 dark:via-indigo-900/30 dark:to-[#080e1c]",
-    border: "border-primary",
-    activeBorder: "border-primary shadow-[0_0_20px_rgba(99,102,241,0.35)]",
-    glow: "bg-primary/10",
-    icon: "text-primary",
-    number: "text-primary",
-    label: "text-primary/70",
-    dot: "bg-primary",
-  },
-  violet: {
-    bg: "bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/80 dark:via-violet-900/30 dark:to-[#080e1c]",
-    border: "border-primary",
-    activeBorder: "border-primary shadow-[0_0_20px_rgba(139,92,246,0.35)]",
-    glow: "bg-primary/10",
-    icon: "text-primary",
-    number: "text-primary",
-    label: "text-primary/70",
-    dot: "bg-primary",
-  },
-  purple: {
-    bg: "bg-gradient-to-br from-purple-50 to-white dark:from-purple-950/80 dark:via-purple-900/30 dark:to-[#080e1c]",
-    border: "border-primary",
-    activeBorder: "border-primary shadow-[0_0_20px_rgba(168,85,247,0.35)]",
-    glow: "bg-primary/10",
-    icon: "text-primary",
-    number: "text-primary",
-    label: "text-primary/70",
-    dot: "bg-primary",
-  },
-};
-
 function fmtAmount(n: number, format: ReturnType<typeof useI18n>["format"]): string {
   if (n === 0) return "";
   return format.currency(n, "EUR", { maximumFractionDigits: 0 });
@@ -144,7 +51,8 @@ function fmtAmount(n: number, format: ReturnType<typeof useI18n>["format"]): str
 /** Las etiquetas traducidas de canal llevan emoji; aquí ya hay icono del sistema, así que se omite sin tocar las traducciones. */
 const noEmoji = (label: string) => label.replace(new RegExp("^[\\p{Extended_Pictographic}\\uFE0F\\u200D\\s]+", "u"), "");
 
-const COUNTER_TONE: Record<keyof typeof COUNTER_STYLES, "brand" | "info" | "success" | "warning" | "danger" | "neutral"> = {
+type CounterColor = "blue" | "amber" | "green" | "red" | "slate" | "orange" | "indigo" | "violet" | "purple";
+const COUNTER_TONE: Record<CounterColor, "brand" | "info" | "success" | "warning" | "danger" | "neutral"> = {
   blue: "info", amber: "warning", green: "success", red: "danger", slate: "neutral", orange: "brand", indigo: "brand", violet: "brand", purple: "brand",
 };
 
@@ -164,7 +72,7 @@ function CounterCard({
   icon: React.ElementType;
   active?: boolean;
   onClick?: () => void;
-  color?: keyof typeof COUNTER_STYLES;
+  color?: CounterColor;
   subtitle?: string;
   amount?: number;
 }) {
@@ -427,7 +335,7 @@ export default function CRMDashboard() {
 
   return (
     <AdminLayout title={voc.crmTitle}>
-      <div className="flex min-h-screen flex-col bg-background text-foreground dark:bg-[#080e1c]">
+      <div className="flex min-h-screen flex-col bg-background text-foreground">
         {unified && (
           <>
             {tabsNode}
@@ -501,25 +409,25 @@ export default function CRMDashboard() {
               {!kpisExpanded && !unified && (
                 <>
                   {(leadCounters?.ganada ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-xs font-medium">
                       <Star className="w-2.5 h-2.5" />{t("crmDashboard.ganadas", { ganada: leadCounters?.ganada })}</span>
                   )}
                   {(leadCounters?.enviada ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-xs font-medium">
                       <Send className="w-2.5 h-2.5" />{t("crmDashboard.enviadas", { enviada: leadCounters?.enviada })}</span>
                   )}
                   {(resCounters?.confirmadas ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-xs font-medium">
                       <CheckCircle className="w-2.5 h-2.5" />{resCounters?.confirmadas} {voc.ordersLower}
                       {(resCounters?.importeConfirmadas ?? 0) > 0 && <span className="opacity-60">· {format.number(Math.round(resCounters!.importeConfirmadas))} €</span>}
                     </span>
                   )}
                   {(resCounters?.pendientePago ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-xs font-medium">
                       <Clock className="w-2.5 h-2.5" />{t("crmDashboard.pendPago", { pendientePago: resCounters?.pendientePago })}</span>
                   )}
                   {(anulCounters?.pending ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger/10 border border-danger/20 text-danger text-[11px] font-medium">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger/10 border border-danger/20 text-danger text-xs font-medium">
                       <AlertTriangle className="w-2.5 h-2.5" />{t("crmDashboard.anulaciones", { pending: anulCounters?.pending })}</span>
                   )}
                 </>
@@ -529,7 +437,7 @@ export default function CRMDashboard() {
               )}
             </div>
             <div className="flex items-center gap-1.5 text-foreground/40 group-hover:text-foreground/70 transition-colors flex-shrink-0">
-              <span className="text-[11px]">{kpisExpanded ? t("crmDashboard.ocultar") : t("crmDashboard.verKpis")}</span>
+              <span className="text-xs">{kpisExpanded ? t("crmDashboard.ocultar") : t("crmDashboard.verKpis")}</span>
               {kpisExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </div>
           </button>
@@ -542,7 +450,7 @@ export default function CRMDashboard() {
           {/* Grupo 1: Pipeline de Oportunidades */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-400 to-blue-600" />
+              <div className="w-1 h-4 rounded-full bg-info" />
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.licensed ? t("crmDashboard.embudoDeOportunidades") : t("crmDashboard.pipelineDeOportunidades")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(leadCounters?.total ?? 0) > 0 && (
@@ -596,7 +504,7 @@ export default function CRMDashboard() {
           {/* Grupo 2: Presupuestos & Ingresos */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-orange-600" />
+              <div className="w-1 h-4 rounded-full bg-primary" />
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.presupuestosIngresos")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
             </div>
@@ -656,7 +564,7 @@ export default function CRMDashboard() {
           {/* Grupo 2b: Reservas */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-green-400 to-green-600" />
+              <div className="w-1 h-4 rounded-full bg-success" />
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.orders}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(resCounters?.confirmadas ?? 0) > 0 && (
@@ -731,7 +639,7 @@ export default function CRMDashboard() {
           {/* Grupo 3: Anulaciones */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-red-400 to-red-600" />
+              <div className="w-1 h-4 rounded-full bg-danger" />
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.anulaciones2")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(anulCounters?.total ?? 0) > 0 && (
@@ -783,7 +691,7 @@ export default function CRMDashboard() {
             return (
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-1 h-4 rounded-full bg-gradient-to-b from-violet-400 to-violet-600" />
+                  <div className="w-1 h-4 rounded-full bg-primary/70" />
                   <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.proximosPagosFraccionados")}</span>
                   <div className="flex-1 h-px bg-foreground/[0.05]" />
                 </div>
@@ -840,7 +748,7 @@ export default function CRMDashboard() {
                           <tr key={inst.id} className="border-b border-foreground/[0.06] last:border-0 hover:bg-foreground/[0.03]">
                             <td className="px-3 py-2 text-foreground/70">{inst.quoteNumber}</td>
                             <td className="px-3 py-2 text-foreground/55">#{inst.installmentNumber}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-white">{format.number((inst.amountCents / 100), { minimumFractionDigits: 2 })} €</td>
+                            <td className="px-3 py-2 text-right font-semibold text-foreground">{format.number((inst.amountCents / 100), { minimumFractionDigits: 2 })} €</td>
                             <td className="px-3 py-2 text-center text-foreground/55">{inst.dueDate}</td>
                             <td className="px-3 py-2 text-center">
                               {isOverdue ? (
@@ -864,7 +772,7 @@ export default function CRMDashboard() {
           {/* Grupo 4: Bonos compensatorios (solo con el módulo de cupones) */}
           {voc.showCoupons && <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-purple-400 to-purple-600" />
+              <div className="w-1 h-4 rounded-full bg-muted-foreground" />
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.bonosCompensatorios")}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
             </div>
@@ -904,10 +812,10 @@ export default function CRMDashboard() {
         {/* Barra de ratio de conversión */}
         {(leadCounters?.total ?? 0) > 0 && (
           <div className="px-6 pb-4">
-            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl p-4">
+            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-1 h-4 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600" />
+                  <div className="w-1 h-4 rounded-full bg-success" />
                   <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{t("crmDashboard.ratioDeConversion")}</span>
                   {(leadCounters?.sinLeer ?? 0) > 0 && (
                     <span className="flex items-center gap-1 text-xs text-info font-medium">
@@ -929,12 +837,12 @@ export default function CRMDashboard() {
               <div className="relative h-3 bg-foreground/[0.05] rounded-full overflow-hidden">
                 {/* Ganadas */}
                 <div
-                  className="absolute left-0 top-0 h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-1000"
+                  className="absolute left-0 top-0 h-full bg-success rounded-full transition-all duration-1000"
                   style={{ width: `${leadCounters?.total ? ((leadCounters.ganada ?? 0) / leadCounters.total) * 100 : 0}%` }}
                 />
                 {/* Enviadas (apiladas) */}
                 <div
-                  className="absolute top-0 h-full bg-gradient-to-r from-amber-500/60 to-amber-400/60 rounded-full transition-all duration-1000"
+                  className="absolute top-0 h-full bg-warning/60 rounded-full transition-all duration-1000"
                   style={{
                     left: `${leadCounters?.total ? ((leadCounters.ganada ?? 0) / leadCounters.total) * 100 : 0}%`,
                     width: `${leadCounters?.total ? ((leadCounters.enviada ?? 0) / leadCounters.total) * 100 : 0}%`,
@@ -942,7 +850,7 @@ export default function CRMDashboard() {
                 />
                 {/* Nuevas (apiladas) */}
                 <div
-                  className="absolute top-0 h-full bg-gradient-to-r from-blue-500/40 to-blue-400/40 rounded-full transition-all duration-1000"
+                  className="absolute top-0 h-full bg-info/40 rounded-full transition-all duration-1000"
                   style={{
                     left: `${leadCounters?.total ? (((leadCounters.ganada ?? 0) + (leadCounters.enviada ?? 0)) / leadCounters.total) * 100 : 0}%`,
                     width: `${leadCounters?.total ? ((leadCounters.nueva ?? 0) / leadCounters.total) * 100 : 0}%`,
@@ -981,10 +889,10 @@ export default function CRMDashboard() {
                         {voc.agree(t("crmEmpty.audit.cashM", { count: cashItems.length, order: voc.order, orders: voc.ordersLower }), t("crmEmpty.audit.cashF", { count: cashItems.length, order: voc.order, orders: voc.ordersLower }))}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {cashItems.map((r: any) => (
-                          <span key={r.id} className="inline-flex items-center text-[11px] bg-info/40 text-info rounded overflow-hidden">
+                          <span key={r.id} className="inline-flex items-center text-xs bg-info/10 text-info rounded overflow-hidden">
                             <button
                               onClick={() => setGenInvoiceResId(r.id)}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-info/60 transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-info/20 transition-colors cursor-pointer"
                               title={voc.agree(t("crmEmpty.hint.cashInvoiceM", { order: voc.order }), t("crmEmpty.hint.cashInvoiceF", { order: voc.order }))}
                             >
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
@@ -995,7 +903,7 @@ export default function CRMDashboard() {
                             </button>
                             <button
                               onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
-                              className="px-1.5 py-1 hover:bg-info/60 text-info hover:text-info transition-colors border-l border-info/40"
+                              className="px-1.5 py-1 hover:bg-info/20 text-info hover:text-info transition-colors border-l border-info/40"
                               title={t("crmDashboard.ignorarMarcarComoNo")}
                             >
                               <X className="w-3 h-3" />
@@ -1011,10 +919,10 @@ export default function CRMDashboard() {
                         {voc.agree(t("crmEmpty.audit.otherM", { count: otherItems.length, order: voc.order, orders: voc.ordersLower }), t("crmEmpty.audit.otherF", { count: otherItems.length, order: voc.order, orders: voc.ordersLower }))}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {otherItems.map((r: any) => (
-                          <span key={r.id} className="inline-flex items-center text-[11px] bg-warning/40 text-warning rounded overflow-hidden">
+                          <span key={r.id} className="inline-flex items-center text-xs bg-warning/10 text-warning rounded overflow-hidden">
                             <button
                               onClick={() => setGenInvoiceResId(r.id)}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-warning/60 transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-warning/20 transition-colors cursor-pointer"
                               title={voc.agree(t("crmEmpty.hint.invoiceM", { order: voc.order }), t("crmEmpty.hint.invoiceF", { order: voc.order }))}
                             >
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
@@ -1025,7 +933,7 @@ export default function CRMDashboard() {
                             </button>
                             <button
                               onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
-                              className="px-1.5 py-1 hover:bg-warning/60 text-warning hover:text-warning transition-colors border-l border-warning/40"
+                              className="px-1.5 py-1 hover:bg-warning/20 text-warning hover:text-warning transition-colors border-l border-warning/40"
                               title={t("crmDashboard.ignorarMarcarComoNo")}
                             >
                               <X className="w-3 h-3" />
@@ -1047,7 +955,7 @@ export default function CRMDashboard() {
                     <button
                       key={r.id}
                       onClick={() => { handleTabChange("reservations"); setViewResId(r.id); }}
-                      className="inline-flex items-center gap-1.5 text-[11px] bg-warning/40 hover:bg-warning/60 text-warning rounded px-2 py-1 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-xs bg-warning/10 hover:bg-warning/20 text-warning rounded px-2 py-1 transition-colors cursor-pointer"
                       title={t("crmDashboard.verReserva")}
                     >
                       <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>

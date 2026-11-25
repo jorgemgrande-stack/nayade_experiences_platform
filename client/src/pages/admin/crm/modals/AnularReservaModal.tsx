@@ -46,7 +46,7 @@ export function AnularReservaModal({
 
   return (
     <div role="dialog" aria-modal="true" aria-label={t("crmReservations.iniciarAnulacion")} className="fixed inset-0 bg-background/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-warning/30 rounded-2xl p-6 max-w-md w-full">
+      <div className="bg-card border border-warning/30 rounded-xl p-6 max-w-md w-full">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-warning/10 rounded-full flex items-center justify-center flex-shrink-0">
             <XCircle className="w-5 h-5 text-warning" />
