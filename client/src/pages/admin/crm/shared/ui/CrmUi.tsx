@@ -251,9 +251,9 @@ export function CrmTable<T>({ rows, columns, rowKey, rowId, caption, selection, 
           <tbody className="divide-y divide-border">
             {rows.map((r) => (
               <tr key={rowKey(r)} className={cn("group hover:bg-muted/40", rowClassName?.(r))}>
-                {selection && <td className="w-10 px-3 py-2.5 align-middle">{check(r, String(rowKey(r)))}</td>}
+                {selection && <td className="w-10 px-3 py-2 align-middle">{check(r, String(rowKey(r)))}</td>}
                 {columns.map((c) => (
-                  <td key={c.key} className={cn("px-3 py-2.5 align-middle", al(c.align), c.num && "whitespace-nowrap tabular-nums", PRIORITY_CLASS[c.priority ?? "always"], c.className)}>
+                  <td key={c.key} className={cn("px-3 py-2 align-middle", al(c.align), c.num && "whitespace-nowrap tabular-nums", PRIORITY_CLASS[c.priority ?? "always"], c.className)}>
                     {c.cell(r)}
                   </td>
                 ))}

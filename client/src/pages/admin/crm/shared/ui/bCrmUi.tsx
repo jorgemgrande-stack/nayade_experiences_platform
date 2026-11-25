@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { CompactEmpty } from "@/components/admin/SalesFamilyShell";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -189,9 +190,11 @@ export function BTable<T>({ rows, columns, rowKey, caption, loading, error, onRe
   if (loading) return <div className="rounded-xl border border-border bg-card"><PanelLoading /></div>;
   if (rows.length === 0) {
     return (
-      <PanelEmpty title={filtered ? t("crmShared.ningunResultadoConEstos") : emptyTitle} description={filtered ? undefined : emptyDescription}>
-        {filtered && onClearFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>{t("crmShared.quitarFiltros")}</Button> : emptyAction}
-      </PanelEmpty>
+      <CompactEmpty
+        title={filtered ? t("crmShared.ningunResultadoConEstos") : emptyTitle}
+        description={filtered ? undefined : emptyDescription}
+        action={filtered && onClearFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>{t("crmShared.quitarFiltros")}</Button> : emptyAction}
+      />
     );
   }
   const titleCol = columns.find((c) => c.mobile === "title") ?? columns[0];
@@ -212,7 +215,7 @@ export function BTable<T>({ rows, columns, rowKey, caption, loading, error, onRe
                 </th>
               )}
               {columns.map((c) => (
-                <th key={c.key} scope="col" className={cn("px-3 py-2.5 font-medium", c.num ? "whitespace-nowrap" : "", al(c.align), PRIORITY[c.priority ?? "always"])}>{c.header}</th>
+                <th key={c.key} scope="col" className={cn("whitespace-nowrap px-2.5 py-2.5 font-medium", al(c.align), PRIORITY[c.priority ?? "always"])}>{c.header}</th>
               ))}
               {actions && <th scope="col" className="w-px whitespace-nowrap px-3 py-2.5 text-right font-medium">{t("crmShared.acciones")}</th>}
             </tr>
@@ -226,7 +229,7 @@ export function BTable<T>({ rows, columns, rowKey, caption, loading, error, onRe
                   </td>
                 )}
                 {columns.map((c) => (
-                  <td key={c.key} className={cn("px-3 py-2.5 align-middle", al(c.align), c.num && "whitespace-nowrap tabular-nums", PRIORITY[c.priority ?? "always"], c.className)}>{c.cell(r)}</td>
+                  <td key={c.key} className={cn("px-2.5 py-2 align-middle", al(c.align), c.num && "whitespace-nowrap tabular-nums", PRIORITY[c.priority ?? "always"], c.className)}>{c.cell(r)}</td>
                 ))}
                 {actions && <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>{actions(r)}</td>}
               </tr>
