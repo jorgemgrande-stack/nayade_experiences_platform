@@ -324,23 +324,24 @@ export default function ClientsManager() {
               {/* Móvil: tarjeta compacta de una fila (avatar, nombre, tipo y ciudad) con contacto de un toque */}
               <ul className="divide-y divide-border md:hidden" aria-label={t("crmClients.listCaption")}>
                 {clientsList.map((client) => (
-                  <li key={client.id} className="flex items-center gap-2.5 px-3 py-2.5" data-client-row>
+                  <li key={client.id} className="flex items-start gap-2.5 px-3 py-2.5" data-client-row>
                     <PersonAvatar name={clientDisplayName(client)} id={client.id} company={clientKind(client) === "empresa"} />
                     <div className="min-w-0 flex-1">
-                      <Link href={fichaHref(client)} className="block overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
+                      {/* Nombre con hasta dos líneas: el contacto va debajo, no le quita ancho. */}
+                      <Link href={fichaHref(client)} className="line-clamp-2 break-words font-medium leading-snug text-foreground underline-offset-4 hover:text-primary hover:underline">
                         {clientDisplayName(client)}
                       </Link>
-                      <div className="mt-0.5 flex items-center gap-x-2 text-xs text-muted-foreground">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                         {kindBadge(client)}
                         {client.city && <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="h-3 w-3 shrink-0" aria-hidden="true" /> <span className="overflow-hidden text-ellipsis whitespace-nowrap">{client.city}</span></span>}
+                        <span className="ml-auto flex shrink-0 items-center gap-1">
+                          <Button asChild size="icon" variant="outline" className="h-8 w-8 rounded-full"><a href={`mailto:${client.email}`} aria-label={t("crmClientDetail.email")} title={t("crmClientDetail.email")}><Mail className="h-3.5 w-3.5" aria-hidden="true" /></a></Button>
+                          {client.phone && <Button asChild size="icon" variant="outline" className="h-8 w-8 rounded-full"><a href={`tel:${client.phone.replace(/\s/g, "")}`} aria-label={t("crmClientDetail.phone")} title={t("crmClientDetail.phone")}><Phone className="h-3.5 w-3.5" aria-hidden="true" /></a></Button>}
+                        </span>
                       </div>
                       {tagsOf(client)}
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button asChild size="icon" variant="outline" className="h-8 w-8 rounded-full"><a href={`mailto:${client.email}`} aria-label={t("crmClientDetail.email")} title={t("crmClientDetail.email")}><Mail className="h-3.5 w-3.5" aria-hidden="true" /></a></Button>
-                      {client.phone && <Button asChild size="icon" variant="outline" className="h-8 w-8 rounded-full"><a href={`tel:${client.phone.replace(/\s/g, "")}`} aria-label={t("crmClientDetail.phone")} title={t("crmClientDetail.phone")}><Phone className="h-3.5 w-3.5" aria-hidden="true" /></a></Button>}
-                      {actions(client)}
-                    </div>
+                    <div className="flex shrink-0 items-center">{actions(client)}</div>
                   </li>
                 ))}
               </ul>

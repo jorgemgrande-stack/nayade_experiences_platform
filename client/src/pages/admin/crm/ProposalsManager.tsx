@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
-import { PanelPageHeader, StatusBadge as PanelStatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { PanelDataList, StatusBadge as PanelStatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { CompactEmpty, SummaryStrip, ToolbarRow, type SummaryStripItem, type ToolbarChip } from "@/components/admin/SalesFamilyShell";
 import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
-import { SegmentedTabs } from "@/components/admin/PanelVisual";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,6 @@ import {
 import { toast } from "sonner";
 import {
   Plus,
-  Search,
   Send,
   Eye,
   Trash2,
@@ -38,7 +37,6 @@ import {
   Pencil,
   CheckCircle,
   X,
-  ChevronDown,
 } from "lucide-react";
 import { CatalogConceptSelector, type CatalogProduct, type SourceType } from "@/components/CatalogConceptSelector";
 import { toastError } from "@/lib/errorMessage";
@@ -670,6 +668,14 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
         offset: page * PAGE_SIZE,
       });
 
+  // Cifras por estado del resumen: la misma consulta del listado, solo con el total (sin filas).
+  const countQ = (status?: ProposalStatus) => trpc.proposals.list.useQuery({ status, limit: 1 }, { enabled: !leadId, staleTime: 30_000 });
+  const cAll = countQ(), cBor = countQ("borrador"), cEnv = countQ("enviado"), cVis = countQ("visualizado"), cAce = countQ("aceptado"), cRec = countQ("rechazado"), cExp = countQ("expirado");
+  const counts: Partial<Record<ProposalStatus | "all", number>> = {
+    all: cAll.data?.total, borrador: cBor.data?.total, enviado: cEnv.data?.total, visualizado: cVis.data?.total,
+    aceptado: cAce.data?.total, rechazado: cRec.data?.total, expirado: cExp.data?.total,
+  };
+
   const getByIdQuery = trpc.proposals.getById.useQuery(
     { id: editModal! },
     { enabled: !!editModal }
@@ -741,7 +747,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
   const rowActions = (p: ProposalRow) => {
     const canSend = ["borrador", "enviado", "visualizado"].includes(p.status);
     const canConvert = ["enviado", "visualizado", "aceptado"].includes(p.status) && !p.convertedToQuoteId;
-    const btn = "h-8 w-8 p-0 text-muted-foreground hover:text-foreground";
+    const btn = "h-8 w-8 p-0 text-muted-foreground hover:text-foreground max-md:h-10 max-md:w-10";
     const label = (text: string) => `${text}: ${p.proposalNumber}`;
     return (
       <div className="flex items-center justify-end gap-0.5">
@@ -750,7 +756,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
         <Button type="button" size="sm" variant="ghost" className={btn} title={t("crmProposals.list.sendEmail")} aria-label={label(t("crmProposals.list.sendEmail"))} disabled={!canSend || sendMutation.isPending} onClick={() => handleSend(p.id)}><Send className="w-4 h-4" aria-hidden="true" /></Button>
         <Button type="button" size="sm" variant="ghost" className={btn} title={p.convertedToQuoteId ? t("crmProposals.list.alreadyConverted") : t("crmProposals.list.convertToQuote")} aria-label={label(t("crmProposals.list.convertToQuote"))} disabled={!canConvert} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-4 h-4" aria-hidden="true" /></Button>
         <Button type="button" size="sm" variant="ghost" className={btn} title={p.publicUrl ? t("crmProposals.list.copyLink") : t("crmProposals.list.noLinkYet")} aria-label={label(t("crmProposals.list.copyLink"))} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success(t("crmProposals.list.linkCopied")); }}><Copy className="w-4 h-4" aria-hidden="true" /></Button>
-        <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" title={t("crmProposals.list.delete")} aria-label={label(t("crmProposals.list.delete"))} onClick={() => setDeleteConfirm(p.id)}><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
+        <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive max-md:h-10 max-md:w-10" title={t("crmProposals.list.delete")} aria-label={label(t("crmProposals.list.delete"))} onClick={() => setDeleteConfirm(p.id)}><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
       </div>
     );
   };
@@ -766,7 +772,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
         ) : (
           <div className="text-sm font-medium text-foreground">{name}</div>
         )}
-        {p.leadEmail && <div className="max-w-[200px] truncate text-xs text-muted-foreground">{p.leadEmail}</div>}
+        {p.leadEmail && <div className="max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{p.leadEmail}</div>}
       </div>
     );
   };
@@ -817,153 +823,135 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
 
   // ─── Modo global (página /admin/crm/propuestas) ───────────────────────────
   if (!leadId) {
-    const statusOptions = (["all", "borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado"] as const).map((s) => ({
-      value: s as string,
-      label: s === "all" ? t("crmProposals.list.all") : t(`crmProposals.status.${s}`),
-    }));
+    const statusList = ["borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado"] as const;
     const hasFilters = filterStatus !== "all" || search.trim() !== "";
     const allSelected = rows.length > 0 && selected.size === rows.length;
+    const toggleStatus = (s: ProposalStatus) => setFilterStatus((cur) => (cur === s ? "all" : s));
+    const strip: SummaryStripItem[] = [
+      { key: "enviado", label: t("crmProposals.status.enviado"), value: counts.enviado ?? 0, primary: true, tone: "info", active: filterStatus === "enviado", onClick: () => toggleStatus("enviado") },
+      { key: "borrador", label: t("crmProposals.status.borrador"), value: counts.borrador ?? 0, tone: "neutral", active: filterStatus === "borrador", onClick: () => toggleStatus("borrador") },
+      { key: "aceptado", label: t("crmProposals.status.aceptado"), value: counts.aceptado ?? 0, tone: "success", active: filterStatus === "aceptado", onClick: () => toggleStatus("aceptado") },
+      { key: "rechazado", label: t("crmProposals.status.rechazado"), value: counts.rechazado ?? 0, tone: "danger", active: filterStatus === "rechazado", onClick: () => toggleStatus("rechazado") },
+    ];
+    const chips: ToolbarChip[] = [
+      ...(filterStatus !== "all" ? [{ id: "status", label: `${t("crmProposals.list.statusLabel")}: ${t(`crmProposals.status.${filterStatus}`)}`, onRemove: () => setFilterStatus("all") }] : []),
+      ...(search.trim() ? [{ id: "search", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
+    ];
+    const clearFilters = () => { setSearch(""); setFilterStatus("all"); };
+    const selectBox = (p: ProposalRow) => (
+      <label className="-m-3 inline-flex shrink-0 cursor-pointer items-center justify-center p-3">
+        <input type="checkbox" aria-label={t("crmProposals.list.selectRow", { ref: p.proposalNumber })} className="h-4 w-4 cursor-pointer rounded border-border" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} />
+      </label>
+    );
+    const columns: PanelColumn<ProposalRow>[] = [
+      {
+        key: "title",
+        header: (
+          <span className="flex items-center gap-3">
+            <label className="-m-3 inline-flex cursor-pointer items-center justify-center p-3">
+              <input type="checkbox" aria-label={t("crmProposals.list.selectAll")} className="h-4 w-4 cursor-pointer rounded border-border" checked={allSelected} onChange={e => setSelected(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} />
+            </label>
+            {t("crmProposals.list.colTitle")}
+          </span>
+        ),
+        cell: (p) => (
+          <div className="flex items-start gap-3">
+            {selectBox(p)}
+            <div className="min-w-0 flex-1">
+              <div className="line-clamp-2 break-words text-sm font-medium text-foreground">{p.title}</div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-normal text-muted-foreground">
+                <span className="font-mono text-primary">{p.proposalNumber}</span>
+                <span>{t(`crmProposals.mode.${p.mode}`)}</span>
+                <span className="md:hidden"><StatusBadge status={p.status} /></span>
+              </div>
+              {convertedBadge(p, false)}
+            </div>
+          </div>
+        ),
+      },
+      { key: "client", header: t("crmProposals.list.colClient"), cell: (p) => leadCell(p), mobile: "body" },
+      { key: "status", header: t("crmProposals.list.colStatus"), cell: (p) => <StatusBadge status={p.status} />, hideOnMobile: true },
+      { key: "total", header: t("crmProposals.list.colTotal"), align: "right", cell: (p) => <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">{format.currency(parseFloat(p.total ?? "0"))}</span>, mobile: "amount" },
+      { key: "date", header: t("crmProposals.list.colDate"), cell: (p) => <span className="text-xs text-muted-foreground">{dateCell(p)}</span>, mobile: "footer" },
+      { key: "actions", header: t("crmProposals.list.colActions"), align: "right", cell: (p) => rowActions(p), mobile: "footer" },
+    ];
     return (
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
-        {/* Cabecera: una acción principal reconocible */}
-        <PanelPageHeader
-          icon={<FileText />}
-          title={t("crmProposals.list.title")}
-          description={t("crmProposals.list.subtitle")}
-          actions={
-            <Button onClick={() => setLeadPickerOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmProposals.list.newProposal")}
-            </Button>
-          }
+      <div className="mx-auto w-full max-w-7xl space-y-3 px-4 pb-8 pt-2 sm:px-6 sm:pt-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight text-foreground">{t("crmProposals.list.title")}</h1>
+          <Button onClick={() => setLeadPickerOpen(true)} className="h-10 shrink-0 sm:h-9">
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmProposals.list.newProposal")}
+          </Button>
+        </div>
+
+        <SummaryStrip items={strip} label={t("crmProposals.list.summaryLabel")} />
+
+        <ToolbarRow
+          search={{ value: search, onChange: setSearch, placeholder: t("crmProposals.list.searchPlaceholder") }}
+          filters={(
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-56" aria-label={t("crmProposals.list.filterStatus")}>
+                <span className="flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-muted-foreground">{t("crmProposals.list.statusLabel")}:</span><SelectValue /></span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("crmProposals.list.all")}{counts.all !== undefined ? ` (${counts.all})` : ""}</SelectItem>
+                {statusList.map((s) => <SelectItem key={s} value={s}>{t(`crmProposals.status.${s}`)}{counts[s] !== undefined ? ` (${counts[s]})` : ""}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          chips={chips}
+          onClear={clearFilters}
         />
 
-        {/* Búsqueda + filtro de estado segmentado */}
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={t("crmProposals.list.searchPlaceholder")}
-              aria-label={t("crmProposals.list.searchPlaceholder")}
-              className="h-11 rounded-xl pl-10"
-            />
+        {selected.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-4 py-2.5">
+            <span className="shrink-0 text-xs font-medium text-primary">{t("crmProposals.list.selected", { n: selected.size })}</span>
+            <select aria-label={t("crmProposals.list.changeStatus")} value={bulkStatus} onChange={e => { if (e.target.value) bulkUpdateStatusMutation.mutate({ ids: Array.from(selected), status: e.target.value as ProposalStatus }); }} disabled={bulkUpdateStatusMutation.isPending} className="h-10 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-40 sm:h-8">
+              <option value="">{t("crmProposals.list.changeStatus")}</option>
+              <option value="borrador">{t("crmProposals.status.borrador")}</option>
+              <option value="enviado">{t("crmProposals.status.enviado")}</option>
+              <option value="aceptado">{t("crmProposals.status.aceptado")}</option>
+              <option value="rechazado">{t("crmProposals.status.rechazado")}</option>
+              <option value="expirado">{t("crmProposals.status.expirado")}</option>
+            </select>
+            <Button type="button" size="sm" variant="outline" className="h-10 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:h-8" disabled={bulkDeleteMutation.isPending} onClick={async () => { if ((await confirmAction({ description: t("crmProposals.list.bulkDeleteConfirm", { n: selected.size }), destructive: true }))) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }}>
+              <Trash2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {t("crmProposals.list.delete")}
+            </Button>
+            <Button type="button" size="icon" variant="ghost" className="ml-auto h-10 w-10 text-muted-foreground sm:h-8 sm:w-8" aria-label={t("crmProposals.list.clearSelection")} onClick={() => setSelected(new Set())}><X className="h-4 w-4" aria-hidden="true" /></Button>
           </div>
-          <SegmentedTabs label={t("crmProposals.list.filterStatus")} value={filterStatus} onChange={setFilterStatus} options={statusOptions} />
-        </div>
+        )}
 
-        {/* Listado */}
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          {listQuery.isLoading ? (
-            loadingBlock
-          ) : listQuery.isError ? (
-            errorBlock
-          ) : rows.length === 0 ? (
-            <PanelEmpty
-              className="border-0"
-              icon={<FileText />}
-              title={filterStatus !== "all" ? t("crmProposals.list.emptyStatus", { status: t(`crmProposals.status.${filterStatus}`) }) : t("crmProposals.list.emptyAll")}
-            >
-              {hasFilters ? (
-                <Button size="sm" variant="outline" onClick={() => { setSearch(""); setFilterStatus("all"); }}>{t("crmProposals.list.clearFilters")}</Button>
-              ) : (
-                <Button size="sm" onClick={() => setLeadPickerOpen(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmProposals.list.newProposal")}</Button>
-              )}
-            </PanelEmpty>
-          ) : (
-            <>
-              {selected.size > 0 && (
-                <div className="flex flex-wrap items-center gap-2 border-b border-primary/20 bg-primary/10 px-4 py-2.5">
-                  <span className="shrink-0 text-xs font-medium text-primary">{t("crmProposals.list.selected", { n: selected.size })}</span>
-                  <select aria-label={t("crmProposals.list.changeStatus")} value={bulkStatus} onChange={e => { if (e.target.value) bulkUpdateStatusMutation.mutate({ ids: Array.from(selected), status: e.target.value as ProposalStatus }); }} disabled={bulkUpdateStatusMutation.isPending} className="rounded-md border border-border bg-background px-2 py-1 text-xs disabled:opacity-40">
-                    <option value="">{t("crmProposals.list.changeStatus")}</option>
-                    <option value="borrador">{t("crmProposals.status.borrador")}</option>
-                    <option value="enviado">{t("crmProposals.status.enviado")}</option>
-                    <option value="aceptado">{t("crmProposals.status.aceptado")}</option>
-                    <option value="rechazado">{t("crmProposals.status.rechazado")}</option>
-                    <option value="expirado">{t("crmProposals.status.expirado")}</option>
-                  </select>
-                  <Button type="button" size="sm" variant="outline" className="h-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={bulkDeleteMutation.isPending} onClick={async () => { if ((await confirmAction({ description: t("crmProposals.list.bulkDeleteConfirm", { n: selected.size }), destructive: true }))) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }}>
-                    <Trash2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {t("crmProposals.list.delete")}
-                  </Button>
-                  <Button type="button" size="icon" variant="ghost" className="ml-auto h-7 w-7 text-muted-foreground" aria-label={t("crmProposals.list.clearSelection")} onClick={() => setSelected(new Set())}><X className="h-4 w-4" aria-hidden="true" /></Button>
+        {listQuery.isLoading ? (
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">{loadingBlock}</div>
+        ) : listQuery.isError ? (
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">{errorBlock}</div>
+        ) : rows.length === 0 ? (
+          <CompactEmpty
+            icon={<FileText />}
+            title={filterStatus !== "all" ? t("crmProposals.list.emptyStatus", { status: t(`crmProposals.status.${filterStatus}`) }) : t("crmProposals.list.emptyAll")}
+            description={!hasFilters ? t("crmProposals.list.emptyAllText") : undefined}
+            action={hasFilters ? <Button size="sm" variant="outline" className="h-10 sm:h-9" onClick={clearFilters}>{t("crmProposals.list.clearFilters")}</Button> : undefined}
+          />
+        ) : (
+          <>
+            <PanelDataList
+              className="shadow-sm [&_td]:py-2 [&_td]:align-middle"
+              caption={t("crmProposals.list.title")}
+              rows={rows}
+              rowKey={(p) => p.id}
+              columns={columns}
+            />
+            {total > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-1">
+                <span className="text-sm text-muted-foreground">{t("crmProposals.list.pageOf", { page: page + 1, pages: Math.ceil(total / PAGE_SIZE), total })}</span>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="h-10 sm:h-9" onClick={() => setPage(p => p - 1)} disabled={page === 0}>{t("crmProposals.list.prev")}</Button>
+                  <Button type="button" size="sm" variant="outline" className="h-10 sm:h-9" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total}>{t("crmProposals.list.next")}</Button>
                 </div>
-              )}
-
-              {/* Escritorio: tabla */}
-              <table className="hidden w-full text-sm md:table">
-                <caption className="sr-only">{t("crmProposals.list.title")}</caption>
-                <thead>
-                  <tr className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
-                    <th scope="col" className="w-10 px-3 py-3"><input type="checkbox" aria-label={t("crmProposals.list.selectAll")} className="cursor-pointer rounded border-border" checked={allSelected} onChange={e => setSelected(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} /></th>
-                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colRef")}</th>
-                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colClient")}</th>
-                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colTitle")}</th>
-                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colStatus")}</th>
-                    <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmProposals.list.colTotal")}</th>
-                    <th scope="col" className="px-4 py-3 font-medium">{t("crmProposals.list.colDate")}</th>
-                    <th scope="col" className="px-4 py-3 text-right font-medium">{t("crmProposals.list.colActions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(p => (
-                    <tr key={p.id} className={`border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40 ${selected.has(p.id) ? "bg-primary/5" : ""}`}>
-                      <td className="w-10 px-3 py-3 align-middle"><input type="checkbox" aria-label={t("crmProposals.list.selectRow", { ref: p.proposalNumber })} className="cursor-pointer rounded border-border" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} /></td>
-                      <td className="px-4 py-3 align-middle">
-                        <span className="font-mono text-sm font-medium text-primary">{p.proposalNumber}</span>
-                        <div className="mt-0.5 text-xs text-muted-foreground">{t(`crmProposals.mode.${p.mode}`)}</div>
-                      </td>
-                      <td className="px-4 py-3 align-middle">{leadCell(p)}</td>
-                      <td className="px-4 py-3 align-middle">
-                        <span className="line-clamp-1 text-sm text-foreground">{p.title}</span>
-                        {convertedBadge(p, false)}
-                      </td>
-                      <td className="px-4 py-3 align-middle"><StatusBadge status={p.status} /></td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right align-middle tabular-nums"><span className="text-sm font-semibold text-foreground">{format.currency(parseFloat(p.total ?? "0"))}</span></td>
-                      <td className="px-4 py-3 align-middle text-xs text-muted-foreground">{dateCell(p)}</td>
-                      <td className="px-4 py-3 align-middle">{rowActions(p)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Móvil: una tarjeta por propuesta, sin desbordes */}
-              <ul className="divide-y divide-border md:hidden" aria-label={t("crmProposals.list.title")}>
-                {rows.map(p => (
-                  <li key={p.id} className={`space-y-2 p-4 text-sm ${selected.has(p.id) ? "bg-primary/5" : ""}`}>
-                    <div className="flex items-start gap-3">
-                      <input type="checkbox" aria-label={t("crmProposals.list.selectRow", { ref: p.proposalNumber })} className="mt-1 cursor-pointer rounded border-border" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-mono font-medium text-primary">{p.proposalNumber}</span>
-                          <StatusBadge status={p.status} />
-                        </div>
-                        <div className="mt-1 break-words">{leadCell(p)}</div>
-                        <div className="mt-1 break-words text-foreground">{p.title}</div>
-                        {convertedBadge(p, false)}
-                        <div className="mt-1 flex items-center justify-between gap-2">
-                          <span className="text-xs text-muted-foreground">{dateCell(p)}</span>
-                          <span className="font-semibold tabular-nums text-foreground">{format.currency(parseFloat(p.total ?? "0"))}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="-mr-1">{rowActions(p)}</div>
-                  </li>
-                ))}
-              </ul>
-
-              {total > PAGE_SIZE && (
-                <div className="flex items-center justify-between border-t border-border px-4 py-3">
-                  <span className="text-sm text-muted-foreground">{t("crmProposals.list.pageOf", { page: page + 1, pages: Math.ceil(total / PAGE_SIZE), total })}</span>
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" variant="outline" onClick={() => setPage(p => p - 1)} disabled={page === 0}>{t("crmProposals.list.prev")}</Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total}>{t("crmProposals.list.next")}</Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            )}
+          </>
+        )}
 
         {leadPickerOpen && <LeadPickerModal onClose={() => setLeadPickerOpen(false)} onPicked={(id, name) => { setLeadPickerOpen(false); setCreateModal({ open: true, leadId: id, leadName: name }); }} />}
         {modals}

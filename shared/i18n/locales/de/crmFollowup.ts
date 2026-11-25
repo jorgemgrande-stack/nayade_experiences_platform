@@ -24,7 +24,12 @@ export default {
     dashboard: "Übersicht", open: "Offene Angebote", history: "Verlauf", mapa: "E-Mail-Karte", plantillas: "Vorlagen",
     cola: "Sendewarteschlange", automatizaciones: "Automatisierungen", auditoria: "Prüfprotokoll",
   },
-  title: "Kundenbetreuung",
+  title: "Vertriebsnachverfolgung",
+  refresh: "Aktualisieren",
+  tabShort: {
+    dashboard: "Übersicht", open: "Offen", history: "Verlauf", mapa: "E-Mails", plantillas: "Vorlagen",
+    cola: "Warteschlange", automatizaciones: "Automatik", auditoria: "Prüfung",
+  },
   subtitle: "Nachverfolgung von Angeboten, die noch nicht umgewandelt wurden",
   loadError: "Die Nachverfolgung konnte nicht geladen werden",
   tabsLabel: "Bereiche der Kundenbetreuung",

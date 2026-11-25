@@ -77,9 +77,9 @@ export function OnlineOrdersList() {
     <AdminLayout title={voc.crmTitle}>
       <SalesFamilyShell
         active="reservations"
+        title={t("shopOrders.list.title")}
         action={<Button asChild><Link href="/admin/crm?tab=reservations&nuevo=1"><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{voc.newOrder}</Link></Button>}
       >
-        <h1 className="sr-only">{t("shopOrders.list.title")}</h1>
         <SummaryStrip items={strip} label={t("shopOrders.list.title")} />
         <ToolbarRow
           search={{ value: search, onChange: setSearch, placeholder: t("shopOrders.list.searchPlaceholder") }}
@@ -93,7 +93,6 @@ export function OnlineOrdersList() {
           )}
           trailing={(
             <>
-              <StatusBadge tone="brand" icon={<ShoppingBag />}>{t("salesShell.shopChannel")}</StatusBadge>
               <Button asChild variant="ghost" size="sm" className="h-9 gap-1 text-muted-foreground"><Link href="/admin/crm?tab=reservations">{t("salesShell.allOrders")}<ArrowRight className="h-4 w-4" aria-hidden="true" /></Link></Button>
             </>
           )}

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import CancellationDetailModal from "../CancellationDetailModal";
 import { Eye, XCircle, AlertTriangle, RefreshCw, Trash2, CloudLightning, HeartPulse, HelpCircle, Inbox, Search, FileWarning, Clock, CheckCircle2, Archive, Wallet } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { cn } from "@/lib/utils";
 import { Tab, PAGE_SIZE } from "../shared/crmCommon";
 import { BPill, BStat, BSummary, BFilterBar, BFilterField, BTable, BRowActions, BPager, type BChip, type BColumn, type BTone } from "../shared/ui/bCrmUi";
 import { AnularReservaModal } from "../modals/AnularReservaModal";
@@ -129,6 +130,13 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
     ) },
     { key: "date", header: t("crmCancellations.fecha"), priority: "lg", num: true, mobile: "footer", cell: (row) => <span className="text-xs text-muted-foreground">{format.date(row.createdAt, {})}</span> },
   ];
+  const secondaryStats = anulKpis ? [
+    { key: "cerradas", label: t("crmCancellations.cerradas"), value: anulKpis.cerradas, active: anulOpFilter === "cerrada", onClick: () => toggle(anulOpFilter, setAnulOpFilter, "cerrada") },
+    { key: "at", label: t("crmCancellations.aceptadasTotal"), value: anulKpis.resueltasTotal, active: anulResFilter === "aceptada_total", onClick: () => toggle(anulResFilter, setAnulResFilter, "aceptada_total") },
+    { key: "ap", label: t("crmCancellations.aceptadasParcial"), value: anulKpis.resueltasParcial, active: anulResFilter === "aceptada_parcial", onClick: () => toggle(anulResFilter, setAnulResFilter, "aceptada_parcial") },
+    { key: "rz", label: t("crmCancellations.rechazadas"), value: anulKpis.rechazadas, active: anulResFilter === "rechazada", onClick: () => toggle(anulResFilter, setAnulResFilter, "rechazada") },
+    { key: "bn", label: voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados"), value: anulKpis.compensadasBono, active: anulFinFilter === "compensada_bono", onClick: () => toggle(anulFinFilter, setAnulFinFilter, "compensada_bono") },
+  ].filter((x) => Number(x.value) > 0) : [];
   const statCards = anulKpis ? (
     <>
       <BSummary>
@@ -139,14 +147,17 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
         <BStat tone="warning" label={t("crmCancellations.enRevision")} value={anulKpis.enRevision} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "en_revision")} active={anulOpFilter === "en_revision"} />
         <BStat tone="warning" label={t("crmCancellations.pendDocs")} value={anulKpis.pendienteDocumentacion} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "pendiente_documentacion")} active={anulOpFilter === "pendiente_documentacion"} />
         <BStat tone="danger" label={t("crmCancellations.incidencias")} value={anulKpis.incidencias} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "incidencia")} active={anulOpFilter === "incidencia"} />
-        <BStat tone="muted" label={t("crmCancellations.cerradas")} value={anulKpis.cerradas} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "cerrada")} active={anulOpFilter === "cerrada"} />
       </BSummary>
-      <BSummary hero={false}>
-        <BStat compact tone="success" label={t("crmCancellations.aceptadasTotal")} value={anulKpis.resueltasTotal} onClick={() => toggle(anulResFilter, setAnulResFilter, "aceptada_total")} active={anulResFilter === "aceptada_total"} />
-        <BStat compact tone="success" label={t("crmCancellations.aceptadasParcial")} value={anulKpis.resueltasParcial} onClick={() => toggle(anulResFilter, setAnulResFilter, "aceptada_parcial")} active={anulResFilter === "aceptada_parcial"} />
-        <BStat compact tone="danger" label={t("crmCancellations.rechazadas")} value={anulKpis.rechazadas} onClick={() => toggle(anulResFilter, setAnulResFilter, "rechazada")} active={anulResFilter === "rechazada"} />
-        <BStat compact tone="primary" label={voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")} value={anulKpis.compensadasBono} onClick={() => toggle(anulFinFilter, setAnulFinFilter, "compensada_bono")} active={anulFinFilter === "compensada_bono"} />
-      </BSummary>
+      {/* Estados secundarios: solo aparecen los que tienen solicitudes, como atajos de filtro (el resto está en los filtros). */}
+      {secondaryStats.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" aria-label={t("crmCancellations.resolucion")}>
+          {secondaryStats.map((x) => (
+            <button key={x.key} type="button" onClick={x.onClick} aria-pressed={x.active} className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", x.active ? "border-primary/40 bg-primary/10 text-foreground" : "border-border bg-card hover:bg-foreground/[0.05]")}>
+              {x.label}<span className="font-semibold tabular-nums text-foreground">{x.value}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </>
   ) : null;
   const sel = (value: string, onChange: (v: string) => void, all: string, opts: [string, string][]) => (
@@ -183,7 +194,7 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
           summary={anulData ? `${anulData.total} ${voc.cancellations.toLowerCase()}` : undefined}
           actions={(
             <>
-              <Button type="button" variant="outline" onClick={() => refetchAnul()} aria-label={t("crmCancellations.actualizar")} title={t("crmCancellations.actualizar")} className="gap-1.5 max-sm:px-2.5"><RefreshCw className="h-4 w-4" aria-hidden="true" /><span className="max-sm:sr-only">{t("crmCancellations.actualizar")}</span></Button>
+              <Button type="button" variant="outline" onClick={() => refetchAnul()} aria-label={t("crmCancellations.actualizar")} title={t("crmCancellations.actualizar")} className="gap-1.5 px-2.5"><RefreshCw className="h-4 w-4" aria-hidden="true" /><span className="sr-only">{t("crmCancellations.actualizar")}</span></Button>
             </>
           )}
         />
