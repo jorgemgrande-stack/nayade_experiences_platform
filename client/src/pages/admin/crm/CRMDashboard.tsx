@@ -380,11 +380,11 @@ export default function CRMDashboard() {
         {/* Top KPI strip — dos grupos diferenciados */}
         <Sheet open={kpisExpanded} onOpenChange={setKpisExpanded}>
         <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-4xl">
-        <SheetHeader className="border-b border-border pb-3">
+        <SheetHeader className="shrink-0 border-b border-border pb-3">
           <SheetTitle>{t("salesShell.panoramaTitle")}</SheetTitle>
           <SheetDescription>{t("salesShell.panoramaHint")}</SheetDescription>
         </SheetHeader>
-        <div className="space-y-4 p-4">
+        <div className="shrink-0 space-y-4 p-4">
 
           {/* Grupo 1: Pipeline de Oportunidades */}
           <div>
