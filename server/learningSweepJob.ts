@@ -8,6 +8,8 @@ import { scheduleTenantInterval } from "./_core/tenantRegistry/scheduler";
 export const LEARNING_SWEEP_JOB = "learning-sweep";
 
 export async function runLearningSweep(): Promise<{ skipped?: string; quotes?: number; granted?: number; needsTerms?: number; orders?: number }> {
+  // Con la licencia exigida (LEARNING_LICENSE_ENFORCED), una empresa sin licencia `learning` no recibe concesiones nuevas; apagada, no hace nada
+  if (!(await (await import("./learningLicense")).learningLicensed())) return { skipped: "sin_licencia" };
   const { sweepLearningGrants } = await import("./learningFlow");
   const { isMissingLearningSchema } = await import("./learningDb");
   try {
