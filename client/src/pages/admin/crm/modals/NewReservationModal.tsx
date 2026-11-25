@@ -379,7 +379,7 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
           <span className="text-sm text-foreground/65">{t("crmReservations.enviarEmailDeConfirmacion")}</span>
         </label>
       </div>
-      <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 gap-2 border-t border-border bg-background px-6 py-4">
+      <DialogFooter className="gap-2 sticky -bottom-6 z-10 -mx-6 -mb-6 border-t border-border bg-background px-6 pb-9 pt-3 max-sm:[&>button]:w-full">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmReservations.cancelar")}</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createManual.isPending}>
           {createManual.isPending ? voc.creatingOrder : voc.createOrder}
