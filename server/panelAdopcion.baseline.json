@@ -36,23 +36,6 @@
     "coloresFijos": 1,
     "textoMinusculo": 1
   },
-  "pages/admin/accounting/CostCentersManager.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/accounting/ExpenseCategoriesManager.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/accounting/ExpenseSuppliersManager.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/accounting/FinanceSyncSetup.tsx": {
-    "coloresFijos": 7,
-    "geometriaAjena": 4
-  },
-  "pages/admin/accounting/RecurringExpensesManager.tsx": {
-    "coloresFijos": 6,
-    "textoMinusculo": 3
-  },
   "pages/admin/connect/ConnectDetailPage.tsx": {
     "geometriaAjena": 5
   },
@@ -129,43 +112,8 @@
   "pages/admin/crm/tabs/ReservationsTab.tsx": {
     "hexEnClases": 3
   },
-  "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaCalendario.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaConfiguracion.tsx": {
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaDashboard.tsx": {
-    "coloresFijos": 6,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaExpedientes.tsx": {
-    "coloresFijos": 1,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaIVA.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/gestoria/GestoriaLaboral.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/gestoria/GestoriaSociedades.tsx": {
-    "coloresFijos": 3,
-    "textoMinusculo": 1
-  },
   "pages/admin/netReports/ReportParts.tsx": {
     "textoMinusculo": 1
-  },
-  "pages/admin/operations/CalendarView.tsx": {
-    "textoMinusculo": 20
-  },
-  "pages/admin/operations/DailyActivities.tsx": {
-    "textoMinusculo": 24
   },
   "pages/admin/restaurantNet/Carta.tsx": {
     "geometriaAjena": 1
@@ -194,12 +142,6 @@
     "coloresFijos": 8,
     "textoMinusculo": 3,
     "geometriaAjena": 2
-  },
-  "pages/admin/suppliers/SettlementsManager.tsx": {
-    "coloresFijos": 32
-  },
-  "pages/admin/suppliers/SuppliersManager.tsx": {
-    "coloresFijos": 25
   },
   "pages/admin/tpv/TpvCashMovement.tsx": {
     "textoMinusculo": 3

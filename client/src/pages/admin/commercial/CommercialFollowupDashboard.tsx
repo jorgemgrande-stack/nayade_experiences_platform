@@ -5,6 +5,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,7 +21,7 @@ import {
   History, ChevronRight, RefreshCw, TrendingUp,
   Users, Clock, AlertTriangle, Ban, Target, ArrowRight,
   Bot, Bell, BellOff, Volume2, VolumeX, Mail, MailOpen, SendHorizonal,
-  Map, Zap, ClipboardCheck,
+  Map, Zap, ClipboardCheck, Search, MoreHorizontal,
 } from "lucide-react";
 import { NOTIF_POPUP_KEY, NOTIF_SOUND_KEY } from "@/components/WhatsAppNotification";
 import CommunicationsMap from "./CommunicationsMap";
@@ -29,9 +30,9 @@ import EmailAuditTab from "./EmailAuditTab";
 import TemplateRulesTab from "./TemplateRulesTab";
 import PendingJobsTab from "./PendingJobsTab";
 import { toastError } from "@/lib/errorMessage";
-import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
-import { PanelPageHeader, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelDataList, PanelPageHeader, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { HeroCard, MetricCard } from "@/components/admin/PanelVisual";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -39,26 +40,23 @@ import { useI18n } from "@/i18n/I18nProvider";
 
 type Tab = "dashboard" | "open" | "history" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
 
-const COMMERCIAL_STATUS_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
-  pending_followup: { color: "text-foreground/70",   bg: "bg-muted/15",   border: "border-border" },
-  reminder_1_sent:  { color: "text-primary",  bg: "bg-primary/15",  border: "border-primary/30" },
-  reminder_2_sent:  { color: "text-primary",  bg: "bg-primary/15",  border: "border-primary/30" },
-  reminder_3_sent:  { color: "text-info",  bg: "bg-info/15",  border: "border-info/30" },
-  interested:       { color: "text-success", bg: "bg-success/15", border: "border-success/30" },
-  paused:           { color: "text-warning",   bg: "bg-warning/15",   border: "border-warning/30" },
-  lost:             { color: "text-danger",     bg: "bg-danger/15",     border: "border-danger/30" },
-  converted:        { color: "text-success",   bg: "bg-success/15",   border: "border-success/30" },
-  discarded:        { color: "text-muted-foreground",    bg: "bg-muted/15",    border: "border-border" },
+/** Estado comercial de cada presupuesto → significado (color por tono, no por módulo). */
+const COMMERCIAL_STATUS_TONE: Record<string, Tone> = {
+  pending_followup: "neutral",
+  reminder_1_sent: "brand",
+  reminder_2_sent: "brand",
+  reminder_3_sent: "brand",
+  interested: "success",
+  paused: "warning",
+  lost: "danger",
+  converted: "success",
+  discarded: "neutral",
 };
 
-function StatusBadge({ status }: { status: string | null | undefined }) {
+function CommercialStatusBadge({ status }: { status: string | null | undefined }) {
   const { t } = useI18n();
-  const cfg = COMMERCIAL_STATUS_CONFIG[status ?? "pending_followup"] ?? COMMERCIAL_STATUS_CONFIG.pending_followup;
-  return (
-    <span className={`inline-flex items-center text-xs font-bold px-1.5 py-0.5 rounded-full border ${cfg.color} ${cfg.bg} ${cfg.border}`}>
-      {t(`crmFollowup.status.${COMMERCIAL_STATUS_CONFIG[status ?? "pending_followup"] ? (status ?? "pending_followup") : "pending_followup"}`)}
-    </span>
-  );
+  const key = status && COMMERCIAL_STATUS_TONE[status] ? status : "pending_followup";
+  return <StatusBadge tone={COMMERCIAL_STATUS_TONE[key]}>{t(`crmFollowup.status.${key}`)}</StatusBadge>;
 }
 
 type Fmt = ReturnType<typeof useI18n>["format"];
@@ -80,111 +78,111 @@ function daysSince(d: Date | string | null | undefined): number | null {
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-/** Tono semántico del indicador a partir del color que le asigna cada llamada. */
-function kpiTone(color: string): Tone {
-  if (color.includes("emerald")) return "success";
-  if (color.includes("red")) return "danger";
-  if (color.includes("orange") || color.includes("amber")) return "warning";
-  if (color.includes("sky")) return "info";
-  if (color.includes("purple")) return "brand";
-  return "neutral";
-}
+const TONE_HOVER: Record<Tone, string> = {
+  success: "hover:text-success", warning: "hover:text-warning", danger: "hover:text-danger",
+  info: "hover:text-info", neutral: "hover:text-foreground", brand: "hover:text-primary",
+};
 
-function KpiCard({ label, value, sub, color, icon: Icon }: {
-  label: string; value: number | string; sub?: string; color: string; icon: React.ElementType;
+/** Botón de icono de una fila: tamaño táctil, nombre accesible y tono al pasar el ratón. */
+function RowAction({ label, tone = "neutral", onClick, href, children }: {
+  label: string; tone?: Tone; onClick?: () => void; href?: string; children: React.ReactNode;
 }) {
-  return (
-    <MetricCard tone={kpiTone(color)} icon={<Icon />} label={label} value={value} detail={sub} />
+  const cls = `inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${TONE_HOVER[tone]}`;
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" title={label} aria-label={label} className={cls}>{children}</a>
+  ) : (
+    <button type="button" onClick={onClick} title={label} aria-label={label} className={cls}>{children}</button>
   );
 }
 
-// ─── Action Row ───────────────────────────────────────────────────────────────
-
-function QuoteActionRow({ quote, onAction }: {
-  quote: any;
-  onAction: (action: string, quote: any) => void;
-}) {
+/** Columnas comunes de presupuestos (panel y abiertos): tabla desde 768 px y tarjetas en móvil. */
+function useQuoteColumns(onAction: (action: string, quote: any) => void, withNext: boolean): PanelColumn<any>[] {
   const { t, format } = useI18n();
-  const days = daysSince(quote.sentAt);
-  const cfg = COMMERCIAL_STATUS_CONFIG[quote.commercialStatus ?? "pending_followup"] ?? COMMERCIAL_STATUS_CONFIG.pending_followup;
-  return (
-    <tr className="border-b border-foreground/[0.05] hover:bg-foreground/[0.02] transition-colors">
-      <td className="px-3 py-2.5">
-        <div className="font-mono text-xs text-warning font-bold">{quote.quoteNumber}</div>
-        {quote.title && <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.title}</div>}
-      </td>
-      <td className="px-3 py-2.5">
-        <div className="text-xs font-medium text-foreground/80 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.clientName ?? "—"}</div>
-        <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.clientEmail ?? ""}</div>
-      </td>
-      <td className="px-3 py-2.5 hidden md:table-cell">
-        <div className="text-xs text-foreground/60">{fmtDate(format, quote.sentAt)}</div>
-        {days !== null && <div className="text-xs text-foreground/35">{t("crmFollowup.daysAgo", { days })}</div>}
-      </td>
-      <td className="px-3 py-2.5 hidden lg:table-cell">
-        <span className="text-xs font-bold text-warning">{format.currency(Number(quote.total ?? 0))}</span>
-      </td>
-      <td className="px-3 py-2.5">
-        <StatusBadge status={quote.commercialStatus} />
-      </td>
-      <td className="px-3 py-2.5 hidden xl:table-cell">
-        {quote.viewedAt
-          ? <span className="inline-flex items-center gap-1 text-xs text-info"><Eye className="w-3 h-3" /> {fmtDate(format, quote.viewedAt)}</span>
-          : <span className="inline-flex items-center gap-1 text-xs text-foreground/30"><EyeOff className="w-3 h-3" /> {t("crmFollowup.notSeen")}</span>
-        }
-      </td>
-      <td className="px-3 py-2.5 hidden xl:table-cell">
-        <span className="text-xs text-foreground/50">{quote.trackingReminderCount ?? quote.reminderCount ?? 0}</span>
-      </td>
-      <td className="px-3 py-2.5 hidden xl:table-cell">
-        {quote.nextScheduledAt ? (
-          <div>
-            <div className="text-xs text-foreground/70">{fmtDateTime(format, quote.nextScheduledAt)}</div>
-            {quote.nextScheduledRule && (
-              <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]">{quote.nextScheduledRule}</div>
-            )}
-          </div>
-        ) : (
-          <span className="text-xs text-foreground/30">—</span>
-        )}
-      </td>
-      <td className="px-3 py-2.5">
-        <div className="flex items-center gap-0.5 justify-end">
-          {quote.paymentLinkUrl && (
-            <a href={quote.paymentLinkUrl} target="_blank" rel="noopener noreferrer"
-              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-info transition-colors" title={t("crmFollowup.viewQuote")}>
-              <Eye className="w-3.5 h-3.5" />
-            </a>
-          )}
-          <button onClick={() => onAction("remind", quote)} title={t("crmFollowup.sendReminder")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-primary transition-colors">
-            <Send className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => onAction("note", quote)} title={t("crmFollowup.addNote")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-warning transition-colors">
-            <StickyNote className="w-3.5 h-3.5" />
-          </button>
-          {quote.reminderPaused
-            ? <button onClick={() => onAction("resume", quote)} title={t("crmFollowup.resume")}
-                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-warning hover:text-success transition-colors">
-                <Play className="w-3.5 h-3.5" />
-              </button>
-            : <button onClick={() => onAction("pause", quote)} title={t("crmFollowup.pause")}
-                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-warning transition-colors">
-                <Pause className="w-3.5 h-3.5" />
-              </button>
-          }
-          <button onClick={() => onAction("interested", quote)} title={t("crmFollowup.markInterested")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-success transition-colors">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => onAction("lost", quote)} title={t("crmFollowup.markLost")}
-            className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-danger transition-colors">
-            <XCircle className="w-3.5 h-3.5" />
-          </button>
+  return [
+    {
+      key: "quote", header: t("crmFollowup.col.quote"),
+      cell: (q) => (
+        <div className="min-w-0">
+          <span className="font-mono text-sm font-semibold text-primary">{q.quoteNumber}</span>
+          {q.title && <span className="block max-w-[200px] lg:max-w-[130px] overflow-hidden text-ellipsis whitespace-nowrap text-xs font-normal text-muted-foreground">{q.title}</span>}
         </div>
-      </td>
-    </tr>
+      ),
+    },
+    {
+      key: "client", header: t("crmFollowup.col.client"),
+      cell: (q) => (
+        <div className="min-w-0">
+          <span className="block max-w-[200px] lg:max-w-[130px] overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground">{q.clientName ?? "—"}</span>
+          {q.clientEmail && <span className="block max-w-[200px] lg:max-w-[130px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{q.clientEmail}</span>}
+        </div>
+      ),
+    },
+    {
+      key: "sent", header: t("crmFollowup.col.sent"),
+      cell: (q) => {
+        const days = daysSince(q.sentAt);
+        return (
+          <div className="text-sm">
+            <span className="text-foreground">{fmtDate(format, q.sentAt)}</span>
+            {days !== null && <span className="ml-1.5 text-xs text-muted-foreground">{t("crmFollowup.daysAgo", { days })}</span>}
+            <span className={`mt-0.5 flex items-center gap-1 text-xs max-lg:justify-end ${q.viewedAt ? "text-info" : "text-muted-foreground"}`}>
+              {q.viewedAt ? <Eye className="h-3 w-3" aria-hidden="true" /> : <EyeOff className="h-3 w-3" aria-hidden="true" />}
+              {q.viewedAt ? fmtDate(format, q.viewedAt) : t("crmFollowup.notSeen")}
+            </span>
+          </div>
+        );
+      },
+    },
+    { key: "amount", header: t("crmFollowup.col.amount"), align: "right", cell: (q) => <span className="font-semibold tabular-nums text-foreground">{format.currency(Number(q.total ?? 0))}</span> },
+    {
+      key: "status", header: t("crmFollowup.col.status"),
+      cell: (q) => (
+        <div className="text-sm max-lg:flex max-lg:flex-col max-lg:items-end">
+          <CommercialStatusBadge status={q.commercialStatus} />
+          <span className="mt-1 block text-xs text-muted-foreground">{t("crmFollowup.remindersCount", { n: q.trackingReminderCount ?? q.reminderCount ?? 0 })}</span>
+          {withNext && <span className="block text-xs text-muted-foreground">{q.nextScheduledAt ? `${t("crmFollowup.col.nextSend")}: ${fmtDateTime(format, q.nextScheduledAt)}` : t("crmFollowup.noNext")}</span>}
+        </div>
+      ),
+    },
+    {
+      key: "actions", header: <span className="sr-only">{t("crmFollowup.col.actions")}</span>, align: "right",
+      cell: (q) => (
+        <div className="flex items-center justify-end gap-0.5">
+          <RowAction onClick={() => onAction("remind", q)} label={t("crmFollowup.sendReminder")} tone="brand"><Send className="h-4 w-4" aria-hidden="true" /></RowAction>
+          <RowAction onClick={() => onAction("interested", q)} label={t("crmFollowup.markInterested")} tone="success"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /></RowAction>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" aria-label={t("crmFollowup.moreActions")} title={t("crmFollowup.moreActions")} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {q.paymentLinkUrl && <DropdownMenuItem asChild><a href={q.paymentLinkUrl} target="_blank" rel="noopener noreferrer"><Eye className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmFollowup.viewQuote")}</a></DropdownMenuItem>}
+              <DropdownMenuItem onSelect={() => onAction("note", q)}><StickyNote className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmFollowup.addNote")}</DropdownMenuItem>
+              {q.reminderPaused
+                ? <DropdownMenuItem onSelect={() => onAction("resume", q)}><Play className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmFollowup.resume")}</DropdownMenuItem>
+                : <DropdownMenuItem onSelect={() => onAction("pause", q)}><Pause className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmFollowup.pause")}</DropdownMenuItem>}
+              <DropdownMenuItem variant="destructive" onSelect={() => onAction("lost", q)}><XCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("crmFollowup.markLost")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ),
+    },
+  ];
+}
+
+/** Interruptor accesible (role=switch) para las preferencias de aviso del navegador. */
+function PrefSwitch({ checked, onChange, label, icon }: { checked: boolean; onChange: (v: boolean) => void; label: string; icon: React.ReactNode }) {
+  return (
+    <button
+      type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
+      className="flex min-h-11 items-center gap-3 rounded-lg px-1 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted-foreground/30"}`} aria-hidden="true">
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-transform ${checked ? "left-4" : "left-0.5"}`} />
+      </span>
+      <span className={`flex items-center gap-1.5 [&_svg]:h-3.5 [&_svg]:w-3.5 ${checked ? "text-foreground" : "text-muted-foreground"}`}>{icon}{label}</span>
+    </button>
   );
 }
 
@@ -254,13 +252,13 @@ export default function CommercialFollowupDashboard() {
     enabled: tab === "dashboard", refetchInterval: 30000,
   });
 
-  const { data: openData, isLoading: openLoading, refetch: refetchOpen } =
+  const { data: openData, isLoading: openLoading, error: openError, refetch: refetchOpen } =
     trpc.commercialFollowup.listOpen.useQuery(
       { search: openSearch || undefined, commercialStatus: openStatus === "all" ? undefined : openStatus || undefined, viewed: openViewed, limit: 100, offset: 0 },
       { enabled: tab === "open" }
     );
 
-  const { data: historyData, isLoading: histLoading } =
+  const { data: historyData, isLoading: histLoading, error: histError, refetch: refetchHist } =
     trpc.commercialFollowup.listCommunications.useQuery({ limit: 200, offset: 0 }, { enabled: tab === "history" });
 
   // ─── Mutations ────────────────────────────────────────────────────────────
@@ -319,6 +317,34 @@ export default function CommercialFollowupDashboard() {
   ];
 
   const kpis = dashboard?.kpis;
+  const quoteColumns = useQuoteColumns(handleAction, true);
+  const attention = dashboard?.attentionList ?? [];
+  const openRows = openData?.rows ?? [];
+  const historyRows = historyData?.rows ?? [];
+  const goOpen = (status: string, viewed: "all" | "yes" | "no") => { setOpenStatus(status); setOpenViewed(viewed); setTab("open"); };
+
+  const historyColumns: PanelColumn<any>[] = [
+    { key: "quote", header: t("crmFollowup.col.quote"), cell: (c) => <span className="font-mono text-sm font-semibold text-primary">{c.quoteNumber ?? `#${c.quoteId}`}</span> },
+    { key: "date", header: t("crmFollowup.col.date"), cell: (c) => <span className="text-muted-foreground">{fmtDateTime(format, c.sentAt)}</span> },
+    { key: "client", header: t("crmFollowup.col.client"), cell: (c) => <span className="text-foreground">{c.clientName ?? c.customerEmail ?? "—"}</span> },
+    {
+      key: "type", header: t("crmFollowup.col.type"),
+      cell: (c) => {
+        const tone: Tone = c.type === "automatic_reminder" ? "brand" : c.type === "manual_reminder" ? "info" : c.type === "internal_note" ? "warning" : c.type === "lost_reason" ? "danger" : "neutral";
+        const label = c.type === "automatic_reminder" ? t("crmFollowup.history.typeAuto") : c.type === "manual_reminder" ? t("crmFollowup.history.typeManual") : c.type === "internal_note" ? t("crmFollowup.history.typeNote") : c.type === "lost_reason" ? t("crmFollowup.history.typeLost") : c.type;
+        return <StatusBadge tone={tone}>{label}</StatusBadge>;
+      },
+    },
+    { key: "subject", header: t("crmFollowup.col.subject"), cell: (c) => <span className="block max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground max-lg:max-w-[180px]">{c.subject ?? "—"}</span> },
+    {
+      key: "status", header: t("crmFollowup.col.status"),
+      cell: (c) => (
+        <StatusBadge tone={c.status === "sent" ? "success" : c.status === "failed" ? "danger" : "neutral"}>
+          {c.status === "sent" ? t("crmFollowup.history.sent") : c.status === "failed" ? t("crmFollowup.history.failed") : t("crmFollowup.history.skipped")}
+        </StatusBadge>
+      ),
+    },
+  ];
 
   // Pestaña "Configuración" + sus settings locales eliminados en Fase 5.
 
@@ -326,7 +352,7 @@ export default function CommercialFollowupDashboard() {
 
   return (
     <AdminLayout>
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 py-6">
         {/* Header */}
         <PanelPageHeader
           icon={<Target />}
@@ -334,22 +360,22 @@ export default function CommercialFollowupDashboard() {
           description={t("crmFollowup.subtitle")}
           actions={
             <Button type="button" variant="outline" size="icon" aria-label={t("panelStates.retry")} onClick={() => { refetchDash(); refetchOpen(); }}>
-              <RefreshCw className="w-4 h-4" aria-hidden="true" />
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
             </Button>
           }
         />
         <WorkplaceLocks place="crm" className="mb-6" />
 
-        {/* Tab nav */}
-        <div role="tablist" className="flex gap-1 mb-6 border-b border-border pb-0 overflow-x-auto">
+        {/* Pestañas: franja desplazable en móvil, con la activa marcada con el color de la marca */}
+        <div role="tablist" aria-label={t("crmFollowup.tabsLabel")} className="-mx-4 mb-6 flex w-auto min-w-0 max-w-[100vw] gap-1 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0">
           {tabs.map(tb => (
-            <button role="tab" aria-selected={tab === tb.id} key={tb.id} onClick={() => setTab(tb.id)}
-              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-px ${
+            <button key={tb.id} type="button" role="tab" aria-selected={tab === tb.id} onClick={() => setTab(tb.id)}
+              className={`-mb-px flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 tab === tb.id
                   ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
               }`}>
-              <tb.icon className="w-3.5 h-3.5" />
+              <tb.icon className="h-4 w-4" aria-hidden="true" />
               {tb.label}
             </button>
           ))}
@@ -364,121 +390,84 @@ export default function CommercialFollowupDashboard() {
               <PanelLoading />
             ) : (
               <>
-                {/* KPIs */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <KpiCard label={t("crmFollowup.kpi.needsAttention")} value={kpis?.needsAttention ?? 0} color="text-warning" icon={AlertTriangle} sub={t("crmFollowup.kpi.activeQuotes")} />
-                  <KpiCard label={t("crmFollowup.kpi.notViewed")} value={kpis?.notViewed ?? 0} color="text-muted-foreground" icon={EyeOff} />
-                  <KpiCard label={t("crmFollowup.kpi.viewedUnpaid")} value={kpis?.viewed ?? 0} color="text-info" icon={Eye} />
-                  <KpiCard label={t("crmFollowup.kpi.paused")} value={kpis?.paused ?? 0} color="text-warning" icon={Pause} />
-                  <KpiCard label={t("crmFollowup.kpi.sentToday")} value={kpis?.sentToday ?? 0} color="text-primary" icon={Send} sub={t("crmFollowup.kpi.autoReminders")} />
-                  <KpiCard label={t("crmFollowup.kpi.cold")} value={kpis?.cold ?? 0} color="text-muted-foreground" icon={Clock} />
-                  <KpiCard label={t("crmFollowup.kpi.converted")} value={kpis?.converted ?? 0} color="text-success" icon={CheckCircle2} />
-                  <KpiCard label={t("crmFollowup.kpi.lost")} value={kpis?.lost ?? 0} color="text-danger" icon={XCircle} />
-                </div>
-
-                {/* ─── KPIs WhatsApp + llamadas (solo con su módulo contratado) ─ */}
-                {(hasWhatsApp || hasVoice) && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {hasWhatsApp && (<>
-                  <MetricCard tone="success" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappToday")} value={whatsappStats?.conversations?.newToday ?? 0} />
-                  <MetricCard tone="info" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappUnread")} value={whatsappStats?.conversations?.unread ?? 0} />
-                  </>)}
-                  {hasVoice && (<>
-                  <MetricCard tone="brand" icon={<Bot />} label={t("crmFollowup.kpi.callsToday")} value={vapiStats?.today ?? 0} />
-                  <MetricCard tone="warning" icon={<Bot />} label={t("crmFollowup.kpi.callsUnreviewed")} value={vapiStats?.unreviewed ?? 0} />
-                  </>)}
-                </div>
-                )}
-
-                {/* ─── KPIs Email Comercial ──────────────────────────────────── */}
-                <div className="grid grid-cols-3 gap-3">
-                  <MetricCard tone="info" icon={<Mail />} label={t("crmFollowup.kpi.emailsToday")} value={emailStats?.receivedToday ?? 0} href="/admin/atencion-comercial/email" />
-                  <MetricCard tone="warning" icon={<MailOpen />} label={t("crmFollowup.kpi.emailsUnread")} value={emailStats?.unreadInbox ?? 0} href="/admin/atencion-comercial/email" />
-                  <MetricCard tone="info" icon={<SendHorizonal />} label={t("crmFollowup.kpi.emailsSent")} value={emailStats?.sent ?? 0} href="/admin/atencion-comercial/email?folder=sent" />
-                </div>
-
-                {/* ─── Control notificaciones WhatsApp ───────────────────────── */}
-                {hasWhatsApp && (
-                <div className="rounded-xl border border-border/50 bg-card p-4">
-                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground/70">
-                    <Bell className="w-4 h-4 text-info" />
-                    {t("crmFollowup.notif.title")}
-                  </h3>
-                  <div className="flex flex-wrap gap-4">
-                    <label className="flex items-center gap-2.5 cursor-pointer select-none group">
-                      <div
-                        className={`w-9 h-5 rounded-full transition-colors relative ${popupDisabled ? "bg-foreground/20" : "bg-info"}`}
-                        onClick={() => setPopupDisabled(!popupDisabled)}
-                      >
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${popupDisabled ? "left-0.5" : "left-4"}`} />
-                      </div>
-                      <div>
-                        <div className="text-sm flex items-center gap-1.5">
-                          {popupDisabled
-                            ? <><BellOff className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">{t("crmFollowup.notif.popupOff")}</span></>
-                            : <><Bell className="w-3.5 h-3.5 text-info" /> <span>{t("crmFollowup.notif.popupOn")}</span></>
-                          }
-                        </div>
-                      </div>
-                    </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                      <div
-                        className={`w-9 h-5 rounded-full transition-colors relative ${soundDisabled ? "bg-foreground/20" : "bg-success"}`}
-                        onClick={() => setSoundDisabled(!soundDisabled)}
-                      >
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${soundDisabled ? "left-0.5" : "left-4"}`} />
-                      </div>
-                      <div>
-                        <div className="text-sm flex items-center gap-1.5">
-                          {soundDisabled
-                            ? <><VolumeX className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">{t("crmFollowup.notif.soundOff")}</span></>
-                            : <><Volume2 className="w-3.5 h-3.5 text-success" /> <span>{t("crmFollowup.notif.soundOn")}</span></>
-                          }
-                        </div>
-                      </div>
-                    </label>
+                {/* Lo primero: cuántos presupuestos piden atención hoy */}
+                <HeroCard>
+                  <div className="flex flex-wrap items-center gap-4 p-5">
+                    <span className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl [&_svg]:h-6 [&_svg]:w-6 ${(kpis?.needsAttention ?? 0) > 0 ? "bg-warning/15 text-warning" : "bg-success/15 text-success"}`} aria-hidden="true">
+                      {(kpis?.needsAttention ?? 0) > 0 ? <AlertTriangle /> : <CheckCircle2 />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-muted-foreground">{t("crmFollowup.kpi.needsAttention")}</p>
+                      <p className="text-3xl font-semibold leading-tight tabular-nums text-foreground">{kpis?.needsAttention ?? 0}</p>
+                      <p className="text-xs text-muted-foreground">{t("crmFollowup.kpi.activeQuotes")}</p>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => setTab("open")}>
+                      {t("crmFollowup.attention.seeAll")} <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
+                    </Button>
                   </div>
-                </div>
+                </HeroCard>
+
+                {/* Estado de los presupuestos: los tres primeros filtran la lista de abiertos */}
+                <section aria-labelledby="seg-quotes" className="space-y-3">
+                  <h2 id="seg-quotes" className="text-sm font-semibold text-foreground">{t("crmFollowup.section.quotes")}</h2>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <MetricCard tone="neutral" icon={<EyeOff />} label={t("crmFollowup.kpi.notViewed")} value={kpis?.notViewed ?? 0} onClick={() => goOpen("all", "no")} className="bg-gradient-to-br from-primary/5 to-card" />
+                    <MetricCard tone="info" icon={<Eye />} label={t("crmFollowup.kpi.viewedUnpaid")} value={kpis?.viewed ?? 0} onClick={() => goOpen("all", "yes")} className="bg-gradient-to-br from-primary/5 to-card" />
+                    <MetricCard tone="warning" icon={<Pause />} label={t("crmFollowup.kpi.paused")} value={kpis?.paused ?? 0} onClick={() => goOpen("paused", "all")} className="bg-gradient-to-br from-primary/5 to-card" />
+                    <MetricCard tone="brand" icon={<Send />} label={t("crmFollowup.kpi.sentToday")} value={kpis?.sentToday ?? 0} detail={t("crmFollowup.kpi.autoReminders")} className="bg-gradient-to-br from-primary/5 to-card" />
+                    <MetricCard tone="neutral" icon={<Clock />} label={t("crmFollowup.kpi.cold")} value={kpis?.cold ?? 0} className="bg-gradient-to-br from-primary/5 to-card" />
+                    <MetricCard tone="success" icon={<CheckCircle2 />} label={t("crmFollowup.kpi.converted")} value={kpis?.converted ?? 0} className="bg-gradient-to-br from-primary/5 to-card" />
+                    <MetricCard tone="danger" icon={<XCircle />} label={t("crmFollowup.kpi.lost")} value={kpis?.lost ?? 0} className="bg-gradient-to-br from-primary/5 to-card" />
+                  </div>
+                </section>
+
+                {/* Canales de entrada: WhatsApp y llamadas solo con su módulo contratado */}
+                <section aria-labelledby="seg-channels" className="space-y-3">
+                  <h2 id="seg-channels" className="text-sm font-semibold text-foreground">{t("crmFollowup.section.channels")}</h2>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+                    {hasWhatsApp && (<>
+                      <MetricCard tone="success" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappToday")} value={whatsappStats?.conversations?.newToday ?? 0} />
+                      <MetricCard tone="info" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappUnread")} value={whatsappStats?.conversations?.unread ?? 0} />
+                    </>)}
+                    {hasVoice && (<>
+                      <MetricCard tone="brand" icon={<Bot />} label={t("crmFollowup.kpi.callsToday")} value={vapiStats?.today ?? 0} />
+                      <MetricCard tone="warning" icon={<Bot />} label={t("crmFollowup.kpi.callsUnreviewed")} value={vapiStats?.unreviewed ?? 0} />
+                    </>)}
+                    <MetricCard tone="info" icon={<Mail />} label={t("crmFollowup.kpi.emailsToday")} value={emailStats?.receivedToday ?? 0} href="/admin/atencion-comercial/email" />
+                    <MetricCard tone="warning" icon={<MailOpen />} label={t("crmFollowup.kpi.emailsUnread")} value={emailStats?.unreadInbox ?? 0} href="/admin/atencion-comercial/email" />
+                    <MetricCard tone="info" icon={<SendHorizonal />} label={t("crmFollowup.kpi.emailsSent")} value={emailStats?.sent ?? 0} href="/admin/atencion-comercial/email?folder=sent" />
+                  </div>
+                </section>
+
+                {/* Avisos de WhatsApp en este navegador */}
+                {hasWhatsApp && (
+                  <section aria-labelledby="seg-notif" className="rounded-xl border border-border bg-card p-4">
+                    <h2 id="seg-notif" className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Bell className="h-4 w-4 text-primary" aria-hidden="true" />
+                      {t("crmFollowup.notif.title")}
+                    </h2>
+                    <p className="mb-2 text-xs text-muted-foreground">{t("crmFollowup.notif.hint")}</p>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:gap-6">
+                      <PrefSwitch checked={!popupDisabled} onChange={(v) => setPopupDisabled(!v)} label={popupDisabled ? t("crmFollowup.notif.popupOff") : t("crmFollowup.notif.popupOn")} icon={popupDisabled ? <BellOff /> : <Bell />} />
+                      <PrefSwitch checked={!soundDisabled} onChange={(v) => setSoundDisabled(!v)} label={soundDisabled ? t("crmFollowup.notif.soundOff") : t("crmFollowup.notif.soundOn")} icon={soundDisabled ? <VolumeX /> : <Volume2 />} />
+                    </div>
+                  </section>
                 )}
 
-                {/* Attention list */}
-                <div className="rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
-                  <div className="px-4 py-3 border-b border-foreground/[0.08] flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-warning" />
+                {/* Presupuestos que piden atención */}
+                <section aria-labelledby="seg-attention" className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 id="seg-attention" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
                       {t("crmFollowup.attention.title")}
                     </h2>
-                    <button onClick={() => setTab("open")}
-                      className="text-xs text-warning hover:text-warning flex items-center gap-1">
-                      {t("crmFollowup.attention.seeAll")} <ArrowRight className="w-3 h-3" />
-                    </button>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-foreground/[0.08] text-foreground/40">
-                          <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.quote")}</th>
-                          <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.client")}</th>
-                          <th className="px-3 py-2 text-left font-medium hidden md:table-cell">{t("crmFollowup.col.sent")}</th>
-                          <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">{t("crmFollowup.col.amount")}</th>
-                          <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.status")}</th>
-                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.seen")}</th>
-                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.recs")}</th>
-                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.nextSend")}</th>
-                          <th className="px-3 py-2 text-right font-medium">{t("crmFollowup.col.actions")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(dashboard?.attentionList ?? []).length === 0 && (
-                          <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">{t("crmFollowup.attention.empty")}</td></tr>
-                        )}
-                        {(dashboard?.attentionList ?? []).map(q => (
-                          <QuoteActionRow key={q.id} quote={q} onAction={handleAction} />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                  {attention.length === 0 ? (
+                    <PanelEmpty icon={<CheckCircle2 />} title={t("crmFollowup.attention.empty")} description={t("crmFollowup.attention.emptyHint")} />
+                  ) : (
+                    <PanelDataList rows={attention} columns={quoteColumns} rowKey={(q) => q.id} caption={t("crmFollowup.attention.title")} tableFrom="lg" />
+                  )}
+                </section>
               </>
             )}
           </div>
@@ -487,23 +476,26 @@ export default function CommercialFollowupDashboard() {
         {/* ── TAB: OPEN QUOTES ────────────────────────────────────────────── */}
         {tab === "open" && (
           <div className="space-y-4">
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3">
-              <Input placeholder={t("crmFollowup.open.search")} value={openSearch}
-                onChange={e => setOpenSearch(e.target.value)} className="h-8 text-xs w-64" />
+            {/* Filtros */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="relative min-w-0 sm:w-80">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input placeholder={t("crmFollowup.open.search")} aria-label={t("crmFollowup.open.search")} value={openSearch}
+                  onChange={e => setOpenSearch(e.target.value)} className="h-10 pl-9" />
+              </div>
               <Select value={openStatus} onValueChange={setOpenStatus}>
-                <SelectTrigger className="h-8 text-xs w-44">
+                <SelectTrigger className="h-10 w-full sm:w-52" aria-label={t("crmFollowup.open.statusPlaceholder")}>
                   <SelectValue placeholder={t("crmFollowup.open.statusPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t("crmFollowup.open.allStatuses")}</SelectItem>
-                  {Object.keys(COMMERCIAL_STATUS_CONFIG).map((k) => (
+                  {Object.keys(COMMERCIAL_STATUS_TONE).map((k) => (
                     <SelectItem key={k} value={k}>{t(`crmFollowup.status.${k}`)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select value={openViewed} onValueChange={v => setOpenViewed(v as any)}>
-                <SelectTrigger className="h-8 text-xs w-36">
+                <SelectTrigger className="h-10 w-full sm:w-44" aria-label={t("crmFollowup.col.seen")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -512,111 +504,33 @@ export default function CommercialFollowupDashboard() {
                   <SelectItem value="no">{t("crmFollowup.open.notViewed")}</SelectItem>
                 </SelectContent>
               </Select>
+              {!openLoading && !openError && <span className="text-sm text-muted-foreground sm:ml-auto">{t("crmFollowup.open.count", { n: openData?.total ?? 0 })}</span>}
             </div>
 
-            <div className="rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-foreground/[0.08] flex items-center justify-between">
-                <span className="text-xs text-foreground/50">{t("crmFollowup.open.count", { n: openData?.total ?? 0 })}</span>
-              </div>
-              {openLoading ? (
-                <PanelLoading />
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-foreground/[0.08] text-foreground/40">
-                        <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.quote")}</th>
-                        <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.client")}</th>
-                        <th className="px-3 py-2 text-left font-medium hidden md:table-cell">{t("crmFollowup.col.sent")}</th>
-                        <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">{t("crmFollowup.col.amount")}</th>
-                        <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.status")}</th>
-                        <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.seen")}</th>
-                        <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">{t("crmFollowup.col.recs")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("crmFollowup.col.actions")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(openData?.rows ?? []).length === 0 && (
-                        <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">{t("crmFollowup.open.empty")}</td></tr>
-                      )}
-                      {(openData?.rows ?? []).map(q => (
-                        <QuoteActionRow key={q.id} quote={q} onAction={handleAction} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {openLoading ? (
+              <PanelLoading />
+            ) : openError ? (
+              <PanelError title={t("crmFollowup.loadError")} error={openError} onRetry={() => void refetchOpen()} />
+            ) : openRows.length === 0 ? (
+              <PanelEmpty icon={<List />} title={t("crmFollowup.open.empty")} description={t("crmFollowup.open.emptyHint")} />
+            ) : (
+              <PanelDataList rows={openRows} columns={quoteColumns} rowKey={(q) => q.id} caption={t("crmFollowup.tab.open")} tableFrom="lg" />
+            )}
           </div>
         )}
 
-        {/* ── TAB: RULES ──────────────────────────────────────────────────── */}
-        {/* Pestaña "Reglas" (commercial_followup_rules) eliminada en Fase 4.
-            Las reglas ahora viven en email_automation_rules y se gestionan
-            desde la pestaña "Plantillas". */}
-
         {/* ── TAB: HISTORY ────────────────────────────────────────────────── */}
         {tab === "history" && (
-          <div className="rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-foreground/[0.08]">
-              <span className="text-xs text-foreground/50">{t("crmFollowup.history.count", { n: historyData?.total ?? 0 })}</span>
-            </div>
+          <div className="space-y-4">
+            {!histLoading && !histError && <p className="text-sm text-muted-foreground">{t("crmFollowup.history.count", { n: historyData?.total ?? 0 })}</p>}
             {histLoading ? (
               <PanelLoading />
+            ) : histError ? (
+              <PanelError title={t("crmFollowup.loadError")} error={histError} onRetry={() => void refetchHist()} />
+            ) : historyRows.length === 0 ? (
+              <PanelEmpty icon={<History />} title={t("crmFollowup.history.empty")} description={t("crmFollowup.history.emptyHint")} />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-foreground/[0.08] text-foreground/40">
-                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.date")}</th>
-                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.quote")}</th>
-                      <th className="px-3 py-2 text-left font-medium hidden md:table-cell">{t("crmFollowup.col.client")}</th>
-                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.type")}</th>
-                      <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">{t("crmFollowup.col.subject")}</th>
-                      <th className="px-3 py-2 text-left font-medium">{t("crmFollowup.col.status")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(historyData?.rows ?? []).length === 0 && (
-                      <tr><td colSpan={6} className="px-3 py-8 text-center text-foreground/30">{t("crmFollowup.history.empty")}</td></tr>
-                    )}
-                    {(historyData?.rows ?? []).map(c => (
-                      <tr key={c.id} className="border-b border-foreground/[0.05] hover:bg-foreground/[0.02]">
-                        <td className="px-3 py-2.5 text-foreground/50">{fmtDateTime(format, c.sentAt)}</td>
-                        <td className="px-3 py-2.5">
-                          <span className="font-mono text-warning font-bold">{c.quoteNumber ?? `#${c.quoteId}`}</span>
-                        </td>
-                        <td className="px-3 py-2.5 hidden md:table-cell text-foreground/70">{c.clientName ?? c.customerEmail ?? "—"}</td>
-                        <td className="px-3 py-2.5">
-                          <span className={`inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full border ${
-                            c.type === "automatic_reminder" ? "text-primary bg-primary/15 border-primary/30" :
-                            c.type === "manual_reminder" ? "text-info bg-info/15 border-info/30" :
-                            c.type === "internal_note" ? "text-warning bg-warning/15 border-warning/30" :
-                            c.type === "lost_reason" ? "text-danger bg-danger/15 border-danger/30" :
-                            "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
-                          }`}>
-                            {c.type === "automatic_reminder" ? t("crmFollowup.history.typeAuto") :
-                             c.type === "manual_reminder" ? t("crmFollowup.history.typeManual") :
-                             c.type === "internal_note" ? t("crmFollowup.history.typeNote") :
-                             c.type === "lost_reason" ? t("crmFollowup.history.typeLost") :
-                             c.type}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 hidden lg:table-cell text-foreground/60 overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px]">{c.subject ?? "—"}</td>
-                        <td className="px-3 py-2.5">
-                          <span className={`inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full ${
-                            c.status === "sent" ? "text-success bg-success/15" :
-                            c.status === "failed" ? "text-danger bg-danger/15" :
-                            "text-foreground/70 bg-muted/15"
-                          }`}>
-                            {c.status === "sent" ? t("crmFollowup.history.sent") : c.status === "failed" ? t("crmFollowup.history.failed") : t("crmFollowup.history.skipped")}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PanelDataList rows={historyRows} columns={historyColumns} rowKey={(c) => c.id} caption={t("crmFollowup.tab.history")} />
             )}
           </div>
         )}
@@ -635,11 +549,6 @@ export default function CommercialFollowupDashboard() {
 
         {/* ── TAB: AUDITORÍA ───────────────────────────────────────────────── */}
         {tab === "auditoria" && <EmailAuditTab />}
-
-        {/* Pestaña "Configuración" eliminada en Fase 5.
-            La configuración global vivía en commercial_followup_settings; ahora
-            cada regla en email_automation_rules tiene sus propios horarios,
-            límites y stopAfterDays. Se gestiona desde la pestaña "Plantillas". */}
       </div>
 
       {/* ── Modal: Recordatorio manual ─────────────────────────────────────── */}
@@ -650,17 +559,17 @@ export default function CommercialFollowupDashboard() {
           </DialogHeader>
           {remindQuote && (
             <div className="space-y-4">
-              <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-warning">{remindQuote.quoteNumber}</span> · {remindQuote.clientName} · {remindQuote.clientEmail}
+              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                <span className="font-mono font-semibold text-primary">{remindQuote.quoteNumber}</span> · {remindQuote.clientName} · {remindQuote.clientEmail}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("crmFollowup.remind.subject")}</Label>
-                <Input value={remindSubject} onChange={e => setRemindSubject(e.target.value)} className="text-xs h-8"
+                <Label >{t("crmFollowup.remind.subject")}</Label>
+                <Input value={remindSubject} onChange={e => setRemindSubject(e.target.value)} className="h-10"
                   placeholder={t("crmFollowup.remind.subjectPlaceholder")} />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("crmFollowup.remind.body")}</Label>
-                <Textarea value={remindBody} onChange={e => setRemindBody(e.target.value)} rows={4} className="text-xs"
+                <Label >{t("crmFollowup.remind.body")}</Label>
+                <Textarea value={remindBody} onChange={e => setRemindBody(e.target.value)} rows={4} 
                   placeholder={t("crmFollowup.remind.bodyPlaceholder")} />
               </div>
             </div>
@@ -689,13 +598,13 @@ export default function CommercialFollowupDashboard() {
           </DialogHeader>
           {noteQuote && (
             <div className="space-y-4">
-              <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-warning">{noteQuote.quoteNumber}</span> · {noteQuote.clientName}
+              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                <span className="font-mono font-semibold text-primary">{noteQuote.quoteNumber}</span> · {noteQuote.clientName}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("crmFollowup.note.channel")}</Label>
+                <Label >{t("crmFollowup.note.channel")}</Label>
                 <Select value={noteChannel} onValueChange={v => setNoteChannel(v as any)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="internal">{t("crmFollowup.note.internal")}</SelectItem>
                     <SelectItem value="phone">{t("crmFollowup.note.phone")}</SelectItem>
@@ -705,14 +614,14 @@ export default function CommercialFollowupDashboard() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("crmFollowup.note.note")}</Label>
-                <Textarea value={noteText} onChange={e => setNoteText(e.target.value)} rows={3} className="text-xs" />
+                <Label >{t("crmFollowup.note.note")}</Label>
+                <Textarea value={noteText} onChange={e => setNoteText(e.target.value)} rows={3}  />
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setNoteQuote(null)}>{t("crmFollowup.note.cancel")}</Button>
-            <Button size="sm" className="bg-warning hover:bg-warning text-background"
+            <Button size="sm"
               disabled={addNote.isPending || !noteText.trim()}
               onClick={() => addNote.mutate({ quoteId: noteQuote.id, note: noteText, channel: noteChannel })}>
               {t("crmFollowup.note.save")}
@@ -729,12 +638,12 @@ export default function CommercialFollowupDashboard() {
           </DialogHeader>
           {lostQuote && (
             <div className="space-y-4">
-              <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-warning">{lostQuote.quoteNumber}</span> · {lostQuote.clientName}
+              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                <span className="font-mono font-semibold text-primary">{lostQuote.quoteNumber}</span> · {lostQuote.clientName}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("crmFollowup.lost.reason")}</Label>
-                <Textarea value={lostReason} onChange={e => setLostReason(e.target.value)} rows={2} className="text-xs"
+                <Label >{t("crmFollowup.lost.reason")}</Label>
+                <Textarea value={lostReason} onChange={e => setLostReason(e.target.value)} rows={2} 
                   placeholder={t("crmFollowup.lost.placeholder")} />
               </div>
             </div>
@@ -758,19 +667,19 @@ export default function CommercialFollowupDashboard() {
           </DialogHeader>
           {pauseQuote && (
             <div className="space-y-4">
-              <div className="text-xs text-foreground/60 bg-foreground/[0.04] rounded-lg p-3">
-                <span className="font-mono text-warning">{pauseQuote.quoteNumber}</span> · {pauseQuote.clientName}
+              <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                <span className="font-mono font-semibold text-primary">{pauseQuote.quoteNumber}</span> · {pauseQuote.clientName}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("crmFollowup.pauseDialog.reason")}</Label>
-                <Input value={pauseReason} onChange={e => setPauseReason(e.target.value)} className="text-xs h-8"
+                <Label >{t("crmFollowup.pauseDialog.reason")}</Label>
+                <Input value={pauseReason} onChange={e => setPauseReason(e.target.value)} className="h-10"
                   placeholder={t("crmFollowup.pauseDialog.placeholder")} />
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setPauseQuote(null)}>{t("crmFollowup.pauseDialog.cancel")}</Button>
-            <Button size="sm" className="bg-warning hover:bg-warning text-background"
+            <Button size="sm"
               disabled={pauseReminders.isPending}
               onClick={() => pauseReminders.mutate({ quoteId: pauseQuote.id, reason: pauseReason || undefined })}>
               <Pause className="w-3.5 h-3.5 mr-1" /> {t("crmFollowup.pauseDialog.confirm")}

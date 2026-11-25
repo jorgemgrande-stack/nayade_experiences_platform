@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { HeroCard } from "@/components/admin/PanelVisual";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
 import { useI18n } from "@/i18n/I18nProvider";
 import { activityInfo, configurationStepNumber, configurationSteps, nextOpenStep, type SetupStep } from "@shared/setupWizard";
@@ -79,6 +80,11 @@ export default function PrimerosPasos() {
   // El foco va al título del paso al cambiar (lectores de pantalla y teclado)
   useEffect(() => {
     headingRef.current?.focus();
+  }, [current]);
+  // En móvil el índice de pasos es una franja desplazable: el paso activo se mantiene a la vista
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    document.querySelector('[aria-current="step"]')?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [current]);
 
   const setStep = trpc.setupWizard.setStep.useMutation({
@@ -142,6 +148,7 @@ export default function PrimerosPasos() {
   // Un único número en todo el recorrido: la bienvenida y el resumen no son pasos de configuración
   const configCount = configurationSteps(steps).length;
   const stepNumber = configurationStepNumber(steps, shown);
+  const stepsDone = configurationSteps(steps).filter((x) => x.status === "done").length;
 
   return (
     <AdminLayout title={t("setup.title")}>
@@ -164,10 +171,18 @@ export default function PrimerosPasos() {
               </Link>
             </>}
           />
-          <div className="flex items-center gap-3">
-            <Progress value={d.plan.percent} className="h-2" aria-label={t("setup.progressAria")} aria-valuetext={t("setup.percentDone", { percent: d.plan.percent })} />
-            <span className="w-12 text-right text-sm tabular-nums text-muted-foreground">{d.plan.percent}%</span>
-          </div>
+          <HeroCard>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-3xl font-semibold tabular-nums leading-none text-foreground">{d.plan.percent}%</span>
+                <span className="text-sm text-muted-foreground">{t("setup.progressLabel")}</span>
+              </div>
+              <div className="min-w-[160px] flex-1">
+                <Progress value={d.plan.percent} className="h-2.5" aria-label={t("setup.progressAria")} aria-valuetext={t("setup.percentDone", { percent: d.plan.percent })} />
+                <p className="mt-1.5 text-xs text-muted-foreground">{t("setup.stepsDone", { done: stepsDone, total: configCount })}</p>
+              </div>
+            </div>
+          </HeroCard>
           {readOnly && (
             <div role="alert" className="flex gap-3 rounded-xl border border-warning/50 bg-warning/10 p-4 text-sm text-foreground">
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -191,7 +206,7 @@ export default function PrimerosPasos() {
                       type="button"
                       onClick={() => go(s.id)}
                       aria-current={active ? "step" : undefined}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                      className={`flex min-h-11 w-full items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition-colors lg:whitespace-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                         active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
                       }`}
                     >
