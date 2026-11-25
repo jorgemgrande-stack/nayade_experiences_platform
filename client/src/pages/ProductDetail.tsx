@@ -6,6 +6,7 @@
  * traducción validada o, si falta, en el del principal con un aviso y su `lang` real.
  */
 import { useEffect, useState } from "react";
+import { applicableSupplements, supplementEuros, supplementTierFor, supplementsTotalEuros, type CartSupplement } from "../../../shared/supplementCart";
 import { Link, Redirect, useParams } from "wouter";
 import { ChevronLeft, ChevronRight, CheckCircle, Clock, Mail, Minus, Phone, Plus, ShoppingCart, XCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -76,6 +77,7 @@ export default function ProductDetail() {
   const [date, setDate] = useState("");
   const [editionId, setEditionId] = useState<number | undefined>(undefined);
   const [requestOpen, setRequestOpen] = useState(false);
+  const [pickedSupps, setPickedSupps] = useState<string[]>([]);
 
   const { data: product, isLoading } = trpc.public.getExperienceBySlug.useQuery({ slug: slug ?? "", ...localeArg }, { enabled: !!slug, retry: false });
   const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery({ experienceId: product?.id ?? 0, ...localeArg }, { enabled: !!product?.id });
@@ -145,7 +147,10 @@ export default function ProductDetail() {
   const variant = variants.find((v) => v.id === variantId);
   const unit = variantUnitPrice(basePrice, variant);
   const shownPrice = variant || !variants.length ? unit : fromPrice(basePrice, variants);
-  const total = unit * clampQuantity(quantity);
+  const suppOffers = applicableSupplements(supplements as CartSupplement[], variant?.id);
+  const chosenSupps = suppOffers.filter((s) => pickedSupps.includes(s.group));
+  const suppTotal = supplementsTotalEuros(chosenSupps, clampQuantity(quantity));
+  const total = unit * clampQuantity(quantity) + suppTotal;
   const dated = needsServiceDate(product, shop);
   const includes = list(product.includes);
   const excludes = list(product.excludes);
@@ -172,7 +177,8 @@ export default function ProductDetail() {
     }
     // Con convocatoria: la fecha y el precio son los de la edición (el servidor los recalcula)
     const unitEd = pickedEdition && pickedEdition.price != null && !variant ? pickedEdition.price : null;
-    addItem(pickedEdition ? { ...r.line, bookingDate: editionLocalDate(pickedEdition.startsAt, pickedEdition.timezone), editionId: pickedEdition.id, editionLabel: pickedEdition.label, ...(unitEd != null ? { pricePerPerson: unitEd, estimatedTotal: Math.round(unitEd * r.line.people * 100) / 100 } : {}) } : r.line);
+    const withSupps = <L extends { estimatedTotal: number }>(line: L): L => (chosenSupps.length ? { ...line, supplements: chosenSupps, estimatedTotal: Math.round((line.estimatedTotal + suppTotal) * 100) / 100 } : line);
+    addItem(withSupps(pickedEdition ? { ...r.line, bookingDate: editionLocalDate(pickedEdition.startsAt, pickedEdition.timezone), editionId: pickedEdition.id, editionLabel: pickedEdition.label, ...(unitEd != null ? { pricePerPerson: unitEd, estimatedTotal: Math.round(unitEd * r.line.people * 100) / 100 } : {}) } : r.line));
     openCart();
   };
 
@@ -327,6 +333,22 @@ export default function ProductDetail() {
 
               {buyable ? (
                 <>
+                  {suppOffers.map((o) => {
+                    const cur = supplementTierFor(o, clampQuantity(quantity));
+                    return (
+                      <div key={o.group} className="rounded-lg border border-dashed p-3" data-testid="suplemento">
+                        <label className="flex items-start gap-2 text-sm">
+                          <input type="checkbox" checked={pickedSupps.includes(o.group)} disabled={!cur} onChange={(e) => setPickedSupps(e.target.checked ? [...pickedSupps, o.group] : pickedSupps.filter((g) => g !== o.group))} className="mt-0.5 h-4 w-4" />
+                          <span>
+                            <span className="font-medium">{t.supplementOptional}: {o.name}</span>
+                            {cur && <span className="ml-1 text-muted-foreground">· {formatEuros(supplementEuros(o, clampQuantity(quantity)))}</span>}
+                          </span>
+                        </label>
+                        {o.description && <p className="mt-1 pl-6 text-xs text-muted-foreground">{o.description}</p>}
+                        <p className="mt-1 pl-6 text-xs text-muted-foreground">{t.supplementAddsToTotal}</p>
+                      </div>
+                    );
+                  })}
                   {(variant || !variants.some((v) => v.isRequired)) && (
                     <div className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3 font-semibold">
                       <span>{t.total}</span>

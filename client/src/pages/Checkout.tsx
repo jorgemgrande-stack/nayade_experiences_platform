@@ -5,6 +5,7 @@
  * y lanza el pago Redsys con un único formulario POST.
  */
 import { useState, useEffect, useRef } from "react";
+import { supplementIdsFor } from "../../../shared/supplementCart";
 import { Link, useLocation } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { useCart } from "@/contexts/CartContext";
@@ -156,6 +157,7 @@ export default function Checkout() {
           bookingDate: i.bookingDate,
           people: i.people,
           variantId: i.variantId,
+          supplementIds: i.supplements?.length ? supplementIdsFor(i.supplements, i.people) : undefined,
           editionId: i.editionId,
           extras: i.extras,
           legoPackLineIds: i.legoPackLineIds,
@@ -318,6 +320,9 @@ export default function Checkout() {
                                   {item.variantName}
                                 </p>
                               )}
+                              {item.supplements?.map((s) => (
+                                <p key={s.group} className="text-xs text-slate-500 mt-0.5">+ {s.name}</p>
+                              ))}
                             </div>
                             <button
                               onClick={() => removeItem(item.cartItemId)}
