@@ -11,7 +11,7 @@
  *     <CrmTable … /> o <CompactEmpty title="…" action={<Button/>} />
  *   </SalesFamilyShell>
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,9 +30,37 @@ const ALL_TABS = ["leads", "quotes", "reservations", "invoices", "anulaciones", 
 /** Ruta de cada pestaña (las mismas que ya usa el menú lateral y los enlaces internos del CRM). */
 export const salesTabHref = (key: SalesTabKey) => `/admin/crm?tab=${key}`;
 
-const TAB_BASE = "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const TAB_ON = "bg-gradient-to-b from-primary/25 to-primary/10 text-foreground shadow-sm ring-1 ring-inset ring-primary/40";
-const TAB_OFF = "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground";
+export const TAB_BASE = "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+export const TAB_ON = "bg-gradient-to-b from-primary/25 to-primary/10 text-foreground shadow-sm ring-1 ring-inset ring-primary/40";
+export const TAB_OFF = "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground";
+
+/** Fila de pestañas con desplazamiento horizontal suave y sin barra visible. */
+export const SCROLL_NAV = "-mx-1 min-w-0 overflow-x-auto overscroll-x-contain px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
+/**
+ * Desplazamiento horizontal con desvanecido en el borde que tiene más contenido oculto (indica con claridad que se puede
+ * desplazar) y la pestaña activa siempre a la vista. `watch` cambia cuando cambia la pestaña activa o el número de pestañas.
+ */
+export function useScrollFade<T extends HTMLElement>(watch: string) {
+  const ref = useRef<T>(null);
+  const [edge, setEdge] = useState({ left: false, right: false });
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setEdge({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  }, []);
+  useEffect(() => {
+    measure();
+    const el = ref.current;
+    el?.querySelector<HTMLElement>("[data-active='true']")?.scrollIntoView?.({ block: "nearest", inline: "center" });
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [watch, measure]);
+  const fade = `linear-gradient(to right, ${edge.left ? "transparent 0, #000 28px" : "#000 0"}, ${edge.right ? "#000 calc(100% - 28px), transparent 100%" : "#000 100%"})`;
+  return { ref, onScroll: measure, style: { maskImage: fade, WebkitMaskImage: fade } };
+}
 
 /**
  * Pestañas del flujo, idénticas en todas las pantallas de la familia. Con `onSelect` cambian la pestaña sin salir de la
@@ -61,8 +89,9 @@ export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey
     { key: "pagos_pendientes", label: voc.pendingPayments },
     { key: "bonos", label: voc.coupons },
   ];
+  const scroll = useScrollFade<HTMLElement>(`${active}-${visible.length}`);
   return (
-    <nav aria-label={t("salesShell.navLabel")} className={cn("-mx-1 min-w-0 overflow-x-auto px-1 py-1", className)}>
+    <nav ref={scroll.ref} onScroll={scroll.onScroll} aria-label={t("salesShell.navLabel")} style={scroll.style} className={cn(SCROLL_NAV, className)}>
       <div className="inline-flex min-w-max gap-0.5 rounded-xl border border-border bg-card/80 p-1 shadow-sm">
         {tabs.filter((x) => visible.includes(x.key)).map(({ key, label, count, attention }) => {
           const on = active === key;
@@ -85,9 +114,9 @@ export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey
           );
           const cls = cn(TAB_BASE, on ? TAB_ON : TAB_OFF);
           return onSelect ? (
-            <button key={key} type="button" aria-pressed={on} onClick={() => onSelect(key)} className={cls}>{body}</button>
+            <button key={key} type="button" aria-pressed={on} data-active={on} onClick={() => onSelect(key)} className={cls}>{body}</button>
           ) : (
-            <Link key={key} href={salesTabHref(key)} aria-current={on ? "page" : undefined} className={cls}>{body}</Link>
+            <Link key={key} href={salesTabHref(key)} aria-current={on ? "page" : undefined} data-active={on} className={cls}>{body}</Link>
           );
         })}
       </div>
@@ -110,11 +139,12 @@ export function SalesFamilyShell({ active, onSelect, action, headerExtra, childr
   className?: string;
 }) {
   return (
-    <div className={cn("space-y-3 px-4 pb-8 pt-3 sm:px-6 sm:pt-4", className)}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <SalesTabs active={active} onSelect={onSelect} className="min-w-0 max-w-full" />
+    <div className={cn("space-y-3 px-4 pb-8 pt-1.5 sm:px-6 sm:pt-2", className)}>
+      {/* Una sola fila desde 640 px: las pestañas ocupan el espacio libre (con desplazamiento y desvanecido si no caben) y la acción queda a la derecha. */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+        <SalesTabs active={active} onSelect={onSelect} className="min-w-0 sm:flex-1" />
         {(action || headerExtra) && (
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center justify-end gap-2 max-sm:pb-1">
             {headerExtra}
             {action}
           </div>
@@ -179,7 +209,7 @@ export function SummaryStrip({ items, label, trailing, className }: { items: Sum
             <div key={it.key} className={cls}>{body}</div>
           );
         })}
-        {trailing && <div className="col-span-2 flex items-center justify-end border-b border-r border-border/70 px-2 py-1.5 sm:col-span-1 sm:border-b-0">{trailing}</div>}
+        {trailing && <div className="absolute right-1 top-1 flex items-center sm:static sm:justify-end sm:border-r sm:border-border/70 sm:px-2 sm:py-1.5">{trailing}</div>}
       </div>
     </section>
   );

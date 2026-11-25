@@ -265,23 +265,23 @@ export function CrmTable<T>({ rows, columns, rowKey, rowId, caption, selection, 
       </div>
       <ul className="divide-y divide-border @2xl:hidden" aria-label={caption}>
         {rows.map((r) => (
-          <li key={rowKey(r)} className={cn("space-y-2 p-4 text-sm", rowClassName?.(r))}>
-            <div className="flex items-start gap-3">
+          <li key={rowKey(r)} className={cn("px-3 py-2.5 text-sm", rowClassName?.(r))}>
+            <div className="flex items-start gap-2.5">
               {selection && <div className="pt-0.5">{check(r, String(rowKey(r)))}</div>}
-              <div className="min-w-0 flex-1 break-words font-medium text-foreground">{titleCol.cell(r)}</div>
+              <div className="min-w-0 flex-1 font-medium text-foreground">{titleCol.cell(r)}</div>
               {amountCol && <div className="shrink-0 text-right font-semibold tabular-nums">{amountCol.cell(r)}</div>}
             </div>
-            {bodyCols.length > 0 && (
-              <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+            <div className="mt-1 flex items-end justify-between gap-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground [&>div]:min-w-0 [&>div]:max-w-full">
                 {bodyCols.map((c) => (
-                  <div key={c.key} className="min-w-0">
-                    <dt className="text-muted-foreground">{c.header}</dt>
-                    <dd className={cn("break-words text-foreground", c.num && "tabular-nums")}>{c.cell(r)}</dd>
+                  <div key={c.key} className={cn(c.num && "tabular-nums")}>
+                    <span className="sr-only">{c.header}: </span>
+                    {c.cell(r)}
                   </div>
                 ))}
-              </dl>
-            )}
-            {actions && <div className="flex justify-end pt-1">{actions(r)}</div>}
+              </div>
+              {actions && <div className="shrink-0">{actions(r)}</div>}
+            </div>
           </li>
         ))}
       </ul>

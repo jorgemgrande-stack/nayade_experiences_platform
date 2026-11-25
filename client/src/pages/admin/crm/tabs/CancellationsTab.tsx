@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import CancellationDetailModal from "../CancellationDetailModal";
-import { Eye, XCircle, AlertTriangle, RefreshCw, Trash2, ExternalLink, CloudLightning, HeartPulse, HelpCircle, Inbox, Search, FileWarning, Clock, CheckCircle2, Archive, Wallet } from "lucide-react";
+import { Eye, XCircle, AlertTriangle, RefreshCw, Trash2, CloudLightning, HeartPulse, HelpCircle, Inbox, Search, FileWarning, Clock, CheckCircle2, Archive, Wallet } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Tab, PAGE_SIZE } from "../shared/crmCommon";
 import { BPill, BStat, BSummary, BFilterBar, BFilterField, BTable, BRowActions, BPager, type BChip, type BColumn, type BTone } from "../shared/ui/bCrmUi";
@@ -109,7 +109,7 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
     { key: "who", header: t("crmCancellations.solicitante"), mobile: "title", cell: (row) => (
       <div className="min-w-0">
         <div className="flex items-baseline gap-2"><span className="font-mono text-xs text-muted-foreground">#{row.id}</span><span className="break-words font-medium text-foreground">{row.fullName}</span></div>
-        {row.email && <div className="break-all text-xs text-muted-foreground">{row.email}</div>}
+        {row.email && <div className="hidden max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground @2xl:block">{row.email}</div>}
         {row.locator && <div className="font-mono text-xs text-muted-foreground">{row.locator}</div>}
       </div>
     ) },
@@ -141,12 +141,12 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
         <BStat tone="danger" label={t("crmCancellations.incidencias")} value={anulKpis.incidencias} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "incidencia")} active={anulOpFilter === "incidencia"} />
         <BStat tone="muted" label={t("crmCancellations.cerradas")} value={anulKpis.cerradas} onClick={() => toggle(anulOpFilter, setAnulOpFilter, "cerrada")} active={anulOpFilter === "cerrada"} />
       </BSummary>
-      <section aria-label={t("crmShared.resoluciones")} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <BSummary hero={false}>
         <BStat compact tone="success" label={t("crmCancellations.aceptadasTotal")} value={anulKpis.resueltasTotal} onClick={() => toggle(anulResFilter, setAnulResFilter, "aceptada_total")} active={anulResFilter === "aceptada_total"} />
         <BStat compact tone="success" label={t("crmCancellations.aceptadasParcial")} value={anulKpis.resueltasParcial} onClick={() => toggle(anulResFilter, setAnulResFilter, "aceptada_parcial")} active={anulResFilter === "aceptada_parcial"} />
         <BStat compact tone="danger" label={t("crmCancellations.rechazadas")} value={anulKpis.rechazadas} onClick={() => toggle(anulResFilter, setAnulResFilter, "rechazada")} active={anulResFilter === "rechazada"} />
         <BStat compact tone="primary" label={voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")} value={anulKpis.compensadasBono} onClick={() => toggle(anulFinFilter, setAnulFinFilter, "compensada_bono")} active={anulFinFilter === "compensada_bono"} />
-      </section>
+      </BSummary>
     </>
   ) : null;
   const sel = (value: string, onChange: (v: string) => void, all: string, opts: [string, string][]) => (
@@ -184,7 +184,6 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
           actions={(
             <>
               <Button type="button" variant="outline" onClick={() => refetchAnul()} className="gap-1.5"><RefreshCw className="h-4 w-4" aria-hidden="true" />{t("crmCancellations.actualizar")}</Button>
-              <Button type="button" onClick={() => window.open("/solicitar-anulacion", "_blank")} className="gap-1.5"><ExternalLink className="h-4 w-4" aria-hidden="true" />{t("crmCancellations.verFormularioPublico")}</Button>
             </>
           )}
         />

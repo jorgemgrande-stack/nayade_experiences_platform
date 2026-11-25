@@ -158,7 +158,7 @@ export function LeadsTab({ ctrl, tab, setBulkConfirm, filterStatus, search, setF
                               )}
                               {!lead.seenAt && <StatusBadge tone="info">{t("crmLeads.nuevo")}</StatusBadge>}
                             </div>
-                            <div className="break-all text-xs font-normal text-muted-foreground">{lead.email}</div>
+                            <div className="hidden max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs font-normal text-muted-foreground @2xl:block">{lead.email}</div>
                           </div>
                         </div>
                       ),
