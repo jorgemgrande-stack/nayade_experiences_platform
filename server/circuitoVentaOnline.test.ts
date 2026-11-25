@@ -46,7 +46,8 @@ vi.mock("./db", async (importOriginal) => {
     ...actual,
     getDb: async () => H.cur().db,
     getExperienceById: async (id: number) => H.cur().products[id],
-    getVariantsByExperience: async (id: number) => H.cur().variants[id] ?? [],
+    // Igual que la real: los suplementos (supplementGroup) solo salen si se piden
+    getVariantsByExperience: async (id: number, o?: { includeSupplements?: boolean }) => (H.cur().variants[id] ?? []).filter((v: any) => o?.includeSupplements || !v.supplementGroup),
     generateReservationNumber: async () => `R-${H.cur().nextRes}`,
     createReservation: async (data: any) => {
       await Promise.resolve(); // cede el turno: dos compradores se intercalan
@@ -1008,5 +1009,39 @@ describe("8. modo Prueba oculto al público en production y cobro real apagado",
     const ev = sessionEvent("checkout.session.completed", sessionOf(r.stripeUrl!), r.merchantOrder, 40500);
     expect((await deliver({ ...ev, livemode: true })).json).toMatchObject({ outcome: "mode_mismatch" });
     expect(orderRows(r.merchantOrder)[0].status).toBe("pending_payment");
+  });
+});
+
+describe("9. suplementos opcionales (alimentación): solo si se marcan, calculados por el servidor", () => {
+  const SUP_IND = 301;
+  const SUP_GRP = 302;
+  beforeEach(() => {
+    Q().variants[RETIRO].push(
+      { id: SUP_IND, priceType: "per_person", priceModifier: "120.00", name: "Alimentación ayurvédica", minQty: 1, maxQty: 1, supplementGroup: "alim" },
+      { id: SUP_GRP, priceType: "per_person", priceModifier: "90.00", name: "Alimentación ayurvédica (desde 2)", minQty: 2, maxQty: null, supplementGroup: "alim" },
+    );
+  });
+
+  it("sin marcar, el total del programa no cambia; marcado suma 90 € por persona desde 2 (aunque el cliente envíe el id individual)", async () => {
+    const sin = await checkout([line(RETIRO, { people: 2, variantId: 102, editionId: 1 })]);
+    expect(sin.totalAmountCents).toBe(80000);
+    const con = await checkout([line(RETIRO, { people: 2, variantId: 102, editionId: 1, supplementIds: [SUP_IND] })]);
+    expect(con.totalAmountCents).toBe(80000 + 2 * 9000);
+    const rows = orderRows(con.merchantOrder);
+    expect(rows[0].amountTotal).toBe(98000);
+    expect(rows[0].productName).toContain("Alimentación ayurvédica (desde 2) (suplemento opcional)");
+  });
+
+  it("un participante único paga la tarifa individual aunque envíe el id del tramo de grupo; el cliente no puede fijar importes", async () => {
+    const r = await checkout([line(RETIRO, { people: 1, variantId: 101, editionId: 1, supplementIds: [SUP_GRP], supplementCents: 1, supplementPrice: 0.01 })]);
+    expect(r.totalAmountCents).toBe(48000 + 12000);
+  });
+
+  it("un suplemento no es una opción del programa; un id inexistente o de otra empresa se rechaza sin retener plazas", async () => {
+    await expect(checkout([line(RETIRO, { people: 2, variantId: SUP_GRP, editionId: 1 })])).rejects.toThrow(/ya no está disponible/);
+    await expect(checkout([line(RETIRO, { people: 2, variantId: 102, editionId: 1, supplementIds: [999] })])).rejects.toThrow(/No se ha realizado ningún cobro/);
+    // La otra empresa no tiene suplementos: el id de Quantum no le sirve
+    await expect(checkout([line(RETIRO, { people: 2, editionId: 1, supplementIds: [SUP_IND] })], {}, "otra")).rejects.toThrow();
+    expect(reserved()).toBe(0);
   });
 });
