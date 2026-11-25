@@ -172,7 +172,7 @@ export default function ReviewsManager() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         <PanelPageHeader
           icon={<MessageSquare />}
           title={t("reviewsAdmin.title")}
@@ -209,7 +209,7 @@ export default function ReviewsManager() {
                 setPage(0);
               }}
             >
-              <SelectTrigger className="w-36 h-9">
+              <SelectTrigger className="h-10 w-full sm:w-36">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -230,7 +230,7 @@ export default function ReviewsManager() {
                 setPage(0);
               }}
             >
-              <SelectTrigger className="w-40 h-9">
+              <SelectTrigger className="h-10 w-full sm:w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -12,6 +12,8 @@ export default {
   later: "Continuar más tarde",
   progressAria: "Avance de Primeros pasos",
   percentDone: "{percent}% completado",
+  progressLabel: "completado",
+  stepsDone: "{done} de {total} pasos hechos",
   readOnlyBanner: "Tu periodo de prueba ha terminado: la cuenta está en solo lectura. Tus datos se conservan; contrata un plan para seguir trabajando.",
   stepsNav: "Pasos de Primeros pasos",
   statusDone: "(hecho)",

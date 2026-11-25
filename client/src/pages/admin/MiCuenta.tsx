@@ -14,11 +14,28 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Mail, MonitorSmartphone, ShieldCheck, Trash2 } from "lucide-react";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { HeroCard, PersonAvatar } from "@/components/admin/PanelVisual";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 
 /** Texto con partes en negrita marcadas como <b>…</b>. */
 const rich = (text: string): React.ReactNode => text.split(/(<b>.*?<\/b>)/g).map((p, i) => (p.startsWith("<b>") ? <strong key={i}>{p.slice(3, -4)}</strong> : p));
+
+/** Sección de la cuenta: icono en recuadro de la marca, título, explicación y contenido. */
+function AccountSection({ id, icon, title, description, children }: { id: string; icon: React.ReactNode; title: string; description: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6" aria-labelledby={id}>
+      <div className="flex items-start gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary [&_svg]:h-5 [&_svg]:w-5" aria-hidden="true">{icon}</span>
+        <div className="min-w-0">
+          <h2 id={id} className="font-semibold text-foreground">{title}</h2>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 function EmailSection() {
   const { t, format: f } = useI18n();
@@ -40,13 +57,9 @@ function EmailSection() {
   const unavailable = pendingQ.data?.available === false;
 
   return (
-    <section className="bg-card border border-border rounded-xl p-5 space-y-4" aria-labelledby="mi-cuenta-correo">
-      <div className="flex items-center gap-2">
-        <Mail className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-        <h2 id="mi-cuenta-correo" className="font-semibold text-foreground">{t("help.account.emailTitle")}</h2>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        {t("help.account.currentEmail")} <span className="font-medium text-foreground">{user?.email ?? "—"}</span>
+    <AccountSection id="mi-cuenta-correo" icon={<Mail />} title={t("help.account.emailTitle")} description={t("help.account.emailDesc")}>
+      <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+        {t("help.account.currentEmail")} <span className="break-all font-medium text-foreground">{user?.email ?? "—"}</span>
       </p>
       {pending && (
         <p className="text-sm rounded-lg bg-warning/10 border border-warning/40 text-foreground px-3 py-2" role="status">
@@ -57,7 +70,7 @@ function EmailSection() {
         <p className="text-sm text-muted-foreground">{t("help.account.unavailableEmail")}</p>
       ) : (
         <form
-          className="grid gap-3 sm:grid-cols-2"
+          className="grid gap-4 sm:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
             request.mutate({ newEmail, currentPassword });
@@ -70,6 +83,7 @@ function EmailSection() {
           <div className="space-y-1.5">
             <Label htmlFor="mi-cuenta-contrasena">{t("help.account.currentPassword")}</Label>
             <Input id="mi-cuenta-contrasena" type="password" autoComplete="current-password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+            <p className="text-xs text-muted-foreground">{t("help.account.passwordHint")}</p>
           </div>
           <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={request.isPending || !newEmail || !currentPassword}>
@@ -80,7 +94,7 @@ function EmailSection() {
           </div>
         </form>
       )}
-    </section>
+    </AccountSection>
   );
 }
 
@@ -98,12 +112,7 @@ function DevicesSection() {
   const data = devicesQ.data;
 
   return (
-    <section className="bg-card border border-border rounded-xl p-5 space-y-4" aria-labelledby="mi-cuenta-dispositivos">
-      <div className="flex items-center gap-2">
-        <MonitorSmartphone className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-        <h2 id="mi-cuenta-dispositivos" className="font-semibold text-foreground">{t("help.account.devicesTitle")}</h2>
-      </div>
-      <p className="text-sm text-muted-foreground">{t("help.account.devicesText")}</p>
+    <AccountSection id="mi-cuenta-dispositivos" icon={<MonitorSmartphone />} title={t("help.account.devicesTitle")} description={t("help.account.devicesText")}>
       {devicesQ.isLoading ? (
         <PanelLoading label={t("help.account.loading")} className="py-6" />
       ) : devicesQ.isError ? (
@@ -113,11 +122,12 @@ function DevicesSection() {
       ) : !data?.devices.length ? (
         <PanelEmpty icon={<MonitorSmartphone />} title={t("help.account.devicesEmpty")} />
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-border rounded-lg border border-border">
           {data.devices.map((d) => (
-            <li key={d.id} className="flex flex-wrap items-center gap-3 py-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">
+            <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground" aria-hidden="true"><MonitorSmartphone className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-sm font-medium text-foreground">
                   {d.label}
                   {d.current && <StatusBadge tone="success" className="ml-2">{t("help.account.thisDevice")}</StatusBadge>}
                 </p>
@@ -131,16 +141,33 @@ function DevicesSection() {
           ))}
         </ul>
       )}
-    </section>
+    </AccountSection>
   );
 }
 
 export default function MiCuenta() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const devicesQ = trpc.accountSecurity.myDevices.useQuery();
+  const deviceCount = devicesQ.data && devicesQ.data.available !== false ? devicesQ.data.devices.length : null;
+  const displayName = user?.name?.trim() || user?.email || "—";
   return (
     <AdminLayout title={t("help.account.title")}>
       <div className="max-w-3xl space-y-6">
         <PanelPageHeader icon={<ShieldCheck />} title={t("help.account.title")} description={t("help.account.subtitle")} />
+        <HeroCard>
+          <div className="flex flex-wrap items-center gap-4 p-5">
+            <PersonAvatar name={displayName} id={user?.id ?? 0} size="lg" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground">{t("help.account.signedInAs")}</p>
+              <p className="break-words text-lg font-semibold leading-tight text-foreground">{displayName}</p>
+              {user?.email && user.email !== displayName && <p className="break-all text-sm text-muted-foreground">{user.email}</p>}
+            </div>
+            {deviceCount !== null && (
+              <StatusBadge tone="brand" icon={<MonitorSmartphone aria-hidden="true" />}>{t("help.account.deviceCount", { n: deviceCount })}</StatusBadge>
+            )}
+          </div>
+        </HeroCard>
         <EmailSection />
         <DevicesSection />
       </div>

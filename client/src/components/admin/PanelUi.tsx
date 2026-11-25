@@ -72,6 +72,7 @@ export function PanelDataList<T>({
   rowKey,
   caption,
   className,
+  tableFrom = "md",
 }: {
   rows: T[];
   columns: PanelColumn<T>[];
@@ -79,11 +80,13 @@ export function PanelDataList<T>({
   /** Nombre del listado para lectores de pantalla. */
   caption: string;
   className?: string;
+  /** Ancho desde el que es tabla (768 px por defecto; `lg` = 1024 px, para tablas con muchas columnas). */
+  tableFrom?: "md" | "lg";
 }) {
   const [first, ...rest] = columns;
   return (
     <div className={cn("overflow-hidden rounded-xl border border-border bg-card", className)}>
-      <table className="hidden w-full text-sm md:table">
+      <table className={cn("hidden w-full text-sm", tableFrom === "lg" ? "lg:table" : "md:table")}>
         <caption className="sr-only">{caption}</caption>
         <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
           <tr>
@@ -106,7 +109,7 @@ export function PanelDataList<T>({
           ))}
         </tbody>
       </table>
-      <ul className="divide-y divide-border md:hidden" aria-label={caption}>
+      <ul className={cn("divide-y divide-border", tableFrom === "lg" ? "lg:hidden" : "md:hidden")} aria-label={caption}>
         {rows.map((r) => (
           <li key={rowKey(r)} className="space-y-1.5 p-4 text-sm">
             <div className="min-w-0 break-words font-medium text-foreground">{first.cell(r)}</div>
