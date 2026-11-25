@@ -85,7 +85,7 @@ export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemp
           onClick={() => write({ ...state, collapsed: !state.collapsed })}
         >
           <span className="whitespace-nowrap text-sm font-semibold">{tx("Primeros pasos")}</span>
-          <span className="whitespace-nowrap rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-[#7c7cff]">{tx("{done} de {STEPSN}", { done: done, STEPSN: STEPS.length })}</span>
+          <span className="whitespace-nowrap rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium tabular-nums text-primary">{tx("{done} de {STEPSN}", { done: done, STEPSN: STEPS.length })}</span>
           <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform", state.collapsed && "-rotate-90")} aria-hidden />
         </button>
         <button
@@ -108,8 +108,8 @@ export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemp
                 <div className="flex items-start gap-2">
                   <span
                     className={cn(
-                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold",
-                      ok ? "bg-emerald-500 text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground",
+                      "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                      ok ? "bg-success text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground",
                     )}
                     aria-hidden
                   >
@@ -120,7 +120,7 @@ export function GuideCard({ onTemplates, onBlank, onColors, onMobile }: { onTemp
                       {tx(s.title)}
                       <span className="sr-only">{ok ? tx(" (hecho)") : ""}</span>
                     </span>
-                    {current && <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{tx(s.text)}</span>}
+                    {current && <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{tx(s.text)}</span>}
                   </span>
                 </div>
                 {current && actions[s.key] && <div className="ml-6 mt-1.5 flex flex-wrap gap-1.5">{actions[s.key]}</div>}

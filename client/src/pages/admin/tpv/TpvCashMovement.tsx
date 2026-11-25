@@ -90,7 +90,7 @@ function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-1">
-            <Label className="text-gray-300 text-sm">Importe (€)</Label>
+            <Label className="text-gray-200 text-sm">Importe (€)</Label>
             <div className="relative">
               <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <Input
@@ -99,7 +99,7 @@ function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
                 min="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="pl-9 bg-gray-800 border-gray-700 text-white text-lg font-bold"
+                className="h-12 pl-9 bg-gray-800 border-gray-700 text-white text-xl font-bold"
                 placeholder="0.00"
               />
             </div>
@@ -107,35 +107,35 @@ function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
 
           {type === "out" && (
             <div className="space-y-1">
-              <Label className="text-gray-300 text-sm">Tipo de salida</Label>
+              <Label className="text-gray-200 text-sm">Tipo de salida</Label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setOutKind("gasto")}
-                  className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                  className={`min-h-14 text-sm font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
                     outKind === "gasto"
                       ? "bg-danger/10 border-danger text-danger"
                       : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
                   }`}
                 >
                   Gasto
-                  <span className="block text-[10px] font-normal opacity-70">compra / proveedor</span>
+                  <span className="block text-xs font-normal opacity-80">compra / proveedor</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setOutKind("traspaso")}
-                  className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                  className={`min-h-14 text-sm font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
                     outKind === "traspaso"
                       ? "bg-info/10 border-info text-info"
                       : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
                   }`}
                 >
                   Traspaso a Caja Central
-                  <span className="block text-[10px] font-normal opacity-70">no es gasto, se guarda</span>
+                  <span className="block text-xs font-normal opacity-80">no es gasto, se guarda</span>
                 </button>
               </div>
               {outKind === "traspaso" && (
-                <p className="text-[11px] text-info pt-1">
+                <p className="text-xs text-info pt-1">
                   El efectivo sale del cajón pero se conserva en la Caja Central. No cuenta como gasto.
                 </p>
               )}
@@ -145,23 +145,24 @@ function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
           <div className="space-y-1">
             {advanced && type === "out" && (
               <div className="space-y-1">
-                <Label className="text-gray-300 text-sm">Autorización (si te la piden)</Label>
+                <Label className="text-gray-200 text-sm">Autorización (si te la piden)</Label>
                 <Input inputMode="numeric" value={authId} onChange={(e) => setAuthId(e.target.value.replace(/\D/g, ""))} placeholder="Nº de autorización" className="bg-gray-800 border-gray-700 text-white" />
               </div>
             )}
-            <Label className="text-gray-300 text-sm">Motivo</Label>
+            <Label className="text-gray-200 text-sm">Motivo</Label>
             <Input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="bg-gray-800 border-gray-700 text-white"
+              className="h-11 bg-gray-800 border-gray-700 text-white"
               placeholder="Describe el motivo..."
             />
-            <div className="flex flex-wrap gap-1 pt-1">
+            <div className="flex flex-wrap gap-2 pt-1">
               {quickReasons.map((r) => (
                 <button
                   key={r}
+                  type="button"
                   onClick={() => setReason(r)}
-                  className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1 rounded-full border border-gray-700 transition-colors"
+                  className="min-h-10 text-sm bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1.5 rounded-full border border-gray-600 transition-colors"
                 >
                   {r}
                 </button>
@@ -172,13 +173,13 @@ function CoreCashMovement({ open, type, sessionId, onClose }: Props) {
           <div className="flex gap-2 pt-2">
             <Button
               variant="ghost"
-              className="flex-1 text-gray-400 hover:text-white border border-gray-700"
+              className="h-12 flex-1 text-gray-300 hover:text-white border border-gray-600"
               onClick={onClose}
             >
               Cancelar
             </Button>
             <Button
-              className={`flex-1 font-semibold ${
+              className={`h-12 flex-1 text-base font-semibold ${
                 type === "in"
                   ? "bg-primary hover:bg-primary/90 text-primary-foreground"
                   : "bg-destructive hover:bg-destructive/90 text-white"

@@ -580,7 +580,7 @@ export default function TpvScreen() {
     return (
       <div className="dark fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 overflow-y-auto py-8">
         <div className="text-center space-y-6 w-full max-w-md px-4">
-          <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center mx-auto shadow-2xl">
+          <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto shadow-md">
             <Store className="w-10 h-10 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Punto de venta</h1>
@@ -1231,7 +1231,7 @@ export default function TpvScreen() {
                         className="h-11 pl-9 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
                       />
                       {clientQuery.length >= 3 && (
-                        <div className="absolute z-10 left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-xl">
+                        <div className="absolute z-10 left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-md">
                           {clientResults.isLoading ? (
                             <p className="text-sm text-muted-foreground px-3 py-2">Buscando…</p>
                           ) : (clientResults.data ?? []).length === 0 ? (
@@ -1531,7 +1531,7 @@ export default function TpvScreen() {
                   }
                 }}
               />
-              <p className="text-[10px] text-gray-500">Mín 0.01 € · Máx 10.000 €</p>
+              <p className="text-xs text-gray-400">Mín 0.01 € · Máx 10.000 €</p>
             </div>
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"

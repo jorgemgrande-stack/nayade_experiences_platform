@@ -42,7 +42,7 @@ import {
   leads,
   users,
 } from "../../drizzle/schema";
-import { eq, and, or, like, desc, sql, gte, lte, inArray, ne } from "drizzle-orm";
+import { eq, and, or, like, desc, sql, gte, lte, inArray, ne, isNull } from "drizzle-orm";
 import { notForSaleMessage } from "../../shared/offerMode";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
@@ -1235,7 +1235,7 @@ export const tpvRouter = router({
           priceType: experienceVariants.priceType,
           sortOrder: experienceVariants.sortOrder,
         }).from(experienceVariants)
-          .where(inArray(experienceVariants.experienceId, expIds))
+          .where(and(inArray(experienceVariants.experienceId, expIds), isNull(experienceVariants.supplementGroup)))
       : [];
 
     const varsByExp: Record<number, typeof allVariants> = {};

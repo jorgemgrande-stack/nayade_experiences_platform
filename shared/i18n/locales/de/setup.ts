@@ -14,6 +14,8 @@ export default {
   later: "Später fortfahren",
   progressAria: "Fortschritt bei den ersten Schritten",
   percentDone: "{percent} % abgeschlossen",
+  progressLabel: "abgeschlossen",
+  stepsDone: "{done} von {total} Schritten erledigt",
   readOnlyBanner: "Deine Testphase ist abgelaufen: Das Konto ist nur noch lesbar. Deine Daten bleiben erhalten; buche einen Tarif, um weiterzuarbeiten.",
   stepsNav: "Schritte der ersten Schritte",
   statusDone: "(erledigt)",
