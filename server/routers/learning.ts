@@ -19,6 +19,7 @@ import {
 } from "../learningDb";
 import { getDb } from "../db";
 import { grantLearningFromEnrollment, grantLearningFromOrder, pendingLearningOrders, sendLearningInvitation } from "../learningFlow";
+import { applyExtensionsForOrder, extendableModules, extensionOffers, prepareExtensionOrder } from "../learningExtensions";
 import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
@@ -64,20 +65,26 @@ const my = router({
       // Un borrador no existe para quien no tiene matrícula técnica (no se revela ni su existencia)
       if (!views.length && String(course.status) === "draft") throw new LearningError("NOT_FOUND", "El curso no existe.");
       if (!views.length) throw new LearningError("FORBIDDEN", "No tienes una matrícula de este curso.");
+      const offers = await extensionOffers().catch(() => []);
+      const extendable = offers.length ? await extendableModules(ctx.user.id, input.courseId) : new Map<number, unknown>();
       const modules = await rowsOf(sql`SELECT id, position, title FROM learning_modules WHERE course_id = ${input.courseId} ORDER BY position`);
       const lessons = await rowsOf(sql`SELECT l.id, l.module_id, l.position, l.title FROM learning_lessons l JOIN learning_modules m ON m.id = l.module_id WHERE m.course_id = ${input.courseId} ORDER BY l.position`);
       const done = new Set((await rowsOf(sql`SELECT lesson_id FROM learning_progress WHERE user_id = ${ctx.user.id} AND status = 'completed'`)).map((r) => Number(r.lesson_id)));
       return {
         course: { id: Number(course.id), slug: String(course.slug), title: String(course.title), description: course.description ?? null, language: String(course.language) },
+        /** Ampliaciones del catálogo (días y precio fijados por el servidor). Vacío si la empresa no las ha configurado. */
+        extensionOffers: offers,
         modules: modules.map((m) => {
           const dec = evaluateAny(views, Number(m.id), now);
           const unlocked = dec.allowed;
           // Módulo aún no desbloqueado: se informa de la fecha («se desbloquea el …»); nunca de su contenido
           const unlocksAt = !dec.allowed && dec.reason === "not_started" ? dec.unlocksAt ?? null : null;
           const win = views.filter((v) => v.moduleIds.includes(Number(m.id))).map((v) => moduleWindow(v, Number(m.id)));
-          const endsAt = unlocked || unlocksAt != null ? (win.some((w) => w.endsAt == null) ? null : win.length ? Math.max(...win.map((w) => w.endsAt as number)) : null) : null;
+          const endsAt = win.length ? (win.some((w) => w.endsAt == null) ? null : Math.max(...win.map((w) => w.endsAt as number))) : null;
+          // open: abierto; locked: aún no desbloqueado (con fecha); closed: caducado; not_included: no está en su modalidad
+          const state: "open" | "locked" | "closed" | "not_included" = unlocked ? "open" : unlocksAt != null ? "locked" : win.length ? "closed" : "not_included";
           return {
-            id: Number(m.id), position: Number(m.position), title: String(m.title), unlocked, unlocksAt, endsAt,
+            id: Number(m.id), position: Number(m.position), title: String(m.title), unlocked, unlocksAt, endsAt, state, canExtend: extendable.has(Number(m.id)),
             lessons: lessons.filter((l) => Number(l.module_id) === Number(m.id)).map((l) => ({ id: Number(l.id), position: Number(l.position), title: String(l.title), completed: done.has(Number(l.id)) })),
           };
         }),
@@ -102,6 +109,32 @@ const my = router({
           resource: b.resource_status ? { status: String(b.resource_status), kind: String(b.resource_kind), sizeBytes: b.size_bytes == null ? null : Number(b.size_bytes) } : null,
         })),
       };
+    })),
+
+  /**
+   * «Ampliar este módulo»: crea el pedido de ampliación de un módulo DE ESTA PERSONA y abre el pago. El precio y los días salen del
+   * catálogo del servidor; un módulo que no sea suyo (otra persona, no incluido, revocado) se rechaza. El acceso se amplía solo
+   * cuando el aviso firmado de la pasarela confirma el pago.
+   */
+  startExtension: protectedProcedure
+    .input(z.object({ courseId: id, moduleId: id, days: z.union([z.literal(30), z.literal(60)]), provider: z.enum(["redsys", "stripe"]).default("redsys") }))
+    .mutation(({ ctx, input }) => guard(async () => {
+      const pay = await import("../paymentsConnect/publicApi");
+      const red = await import("../redsys");
+      if (input.provider === "stripe") {
+        if (!(await pay.stripeAvailableForPublic())) throw new LearningError("BAD_REQUEST", "El pago con Stripe no está disponible en esta empresa.");
+      } else if (!red.isRedsysConfigured()) throw new LearningError("BAD_REQUEST", "El pago online no está configurado en esta empresa.");
+      const o = await prepareExtensionOrder({ userId: ctx.user.id, courseId: input.courseId, moduleId: input.moduleId, days: input.days });
+      if (input.provider === "stripe") {
+        const s = await pay.stripeCheckoutForShopOrder({ merchantOrder: o.merchantOrder, amountCents: o.amountCents, description: o.description.slice(0, 125), email: o.customerEmail });
+        return { merchantOrder: o.merchantOrder, amountCents: o.amountCents, redsysForm: null as null, stripeUrl: s.url };
+      }
+      const { publicBaseUrl } = await import("../_core/productIdentity");
+      const redsysForm = await red.buildRedsysForm({
+        amount: o.amountCents, merchantOrder: o.merchantOrder, productDescription: o.description.slice(0, 125),
+        notifyUrl: `${publicBaseUrl()}/api/redsys/notification`, okUrl: `${publicBaseUrl()}/reserva/ok?order=${o.merchantOrder}`, koUrl: `${publicBaseUrl()}/reserva/error?order=${o.merchantOrder}`, holderName: o.customerName,
+      });
+      return { merchantOrder: o.merchantOrder, amountCents: o.amountCents, redsysForm, stripeUrl: null as null };
     })),
 
   progress: protectedProcedure.input(z.object({ lessonId: id, completed: z.boolean().optional(), lastBlockId: id.nullable().optional() })).mutation(({ ctx, input }) =>
@@ -214,6 +247,8 @@ const admin = router({
    * función que ejecuta el cierre automático del pedido). Repetirlo no duplica matrículas ni correos.
    */
   grantForOrder: adminProcedure.input(z.object({ merchantOrder: z.string().trim().min(3).max(30) })).mutation(({ ctx, input }) => guard(() => grantLearningFromOrder(input.merchantOrder, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
+  /** Recuperación manual de las ampliaciones de módulo de un pedido pagado (idempotente; no amplía dos veces). */
+  applyExtensionsForOrder: adminProcedure.input(z.object({ merchantOrder: z.string().trim().min(3).max(30) })).mutation(({ input }) => guard(() => applyExtensionsForOrder(input.merchantOrder))),
   /** Acción EXPRESA de la administración: renueva la invitación de la cuenta (enlace de un solo uso) y envía el correo. */
   sendInvite: adminProcedure.input(z.object({ userId: id })).mutation(({ input }) => guard(async () => {
     const [u] = await rowsOf(sql`SELECT id, name, email FROM users WHERE id = ${input.userId}`);

@@ -23,7 +23,7 @@ export async function variantsByProduct(ids: number[]): Promise<Map<number, Vari
   if (!db) return out;
   const rows = await db.select({ experienceId: experienceVariants.experienceId, priceModifier: experienceVariants.priceModifier, priceType: experienceVariants.priceType })
     .from(experienceVariants)
-    .where(and(inArray(experienceVariants.experienceId, ids), or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)));
+    .where(and(inArray(experienceVariants.experienceId, ids), isNull(experienceVariants.supplementGroup), or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)));
   for (const r of rows as VariantRow[]) out.set(r.experienceId, [...(out.get(r.experienceId) ?? []), r]);
   return out;
 }

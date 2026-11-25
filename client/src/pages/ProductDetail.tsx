@@ -79,6 +79,8 @@ export default function ProductDetail() {
 
   const { data: product, isLoading } = trpc.public.getExperienceBySlug.useQuery({ slug: slug ?? "", ...localeArg }, { enabled: !!slug, retry: false });
   const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery({ experienceId: product?.id ?? 0, ...localeArg }, { enabled: !!product?.id });
+  // Suplementos opcionales (alimentación…): aparte del programa; solo se ofrecen en la solicitud y siempre desmarcados
+  const { data: supplements = [] } = trpc.public.getSupplementsByExperience.useQuery({ experienceId: product?.id ?? 0, ...localeArg }, { enabled: !!product?.id });
   // Convocatorias del producto: si las tiene, la compra exige elegir una fecha abierta (el servidor lo vuelve a validar)
   const { data: editionsData } = trpc.public.getExperiences.useQuery({ limit: 12, offset: 0, editions: { experienceId: product?.id ?? 0 } }, { enabled: !!product?.id, staleTime: 60_000, retry: false });
   const editions = ((editionsData ?? []) as unknown as PublicEditionItem[]).filter((e) => e.experienceId === product?.id);
@@ -403,7 +405,7 @@ export default function ProductDetail() {
         )}
       </div>
 
-      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0] }} open={requestOpen} onOpenChange={setRequestOpen} />}
+      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0], supplements }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Opiniones reales del producto (sin cifras fijas) */}
       <section className="py-12 bg-muted border-t border-border">
