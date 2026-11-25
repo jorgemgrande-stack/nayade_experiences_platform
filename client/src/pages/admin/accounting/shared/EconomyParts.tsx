@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { SCROLL_NAV, TAB_BASE, TAB_OFF, useScrollFade } from "@/components/admin/SalesFamilyShell";
 import { useI18n } from "@/i18n/I18nProvider";
 import { cn } from "@/lib/utils";
 
@@ -147,6 +148,99 @@ export function ListSearch({ value, onChange }: { value: string; onChange: (v: s
     <div className="relative max-w-md">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
       <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={t("accountingConfig.common.searchPlaceholder")} aria-label={t("accountingConfig.common.searchPlaceholder")} className="h-10 bg-card pl-9" />
+    </div>
+  );
+}
+
+// ─── Pestañas internas con el estado en la URL (lote E3) ────────────────────────────────────────────────────────────
+
+/** Valor de un parámetro de la URL (`?tab=…`) como estado: se actualiza sin recargar ni cambiar la ruta (reemplaza la entrada del historial). */
+export function useUrlParam(name: string, allowed: readonly string[] | null, fallback: string): [string, (value: string | null) => void] {
+  const read = () => {
+    if (typeof window === "undefined") return fallback;
+    const v = new URLSearchParams(window.location.search).get(name);
+    return v && (!allowed || allowed.includes(v)) ? v : fallback;
+  };
+  const [value, setValue] = useState(read);
+  useEffect(() => {
+    const onPop = () => setValue(read());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const set = (next: string | null) => {
+    const url = new URL(window.location.href);
+    if (next === null || next === fallback) url.searchParams.delete(name);
+    else url.searchParams.set(name, next);
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    setValue(next ?? fallback);
+  };
+  return [value, set];
+}
+
+export interface InnerTab<K extends string> {
+  key: K;
+  label: string;
+  /** Contador junto al nombre (p. ej. cierres por resolver). */
+  count?: number;
+  /** El contador se pinta como aviso (hay algo que atender). */
+  attention?: boolean;
+}
+
+/**
+ * Pestañas internas de una pantalla: en escritorio una fila desplazable con desvanecido en el borde y la activa siempre a
+ * la vista; en móvil, un único selector con el nombre de la sección. No cambia la ruta: la pantalla guarda la activa en la URL.
+ */
+export function InnerTabs<K extends string>({ tabs, active, onChange, label, className }: {
+  tabs: InnerTab<K>[];
+  active: K;
+  onChange: (key: K) => void;
+  label: string;
+  className?: string;
+}) {
+  const scroll = useScrollFade<HTMLDivElement>(`${active}-${tabs.length}`);
+  const current = tabs.find((x) => x.key === active) ?? tabs[0];
+  const badge = (tab: InnerTab<K>) =>
+    tab.count == null ? null : (
+      <span className={cn("inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums", tab.attention && tab.count > 0 ? "bg-danger/15 text-danger" : "bg-muted text-muted-foreground")}>{tab.count}</span>
+    );
+  return (
+    <div className={className}>
+      <div className="sm:hidden">
+        <Select value={active} onValueChange={(v) => onChange(v as K)}>
+          <SelectTrigger aria-label={label} className="h-11 w-full">
+            <SelectValue>
+              <span className="flex items-center gap-2">{current.label}{badge(current)}</span>
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {tabs.map((x) => (
+              <SelectItem key={x.key} value={x.key}><span className="flex items-center gap-2">{x.label}{badge(x)}</span></SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div ref={scroll.ref} onScroll={scroll.onScroll} style={scroll.style} className={cn(SCROLL_NAV, "hidden border-b border-border sm:block")}>
+        <div role="tablist" aria-label={label} className="inline-flex min-w-max gap-0.5">
+          {tabs.map((x) => {
+            const on = x.key === active;
+            return (
+              <button
+                key={x.key}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                data-active={on}
+                onClick={() => onChange(x.key)}
+                className={cn(TAB_BASE, "gap-2", on ? "bg-foreground/[0.07] text-foreground ring-1 ring-inset ring-border" : TAB_OFF)}
+              >
+                {x.label}
+                {badge(x)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
