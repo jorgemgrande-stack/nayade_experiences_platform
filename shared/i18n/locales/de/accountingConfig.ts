@@ -4,6 +4,8 @@ import type es from "../es/accountingConfig";
 /** Buchhaltung: Kostenstellen, Kategorien, Lieferanten und wiederkehrende Ausgaben (Einstellungen der Ausgaben). */
 export default {
   common: {
+    searchPlaceholder: "Suchen…",
+    noMatches: "Kein Eintrag entspricht der Suche",
     name: "Name",
     description: "Beschreibung",
     status: "Status",
@@ -85,6 +87,7 @@ export default {
     nameRequired: "Der Handelsname ist erforderlich.",
   },
   recurring: {
+    footerAmount: "Betrag",
     title: "Wiederkehrende Ausgaben",
     description: "Ausgaben, die sich im von dir festgelegten Rhythmus von selbst erzeugen",
     new: "Neue wiederkehrende Ausgabe",

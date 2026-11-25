@@ -52,6 +52,7 @@ import {
   updateBookingStatus,
   getAllTransactions,
   getTransactionsCount,
+  getTransactionsSummary,
   getTransactionById,
   deleteTransaction,
   getAccountingReports,
@@ -2199,6 +2200,21 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         return getTransactionsCount(input);
+      }),
+
+    /** Totales del filtro completo (ingresos, salidas, neto, nº): solo lectura, mismos filtros que el listado. */
+    getTransactionsSummary: adminProcedure
+      .input(z.object({
+        type: z.string().optional(),
+        status: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        saleChannel: z.string().optional(),
+        fiscalRegime: z.string().optional(),
+        search: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return getTransactionsSummary(input);
       }),
 
     getReports: adminProcedure
