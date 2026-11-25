@@ -641,6 +641,22 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
           </div>
+          {/* Firma de la plataforma: el tenant es lo principal; Elephant Core aparece como proveedor tecnológico (discreta, sin enlace). */}
+          <div
+            data-platform-signature=""
+            role="note"
+            aria-label={t("shell.brand.platformLabel")}
+            title={showLabels ? undefined : t("shell.brand.platformLabel")}
+            className={cn("mt-3 flex items-center gap-2 border-t border-sidebar-border/60 pt-2.5", !showLabels && "justify-center")}
+          >
+            <img src="/brand/elephant-mark.png" alt="" width={20} height={16} className="h-4 w-5 shrink-0 object-contain opacity-90" draggable={false} />
+            {showLabels && (
+              <p className="min-w-0 leading-tight">
+                <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-medium text-sidebar-foreground/70">{t("shell.brand.poweredBy")}</span>
+                <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-sidebar-foreground/50">{t("shell.brand.byBigElephant")}</span>
+              </p>
+            )}
+          </div>
         </div>
       </aside>
 
