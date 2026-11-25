@@ -70,7 +70,7 @@ export function realShopPort(): ShopPort {
       const marked = rows.some((r) => (Array.isArray(r.changesLog) ? r.changesLog : []).some((e: any) => e?.eventId === i.eventId));
       if (marked) return;
       const now = Date.now();
-      const entry = { ts: now, actor: STRIPE_ACTOR, action: `stripe_${i.kind}`, label: INCIDENT_LABEL[i.kind], eventId: i.eventId, paymentIntent: i.paymentIntent, chargedCents: i.chargedCents, refundedCents: i.refundedCents, reason: i.reason, learningChanged: learning.changed };
+      const entry = { ts: now, actor: STRIPE_ACTOR, action: `stripe_${i.kind}`, label: INCIDENT_LABEL[i.kind], eventId: i.eventId, paymentIntent: i.paymentIntent, chargedCents: i.chargedCents, refundedCents: i.refundedCents, reason: i.reason, learningChanged: learning.changed, ...((learning as { extensionsFlagged?: number }).extensionsFlagged ? { learningExtensionsFlagged: (learning as { extensionsFlagged?: number }).extensionsFlagged } : {}) };
       for (const r of rows) {
         const log = Array.isArray(r.changesLog) ? r.changesLog : [];
         await db.update(reservations).set({ changesLog: [...log, entry] } as any).where(eq(reservations.id, r.id));

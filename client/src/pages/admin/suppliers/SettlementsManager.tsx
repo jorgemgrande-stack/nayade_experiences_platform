@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader, PanelDataList, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "@/pages/admin/accounting/shared/EconomyUi";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,14 +13,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
   FileText, Plus, Search, ChevronRight, Calendar, Euro, CheckCircle2,
   Clock, AlertTriangle, XCircle, RefreshCw, Send, Trash2, ExternalLink,
   Download, Upload, FileCheck, History, Building2, Calculator, Paperclip,
-  FileSpreadsheet
+  FileSpreadsheet, Eye
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -93,27 +95,34 @@ type PreviewLine = {
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  emitida: { label: "Emitida", color: "bg-blue-100 text-blue-800 border-blue-200", icon: FileText },
-  pendiente_abono: { label: "Pendiente abono", color: "bg-amber-100 text-amber-800 border-amber-200", icon: Clock },
-  abonada: { label: "Abonada", color: "bg-emerald-100 text-emerald-800 border-emerald-200", icon: CheckCircle2 },
-  incidencia: { label: "Incidencia", color: "bg-red-100 text-red-700 border-red-200", icon: AlertTriangle },
-  recalculada: { label: "Recalculada", color: "bg-purple-100 text-purple-800 border-purple-200", icon: RefreshCw },
+const STATUS_CONFIG: Record<string, { label: string; tone: Tone; icon: ReactNode }> = {
+  emitida: { label: "Emitida", tone: "info", icon: <FileText /> },
+  pendiente_abono: { label: "Pendiente abono", tone: "warning", icon: <Clock /> },
+  abonada: { label: "Abonada", tone: "success", icon: <CheckCircle2 /> },
+  incidencia: { label: "Incidencia", tone: "danger", icon: <AlertTriangle /> },
+  recalculada: { label: "Recalculada", tone: "brand", icon: <RefreshCw /> },
 };
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, color: "bg-slate-100 text-slate-600", icon: FileText };
-  const Icon = cfg.icon;
+function StatusBadgeS({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] ?? { label: status, tone: "neutral" as Tone, icon: <FileText /> };
+  return <StatusBadge tone={cfg.tone} icon={cfg.icon}>{cfg.label}</StatusBadge>;
+}
+
+/** Bloque de la ficha: título con icono y contenido. */
+function DetailBlock({ icon, title, aside, children }: { icon: ReactNode; title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <Badge className={`${cfg.color} border text-xs`}>
-      <Icon className="w-3 h-3 mr-1" />
-      {cfg.label}
-    </Badge>
+    <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground [&_svg]:h-4 [&_svg]:w-4 [&_svg]:text-primary">{icon}{title}</h3>
+        {aside && <div className="ml-auto flex items-center gap-2">{aside}</div>}
+      </div>
+      {children}
+    </section>
   );
 }
 
 function fmt(v: string | number | undefined | null): string {
-  return parseFloat(String(v ?? "0")).toFixed(2);
+  return new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(parseFloat(String(v ?? "0")) || 0);
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -148,9 +157,12 @@ export default function SettlementsManager() {
 
   const utils = trpc.useUtils();
 
-  const { data: settlements = [], isLoading } = trpc.settlements.list.useQuery({
+  const { data: settlements = [], isLoading, error: listError, refetch: refetchList } = trpc.settlements.list.useQuery({
     status: statusFilter !== "all" ? statusFilter : undefined,
   });
+
+  // Resumen: la misma lista sin filtrar (solo lectura, para los indicadores)
+  const { data: allSettlements = [] } = trpc.settlements.list.useQuery({ status: undefined });
 
   const { data: selectedDetail, refetch: refetchDetail } = trpc.settlements.get.useQuery(
     { id: selected?.id ?? 0 },
@@ -290,296 +302,262 @@ export default function SettlementsManager() {
     otro: "Otro",
   };
 
+  const all = (allSettlements as any[]) as Settlement[];
+  const sumNet = (xs: Settlement[]) => xs.reduce((a, s) => a + (parseFloat(String(s.netAmountProvider ?? "0")) || 0), 0);
+  const toPay = all.filter((s) => s.status === "emitida" || s.status === "pendiente_abono" || s.status === "recalculada");
+  const paid = all.filter((s) => s.status === "abonada");
+  const issues = all.filter((s) => s.status === "incidencia");
+  const filtered = search.trim() !== "" || statusFilter !== "all";
+  const chips: FilterChip[] = [
+    ...(search.trim() ? [{ id: "q", label: `Búsqueda: ${search.trim()}`, onRemove: () => setSearch("") }] : []),
+    ...(statusFilter !== "all" ? [{ id: "status", label: `Estado: ${STATUS_CONFIG[statusFilter]?.label ?? statusFilter}`, onRemove: () => setStatusFilter("all") }] : []),
+  ];
+  const clearAll = () => { setSearch(""); setStatusFilter("all"); };
+
+  const columns: EconomyColumn<Settlement>[] = [
+    { key: "num", header: "Liquidación", mobile: "title", cell: (s) => (
+      <div className="min-w-0">
+        <div className="font-mono text-sm font-semibold text-foreground">{s.settlementNumber}</div>
+        <div className="break-words text-xs text-muted-foreground">{s.supplierName ?? "—"}</div>
+      </div>
+    ) },
+    { key: "period", header: "Periodo", priority: "md", cell: (s) => <span className="text-xs text-muted-foreground">{s.periodFrom} → {s.periodTo}</span> },
+    { key: "status", header: "Estado", cell: (s) => <StatusBadgeS status={s.status} /> },
+    { key: "gross", header: "Importe bruto", align: "right", num: true, priority: "lg", cell: (s) => `${fmt(s.grossAmount)} €` },
+    { key: "commission", header: "Comisión", align: "right", num: true, priority: "xl", cell: (s) => `${fmt(s.commissionAmount)} €` },
+    { key: "net", header: "Neto proveedor", align: "right", num: true, mobile: "amount", cell: (s) => <span className="font-semibold text-foreground">{fmt(s.netAmountProvider)} €</span> },
+  ];
+
   return (
     <AdminLayout>
-    <div className="flex h-full min-h-screen bg-slate-50">
-      {/* ── Left panel: list ── */}
-      <div className="w-80 flex-shrink-0 border-r bg-white flex flex-col">
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-indigo-600" />
-              Liquidaciones
-            </h2>
-            <Button size="sm" onClick={() => setShowCreate(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-              <Plus className="w-3 h-3 mr-1" />Nueva
-            </Button>
-          </div>
-          <div className="relative mb-2">
-            <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
-            <Input placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-8 text-sm" />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="emitida">Emitida</SelectItem>
-              <SelectItem value="pendiente_abono">Pendiente abono</SelectItem>
-              <SelectItem value="abonada">Abonada</SelectItem>
-              <SelectItem value="incidencia">Incidencia</SelectItem>
-              <SelectItem value="recalculada">Recalculada</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+        <PanelPageHeader
+          className="mb-0"
+          icon={<FileText />}
+          title="Liquidaciones de proveedores"
+          description="Ventas, comisión de la agencia y neto a abonar a cada proveedor por periodo."
+          actions={<Button onClick={() => setShowCreate(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />Nueva liquidación</Button>}
+        />
 
-        <div className="flex-1 overflow-y-auto">
-          {isLoading ? (
-            <div className="p-4 text-center text-sm text-slate-400">Cargando...</div>
-          ) : filteredSettlements.length === 0 ? (
-            <div className="p-6 text-center text-sm text-slate-400">
-              <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              No hay liquidaciones
-            </div>
-          ) : (
-            filteredSettlements.map((s: any) => (
-              <button
-                key={s.id}
-                onClick={() => setSelected(s)}
-                className={`w-full text-left px-4 py-3 border-b hover:bg-slate-50 transition-colors ${selected?.id === s.id ? "bg-indigo-50 border-l-2 border-l-indigo-500" : ""}`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-xs font-semibold text-slate-700">{s.settlementNumber}</span>
-                  <StatusBadge status={s.status} />
-                </div>
-                <div className="text-xs text-slate-600 truncate">{s.supplierName ?? "—"}</div>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs text-slate-400">{s.periodFrom} → {s.periodTo}</span>
-                  <span className="text-xs font-semibold text-slate-700">{fmt(s.netAmountProvider)} €</span>
-                </div>
-              </button>
-            ))
+        <EconomySummary>
+          <MetricCard icon={<Clock />} tone="warning" label="Neto pendiente de abonar" value={`${fmt(sumNet(toPay))} €`} detail={`${toPay.length} ${toPay.length === 1 ? "liquidación" : "liquidaciones"}`} />
+          <MetricCard icon={<CheckCircle2 />} tone="success" label="Abonado" value={`${fmt(sumNet(paid))} €`} detail={`${paid.length} ${paid.length === 1 ? "liquidación" : "liquidaciones"}`} onClick={() => setStatusFilter(statusFilter === "abonada" ? "all" : "abonada")} active={statusFilter === "abonada"} />
+          <MetricCard icon={<AlertTriangle />} tone={issues.length ? "danger" : "neutral"} label="Con incidencia" value={issues.length} onClick={() => setStatusFilter(statusFilter === "incidencia" ? "all" : "incidencia")} active={statusFilter === "incidencia"} />
+          <MetricCard icon={<FileText />} tone="brand" label="Liquidaciones" value={all.length} />
+        </EconomySummary>
+
+        <EconomyFilterBar
+          search={{ value: search, onChange: setSearch, placeholder: "Buscar por número o proveedor…" }}
+          primary={
+            <FilterField label="Estado" className="w-full sm:w-52">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="emitida">Emitida</SelectItem>
+                  <SelectItem value="pendiente_abono">Pendiente abono</SelectItem>
+                  <SelectItem value="abonada">Abonada</SelectItem>
+                  <SelectItem value="incidencia">Incidencia</SelectItem>
+                  <SelectItem value="recalculada">Recalculada</SelectItem>
+                </SelectContent>
+              </Select>
+            </FilterField>
+          }
+          chips={chips}
+          onClear={clearAll}
+          summary={!isLoading && !listError ? `${filteredSettlements.length} ${filteredSettlements.length === 1 ? "liquidación" : "liquidaciones"}` : undefined}
+        />
+
+        <EconomyTable
+          rows={filteredSettlements as Settlement[]}
+          columns={columns}
+          rowKey={(s) => s.id}
+          caption="Liquidaciones de proveedores"
+          loading={isLoading}
+          error={listError}
+          onRetry={() => refetchList()}
+          errorTitle="No se han podido cargar las liquidaciones"
+          emptyTitle={filtered ? "Ninguna liquidación coincide con los filtros" : "Aún no hay liquidaciones"}
+          emptyDescription={filtered ? "Prueba con otra búsqueda o quita los filtros." : "Crea la primera liquidación eligiendo proveedor y periodo: las líneas se calculan con sus ventas."}
+          emptyAction={filtered ? <Button variant="outline" size="sm" onClick={clearAll}>Limpiar filtros</Button> : <Button size="sm" onClick={() => setShowCreate(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />Nueva liquidación</Button>}
+          onRowClick={(s) => setSelected(s)}
+          actions={(s) => (
+            <RowActions label={s.settlementNumber} primary={{ label: "Ver detalle", icon: <Eye className="h-3.5 w-3.5" />, onSelect: () => setSelected(s) }} />
           )}
-        </div>
+        />
       </div>
 
-      {/* ── Right panel: detail ── */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {!selected ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400">
-            <FileText className="w-16 h-16 mb-4 opacity-20" />
-            <p className="text-lg font-medium">Selecciona una liquidación</p>
-            <p className="text-sm">o crea una nueva con el botón "Nueva"</p>
-          </div>
-        ) : (
-          <div className="max-w-4xl space-y-6">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className="text-2xl font-bold font-mono text-slate-900">{detail?.settlementNumber}</h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  <Building2 className="w-3 h-3 inline mr-1" />
-                  {detail?.supplierName ?? "—"} · Periodo: {detail?.periodFrom} — {detail?.periodTo}
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <StatusBadge status={detail?.status ?? "emitida"} />
-                  {detail?.sentAt && <Badge variant="outline" className="text-xs"><Send className="w-3 h-3 mr-1" />Enviada</Badge>}
-                  {detail?.paidAt && <Badge variant="outline" className="text-xs text-emerald-700"><CheckCircle2 className="w-3 h-3 mr-1" />Abonada</Badge>}
-                </div>
-              </div>
-              <div className="flex gap-2 flex-wrap justify-end">
-                <Button
-                  variant="outline" size="sm"
-                  onClick={() => selected && recalculateMutation.mutate({ id: selected.id })}
-                  disabled={recalculateMutation.isPending}
-                  className="text-amber-700 border-amber-200 hover:bg-amber-50"
-                  title="Regenerar líneas desde reservas TPV y facturas del periodo"
-                >
-                  <RefreshCw className={`w-3 h-3 mr-1 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
-                  {recalculateMutation.isPending ? "Recalculando..." : "Recalcular"}
+      {/* ── Detalle de la liquidación ── */}
+      <Sheet open={selected !== null} onOpenChange={(o) => { if (!o) setSelected(null); }}>
+        <SheetContent side="right" className="w-full gap-0 sm:max-w-3xl">
+          <SheetHeader className="shrink-0 border-b border-border pr-12">
+            <SheetTitle className="flex flex-wrap items-center gap-2">
+              <span className="font-mono">{detail?.settlementNumber}</span>
+              <StatusBadgeS status={detail?.status ?? "emitida"} />
+            </SheetTitle>
+            <SheetDescription>
+              <Building2 className="mr-1 inline h-3 w-3" aria-hidden="true" />
+              {detail?.supplierName ?? "—"} · Periodo: {detail?.periodFrom} — {detail?.periodTo}
+            </SheetDescription>
+          </SheetHeader>
+          {selected && (
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {detail?.sentAt && <StatusBadge tone="info" icon={<Send />}>Enviada</StatusBadge>}
+              {detail?.paidAt && <StatusBadge tone="success" icon={<CheckCircle2 />}>Abonada</StatusBadge>}
+            </div>
+
+            {/* Acciones */}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline" size="sm"
+                onClick={() => selected && recalculateMutation.mutate({ id: selected.id })}
+                disabled={recalculateMutation.isPending}
+                title="Regenerar líneas desde reservas TPV y facturas del periodo"
+              >
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${recalculateMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+                {recalculateMutation.isPending ? "Recalculando..." : "Recalcular"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowStatusChange(true)}>
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Estado
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowSendEmail(true)}>
+                <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Enviar email
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => selected && generatePdfMutation.mutate({ id: selected.id })}
+                disabled={generatePdfMutation.isPending}
+              >
+                <FileText className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                {generatePdfMutation.isPending ? "Generando..." : "Generar PDF"}
+              </Button>
+              {detail?.pdfUrl && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={detail.pdfUrl} target="_blank" rel="noopener noreferrer">
+                    <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Descargar PDF
+                  </a>
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setShowStatusChange(true)}>
-                  <RefreshCw className="w-3 h-3 mr-1" />Estado
+              )}
+              {selected && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={`/api/settlements/${selected.id}/export-excel`} download>
+                    <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Exportar Excel
+                  </a>
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setShowSendEmail(true)}>
-                  <Send className="w-3 h-3 mr-1" />Enviar email
-                </Button>
-                <Button
-                  variant="outline" size="sm"
-                  onClick={() => selected && generatePdfMutation.mutate({ id: selected.id })}
-                  disabled={generatePdfMutation.isPending}
-                  className="text-violet-700 border-violet-200 hover:bg-violet-50"
-                >
-                  <FileText className="w-3 h-3 mr-1" />
-                  {generatePdfMutation.isPending ? "Generando..." : "Generar PDF"}
-                </Button>
-                {detail?.pdfUrl && (
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={detail.pdfUrl} target="_blank" rel="noopener noreferrer">
-                      <Download className="w-3 h-3 mr-1" />Descargar PDF
-                    </a>
-                  </Button>
-                )}
-                {selected && (
-                  <Button variant="outline" size="sm" asChild className="text-emerald-700 border-emerald-200 hover:bg-emerald-50">
-                    <a
-                      href={`/api/settlements/${selected.id}/export-excel`}
-                      download
-                    >
-                      <FileSpreadsheet className="w-3 h-3 mr-1" />Exportar Excel
-                    </a>
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50"
-                  onClick={async () => { if ((await confirmAction({ description: "¿Eliminar liquidación?", destructive: true }))) deleteMutation.mutate({ id: selected.id }); }}>
-                  <Trash2 className="w-3 h-3 mr-1" />Eliminar
-                </Button>
-              </div>
+              )}
+              <Button variant="outline" size="sm" className="text-danger hover:text-danger"
+                onClick={async () => { if ((await confirmAction({ description: "¿Eliminar liquidación?", destructive: true }))) deleteMutation.mutate({ id: selected.id }); }}>
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Eliminar
+              </Button>
             </div>
 
             {/* Totales */}
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: "Importe bruto", value: fmt(detail?.grossAmount), color: "text-slate-800" },
-                { label: "Comisión agencia", value: fmt(detail?.commissionAmount), color: "text-orange-600" },
-                { label: "Neto proveedor", value: fmt(detail?.netAmountProvider), color: "text-emerald-700 font-bold" },
-              ].map((t) => (
-                <Card key={t.label}>
-                  <CardContent className="pt-4 pb-3">
-                    <p className="text-xs text-slate-500">{t.label}</p>
-                    <p className={`text-2xl font-bold ${t.color}`}>{t.value} €</p>
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <MetricCard compact icon={<Euro />} tone="neutral" label="Importe bruto" value={`${fmt(detail?.grossAmount)} €`} />
+              <MetricCard compact icon={<Calculator />} tone="warning" label="Comisión agencia" value={`${fmt(detail?.commissionAmount)} €`} />
+              <MetricCard compact icon={<CheckCircle2 />} tone="success" label="Neto proveedor" value={`${fmt(detail?.netAmountProvider)} €`} />
             </div>
 
             {/* Líneas */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                  <Calculator className="w-4 h-4 text-indigo-500" />
-                  Líneas de liquidación
-                  <Badge variant="secondary" className="ml-auto">{(detail as any)?.lines?.length ?? 0}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!(detail as any)?.lines?.length ? (
-                  <p className="text-sm text-slate-400 text-center py-3">Sin líneas</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b text-slate-500">
-                          <th className="text-left py-2 pr-3">Producto / Servicio</th>
-                          <th className="text-center py-2 px-2">Fecha</th>
-                          <th className="text-center py-2 px-2">Pax</th>
-                          <th className="text-right py-2 px-2">Venta</th>
-                          <th className="text-right py-2 px-2">Comisión</th>
-                          <th className="text-right py-2 pl-2">Neto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(detail as any).lines.map((l: SettlementLine) => (
-                          <tr key={l.id} className="border-b last:border-0 hover:bg-slate-50">
-                            <td className="py-2 pr-3 font-medium text-slate-800">{l.productName ?? "—"}</td>
-                            <td className="py-2 px-2 text-center text-slate-500">{l.serviceDate ?? "—"}</td>
-                            <td className="py-2 px-2 text-center">{l.paxCount}</td>
-                            <td className="py-2 px-2 text-right">{fmt(l.saleAmount)} €</td>
-                            <td className="py-2 px-2 text-right text-orange-600">{fmt(l.commissionAmount)} € ({fmt(l.commissionPercent)}%)</td>
-                            <td className="py-2 pl-2 text-right font-semibold text-emerald-700">{fmt(l.netAmountProvider)} €</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <DetailBlock icon={<Calculator />} title="Líneas de liquidación" aside={<Badge variant="secondary">{(detail as any)?.lines?.length ?? 0}</Badge>}>
+              {!(detail as any)?.lines?.length ? (
+                <p className="py-2 text-sm text-muted-foreground">Sin líneas</p>
+              ) : (
+                <PanelDataList<SettlementLine>
+                  className="border-0"
+                  caption="Líneas de liquidación"
+                  rows={(detail as any).lines}
+                  rowKey={(l) => l.id}
+                  columns={[
+                    { key: "p", header: "Producto / Servicio", cell: (l) => <span className="font-medium text-foreground">{l.productName ?? "—"}</span> },
+                    { key: "d", header: "Fecha", cell: (l) => <span className="text-muted-foreground">{l.serviceDate ?? "—"}</span> },
+                    { key: "x", header: "Pax", align: "right", cell: (l) => l.paxCount },
+                    { key: "s", header: "Venta", align: "right", cell: (l) => <span className="tabular-nums">{fmt(l.saleAmount)} €</span> },
+                    { key: "c", header: "Comisión", align: "right", cell: (l) => <span className="tabular-nums">{fmt(l.commissionAmount)} € ({fmt(l.commissionPercent)}%)</span> },
+                    { key: "n", header: "Neto", align: "right", cell: (l) => <span className="font-semibold tabular-nums text-foreground">{fmt(l.netAmountProvider)} €</span> },
+                  ]}
+                />
+              )}
+            </DetailBlock>
 
             {/* Documentos */}
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                    <Paperclip className="w-4 h-4 text-indigo-500" />
-                    Documentos adjuntos
-                    <Badge variant="secondary">{(detail as any)?.docs?.length ?? 0}</Badge>
-                  </CardTitle>
-                  <Button size="sm" variant="outline" onClick={() => setShowAddDoc(true)}>
-                    <Plus className="w-3 h-3 mr-1" />Añadir
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {!(detail as any)?.docs?.length ? (
-                  <p className="text-sm text-slate-400 text-center py-3">Sin documentos adjuntos</p>
-                ) : (
-                  <div className="space-y-2">
-                    {(detail as any).docs.map((d: SettlementDoc) => (
-                      <div key={d.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                        <div className="flex items-center gap-2">
-                          <FileCheck className="w-4 h-4 text-indigo-400" />
-                          <div>
-                            <span className="text-sm font-medium text-slate-800">{d.title}</span>
-                            <Badge variant="outline" className="ml-2 text-xs">{docTypeLabel[d.docType] ?? d.docType}</Badge>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {d.fileUrl && (
-                            <Button variant="ghost" size="sm" asChild>
-                              <a href={d.fileUrl} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700"
-                            onClick={() => deleteDocMutation.mutate({ id: d.id })}>
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
+            <DetailBlock
+              icon={<Paperclip />}
+              title="Documentos adjuntos"
+              aside={<><Badge variant="secondary">{(detail as any)?.docs?.length ?? 0}</Badge><Button size="sm" variant="outline" onClick={() => setShowAddDoc(true)}><Plus className="mr-1 h-3 w-3" aria-hidden="true" />Añadir</Button></>}
+            >
+              {!(detail as any)?.docs?.length ? (
+                <p className="py-2 text-sm text-muted-foreground">Sin documentos adjuntos</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {(detail as any).docs.map((d: SettlementDoc) => (
+                    <li key={d.id} className="flex items-center justify-between gap-2 py-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <span className="break-words text-sm font-medium text-foreground">{d.title}</span>
+                          <Badge variant="outline" className="ml-2 text-xs">{docTypeLabel[d.docType] ?? d.docType}</Badge>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {d.fileUrl && (
+                          <Button variant="ghost" size="icon" className="h-9 w-9" asChild>
+                            <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" aria-label={`Abrir ${d.title}`}>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-9 w-9 text-danger hover:text-danger" aria-label={`Eliminar ${d.title}`}
+                          onClick={() => deleteDocMutation.mutate({ id: d.id })}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DetailBlock>
 
             {/* Historial de estados */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                  <History className="w-4 h-4 text-indigo-500" />
-                  Historial de estados
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!(detail as any)?.statusHistory?.length ? (
-                  <p className="text-sm text-slate-400 text-center py-3">Sin historial</p>
-                ) : (
-                  <div className="space-y-2">
-                    {(detail as any).statusHistory.map((h: StatusHistory) => (
-                      <div key={h.id} className="flex items-start gap-3 py-2 border-b last:border-0 text-sm">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            {h.fromStatus && <StatusBadge status={h.fromStatus} />}
-                            {h.fromStatus && <ChevronRight className="w-3 h-3 text-slate-400" />}
-                            <StatusBadge status={h.toStatus} />
-                            <span className="text-xs text-slate-400 ml-auto">{new Date(h.createdAt).toLocaleString("es-ES")}</span>
-                          </div>
-                          {h.notes && <p className="text-xs text-slate-500 mt-1">{h.notes}</p>}
-                          <p className="text-xs text-slate-400">Por: {h.changedByName}</p>
-                        </div>
+            <DetailBlock icon={<History />} title="Historial de estados">
+              {!(detail as any)?.statusHistory?.length ? (
+                <p className="py-2 text-sm text-muted-foreground">Sin historial</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {(detail as any).statusHistory.map((h: StatusHistory) => (
+                    <li key={h.id} className="py-2 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {h.fromStatus && <StatusBadgeS status={h.fromStatus} />}
+                        {h.fromStatus && <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />}
+                        <StatusBadgeS status={h.toStatus} />
+                        <span className="ml-auto text-xs text-muted-foreground">{new Date(h.createdAt).toLocaleString("es-ES")}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      {h.notes && <p className="mt-1 text-xs text-muted-foreground">{h.notes}</p>}
+                      <p className="text-xs text-muted-foreground">Por: {h.changedByName}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DetailBlock>
           </div>
-        )}
-      </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* ── Create settlement modal ── */}
       <Dialog open={showCreate} onOpenChange={(v) => { if (!v) { setShowCreate(false); setManualLines([]); } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-indigo-600" />
+              <Calculator className="w-4 h-4 text-primary" />
               Nueva liquidación de proveedor
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-3">
+            <FormSection title="Proveedor y periodo">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
                 <Label>Proveedor *</Label>
                 <Select value={String(createForm.supplierId || "")} onValueChange={(v) => setCreateForm({ ...createForm, supplierId: parseInt(v) })}>
                   <SelectTrigger><SelectValue placeholder="Selecciona proveedor..." /></SelectTrigger>
@@ -599,23 +577,23 @@ export default function SettlementsManager() {
                 <Input type="date" value={createForm.periodTo} onChange={(e) => setCreateForm({ ...createForm, periodTo: e.target.value })} />
               </div>
             </div>
+            </FormSection>
 
             {/* Auto-calculated lines preview */}
             {createForm.supplierId > 0 && createForm.periodFrom && createForm.periodTo && (
               <div>
-                <Separator className="my-3" />
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
                   <Calculator className="w-3 h-3" />
                   Líneas calculadas automáticamente
-                  {previewLoading && <span className="text-slate-400 font-normal">(calculando...)</span>}
+                  {previewLoading && <span className="text-muted-foreground font-normal">(calculando...)</span>}
                 </p>
                 {preview?.lines?.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-2">No se encontraron facturas cobradas en el periodo para los productos de este proveedor.</p>
+                  <p className="text-xs text-muted-foreground py-2">No se encontraron facturas cobradas en el periodo para los productos de este proveedor.</p>
                 ) : (
-                  <div className="overflow-x-auto border rounded-lg">
+                  <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="w-full text-xs">
-                      <thead className="bg-slate-50">
-                        <tr className="border-b text-slate-500">
+                      <thead className="bg-muted/40">
+                        <tr className="border-b text-muted-foreground">
                           <th className="text-left py-2 px-3">Producto</th>
                           <th className="text-right py-2 px-2">Venta</th>
                           <th className="text-right py-2 px-2">Comisión</th>
@@ -626,19 +604,19 @@ export default function SettlementsManager() {
                         {(preview?.lines ?? []).map((l: PreviewLine, i: number) => (
                           <tr key={i} className="border-b last:border-0">
                             <td className="py-2 px-3">{l.productName}</td>
-                            <td className="py-2 px-2 text-right">{l.saleAmount.toFixed(2)} €</td>
-                            <td className="py-2 px-2 text-right text-orange-600">{l.commissionAmount.toFixed(2)} € ({l.commissionPercent}%)</td>
-                            <td className="py-2 px-2 text-right font-semibold text-emerald-700">{l.netAmountProvider.toFixed(2)} €</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right">{fmt(l.saleAmount)} €</td>
+                            <td className="py-2 px-2 text-right text-warning">{fmt(l.commissionAmount)} € ({l.commissionPercent}%)</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right font-semibold text-success">{fmt(l.netAmountProvider)} €</td>
                           </tr>
                         ))}
                       </tbody>
                       {preview && (
-                        <tfoot className="bg-slate-50 font-semibold">
+                        <tfoot className="bg-muted/40 font-semibold">
                           <tr>
-                            <td className="py-2 px-3 text-slate-700">TOTAL</td>
-                            <td className="py-2 px-2 text-right">{preview.totals.grossAmount.toFixed(2)} €</td>
-                            <td className="py-2 px-2 text-right text-orange-600">{preview.totals.commissionAmount.toFixed(2)} €</td>
-                            <td className="py-2 px-2 text-right text-emerald-700">{preview.totals.netAmountProvider.toFixed(2)} €</td>
+                            <td className="py-2 px-3 text-foreground">TOTAL</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right">{fmt(preview.totals.grossAmount)} €</td>
+                            <td className="py-2 px-2 text-right text-warning">{fmt(preview.totals.commissionAmount)} €</td>
+                            <td className="whitespace-nowrap py-2 px-2 text-right text-success">{fmt(preview.totals.netAmountProvider)} €</td>
                           </tr>
                         </tfoot>
                       )}
@@ -651,29 +629,29 @@ export default function SettlementsManager() {
             {/* Manual lines */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Líneas manuales adicionales</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Líneas manuales adicionales</p>
                 <Button size="sm" variant="outline" onClick={addManualLine}>
                   <Plus className="w-3 h-3 mr-1" />Añadir línea
                 </Button>
               </div>
               {manualLines.map((l, i) => (
-                <div key={i} className="grid grid-cols-5 gap-2 mb-2 p-3 border rounded-lg bg-slate-50">
+                <div key={i} className="mb-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/40 p-3 sm:grid-cols-5">
                   <div className="col-span-2">
-                    <Input placeholder="Nombre del servicio" value={l.productName} onChange={(e) => {
+                    <Input aria-label="Nombre del servicio" placeholder="Nombre del servicio" value={l.productName} onChange={(e) => {
                       const nl = [...manualLines]; nl[i].productName = e.target.value; setManualLines(nl);
                     }} className="h-8 text-xs" />
                   </div>
                   <div>
-                    <Input type="number" placeholder="Importe venta" value={l.saleAmount || ""} onChange={(e) => {
+                    <Input type="number" aria-label="Importe de venta" placeholder="Importe venta" value={l.saleAmount || ""} onChange={(e) => {
                       const nl = [...manualLines]; nl[i].saleAmount = parseFloat(e.target.value) || 0; setManualLines(nl);
                     }} className="h-8 text-xs" />
                   </div>
                   <div>
-                    <Input type="number" placeholder="% Comisión" value={l.commissionPercent || ""} onChange={(e) => {
+                    <Input type="number" aria-label="Porcentaje de comisión" placeholder="% Comisión" value={l.commissionPercent || ""} onChange={(e) => {
                       const nl = [...manualLines]; nl[i].commissionPercent = parseFloat(e.target.value) || 0; setManualLines(nl);
                     }} className="h-8 text-xs" />
                   </div>
-                  <Button size="sm" variant="ghost" className="text-red-500 h-8" onClick={() => setManualLines(manualLines.filter((_, j) => j !== i))}>
+                  <Button size="sm" variant="ghost" aria-label="Quitar línea" className="h-8 text-danger hover:text-danger" onClick={() => setManualLines(manualLines.filter((_, j) => j !== i))}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
@@ -690,7 +668,7 @@ export default function SettlementsManager() {
             <Button
               onClick={handleCreate}
               disabled={!createForm.supplierId || !createForm.periodFrom || !createForm.periodTo || createMutation.isPending}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+             
             >
               {createMutation.isPending ? "Creando..." : "Crear liquidación"}
             </Button>
@@ -728,7 +706,7 @@ export default function SettlementsManager() {
             <Button
               onClick={() => selected && updateStatusMutation.mutate({ id: selected.id, status: newStatus as any, notes: statusChangeNotes })}
               disabled={!newStatus || updateStatusMutation.isPending}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+             
             >
               {updateStatusMutation.isPending ? "Guardando..." : "Cambiar estado"}
             </Button>
@@ -775,7 +753,7 @@ export default function SettlementsManager() {
             <Button
               onClick={() => selected && addDocMutation.mutate({ settlementId: selected.id, ...docForm, fileUrl: docForm.fileUrl || undefined, notes: docForm.notes || undefined })}
               disabled={!docForm.title || addDocMutation.isPending}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+             
             >
               {addDocMutation.isPending ? "Añadiendo..." : "Añadir"}
             </Button>
@@ -790,7 +768,7 @@ export default function SettlementsManager() {
             <DialogTitle>Enviar liquidación por email</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted-foreground">
               Se enviará la liquidación <strong>{detail?.settlementNumber}</strong> al proveedor <strong>{detail?.supplierName}</strong>.
             </p>
             <div>
@@ -808,14 +786,13 @@ export default function SettlementsManager() {
             <Button
               onClick={() => selected && sendEmailMutation.mutate({ id: selected.id, emailOverride: emailOverride || undefined })}
               disabled={sendEmailMutation.isPending}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+             
             >
               {sendEmailMutation.isPending ? "Enviando..." : "Enviar email"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
     </AdminLayout>
   );
 }
