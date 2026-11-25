@@ -218,12 +218,6 @@
     "textoMinusculo": 3,
     "geometriaAjena": 2
   },
-  "pages/admin/suppliers/SettlementsManager.tsx": {
-    "coloresFijos": 32
-  },
-  "pages/admin/suppliers/SuppliersManager.tsx": {
-    "coloresFijos": 25
-  },
   "pages/admin/tpv/TpvCashMovement.tsx": {
     "textoMinusculo": 3
   },

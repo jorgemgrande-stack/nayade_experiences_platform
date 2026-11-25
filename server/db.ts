@@ -1269,13 +1269,15 @@ export function todayMadridISO(now: Date = new Date()): string {
 }
 
 /** Por defecto solo las variantes vigentes (web y pedidos); el administrador pasa includeExpired para verlas todas. */
-export async function getVariantsByExperience(experienceId: number, opts: { includeExpired?: boolean } = {}) {
+export async function getVariantsByExperience(experienceId: number, opts: { includeExpired?: boolean; includeSupplements?: boolean } = {}) {
   const db = await getDb();
   if (!db) return [];
+  // Los suplementos opcionales (supplementGroup, 0090) no son opciones del programa: solo salen si se piden expresamente
+  const noSupplements = opts.includeSupplements ? undefined : isNull(experienceVariants.supplementGroup);
   return db.select().from(experienceVariants)
     .where(opts.includeExpired
-      ? eq(experienceVariants.experienceId, experienceId)
-      : and(eq(experienceVariants.experienceId, experienceId), or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)))
+      ? and(eq(experienceVariants.experienceId, experienceId), noSupplements)
+      : and(eq(experienceVariants.experienceId, experienceId), noSupplements, or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)))
     .orderBy(experienceVariants.sortOrder, experienceVariants.id);
 }
 
@@ -1297,10 +1299,12 @@ export async function createVariant(data: {
   validUntil?: string | null;
   minQty?: number | null;
   maxQty?: number | null;
+  supplementGroup?: string | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(experienceVariants).values({
+    supplementGroup: data.supplementGroup?.trim() || null,
     validUntil: data.validUntil ?? null,
     minQty: data.minQty ?? null,
     maxQty: data.maxQty ?? null,
@@ -1328,6 +1332,7 @@ export async function updateVariant(
     validUntil: string | null;
     minQty: number | null;
     maxQty: number | null;
+    supplementGroup: string | null;
   }>
 ) {
   const db = await getDb();

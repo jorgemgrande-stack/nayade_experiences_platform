@@ -73,6 +73,9 @@ const MIGRATED = [
   "pages/admin/accounting/ExpenseSuppliersManager.tsx",
   "pages/admin/accounting/FinanceSyncSetup.tsx",
   "pages/admin/accounting/RecurringExpensesManager.tsx",
+  "pages/admin/suppliers/SuppliersManager.tsx",
+  "pages/admin/suppliers/SettlementsManager.tsx",
+  "pages/admin/crm/tabs/PendingPaymentsTab.tsx",
 ];
 
 /** Pendientes de migrar (pantallas del panel de Essential): líneas con colores fijos hoy. Solo pueden bajar. */
@@ -83,7 +86,6 @@ const BASELINE: Record<string, number> = {
   "pages/admin/crm/tabs/CancellationsTab.tsx": 1,
   "pages/admin/crm/tabs/InvoicesTab.tsx": 3,
   "pages/admin/crm/tabs/LeadsTab.tsx": 1,
-  "pages/admin/crm/tabs/PendingPaymentsTab.tsx": 5,
   "pages/admin/crm/tabs/QuotesTab.tsx": 7,
   "pages/admin/crm/tabs/ReservationsTab.tsx": 3,
   "pages/admin/crm/modals/AnularReservaModal.tsx": 4,

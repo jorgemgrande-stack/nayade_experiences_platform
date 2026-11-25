@@ -152,6 +152,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
+import { resolveSupplements, supplementsTotalCents, supplementOffers, SupplementError, type SupplementLine } from "./supplements";
 import { assertChargeable, checkoutFingerprint, discountCents as computeDiscountCents, discountLogEntry, discountProblem, eurosToCents, fingerprintLogEntry, lineTotalCents, acquireCheckoutLock, variantUnitCents, variantQuantityProblem, productPeopleProblem, type OrderDiscount } from "./shopCheckoutRules";
 import { getTenantIdOrDefault } from "./_core/tenant";
 import { assertUserAdminAllowed, OWNER_SETTING_KEY } from "./_core/companyOwner";
@@ -331,6 +332,19 @@ const noClientPricedExtras = z
 // Social Token Net por sector: puntos por alquiler entregado y clase impartida de Ski Net (eventos del SDK)
 installSectorLoyalty(getSdkRuntime().events);
 
+/** Suplementos marcados de un producto en el pago online: ids → líneas con importe del servidor; un id ajeno o caducado se rechaza. */
+async function resolveSuppForCheckout(productId: number, ids: number[] | undefined, people: number): Promise<SupplementLine[]> {
+  if (!ids || ids.length === 0) return [];
+  const rows = await getVariantsByExperience(productId, { includeSupplements: true });
+  try {
+    return resolveSupplements(ids, rows as any, people);
+  } catch (e) {
+    if (e instanceof SupplementError) throw new TRPCError({ code: "BAD_REQUEST", message: `${e.message} No se ha realizado ningún cobro.` });
+    throw e;
+  }
+}
+const suppNameSuffix = (lines: SupplementLine[]): string => (lines.length ? ` + ${lines.map((l) => l.name).join(" + ")} (suplemento opcional)` : "");
+
 export const appRouter = router({
   system: systemRouter,
   publicExpenses: publicExpensesRouter,
@@ -451,6 +465,26 @@ export const appRouter = router({
         // Promociones de la tienda (reglas de precios Business, canal web) para enseñar el precio final y el ahorro;
         // el importe lo recalcula siempre el servidor al pagar. Sin reglas, lista vacía.
         return { ...exp, pricingRules: await webRulesForProduct({ id: exp.id, categoryId: exp.categoryId ?? null }), ...(i18n ? { i18n } : {}) };
+      }),
+
+    /**
+     * Suplementos opcionales del producto (alimentación ayurvédica…), AGRUPADOS por tramos y aparte de las opciones del
+     * programa. Nunca vienen marcados: los importes que ve la persona son orientativos; el servidor los recalcula.
+     */
+    getSupplementsByExperience: publicProcedure
+      .input(z.object({ experienceId: z.number(), locale: z.string().max(35).optional() }))
+      .query(async ({ input }) => {
+        const { getExperienceById: byId } = await import("./db");
+        const prod = await byId(input.experienceId);
+        if (!prod || !showsPrice(prod)) return [];
+        const rows = (await getVariantsByExperience(input.experienceId, { includeSupplements: true })).filter((v) => !!v.supplementGroup);
+        if (!rows.length) return [];
+        let shown = rows;
+        if (input.locale) {
+          const [{ localizeVariants }, { sqlI18nRepo }] = await Promise.all([import("./i18nProducts"), import("./i18nSqlRepo")]);
+          shown = (await localizeVariants(sqlI18nRepo(), rows, input.locale)) as typeof rows;
+        }
+        return supplementOffers(shown);
       }),
 
     getVariantsByExperience: publicProcedure
@@ -677,6 +711,8 @@ export const appRouter = router({
           elapsedMs: z.number().int().min(0).optional(),
           page: z.string().max(200).optional(),
           variantId: z.number().int().positive().optional(),
+          /** Suplementos opcionales marcados (ids); solo se anotan en la solicitud, sin cobro */
+          supplementIds: z.array(z.number().int().positive()).max(5).optional(),
           lang: z.string().max(5).optional(),
           /** Fecha de inicio deseada (YYYY-MM-DD) de un producto sin convocatoria; el servidor la valida contra el periodo del producto */
           startDate: z.string().max(10).optional(),
@@ -1976,7 +2012,7 @@ export const appRouter = router({
       .input(z.object({ experienceId: z.number().optional() }))
       .query(async ({ input }) => {
         if (input.experienceId) {
-          return getVariantsByExperience(input.experienceId, { includeExpired: true });
+          return getVariantsByExperience(input.experienceId, { includeExpired: true, includeSupplements: true });
         }
         return getAllVariantsGrouped();
       }),
@@ -1993,7 +2029,9 @@ export const appRouter = router({
         validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
         minQty: z.number().int().min(1).nullable().optional(),
         maxQty: z.number().int().min(1).nullable().optional(),
-      }))
+        /** Suplemento opcional (aparte del programa; tramos con el mismo grupo). Solo «por persona» o «fijo». */
+        supplementGroup: z.string().trim().max(64).regex(/^[a-z0-9_-]+$/i).nullable().optional(),
+      }).refine((v) => !v.supplementGroup || v.priceType !== "percentage", { message: "Un suplemento no puede ser un porcentaje." }))
       .mutation(async ({ input }) => {
         return createVariant(input);
       }),
@@ -2010,6 +2048,7 @@ export const appRouter = router({
         validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
         minQty: z.number().int().min(1).nullable().optional(),
         maxQty: z.number().int().min(1).nullable().optional(),
+        supplementGroup: z.string().trim().max(64).regex(/^[a-z0-9_-]+$/i).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -2514,6 +2553,8 @@ export const appRouter = router({
         bookingDate: z.string(),
         people: z.number().int().min(1).max(100),
         variantId: z.number().int().positive().optional(),
+        /** Suplementos opcionales MARCADOS (ids de variante-suplemento); el servidor fija tramo e importe */
+        supplementIds: z.array(z.number().int().positive()).max(5).optional(),
         extras: noClientPricedExtras,
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
@@ -2589,7 +2630,9 @@ export const appRouter = router({
         );
         // Los extras con precio del cliente se rechazan en el esquema de entrada (noClientPricedExtras).
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
-        const totalEuros = baseTotal + extrasTotal;
+        // Suplementos opcionales: solo los marcados, con tramo e importe calculados aquí (nunca los fija el cliente)
+        const suppLines = await resolveSuppForCheckout(input.productId, input.supplementIds, input.people);
+        const totalEuros = baseTotal + extrasTotal + supplementsTotalCents(suppLines) / 100;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
 
         // 2d. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
@@ -2605,7 +2648,7 @@ export const appRouter = router({
         const clientUserAgent = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
         const { id: createdReservationId } = await createReservation({
           productId: input.productId,
-          productName: product.title,
+          productName: product.title + suppNameSuffix(suppLines),
           bookingDate: input.bookingDate,
           people: input.people,
           extrasJson,
@@ -2715,6 +2758,8 @@ export const appRouter = router({
           bookingDate: z.string(),
           people: z.number().int().min(1).max(100),
           variantId: z.number().int().positive().optional(),
+          /** Suplementos opcionales MARCADOS (ids de variante-suplemento); el servidor fija tramo e importe */
+          supplementIds: z.array(z.number().int().positive()).max(5).optional(),
           /** Convocatoria elegida (obligatoria si el producto tiene fechas abiertas; la valida el servidor) */
           editionId: z.number().int().positive().optional(),
           extras: noClientPricedExtras,
@@ -2862,7 +2907,10 @@ export const appRouter = router({
           // Reglas de precios de la empresa (Business), antes del cupón: sin reglas, el precio de siempre
           unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: editionLine?.bookingDate ?? item.bookingDate }).unitPrice);
           const { totalCents: itemBaseCents, unitsBooked: itemUnits } = lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits);
-          const itemAmountCents = itemBaseCents + extrasCents;
+          // Suplementos opcionales: solo los marcados; importe y tramo (individual / desde 2) los fija el servidor
+          const suppLines = await resolveSuppForCheckout(item.productId, item.supplementIds, item.people);
+          lineName += suppNameSuffix(suppLines);
+          const itemAmountCents = itemBaseCents + extrasCents + supplementsTotalCents(suppLines);
           totalAmountCents += itemAmountCents;
           itemsWithPrices.push({
             productId: item.productId,

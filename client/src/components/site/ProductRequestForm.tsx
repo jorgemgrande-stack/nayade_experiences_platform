@@ -35,7 +35,24 @@ export interface ProductRequestTarget {
   /** Límites de participantes por compra (de la opción elegida y del producto) */
   minPeople?: number;
   maxPeople?: number;
+  /** Suplementos opcionales del producto (alimentación…): se muestran aparte, desmarcados; el servidor fija el importe */
+  supplements?: SupplementOffer[];
 }
+
+export interface SupplementOffer {
+  group: string;
+  name: string;
+  description: string | null;
+  tiers: Array<{ id: number; name: string; priceModifier: string; priceType: "fixed" | "per_person"; minQty: number | null; maxQty: number | null }>;
+}
+
+/** Tramo que corresponde a n participantes (el más específico); solo para MOSTRAR: el servidor lo vuelve a decidir. */
+function tierFor(o: SupplementOffer, n: number) {
+  return [...o.tiers]
+    .filter((t) => n >= (t.minQty ?? 1) && (t.maxQty == null || n <= t.maxQty))
+    .sort((a, b) => (b.minQty ?? 0) - (a.minQty ?? 0))[0];
+}
+const money = (v: string) => `${Number(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`;
 
 export function ProductRequestDialog({ target, open, onOpenChange, preview }: { target: ProductRequestTarget | null; open: boolean; onOpenChange: (o: boolean) => void; preview?: boolean }) {
   const id = useId();
@@ -47,6 +64,7 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
   const [seats, setSeats] = useState("1");
   const [startDate, setStartDate] = useState("");
   const [consent, setConsent] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]); // grupos de suplemento marcados: siempre vacío al abrir
   const [trap, setTrap] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<string | null>(null);
@@ -60,10 +78,19 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
     if (!o) {
       setSent(null);
       setErrors({});
+      setPicked([]);
     } else {
       shownAt.current = Date.now();
+      setPicked([]);
     }
   };
+
+  const offers = target?.supplements ?? [];
+  const nSeats = Math.max(1, Math.min(50, Math.trunc(Number(seats)) || 1));
+  const chosenSupplementIds = offers.filter((o) => picked.includes(o.group)).map((o) => tierFor(o, nSeats)?.id).filter((x): x is number => typeof x === "number");
+  const tierLabel = (tr: SupplementOffer["tiers"][number]) =>
+    `${money(tr.priceModifier)} ${tr.priceType === "per_person" ? t.supplementPerPerson : ""}`.trim() +
+    (tr.maxQty === 1 ? ` (${t.supplementIndividual})` : tr.minQty && tr.minQty > 1 ? ` (${fillUiText(t.supplementFromPeople, { n: tr.minQty })})` : "");
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +129,8 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
         productRequest: {
           experienceId: target.productId,
           editionId: target.editionId,
-          seats: target.withSeats || target.requestDates ? Math.max(1, Math.min(50, Math.trunc(Number(seats)) || 1)) : undefined,
+          seats: target.withSeats || target.requestDates || offers.length ? Math.max(1, Math.min(50, Math.trunc(Number(seats)) || 1)) : undefined,
+          supplementIds: chosenSupplementIds.length ? chosenSupplementIds : undefined,
           startDate: target.requestDates ? startDate : undefined,
           consent,
           website: trap,
@@ -175,6 +203,29 @@ export function ProductRequestDialog({ target, open, onOpenChange, preview }: { 
                 </div>
               </>
             )}
+            {offers.length > 0 && !target?.requestDates && !target?.withSeats && (
+              <div>
+                <Label htmlFor={`${id}-seats`}>{t.requestParticipantsLabel}</Label>
+                <Input id={`${id}-seats`} type="number" inputMode="numeric" min={1} max={50} value={seats} onChange={(e) => setSeats(e.target.value)} className="mt-1 w-28" />
+              </div>
+            )}
+            {offers.map((o) => {
+              const cur = tierFor(o, nSeats);
+              return (
+                <div key={o.group} className="rounded-lg border border-dashed p-3">
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" checked={picked.includes(o.group)} onChange={(e) => setPicked(e.target.checked ? [...picked, o.group] : picked.filter((g) => g !== o.group))} className="mt-0.5 h-4 w-4" />
+                    <span>
+                      <span className="font-medium">{t.supplementOptional}: {o.name}</span>
+                      {cur && <span className="ml-1 text-muted-foreground">· {tierLabel(cur)}</span>}
+                    </span>
+                  </label>
+                  {o.tiers.length > 1 && <p className="mt-1 pl-6 text-xs text-muted-foreground">{o.tiers.map(tierLabel).join(" · ")}</p>}
+                  {o.description && <p className="mt-1 pl-6 text-xs text-muted-foreground">{o.description}</p>}
+                  <p className="mt-1 pl-6 text-xs text-muted-foreground">{t.supplementNotIncluded}</p>
+                </div>
+              );
+            })}
             {target?.withSeats && (
               <div>
                 <Label htmlFor={`${id}-seats`}>{t.seatsLabel}</Label>
