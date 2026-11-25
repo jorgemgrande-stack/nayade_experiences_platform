@@ -4,7 +4,9 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { FitFigure } from "./shared/EconomyUi";
 import { Link } from "wouter";
 import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
@@ -48,7 +50,7 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 // ─── Formateador de moneda ────────────────────────────────────────────────────
-const fmtEur = (v: number) => `${v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const fmtEur = (v: number) => formatEur(v);
 
 // ─── Tooltip personalizado ────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }: any) {
@@ -98,7 +100,7 @@ export default function AccountingReports() {
     enabled: canBank,
   });
 
-  const fmtEurLocal = (v: number) => `${v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  const fmtEurLocal = (v: number) => formatEur(v);
 
   const byDay     = reports?.byDay     ?? [];
   const byChannel = reports?.byChannel ?? [];
@@ -137,17 +139,14 @@ export default function AccountingReports() {
   ].join(", ") : "";
 
   return (
-    <AdminLayout title="Informes de ventas">
-      <PanelPageHeader
-        icon={<BarChart2 />}
-        title="Informes de Contabilidad"
+    <AdminLayout>
+      <EconomyShell screen="reports"
         description="Análisis de ventas, fiscalidad y canales de distribución"
-        actions={
+        action={
           <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-foreground">
             <RefreshCw className="w-4 h-4" /> Actualizar
           </Button>
-        }
-      />
+        }>
 
       {/* Filtro de fechas */}
       <div className="flex items-center gap-3 mb-6 bg-card border border-border rounded-xl p-4">
@@ -191,16 +190,16 @@ export default function AccountingReports() {
             </PanelEmpty>
           )}
           {/* KPIs globales */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-success/10 flex shrink-0 items-center justify-center">
                     <Euro className="w-5 h-5 text-success" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-muted-foreground">Ingresos totales</p>
-                    <p className="text-xl font-bold text-foreground">{fmtEur(totals?.revenue ?? 0)}</p>
+                    <p className="text-xl font-bold text-foreground"><FitFigure>{fmtEur(totals?.revenue ?? 0)}</FitFigure></p>
                   </div>
                 </div>
               </CardContent>
@@ -208,10 +207,10 @@ export default function AccountingReports() {
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-info/10 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-info/10 flex shrink-0 items-center justify-center">
                     <Receipt className="w-5 h-5 text-info" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-muted-foreground">Transacciones</p>
                     <p className="text-xl font-bold text-foreground">{totals?.count ?? 0}</p>
                   </div>
@@ -221,12 +220,12 @@ export default function AccountingReports() {
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-warning/10 flex shrink-0 items-center justify-center">
                     <TrendingUp className="w-5 h-5 text-warning" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-muted-foreground">IVA repercutido</p>
-                    <p className="text-xl font-bold text-foreground">{fmtEur(fiscal?.tax ?? 0)}</p>
+                    <p className="text-xl font-bold text-foreground"><FitFigure>{fmtEur(fiscal?.tax ?? 0)}</FitFigure></p>
                     <p className="text-xs text-muted-foreground">Base {fmtEur(fiscal?.base ?? 0)}</p>
                   </div>
                 </div>
@@ -236,12 +235,12 @@ export default function AccountingReports() {
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex shrink-0 items-center justify-center">
                     <BarChart2 className="w-5 h-5 text-primary" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-muted-foreground">Margen REAV</p>
-                    <p className="text-xl font-bold text-foreground">{fmtEur(totals?.reavMargin ?? 0)}</p>
+                    <p className="text-xl font-bold text-foreground"><FitFigure>{fmtEur(totals?.reavMargin ?? 0)}</FitFigure></p>
                   </div>
                 </div>
               </CardContent>
@@ -374,24 +373,24 @@ export default function AccountingReports() {
                       {byRate.map((r) => (
                         <tr key={r.rate} className="border-b border-border/50 hover:bg-muted/20">
                           <td className="py-2 px-3">{rateLabel(r.rate)}</td>
-                          <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(r.base)}</td>
-                          <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(r.amount)}</td>
-                          <td className="py-2 px-3 text-right font-semibold">{fmtEur(r.total)}</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums text-muted-foreground">{fmtEur(r.base)}</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums text-muted-foreground">{fmtEur(r.amount)}</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums font-semibold">{fmtEur(r.total)}</td>
                         </tr>
                       ))}
                       {(fiscal?.notSubject ?? 0) !== 0 && (
                         <tr className="border-b border-border/50">
                           <td className="py-2 px-3">Sin IVA repercutido</td>
-                          <td className="py-2 px-3 text-right text-muted-foreground">—</td>
-                          <td className="py-2 px-3 text-right text-muted-foreground">—</td>
-                          <td className="py-2 px-3 text-right font-semibold">{fmtEur(fiscal?.notSubject ?? 0)}</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums text-muted-foreground">—</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums text-muted-foreground">—</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums font-semibold">{fmtEur(fiscal?.notSubject ?? 0)}</td>
                         </tr>
                       )}
                       <tr className="font-semibold">
                         <td className="py-2 px-3">Total</td>
-                        <td className="py-2 px-3 text-right">{fmtEur(fiscal?.base ?? 0)}</td>
-                        <td className="py-2 px-3 text-right">{fmtEur(fiscal?.tax ?? 0)}</td>
-                        <td className="py-2 px-3 text-right">{fmtEur(fiscal?.total ?? 0)}</td>
+                        <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums">{fmtEur(fiscal?.base ?? 0)}</td>
+                        <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums">{fmtEur(fiscal?.tax ?? 0)}</td>
+                        <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums">{fmtEur(fiscal?.total ?? 0)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -414,21 +413,21 @@ export default function AccountingReports() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="rounded-lg bg-info/10 border border-info/40 p-3">
                     <p className="text-xs text-info font-medium mb-1">Caja actual</p>
-                    <p className="text-xl font-bold text-info">{fmtEurLocal(cf.currentBalance)}</p>
+                    <p className="text-xl font-bold text-info"><FitFigure>{fmtEurLocal(cf.currentBalance)}</FitFigure></p>
                     <p className="text-xs text-muted-foreground">Último mov. bancario</p>
                   </div>
                   <div className="rounded-lg bg-success/10 border border-success/40 p-3">
                     <p className="text-xs text-success font-medium mb-1 flex items-center gap-1">
                       <ArrowUpRight className="w-3 h-3" /> Ingresos pendientes
                     </p>
-                    <p className="text-xl font-bold text-success">{fmtEurLocal(cf.pendingIncome)}</p>
+                    <p className="text-xl font-bold text-success"><FitFigure>{fmtEurLocal(cf.pendingIncome)}</FitFigure></p>
                     <p className="text-xs text-muted-foreground">{cf.pendingReservationCount} {voc.ordersLower} {voc.agree("confirmados", "confirmadas")}</p>
                   </div>
                   <div className="rounded-lg bg-warning/10 border border-warning/40 p-3">
                     <p className="text-xs text-warning font-medium mb-1 flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3" /> Gastos pendientes
                     </p>
-                    <p className="text-xl font-bold text-warning">{fmtEurLocal(cf.pendingExpenses)}</p>
+                    <p className="text-xl font-bold text-warning"><FitFigure>{fmtEurLocal(cf.pendingExpenses)}</FitFigure></p>
                     <p className="text-xs text-muted-foreground">Sin pagar registrados</p>
                   </div>
                   <div className={`rounded-lg border p-3 ${cf.estimatedBalance >= 0 ? "bg-success/10 border-success/40" : "bg-danger/10 border-danger/40"}`}>
@@ -501,10 +500,10 @@ export default function AccountingReports() {
                               <td className="py-2 px-3 font-medium">
                                 {PROFIT_CHANNEL_LABELS[r.channel] ?? r.channel}
                               </td>
-                              <td className="py-2 px-3 text-right font-semibold text-success">{fmtEurLocal(r.amount)}</td>
-                              <td className="py-2 px-3 text-right text-muted-foreground">{r.count}</td>
-                              <td className="py-2 px-3 text-right font-semibold">{fmtEurLocal(r.ticketMedio)}</td>
-                              <td className="py-2 px-3 text-right">
+                              <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums font-semibold text-success">{fmtEurLocal(r.amount)}</td>
+                              <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums text-muted-foreground">{r.count}</td>
+                              <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums font-semibold">{fmtEurLocal(r.ticketMedio)}</td>
+                              <td className="py-2 px-3 text-right whitespace-nowrap tabular-nums">
                                 <div className="flex items-center justify-end gap-2">
                                   <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
                                     <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
@@ -554,6 +553,7 @@ export default function AccountingReports() {
 
         </>
       )}
+    </EconomyShell>
     </AdminLayout>
   );
 }

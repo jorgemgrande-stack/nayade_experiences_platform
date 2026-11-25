@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
-import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip, type RowAction } from "./shared/EconomyUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard, PageOnlyTag, EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip, type RowAction } from "./shared/EconomyUi";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { trpc } from "@/lib/trpc";
@@ -67,10 +68,7 @@ const TYPE_LABELS: Record<string, { label: string; tone: Tone }> = {
   OTRO: { label: "Otro", tone: "neutral" },
 };
 
-function fmtCurrency(v: string | number | null | undefined): string {
-  const n = parseFloat(String(v ?? 0));
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(n);
-}
+const fmtCurrency = (v: string | number | null | undefined): string => formatEur(v);
 
 function fmtDatetime(v: string | Date | null | undefined): string {
   if (!v) return "-";
@@ -383,13 +381,9 @@ export default function CardTerminalOperationsManager() {
 
   return (
     <AdminLayout>
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <PanelPageHeader
-        icon={<CreditCard />}
-        title="Operaciones TPV"
+      <EconomyShell screen="pos"
         description="Datafono / Terminal Físico — Comercia Global Payments"
-        actions={
+        action={
           <>
             <Button variant="outline" size="sm" onClick={() => listQ.refetch()}>
               <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
@@ -436,8 +430,8 @@ export default function CardTerminalOperationsManager() {
               <Upload className="w-4 h-4 mr-1" /> Importar Excel/PDF
             </Button>
           </>
-        }
-      />
+        }>
+    <div className="space-y-6">
 
       {/* Email sync result */}
       {syncResult && (
@@ -471,7 +465,7 @@ export default function CardTerminalOperationsManager() {
 
       {/* Resumen */}
       <EconomySummary>
-        <MetricCard icon={<CreditCard />} tone="info" label="Total operaciones" value={total} detail={`${pendientes} pendientes · ${incidencias} con incidencia (página)`} />
+        <MetricCard icon={<CreditCard />} tone="info" label="Total operaciones" value={total} detail={<>{pendientes} pendientes · {incidencias} con incidencia <PageOnlyTag /></>} />
         <MetricCard icon={<TrendingUp />} tone="success" label="Total ventas" value={fmtCurrency(listQ.data?.totalVentas ?? 0)} detail="importe cobrado en datáfono" />
         <MetricCard icon={<TrendingDown />} tone="warning" label="Total devoluciones" value={fmtCurrency(listQ.data?.totalDevoluciones ?? 0)} detail="importe devuelto" />
         <MetricCard icon={<Wallet />} tone={(listQ.data?.totalVentas ?? 0) - (listQ.data?.totalDevoluciones ?? 0) >= 0 ? "success" : "danger"} label="Neto" value={fmtCurrency((listQ.data?.totalVentas ?? 0) - (listQ.data?.totalDevoluciones ?? 0))} detail="ventas − devoluciones" />
@@ -996,6 +990,7 @@ export default function CardTerminalOperationsManager() {
         </DialogContent>
       </Dialog>
     </div>
+    </EconomyShell>
     </AdminLayout>
   );
 }

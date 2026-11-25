@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
-import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { StatusBadge } from "@/components/admin/PanelUi";
+import { FormFooter, MetricCard, PageOnlyTag, EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import FinanceSyncSetupBanner from "@/components/finance/FinanceSyncSetupBanner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -93,12 +94,7 @@ type BankMovementLink = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtAmount(v: string | number | null | undefined): string {
-  if (v == null) return "–";
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  if (isNaN(n)) return "–";
-  return n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-}
+const fmtAmount = (v: string | number | null | undefined): string => formatEur(v, { nullAs: "–" });
 
 function fmtDate(d: string | Date | null | undefined): string {
   if (!d) return "–";
@@ -453,14 +449,9 @@ export default function BankMovementsManager() {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        <FinanceSyncSetupBanner />
-        {/* Header */}
-        <PanelPageHeader
-          icon={<FileSpreadsheet />}
-          title="Movimientos Bancarios"
-          description="Importa, gestiona y concilia los movimientos de tu banco: Norma 43, Excel o CSV"
-          actions={
+      <EconomyShell screen="bank"
+        description="Importa, gestiona y concilia los movimientos de tu banco: Norma 43, Excel o CSV"
+        action={
             <>
               <Button
                 onClick={() => fileInputRef.current?.click()}
@@ -475,15 +466,16 @@ export default function BankMovementsManager() {
               </Button>
               <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv,.txt,.n43,.aeb,.q43" className="hidden" onChange={handleFileChange} />
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
+        <FinanceSyncSetupBanner />
 
         {/* Resumen */}
         <EconomySummary>
           <MetricCard icon={<FileSpreadsheet />} tone="info" label="Total movimientos" value={totalMovs} detail={`${imports.length} ${imports.length === 1 ? "importación" : "importaciones"}`} />
           <MetricCard icon={<TrendingUp />} tone="success" label="Total ingresado" value={fmtAmount(totalIngresado)} detail="abonos del filtro actual" />
           <MetricCard icon={<TrendingDown />} tone="danger" label="Total cargado" value={fmtAmount(totalCargado)} detail="cargos del filtro actual" />
-          <MetricCard icon={<AlertCircle />} tone={sinConciliar > 0 ? "warning" : "success"} label="Sin conciliar (página)" value={sinConciliar} detail={`de ${movements.length} mostrados`} />
+          <MetricCard icon={<AlertCircle />} tone={sinConciliar > 0 ? "warning" : "success"} label="Sin conciliar" value={sinConciliar} detail={<>de {movements.length} mostrados <PageOnlyTag /></>} />
         </EconomySummary>
 
         {/* Tabs */}
@@ -613,7 +605,7 @@ export default function BankMovementsManager() {
 
       {/* ── Movement detail modal ── */}
       <Dialog open={!!selectedMovement} onOpenChange={(o) => !o && setSelectedMovement(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Detalle del movimiento
@@ -991,12 +983,12 @@ export default function BankMovementsManager() {
                 </div>
               </FormSection>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <FormFooter>
                 <Button variant="outline" onClick={() => setSelectedMovement(null)}>Cancelar</Button>
                 <Button onClick={saveDetail} disabled={savingDetail}>
                   {savingDetail ? "Guardando..." : "Guardar"}
                 </Button>
-              </div>
+              </FormFooter>
             </div>
           )}
         </DialogContent>
@@ -1026,6 +1018,7 @@ export default function BankMovementsManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
 import { toastError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -62,18 +62,15 @@ export default function ExpenseCategoriesManager() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-4xl space-y-6 p-6">
-        <PanelPageHeader
-          icon={<Tag />}
-          title={t("accountingConfig.categories.title")}
-          description={t("accountingConfig.categories.description", { count: items.length })}
-          actions={
+      <EconomyShell screen="categories"
+        description={t("accountingConfig.categories.description", { count: items.length })}
+        action={
             <>
               <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")} className="gap-1.5"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.common.backToExpenses")}</Button>
               <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.categories.new")}</Button>
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
 
         <EconomyTable
           rows={items}
@@ -118,6 +115,7 @@ export default function ExpenseCategoriesManager() {
           </form>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { StatusBadge } from "@/components/admin/PanelUi";
 import { toastError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { useI18n, useFormat } from "@/i18n/I18nProvider";
+import { useMoney } from "@/lib/useMoney";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,7 @@ import { Plus, Pencil, Trash2, RefreshCw, Play, ArrowLeft, CalendarClock, AlertT
 import { TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
-import { EconomySummary, EconomyTable, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { FormFooter, MetricCard, EconomySummary, EconomyTable, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
 
 type RecForm = {
   concept: string; amount: string; categoryId: string; costCenterId: string;
@@ -35,6 +36,7 @@ const emptyForm: RecForm = {
 export default function RecurringExpensesManager() {
   const { t } = useI18n();
   const f = useFormat();
+  const money = useMoney();
   const [, setLocation] = useLocation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -140,7 +142,7 @@ export default function RecurringExpensesManager() {
     },
     { key: "category", header: t("accountingConfig.recurring.colCategory"), priority: "md", cell: (i) => <span className="text-muted-foreground">{getCategoryName(i.categoryId)}</span> },
     { key: "recurrence", header: t("accountingConfig.recurring.colRecurrence"), cell: (i) => recurrenceLabel(i.recurrenceType) },
-    { key: "amount", header: t("accountingConfig.recurring.colAmount"), align: "right", num: true, mobile: "amount", cell: (i) => f.currency(parseFloat(i.amount)) },
+    { key: "amount", header: t("accountingConfig.recurring.colAmount"), align: "right", num: true, mobile: "amount", cell: (i) => money.eur(parseFloat(i.amount)) },
     {
       key: "next",
       header: t("accountingConfig.recurring.colNext"),
@@ -159,18 +161,15 @@ export default function RecurringExpensesManager() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-6xl space-y-6 p-6">
-        <PanelPageHeader
-          icon={<RefreshCw />}
-          title={t("accountingConfig.recurring.title")}
-          description={t("accountingConfig.recurring.description")}
-          actions={
+      <EconomyShell screen="recurring"
+        description={t("accountingConfig.recurring.description")}
+        action={
             <>
               <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")} className="gap-1.5"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.common.backToExpenses")}</Button>
               <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.recurring.new")}</Button>
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
 
         {items.length > 0 && (
           <EconomySummary>
@@ -277,13 +276,14 @@ export default function RecurringExpensesManager() {
               <Switch id="recurring-operational" checked={form.isOperational} onCheckedChange={(v) => setForm({ ...form, isOperational: v })} />
             </div>
 
-            <DialogFooter className="gap-2 sm:gap-2">
+            <FormFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{t("common.cancel")}</Button>
               <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>{editingId ? t("common.save") : t("common.create")}</Button>
-            </DialogFooter>
+            </FormFooter>
           </form>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

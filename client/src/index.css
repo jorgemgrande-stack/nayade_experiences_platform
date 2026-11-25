@@ -929,7 +929,7 @@ html[data-admin-panel] [class*="scrollbar-width:none"] { scrollbar-width: none; 
 
 /* Familia Clientes y Ventas: textos secundarios y bordes con más contraste (oscuro) y superficies contiguas mejor separadas (claro).
    Se derivan del texto y del fondo de cada empresa, así que respetan su paleta. Solo dentro de la familia. */
-[data-sales-shell], [data-sales-surface] {
+[data-sales-shell], [data-sales-surface], [data-economy-shell] {
   --muted-foreground: color-mix(in oklab, var(--foreground) 70%, var(--background));
   --border: color-mix(in oklab, var(--foreground) 19%, var(--background));
 }

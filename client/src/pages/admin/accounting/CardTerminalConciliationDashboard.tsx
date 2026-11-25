@@ -1,6 +1,8 @@
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { type Tone } from "@/components/admin/PanelUi";
+import { FitFigure, MetricCard } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,9 +18,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-function fmt(v: number): string {
-  return v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-}
+const fmt = (v: number): string => formatEur(v);
 
 function toneOf(color: string): Tone {
   if (color.includes("success")) return "success";
@@ -85,13 +85,9 @@ export default function CardTerminalConciliationDashboard() {
 
   return (
     <AdminLayout>
-      <div className="flex flex-col gap-6 p-6">
-        {/* Header */}
-        <PanelPageHeader
-          icon={<BarChart3 />}
-          title="Conciliación TPV"
-          description="Estado del matching automático entre remesas TPV y movimientos bancarios"
-          actions={
+      <EconomyShell screen="conciliation"
+        description="Estado del matching automático entre remesas TPV y movimientos bancarios"
+        action={
             <>
               <Button
                 variant="outline"
@@ -110,8 +106,8 @@ export default function CardTerminalConciliationDashboard() {
                 Ver remesas
               </Button>
             </>
-          }
-        />
+          }>
+      <div className="flex flex-col gap-6">
 
         {/* KPI cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -139,7 +135,7 @@ export default function CardTerminalConciliationDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="text-xl font-bold text-success">{fmt(s.reconciled.amount)}</div>
+                <div className="text-xl font-bold text-success"><FitFigure>{fmt(s.reconciled.amount)}</FitFigure></div>
                 <div className="text-xs text-muted-foreground mt-1">{s.reconciled.count} remesas</div>
               </CardContent>
             </Card>
@@ -153,7 +149,7 @@ export default function CardTerminalConciliationDashboard() {
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="text-xl font-bold text-warning">
-                  {fmt(s.pending.amount + (s.suggested?.amount ?? 0) + (s.autoReady?.amount ?? 0) + s.reviewRequired.amount)}
+                  <FitFigure>{fmt(s.pending.amount + (s.suggested?.amount ?? 0) + (s.autoReady?.amount ?? 0) + s.reviewRequired.amount)}</FitFigure>
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
                   {s.pending.count + s.suggested.count + s.autoReady.count + s.reviewRequired.count} remesas sin conciliar
@@ -169,7 +165,7 @@ export default function CardTerminalConciliationDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="text-xl font-bold text-warning">{fmt(s.difference.amount)}</div>
+                <div className="text-xl font-bold text-warning"><FitFigure>{fmt(s.difference.amount)}</FitFigure></div>
                 <div className="text-xs text-muted-foreground mt-1">{s.difference.count} remesas con diferencia</div>
               </CardContent>
             </Card>
@@ -245,6 +241,7 @@ export default function CardTerminalConciliationDashboard() {
           </Card>
         )}
       </div>
+    </EconomyShell>
     </AdminLayout>
   );
 }

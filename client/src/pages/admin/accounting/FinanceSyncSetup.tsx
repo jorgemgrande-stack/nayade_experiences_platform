@@ -8,8 +8,8 @@ import { Link } from "wouter";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, ChevronRight, Circle, CircleDashed, Lock, MailCheck, Rocket } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { EconomyShell } from "@/components/admin/EconomyShell";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { HeroCard } from "@/components/admin/PanelVisual";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -218,8 +218,9 @@ export default function FinanceSyncSetup() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-3xl space-y-6 p-6">
-        <PanelPageHeader icon={<Rocket />} title={t("financeSync.title")} description={t("financeSync.description")} />
+      <EconomyShell screen="financeSync"
+        description={t("financeSync.description")}>
+      <div className="space-y-6">
 
         {q.isLoading ? (
           <PanelLoading />
@@ -262,6 +263,7 @@ export default function FinanceSyncSetup() {
           </>
         )}
       </div>
+    </EconomyShell>
     </AdminLayout>
   );
 }

@@ -6,10 +6,12 @@
  * La autorización real (licencia `accounting-general` y administración) la aplica el servidor.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, Download, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { FitFigure } from "./shared/EconomyUi";
+import { formatAmount, formatEurCents } from "@/lib/money";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,8 +35,8 @@ import {
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const sectionClass = "space-y-4 rounded-xl border border-border bg-card p-4";
 const NONE = "—";
-const eur = (c: number | null | undefined) => (c == null ? NONE : (c / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" }));
-const amount = (c: number) => (c === 0 ? "" : (c / 100).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const eur = (c: number | null | undefined) => formatEurCents(c, { nullAs: NONE });
+const amount = (c: number) => (c === 0 ? "" : formatAmount(c / 100));
 const esDate = (d: string) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : NONE);
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" }) : NONE);
 const todayKey = () => new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
@@ -116,7 +118,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   return (
     <div className="rounded-lg border border-border bg-background p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold text-foreground">{value}</p>
+      <p className="text-lg font-semibold text-foreground"><FitFigure>{value}</FitFigure></p>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
@@ -365,7 +367,7 @@ function Ledger({ period, accounts }: { period: Period; accounts: Array<{ code: 
                 <td className="px-2 py-1 text-muted-foreground" colSpan={5}>
                   Saldo anterior
                 </td>
-                <td className="px-2 py-1 text-right tabular-nums">{eur(q.data!.openingCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{eur(q.data!.openingCents)}</td>
               </tr>
               {q.data!.items.map((r, i) => (
                 <tr key={`${r.entryId}-${i}`} className="border-b border-border">
@@ -374,18 +376,18 @@ function Ledger({ period, accounts }: { period: Period; accounts: Array<{ code: 
                     {r.year}/{r.entryNumber}
                   </td>
                   <td className="px-2 py-1 text-muted-foreground">{r.description}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{amount(r.debitCents)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{amount(r.creditCents)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{eur(r.balanceCents)}</td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(r.debitCents)}</td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(r.creditCents)}</td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{eur(r.balanceCents)}</td>
                 </tr>
               ))}
               <tr className="font-medium">
                 <td className="px-2 py-1" colSpan={3}>
                   Totales del periodo
                 </td>
-                <td className="px-2 py-1 text-right tabular-nums">{amount(q.data!.debitCents)}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{amount(q.data!.creditCents)}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{eur(q.data!.closingCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(q.data!.debitCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(q.data!.creditCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{eur(q.data!.closingCents)}</td>
               </tr>
             </tbody>
           </table>
@@ -426,20 +428,20 @@ function Trial({ period }: { period: Period }) {
                 <tr key={r.code} className="border-b border-border">
                   <td className="px-2 py-1 font-mono">{r.code}</td>
                   <td className="px-2 py-1 text-muted-foreground">{r.name}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{amount(r.debitCents)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{amount(r.creditCents)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{amount(Math.max(r.balanceCents, 0))}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{amount(Math.max(-r.balanceCents, 0))}</td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(r.debitCents)}</td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(r.creditCents)}</td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(Math.max(r.balanceCents, 0))}</td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(Math.max(-r.balanceCents, 0))}</td>
                 </tr>
               ))}
               <tr className="font-medium">
                 <td className="px-2 py-1" colSpan={2}>
                   Totales
                 </td>
-                <td className="px-2 py-1 text-right tabular-nums">{amount(q.data!.totals.debitCents)}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{amount(q.data!.totals.creditCents)}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{amount(q.data!.totals.debitBalanceCents)}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{amount(q.data!.totals.creditBalanceCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(q.data!.totals.debitCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(q.data!.totals.creditCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(q.data!.totals.debitBalanceCents)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{amount(q.data!.totals.creditBalanceCents)}</td>
               </tr>
             </tbody>
           </table>
@@ -454,7 +456,7 @@ function ProfitLoss({ period }: { period: Period }) {
   const row = (label: string, cents: number, strong = false) => (
     <tr key={label} className={`border-b border-border ${strong ? "font-semibold text-foreground" : ""}`}>
       <td className="px-2 py-1">{label}</td>
-      <td className="px-2 py-1 text-right tabular-nums">{eur(cents)}</td>
+      <td className="px-2 py-1 text-right whitespace-nowrap tabular-nums">{eur(cents)}</td>
     </tr>
   );
   return (
@@ -772,16 +774,9 @@ export default function GeneralAccounting() {
   const accountOptions = accounts.data ?? [];
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div>
-          <p className="mb-2 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> Extra
-          </p>
-          <PanelPageHeader
-            title="Contabilidad general"
-            description="Contabilidad de doble partida sin introducir las facturas dos veces: facturas, abonos, tickets, cobros, gastos, pagos y cierres de caja se contabilizan solos con el plan general contable de pymes. Para presentar impuestos, usa Impuestos y gestoría."
-          />
-        </div>
+      <EconomyShell screen="general"
+        description="Contabilidad de doble partida: facturas, cobros, gastos y cierres de caja se contabilizan solos. Para presentar impuestos, usa Impuestos y gestoría.">
+      <div className="space-y-6">
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="resumen">Resumen</TabsTrigger>
@@ -824,6 +819,7 @@ export default function GeneralAccounting() {
           </TabsContent>
         </Tabs>
       </div>
+    </EconomyShell>
     </AdminLayout>
   );
 }
