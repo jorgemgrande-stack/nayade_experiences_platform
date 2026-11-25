@@ -405,6 +405,12 @@ async function lockEnrollment(tx: Exec, id: number): Promise<Record<string, any>
   return r;
 }
 
+/** Anota un hecho en el historial de una matrícula (p. ej. «devolución parcial por revisar»). */
+export async function logEnrollmentEvent(enrollmentId: number, type: string, detail: Record<string, unknown>, actorUserId: number | null = null, now = Date.now()): Promise<void> {
+  const d = await db();
+  await event(d, enrollmentId, type, actorUserId, detail, now);
+}
+
 export async function revokeEnrollment(id: number, reason: string, actorUserId: number, now = Date.now()): Promise<EnrollmentRow> {
   const why = assertReason(reason);
   const d = await db();

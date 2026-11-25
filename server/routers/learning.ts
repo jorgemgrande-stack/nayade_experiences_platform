@@ -18,7 +18,7 @@ import {
   grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
-import { confirmQuoteContractedDays, grantLearningFromEnrollment, grantLearningFromOrder, grantLearningFromQuote, pendingLearningOrders, pendingLearningQuotes, refundOrderSupplement, sendLearningInvitation, sweepLearningGrants } from "../learningFlow";
+import { addQuoteParticipant, confirmQuoteContractedDays, listQuoteParticipants, listQuoteRefundReviews, removeQuoteParticipant, resolveQuoteRefundReview, grantLearningFromEnrollment, grantLearningFromOrder, grantLearningFromQuote, pendingLearningOrders, pendingLearningQuotes, refundOrderSupplement, sendLearningInvitation, sweepLearningGrants } from "../learningFlow";
 import { applyExtensionsForOrder, extendableModules, extensionOffers, prepareExtensionOrder } from "../learningExtensions";
 import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
@@ -335,6 +335,20 @@ const admin = router({
 
   /** Presupuestos pagados (retiros sin convocatoria) con regla activa y aún sin derecho; los de duración variable piden confirmar días. */
   pendingQuotes: adminProcedure.query(() => guard(() => pendingLearningQuotes())),
+  /** Participantes identificados de una reserva (las plazas las fija la reserva confirmada). */
+  quoteParticipants: adminProcedure.input(z.object({ quoteId: id })).query(({ input }) => guard(() => listQuoteParticipants(input.quoteId, true))),
+  /** Identifica a una persona de la reserva; recibe SU derecho (pendiente de activar) cuando el presupuesto está pagado. Idempotente. */
+  addQuoteParticipant: adminProcedure
+    .input(z.object({ quoteId: id, name: z.string().trim().min(1).max(190), email: z.string().trim().min(3).max(190) }))
+    .mutation(({ ctx, input }) => guard(() => addQuoteParticipant(input.quoteId, { name: input.name, email: input.email }, ctx.user.id))),
+  /** Retira a una persona de la reserva y revoca solo su derecho. */
+  removeQuoteParticipant: adminProcedure.input(z.object({ participantId: id, reason })).mutation(({ ctx, input }) => guard(() => removeQuoteParticipant(input.participantId, input.reason, ctx.user.id))),
+  /** Devoluciones parciales de presupuestos pendientes de decidir (con las personas cuyo derecho sigue vigente). */
+  quoteRefundReviews: adminProcedure.query(() => guard(() => listQuoteRefundReviews())),
+  /** Decide una devolución parcial: retira el derecho de las personas indicadas y conserva el de las demás. */
+  resolveQuoteRefundReview: adminProcedure
+    .input(z.object({ quoteId: id, revokeEnrollmentIds: z.array(id).max(50), reason }))
+    .mutation(({ ctx, input }) => guard(() => resolveQuoteRefundReview(input.quoteId, input.revokeEnrollmentIds, input.reason, ctx.user.id))),
   /** Concede (o reintenta) el derecho de un presupuesto pagado; idempotente. */
   grantForQuote: adminProcedure.input(z.object({ quoteId: id })).mutation(({ ctx, input }) => guard(() => grantLearningFromQuote(input.quoteId, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
   /** Confirma los días CONTRATADOS (duración variable, p. ej. «5–6 días») y concede si alcanzan el mínimo de la regla. */
