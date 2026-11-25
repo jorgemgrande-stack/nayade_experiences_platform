@@ -1,38 +1,43 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
-import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
+import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Layers, ArrowLeft, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Layers, ArrowLeft, CheckCircle, XCircle, Info } from "lucide-react";
+import { TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
+import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
+import { EconomyTable, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
 
 export default function CostCentersManager() {
+  const { t } = useI18n();
   const [, setLocation] = useLocation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", description: "", active: true });
+  const [showErrors, setShowErrors] = useState(false);
 
   const listQ = trpc.financial.costCenters.list.useQuery();
   const utils = trpc.useUtils();
 
   const createMut = trpc.financial.costCenters.create.useMutation({
-    onSuccess: () => { utils.financial.costCenters.list.invalidate(); toast.success("Centro de coste creado"); setDialogOpen(false); },
-    onError: () => toast.error("Error al crear el centro de coste"),
+    onSuccess: () => { utils.financial.costCenters.list.invalidate(); toast.success(t("accountingConfig.costCenters.created")); setDialogOpen(false); },
+    onError: () => toast.error(t("accountingConfig.costCenters.createError")),
   });
   const updateMut = trpc.financial.costCenters.update.useMutation({
-    onSuccess: () => { utils.financial.costCenters.list.invalidate(); toast.success("Centro de coste actualizado"); setDialogOpen(false); },
-    onError: () => toast.error("Error al actualizar"),
+    onSuccess: () => { utils.financial.costCenters.list.invalidate(); toast.success(t("accountingConfig.costCenters.updated")); setDialogOpen(false); },
+    onError: () => toast.error(t("accountingConfig.costCenters.updateError")),
   });
   const deleteMut = trpc.financial.costCenters.delete.useMutation({
-    onSuccess: () => { utils.financial.costCenters.list.invalidate(); toast.success("Centro de coste eliminado"); },
-    onError: () => toast.error("No se puede eliminar si tiene gastos asociados"),
+    onSuccess: () => { utils.financial.costCenters.list.invalidate(); toast.success(t("accountingConfig.costCenters.deleted")); },
+    onError: () => toast.error(t("accountingConfig.costCenters.deleteError")),
   });
 
   const items = listQ.data ?? [];
@@ -41,17 +46,19 @@ export default function CostCentersManager() {
   function openCreate() {
     setEditingId(null);
     setForm({ name: "", description: "", active: true });
+    setShowErrors(false);
     setDialogOpen(true);
   }
 
   function openEdit(item: typeof items[number]) {
     setEditingId(item.id);
     setForm({ name: item.name, description: item.description ?? "", active: item.active !== false });
+    setShowErrors(false);
     setDialogOpen(true);
   }
 
   async function handleSave() {
-    if (!form.name.trim()) { toast.error("El nombre es requerido"); return; }
+    if (!form.name.trim()) { setShowErrors(true); toast.error(t("accountingConfig.costCenters.nameRequired")); return; }
     if (editingId) {
       await updateMut.mutateAsync({ id: editingId, ...form });
     } else {
@@ -63,126 +70,109 @@ export default function CostCentersManager() {
     updateMut.mutate({ id: item.id, name: item.name, active: item.active === false });
   }
 
+  async function handleDelete(item: typeof items[number]) {
+    if (await confirmAction({ description: t("accountingConfig.costCenters.confirmDelete", { name: item.name }), destructive: true })) deleteMut.mutate({ id: item.id });
+  }
+
+  const columns: EconomyColumn<typeof items[number]>[] = [
+    { key: "name", header: t("accountingConfig.common.name"), mobile: "title", cell: (i) => <span className="font-medium text-foreground">{i.name}</span> },
+    { key: "description", header: t("accountingConfig.common.description"), cell: (i) => <span className="text-muted-foreground">{i.description ?? "—"}</span> },
+    {
+      key: "status",
+      header: t("accountingConfig.common.status"),
+      mobile: "amount",
+      cell: (i) => (i.active !== false ? <StatusBadge tone="success">{t("common.active")}</StatusBadge> : <StatusBadge tone="neutral">{t("common.inactive")}</StatusBadge>),
+    },
+  ];
+
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6 p-6">
         <PanelPageHeader
           icon={<Layers />}
-          title="Centros de Coste"
-          description={<>{activeCount} activos · {items.length} en total</>}
+          title={t("accountingConfig.costCenters.title")}
+          description={t("accountingConfig.costCenters.description", { active: activeCount, total: items.length })}
           actions={
             <>
-              <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")}><ArrowLeft className="w-4 h-4 mr-1.5" /> Gastos</Button>
-              <Button onClick={openCreate} className="gap-2"><Plus className="w-4 h-4" /> Nuevo centro</Button>
+              <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")} className="gap-1.5"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.common.backToExpenses")}</Button>
+              <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.costCenters.new")}</Button>
             </>
           }
         />
-        {listQ.isLoading && <PanelLoading />}
-        {listQ.error && <PanelError error={listQ.error} onRetry={() => void listQ.refetch()} />}
 
-        {/* Info banner */}
-        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-sm text-blue-800 dark:text-blue-200">
-          <p className="font-medium mb-1">¿Qué es un Centro de Coste?</p>
-          <p>Permite imputar cada gasto a un área interna del negocio (Actividades, Restauración, Marketing…) para analizar el coste real de cada departamento en el informe de Cuenta de Resultados.</p>
+        {/* Qué es un centro de coste */}
+        <div className={cn("flex items-start gap-3 rounded-xl border p-4 text-sm", TONE_SURFACE.info)}>
+          <Info className={cn("mt-0.5 h-4 w-4 shrink-0", TONE_TEXT.info)} aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-medium text-foreground">{t("accountingConfig.costCenters.infoTitle")}</p>
+            <p className="mt-0.5 text-muted-foreground">{t("accountingConfig.costCenters.infoBody")}</p>
+          </div>
         </div>
 
-        <div className={`border rounded-lg overflow-hidden ${listQ.isLoading || listQ.error ? "hidden" : ""}`}>
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 font-medium">Nombre</th>
-                <th className="text-left p-3 font-medium">Descripción</th>
-                <th className="text-center p-3 font-medium">Estado</th>
-                <th className="text-center p-3 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listQ.isLoading ? (
-                <tr><td colSpan={4} className="text-center p-8 text-muted-foreground">Cargando...</td></tr>
-              ) : items.length === 0 ? (
-                <tr><td colSpan={4} className="text-center p-8 text-muted-foreground">No hay centros de coste. Crea el primero.</td></tr>
-              ) : items.map((item) => (
-                <tr key={item.id} className={`border-t hover:bg-muted/20 ${item.active === false ? "opacity-50" : ""}`}>
-                  <td className="p-3 font-medium">{item.name}</td>
-                  <td className="p-3 text-muted-foreground">{item.description ?? "—"}</td>
-                  <td className="p-3 text-center">
-                    {item.active !== false
-                      ? <Badge variant="outline" className="text-emerald-600 border-emerald-300">Activo</Badge>
-                      : <Badge variant="outline" className="text-slate-400 border-slate-300">Inactivo</Badge>
-                    }
-                  </td>
-                  <td className="p-3 text-center">
-                    <div className="flex gap-1 justify-center">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(item)} title="Editar">
-                        <Pencil className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        size="sm" variant="ghost"
-                        className={item.active !== false ? "text-amber-500 hover:text-amber-700" : "text-emerald-500 hover:text-emerald-700"}
-                        onClick={() => handleToggleActive(item)}
-                        title={item.active !== false ? "Desactivar" : "Activar"}
-                      >
-                        {item.active !== false ? <XCircle className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
-                      </Button>
-                      <Button
-                        size="sm" variant="ghost"
-                        className="text-red-500 hover:text-red-700"
-                        onClick={async () => { if ((await confirmAction({ description: `¿Eliminar "${item.name}"? Esta acción no se puede deshacer.`, destructive: true }))) deleteMut.mutate({ id: item.id }); }}
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <EconomyTable
+          rows={items}
+          columns={columns}
+          rowKey={(i) => i.id}
+          caption={t("accountingConfig.costCenters.title")}
+          loading={listQ.isLoading}
+          error={listQ.error}
+          onRetry={() => void listQ.refetch()}
+          emptyTitle={t("accountingConfig.costCenters.emptyTitle")}
+          emptyDescription={t("accountingConfig.costCenters.emptyHelp")}
+          emptyAction={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.costCenters.new")}</Button>}
+          rowClassName={(i) => (i.active === false ? "opacity-60" : undefined)}
+          actions={(i) => (
+            <RowActions
+              label={i.name}
+              primary={{ label: t("common.edit"), icon: <Pencil className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => openEdit(i) }}
+              menu={[
+                i.active !== false
+                  ? { label: t("accountingConfig.common.deactivate"), icon: <XCircle />, onSelect: () => handleToggleActive(i) }
+                  : { label: t("accountingConfig.common.activate"), icon: <CheckCircle />, onSelect: () => handleToggleActive(i) },
+                { label: t("common.delete"), icon: <Trash2 />, destructive: true, onSelect: () => void handleDelete(i) },
+              ]}
+            />
+          )}
+        />
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Editar centro de coste" : "Nuevo centro de coste"}</DialogTitle>
+            <DialogTitle>{editingId ? t("accountingConfig.costCenters.editTitle") : t("accountingConfig.costCenters.newTitle")}</DialogTitle>
+            <DialogDescription>{t("accountingConfig.costCenters.dialogHelp")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Nombre *</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ej: Actividades acuáticas"
-                onKeyDown={(e) => e.key === "Enter" && handleSave()}
-              />
-            </div>
-            <div>
-              <Label>Descripción</Label>
-              <Input
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Opcional — describe qué gastos agrupa"
-              />
-            </div>
-            {editingId && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="active"
-                  checked={form.active}
-                  onChange={(e) => setForm({ ...form, active: e.target.checked })}
-                  className="w-4 h-4"
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void handleSave(); }}>
+            <FormSection title={t("accountingConfig.common.dataSection")}>
+              <FormField label={t("accountingConfig.common.name")} required error={showErrors && !form.name.trim() ? t("accountingConfig.costCenters.nameRequired") : null}>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder={t("accountingConfig.costCenters.namePlaceholder")}
+                  autoFocus
+                  autoComplete="off"
                 />
-                <Label htmlFor="active" className="cursor-pointer">Centro activo (aparece en el selector de gastos)</Label>
+              </FormField>
+              <FormField label={t("accountingConfig.common.description")} hint={t("accountingConfig.costCenters.descriptionHint")}>
+                <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t("accountingConfig.common.optional")} autoComplete="off" />
+              </FormField>
+            </FormSection>
+            {editingId && (
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <Label htmlFor="cost-center-active" className="cursor-pointer">{t("accountingConfig.costCenters.activeLabel")}</Label>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t("accountingConfig.costCenters.activeHint")}</p>
+                </div>
+                <Switch id="cost-center-active" checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
               </div>
             )}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending}>
-                {editingId ? "Guardar cambios" : "Crear centro"}
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{t("common.cancel")}</Button>
+              <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>
+                {editingId ? t("accountingConfig.costCenters.saveChanges") : t("accountingConfig.costCenters.create")}
               </Button>
-            </div>
-          </div>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </AdminLayout>

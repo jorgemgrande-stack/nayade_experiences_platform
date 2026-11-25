@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { AlertTriangle, ChefHat, Flame, Settings2, Undo2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChefHat, Clock, Flame, Settings2, Timer, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -16,10 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TONE_BADGE, TONE_SURFACE, type Tone } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { INCIDENT_LABELS, INCIDENT_TYPES, KITCHEN_STATUS_LABELS, elapsedMin, trafficLight, type IncidentType, type KitchenStatus, type Light } from "@shared/restaurantKds";
-import { CONFIG_PATH, NoRestaurants, PageHeader, RestaurantPicker, SALA_PATH, useRestaurantChoice, useRestaurantNetWrite } from "./RestaurantNetParts";
+import { CONFIG_PATH, NoRestaurants, PageHeader, PillTabs, RestaurantPicker, SALA_PATH, useRestaurantChoice, useRestaurantNetWrite } from "./RestaurantNetParts";
 
 export const COCINA_PATH = "/admin/restaurant-net/cocina";
 export const COCINA_AJUSTES_PATH = "/admin/restaurant-net/cocina/ajustes";
@@ -36,6 +38,7 @@ const PREV: Record<string, KitchenStatus | null> = { sent: null, preparing: "sen
 const STATUS_TONE: Record<string, Tone> = { sent: "neutral", preparing: "warning", ready: "success" };
 
 export default function Cocina() {
+  const { t } = useI18n();
   const choice = useRestaurantChoice();
   const { canWrite, isAdmin } = useRestaurantNetWrite();
   const restaurantId = choice.restaurantId;
@@ -67,17 +70,24 @@ export default function Cocina() {
     for (const l of lines) g.set(l.orderId, [...(g.get(l.orderId) ?? []), l]);
     return Array.from(g.values());
   }, [lines]);
+  const tally = { sent: 0, preparing: 0, ready: 0 };
+  for (const l of lines) if (l.status in tally) tally[l.status as keyof typeof tally] += l.quantity;
+  const lateOrders = orders.filter((ls) => {
+    const o = Math.min(...ls.filter((l) => l.status !== "ready").map((l) => l.firedAt ?? now), now);
+    return !ls.every((l) => l.status === "ready") && trafficLight(o, now, settings) === "red";
+  }).length;
 
   return (
     <AdminLayout>
       <div className="mx-auto max-w-7xl space-y-4">
         <PageHeader
+          icon={<ChefHat />}
           title="Cocina"
           description="Platos marchados desde la sala, de la comanda más antigua a la más reciente. El color avisa del tiempo desde que se marchó."
           actions={
             <>
               <RestaurantPicker choice={choice} />
-              <Button asChild variant="outline" size="sm"><Link href={COCINA_AJUSTES_PATH}><Settings2 className="mr-1 h-4 w-4" aria-hidden="true" />Partidas y métricas</Link></Button>
+              <Button asChild variant="outline" className="h-10"><Link href={COCINA_AJUSTES_PATH}><Settings2 className="mr-1 h-4 w-4" aria-hidden="true" />Partidas y métricas</Link></Button>
             </>
           }
         />
@@ -94,23 +104,13 @@ export default function Cocina() {
           <PanelError error={board.error} onRetry={() => board.refetch()} />
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]" role="tablist" aria-label="Partidas">
-                {[{ k: ALL, l: "Todas" }, ...(board.data?.stations ?? []).map((s) => ({ k: s.name, l: s.name })), { k: NONE, l: "Sin partida" }].map((s) => (
-                  <button
-                    key={s.k}
-                    type="button"
-                    role="tab"
-                    aria-selected={station === s.k}
-                    onClick={() => setStation(s.k)}
-                    className={cn("shrink-0 rounded-full border px-3 py-1 text-sm", station === s.k ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-muted")}
-                  >
-                    {s.l}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">Verde hasta {settings.greenMaxMin} min · ámbar hasta {settings.amberMaxMin} min · {lines.length} líneas</p>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" role="group" aria-label={t("restaurantNet.cocina.summary")}>
+              <MetricCard compact tone="neutral" icon={<Clock />} label={t("restaurantNet.cocina.waiting")} value={tally.sent} detail={t("restaurantNet.cocina.waitingHint")} />
+              <MetricCard compact tone="warning" icon={<Flame />} label={t("restaurantNet.cocina.cooking")} value={tally.preparing} detail={t("restaurantNet.cocina.cookingHint")} />
+              <MetricCard compact tone="success" icon={<CheckCircle2 />} label={t("restaurantNet.cocina.ready")} value={tally.ready} detail={t("restaurantNet.cocina.readyHint")} />
+              <MetricCard compact tone="danger" icon={<Timer />} label={t("restaurantNet.cocina.late")} value={lateOrders} detail={t("restaurantNet.cocina.lightHint", { green: settings.greenMaxMin, amber: settings.amberMaxMin })} />
             </div>
+            <PillTabs scroll label="Partidas" value={station} onChange={setStation} options={[{ value: ALL, label: "Todas" }, ...(board.data?.stations ?? []).map((s) => ({ value: s.name, label: s.name })), { value: NONE, label: "Sin partida" }]} />
 
             {orders.length === 0 ? (
               <PanelEmpty icon={<ChefHat className="h-5 w-5" />} title="No hay nada en cocina" description="Cuando la sala marche platos de una comanda, aparecerán aquí por orden de llegada.">
@@ -125,16 +125,16 @@ export default function Cocina() {
                   const light = trafficLight(oldest, now, settings);
                   const allReady = ls.every((l) => l.status === "ready");
                   return (
-                    <article key={head.orderId} className={cn("flex min-w-0 flex-col rounded-2xl border-2 bg-card", TONE_SURFACE[allReady ? "success" : LIGHT_TONE[light]])} aria-label={`Mesa ${head.tableCode ?? head.orderId}`}>
-                      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
+                    <article key={head.orderId} className={cn("flex min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-card shadow-sm", TONE_SURFACE[allReady ? "success" : LIGHT_TONE[light]])} aria-label={`Mesa ${head.tableCode ?? head.orderId}`}>
+                      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
                         <div className="min-w-0">
-                          <p className="text-lg font-bold text-foreground">
+                          <p className="text-xl font-bold text-foreground">
                             {head.tableCode ? `Mesa ${head.tableCode}` : `Comanda ${head.orderId}`}
                             {head.priority === "high" && <Flame className="ml-1 inline h-4 w-4 text-danger" aria-label="Prioridad alta" />}
                           </p>
                           <p className="text-xs text-muted-foreground">{head.guests} comensales{head.waiterName ? ` · ${head.waiterName}` : ""}</p>
                         </div>
-                        <span className={cn("rounded-full border px-2 py-0.5 text-xs font-semibold", TONE_BADGE[allReady ? "success" : LIGHT_TONE[light]])}>
+                        <span className={cn("rounded-full border px-3 py-1 text-sm font-semibold tabular-nums", TONE_BADGE[allReady ? "success" : LIGHT_TONE[light]])}>
                           {allReady ? "Lista" : `${LIGHT_LABEL[light]} · ${elapsedMin(oldest, now)} min`}
                         </span>
                       </header>
@@ -143,22 +143,22 @@ export default function Cocina() {
                           const next = NEXT[l.status];
                           const prev = PREV[l.status];
                           return (
-                            <li key={l.id} className="space-y-1.5 px-3 py-2">
+                            <li key={l.id} className="space-y-2 px-4 py-3">
                               <div className="flex items-start justify-between gap-2">
-                                <p className="min-w-0 break-words text-sm text-foreground">
+                                <p className="min-w-0 break-words text-base text-foreground">
                                   <strong className="tabular-nums">{l.quantity}×</strong> {l.name}
                                   {l.course > 1 && <span className="text-xs text-muted-foreground"> · pase {l.course}</span>}
                                   {l.seat != null && <span className="text-xs text-muted-foreground"> · comensal {l.seat}</span>}
                                 </p>
-                                <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px]", TONE_BADGE[STATUS_TONE[l.status] ?? "neutral"])}>{KITCHEN_STATUS_LABELS[l.status]}</span>
+                                <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-xs", TONE_BADGE[STATUS_TONE[l.status] ?? "neutral"])}>{KITCHEN_STATUS_LABELS[l.status]}</span>
                               </div>
                               {l.notes && <p className="break-words text-xs font-medium text-warning">{l.notes}</p>}
-                              <p className="text-[11px] text-muted-foreground">{l.station ?? "Sin partida"} · {elapsedMin(l.firedAt, now)} min</p>
+                              <p className="text-xs text-muted-foreground">{l.station ?? "Sin partida"} · {elapsedMin(l.firedAt, now)} min</p>
                               {canWrite && (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {next && <Button size="sm" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ itemId: l.id, status: next.to })}>{next.label}</Button>}
-                                  {prev && <Button size="sm" variant="ghost" aria-label={`Deshacer ${l.name}`} disabled={setStatus.isPending} onClick={() => setStatus.mutate({ itemId: l.id, status: prev })}><Undo2 className="h-4 w-4" aria-hidden="true" /></Button>}
-                                  <Button size="sm" variant="ghost" aria-label={`Incidencia en ${l.name}`} onClick={() => { setIncType("kitchen_error"); setIncReason(""); setIncident({ orderId: l.orderId, itemId: l.id, name: l.name }); }}>
+                                <div className="flex gap-2">
+                                  {next && <Button className="h-11 flex-1 text-base" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ itemId: l.id, status: next.to })}>{next.label}</Button>}
+                                  {prev && <Button size="icon" className="h-11 w-11" variant="outline" aria-label={`Deshacer ${l.name}`} disabled={setStatus.isPending} onClick={() => setStatus.mutate({ itemId: l.id, status: prev })}><Undo2 className="h-4 w-4" aria-hidden="true" /></Button>}
+                                  <Button size="icon" className="h-11 w-11" variant="outline" aria-label={`Incidencia en ${l.name}`} onClick={() => { setIncType("kitchen_error"); setIncReason(""); setIncident({ orderId: l.orderId, itemId: l.id, name: l.name }); }}>
                                     <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                                   </Button>
                                 </div>
@@ -169,7 +169,7 @@ export default function Cocina() {
                       </ul>
                       {canWrite && ls.some((l) => l.status === "ready") && (
                         <div className="border-t border-border p-2">
-                          <Button size="sm" variant="outline" className="w-full" disabled={serve.isPending} onClick={() => serve.mutate({ orderId: head.orderId })}>Servir las listas</Button>
+                          <Button variant="outline" className="h-11 w-full" disabled={serve.isPending} onClick={() => serve.mutate({ orderId: head.orderId })}>Servir las listas</Button>
                         </div>
                       )}
                     </article>

@@ -100,8 +100,8 @@ export function BlockInspector({
             aria-selected={current === t}
             onClick={() => onTab(t)}
             className={cn(
-              "min-w-0 flex-auto rounded-md py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              tabs.length > 3 ? "px-1 text-[11px]" : "px-1.5 text-xs",
+              "min-h-9 min-w-0 flex-auto rounded-md py-2 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tabs.length > 3 ? "px-1 text-xs" : "px-1.5 text-xs",
               current === t ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -609,7 +609,7 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
               role="radio"
               aria-checked={style.background === bg.value}
               onClick={() => setStyle({ background: bg.value })}
-              className={cn("flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[11px] leading-tight transition-colors", style.background === bg.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
+              className={cn("flex flex-col items-center gap-1.5 rounded-lg border p-2 text-xs leading-tight transition-colors", style.background === bg.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
             >
               <span className={cn("h-7 w-full rounded-md border border-border", bg.swatch)} aria-hidden />
               {tx(bg.label)}
@@ -625,7 +625,7 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
                 role="radio"
                 aria-checked={style.gradient === g.value}
                 onClick={() => setStyle({ gradient: g.value })}
-                className={cn("flex flex-col gap-1.5 rounded-lg border p-2 text-left text-[11px] transition-colors", style.gradient === g.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
+                className={cn("flex flex-col gap-1.5 rounded-lg border p-2 text-left text-xs transition-colors", style.gradient === g.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
               >
                 <span className="h-8 w-full rounded-md border border-border" style={{ backgroundImage: g.css }} aria-hidden />
                 {tx(g.label)}

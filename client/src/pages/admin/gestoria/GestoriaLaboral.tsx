@@ -7,19 +7,20 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { PanelLoading, PanelError, PanelEmpty, toastError } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Users, RefreshCw } from "lucide-react";
-import { eur } from "./taxLabels";
+import { useGestoriaLabels } from "./gestoriaLabels";
+import { EstimateNotice, FiscalTable, FootNote, KeyValueRow, PeriodTabs, ResultBanner, SectionCard, YearSelect } from "./GestoriaParts";
 
 type Tab = "T1" | "T2" | "T3" | "T4" | "anual";
 const QUARTERS: Tab[] = ["T1", "T2", "T3", "T4"];
 
 export default function GestoriaLaboral() {
+  const { t, money } = useGestoriaLabels();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [tab, setTab] = useState<Tab>("T1");
@@ -33,143 +34,99 @@ export default function GestoriaLaboral() {
 
   const recalcMut = trpc.gestoria.labor.recalculate.useMutation({
     onSuccess: () => {
-      toast.success("Retenciones del ejercicio recalculadas");
+      toast.success(t("gestoria.labor.recalculated"));
       utils.gestoria.labor.preview111.invalidate();
       utils.gestoria.labor.preview190.invalidate();
       utils.gestoria.obligations.list.invalidate();
       utils.gestoria.dashboard.summary.invalidate();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toastError(e),
   });
-
-  const yearOptions = [currentYear - 1, currentYear, currentYear + 1];
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6 max-w-4xl mx-auto">
+      <div className="mx-auto max-w-4xl space-y-6 p-6">
         <PanelPageHeader
           icon={<Users />}
-          title="Obligaciones Laborales"
-          description="Modelos 111 y 190 · retenciones IRPF"
+          title={t("gestoria.labor.title")}
+          description={t("gestoria.labor.description")}
           actions={
             <>
-            <div className="flex items-center gap-2">
-              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <YearSelect year={year} onChange={setYear} />
               <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
-                <RefreshCw className={`w-4 h-4 ${recalcMut.isPending ? "animate-spin" : ""}`} />
-                Recalcular ejercicio
+                <RefreshCw className={`h-4 w-4 ${recalcMut.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+                {t("gestoria.common.recalc")}
               </Button>
-            </div>
             </>
           }
         />
 
-        {/* Pestañas */}
-        <div className="flex gap-1 border-b border-border">
-          {QUARTERS.map((q) => (
-            <button
-              key={q}
-              onClick={() => setTab(q)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                tab === q ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >{q}</button>
-          ))}
-          <button
-            onClick={() => setTab("anual")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === "anual" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >Anual · 190</button>
-        </div>
+        <EstimateNotice tone="info">{t("gestoria.labor.estimateNotice")}</EstimateNotice>
+
+        <PeriodTabs
+          label={t("gestoria.common.periodLabel")}
+          value={tab}
+          onChange={setTab}
+          options={[...QUARTERS.map((q) => ({ value: q, label: q })), { value: "anual" as Tab, label: t("gestoria.labor.tabAnnual") }]}
+        />
 
         {/* Trimestre */}
-        {!isAnnual && (
-          q111.isLoading ? <Spinner /> : q111.isError ? <PanelError error={q111.error} onRetry={() => q111.refetch()} /> : q111.data ? (
+        {!isAnnual &&
+          (q111.isLoading ? (
+            <PanelLoading />
+          ) : q111.isError ? (
+            <PanelError error={q111.error} onRetry={() => q111.refetch()} />
+          ) : q111.data ? (
             <div className="space-y-4">
-              <div className="bg-card border border-border rounded-lg p-4">
-                <h2 className="text-sm font-semibold text-foreground mb-2">Retenciones de rendimientos del trabajo</h2>
-                <RowKV k={`Base · ${q111.data.workerCount} registro(s) de nómina/bonus`} v={eur(q111.data.workerBase)} />
-                <RowKV k="Retención IRPF practicada" v={eur(q111.data.workerRetention)} strong />
-              </div>
-              <div className="bg-card border border-border rounded-lg p-4">
-                <h2 className="text-sm font-semibold text-foreground mb-2">Retenciones a profesionales y arrendadores</h2>
-                <RowKV k={`Base · ${q111.data.professionalCount} factura(s) con retención`} v={eur(q111.data.professionalBase)} />
-                <RowKV k="Retención IRPF practicada" v={eur(q111.data.professionalRetention)} strong />
-              </div>
-              <div className="rounded-lg p-4 border bg-amber-500/10 border-amber-500/30 flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">Total a ingresar (Modelo 111)</span>
-                <span className="text-xl font-bold text-amber-400">{eur(q111.data.totalRetention)}</span>
+              <ResultBanner tone="warning" label={t("gestoria.labor.totalToPay")} hint={t("gestoria.labor.totalToPayHint")} value={money(q111.data.totalRetention)} />
+              <div className="grid gap-4 md:grid-cols-2">
+                <SectionCard title={t("gestoria.labor.workTitle")} description={t("gestoria.labor.workHelp")}>
+                  <dl className="divide-y divide-border">
+                    <KeyValueRow label={t("gestoria.labor.workBase", { count: q111.data.workerCount })} value={money(q111.data.workerBase)} />
+                    <KeyValueRow label={t("gestoria.labor.withheld")} value={money(q111.data.workerRetention)} strong />
+                  </dl>
+                </SectionCard>
+                <SectionCard title={t("gestoria.labor.proTitle")} description={t("gestoria.labor.proHelp")}>
+                  <dl className="divide-y divide-border">
+                    <KeyValueRow label={t("gestoria.labor.proBase", { count: q111.data.professionalCount })} value={money(q111.data.professionalBase)} />
+                    <KeyValueRow label={t("gestoria.labor.withheld")} value={money(q111.data.professionalRetention)} strong />
+                  </dl>
+                </SectionCard>
               </div>
             </div>
-          ) : <p className="text-sm text-muted-foreground py-2">No hay datos.</p>
-        )}
+          ) : (
+            <PanelEmpty title={t("gestoria.common.noData")} />
+          ))}
 
         {/* Anual */}
-        {isAnnual && (
-          q190.isLoading ? <Spinner /> : q190.isError ? <PanelError error={q190.error} onRetry={() => q190.refetch()} /> : q190.data ? (
+        {isAnnual &&
+          (q190.isLoading ? (
+            <PanelLoading />
+          ) : q190.isError ? (
+            <PanelError error={q190.error} onRetry={() => q190.refetch()} />
+          ) : q190.data ? (
             <div className="space-y-4">
-              <div className="bg-card border border-border rounded-lg p-4">
-                <h2 className="text-sm font-semibold text-foreground mb-2">Resumen anual de retenciones {year}</h2>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground border-b border-border">
-                      <th className="text-left py-1.5">Trimestre</th>
-                      <th className="text-right py-1.5">Trabajo</th>
-                      <th className="text-right py-1.5">Profesionales</th>
-                      <th className="text-right py-1.5">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {q190.data.quarters.map((r, i) => (
-                      <tr key={i} className="border-b border-border/40 last:border-0">
-                        <td className="py-1.5 text-foreground/80">{i + 1}.º trimestre</td>
-                        <td className="py-1.5 text-right text-foreground/70">{eur(r.workerRetention)}</td>
-                        <td className="py-1.5 text-right text-foreground/70">{eur(r.professionalRetention)}</td>
-                        <td className="py-1.5 text-right font-medium text-foreground">{eur(r.totalRetention)}</td>
-                      </tr>
-                    ))}
-                    <tr className="font-semibold">
-                      <td className="py-1.5">Total ejercicio</td>
-                      <td className="py-1.5 text-right">{eur(q190.data.workerRetention)}</td>
-                      <td className="py-1.5 text-right">{eur(q190.data.professionalRetention)}</td>
-                      <td className="py-1.5 text-right">{eur(q190.data.totalRetention)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="rounded-lg p-4 border bg-blue-500/10 border-blue-500/30 flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">Total retenido en el ejercicio (Modelo 190)</span>
-                <span className="text-xl font-bold text-blue-400">{eur(q190.data.totalRetention)}</span>
-              </div>
+              <ResultBanner tone="info" label={t("gestoria.labor.totalYear")} value={money(q190.data.totalRetention)} />
+              <SectionCard title={t("gestoria.labor.annualTitle", { year })}>
+                <FiscalTable
+                  caption={t("gestoria.labor.annualTitle", { year })}
+                  rows={q190.data.quarters.map((r, i) => ({ ...r, n: i + 1 }))}
+                  rowKey={(r) => r.n}
+                  columns={[
+                    { key: "q", header: t("gestoria.common.colQuarter"), cell: (r) => t("gestoria.common.quarterN", { n: r.n }), total: t("gestoria.common.totalYear") },
+                    { key: "work", header: t("gestoria.labor.colWork"), num: true, cell: (r) => money(r.workerRetention), total: money(q190.data.workerRetention) },
+                    { key: "pro", header: t("gestoria.labor.colPro"), num: true, cell: (r) => money(r.professionalRetention), total: money(q190.data.professionalRetention) },
+                    { key: "total", header: t("gestoria.labor.colTotal"), num: true, strong: true, cell: (r) => money(r.totalRetention), total: money(q190.data.totalRetention) },
+                  ]}
+                />
+              </SectionCard>
             </div>
-          ) : <p className="text-sm text-muted-foreground py-2">No hay datos.</p>
-        )}
+          ) : (
+            <PanelEmpty title={t("gestoria.common.noData")} />
+          ))}
 
-        <p className="text-xs text-muted-foreground">
-          Las retenciones del trabajo se federan del módulo Personal/RRHH (libro de IRPF). Las
-          retenciones a profesionales se toman de los gastos con retención practicada. Estimación;
-          la liquidación oficial la realiza la gestoría.
-        </p>
+        <FootNote>{t("gestoria.labor.footNote")}</FootNote>
       </div>
     </AdminLayout>
   );
-}
-
-function RowKV({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between text-sm py-1">
-      <span className="text-foreground/70">{k}</span>
-      <span className={strong ? "font-semibold text-foreground" : "text-foreground/80"}>{v}</span>
-    </div>
-  );
-}
-
-function Spinner() {
-  return <PanelLoading />;
 }

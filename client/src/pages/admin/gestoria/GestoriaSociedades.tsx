@@ -8,16 +8,19 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { PanelLoading, PanelError, toastError } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Building2, RefreshCw, AlertTriangle, Download } from "lucide-react";
-import { eur } from "./taxLabels";
+import { Building2, RefreshCw, Download, Landmark, Receipt } from "lucide-react";
+import { EconomySummary } from "../accounting/shared/EconomyUi";
+import { useGestoriaLabels } from "./gestoriaLabels";
+import { EstimateNotice, FiscalTable, FootNote, KeyValueRow, SectionCard, YearSelect } from "./GestoriaParts";
 
 export default function GestoriaSociedades() {
+  const { t, money } = useGestoriaLabels();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const utils = trpc.useUtils();
@@ -25,12 +28,12 @@ export default function GestoriaSociedades() {
   const previewQ = trpc.gestoria.corporate.preview.useQuery({ year });
   const recalcMut = trpc.gestoria.corporate.recalculate.useMutation({
     onSuccess: () => {
-      toast.success("Impuesto de Sociedades recalculado");
+      toast.success(t("gestoria.corporate.recalculated"));
       utils.gestoria.corporate.preview.invalidate();
       utils.gestoria.obligations.list.invalidate();
       utils.gestoria.dashboard.summary.invalidate();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toastError(e),
   });
 
   // Exportación dual (operativo / solo fiscal) para gestoría.
@@ -43,7 +46,7 @@ export default function GestoriaSociedades() {
     try {
       const res = await exportExpensesQ.refetch();
       if (res.error || !res.data) {
-        toast.error("No se pudo generar la exportación: " + (res.error?.message ?? "error desconocido"));
+        toast.error(t("gestoria.corporate.exportFailed", { message: res.error?.message ?? t("gestoria.corporate.unknownError") }));
         return;
       }
       const { fileName, mimeType, contentBase64, counts, totals } = res.data;
@@ -56,49 +59,40 @@ export default function GestoriaSociedades() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success(
-        `Exportados ${counts.total} gastos · Operativos: ${counts.operational} (${totals.operational.toFixed(2)} €) · Solo fiscal: ${counts.taxOnly} (${totals.taxOnly.toFixed(2)} €)`,
+        t("gestoria.corporate.exported", {
+          total: counts.total,
+          operational: counts.operational,
+          operationalAmount: money(totals.operational),
+          taxOnly: counts.taxOnly,
+          taxOnlyAmount: money(totals.taxOnly),
+        }),
       );
     } catch (e: any) {
-      toast.error("Error al exportar: " + (e?.message ?? "desconocido"));
+      toast.error(t("gestoria.corporate.exportError", { message: e?.message ?? t("gestoria.corporate.unknownError") }));
     }
   }
 
   const c = previewQ.data;
-  const yearOptions = [currentYear - 1, currentYear, currentYear + 1];
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6 max-w-3xl mx-auto">
+      <div className="mx-auto max-w-4xl space-y-6 p-6">
         <PanelPageHeader
           icon={<Building2 />}
-          title="Impuesto sobre Sociedades"
-          description="Modelos 200 y 202 · estimación"
+          title={t("gestoria.corporate.title")}
+          description={t("gestoria.corporate.description")}
           actions={
             <>
-            <div className="flex items-center gap-2">
-              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <YearSelect year={year} onChange={setYear} />
               <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
-                <RefreshCw className={`w-4 h-4 ${recalcMut.isPending ? "animate-spin" : ""}`} />
-                Recalcular ejercicio
+                <RefreshCw className={`h-4 w-4 ${recalcMut.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+                {t("gestoria.common.recalc")}
               </Button>
-            </div>
             </>
           }
         />
 
-        {/* Aviso de estimación */}
-        <div className="flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>
-            Estimación orientativa. La base imponible real incorpora amortizaciones y ajustes
-            extracontables que aplica la gestoría; estas cifras no sustituyen la liquidación oficial.
-          </span>
-        </div>
+        <EstimateNotice>{t("gestoria.corporate.estimateNotice")}</EstimateNotice>
 
         {previewQ.isError ? (
           <PanelError error={previewQ.error} onRetry={() => previewQ.refetch()} />
@@ -106,103 +100,61 @@ export default function GestoriaSociedades() {
           <PanelLoading />
         ) : (
           <>
-            {/* Cuenta de resultados */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-semibold text-foreground">Cuenta de resultados estimada {year}</h2>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportExpenses}
-                  disabled={exportExpensesQ.isFetching}
-                  className="gap-2 text-xs"
-                  title="Descarga el libro de gastos del ejercicio con la columna 'Imputación Operativa' y totales separados (operativo / solo fiscal / conjunto)."
-                >
-                  {exportExpensesQ.isFetching
-                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    : <Download className="w-3.5 h-3.5" />}
-                  Exportar gastos {year} (CSV)
-                </Button>
-              </div>
-              <Row k="Ingresos devengados" v={eur(c.income)} />
-              <Row k="Gastos operativos" v={"− " + eur(c.expensesOperational)} />
-              {(c.expenses - c.expensesOperational) !== 0 && (
-                <Row
-                  k="Gastos solo fiscales"
-                  v={"− " + eur(c.expenses - c.expensesOperational)}
-                  muted
-                />
-              )}
-              <div className="border-t border-border/60 mt-1 pt-1">
-                <Row k="Total gasto deducible" v={"− " + eur(c.expenses)} />
-              </div>
-              <div className="border-t border-border mt-1 pt-1">
-                <Row k="Resultado operativo (EBITDA)" v={eur(c.resultOperational)} muted />
-                <Row k="Resultado fiscal (base imponible IS)" v={eur(c.result)} strong />
-              </div>
-            </div>
+            {/* Resumen */}
+            <EconomySummary>
+              <MetricCard icon={<Landmark />} tone="warning" label={t("gestoria.corporate.kpiQuota")} value={money(c.quota)} detail={t("gestoria.corporate.kpiQuotaDetail", { rate: c.taxRate })} />
+              <MetricCard icon={<Receipt />} tone={c.result >= 0 ? "brand" : "danger"} label={t("gestoria.corporate.kpiResult")} value={money(c.result)} detail={t("gestoria.corporate.kpiResultDetail")} />
+            </EconomySummary>
+            {c.result <= 0 && <p className="text-xs text-muted-foreground">{t("gestoria.corporate.negativeResult", { result: money(c.result) })}</p>}
 
-            {/* Modelo 200 */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-foreground mb-2">Modelo 200 · cuota anual</h2>
-              <Row k="Base imponible estimada" v={eur(Math.max(0, c.result))} />
-              <Row k="Tipo impositivo" v={`${c.taxRate} %`} />
-              <div className="rounded-lg p-3 mt-2 border bg-amber-500/10 border-amber-500/30 flex items-center justify-between">
-                <span className="text-sm font-semibold text-foreground">Cuota IS estimada</span>
-                <span className="text-xl font-bold text-amber-400">{eur(c.quota)}</span>
-              </div>
-              {c.result <= 0 && (
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  El ejercicio estima un resultado negativo ({eur(c.result)}): no se genera cuota de
-                  Impuesto de Sociedades. Las bases imponibles negativas son compensables con
-                  beneficios de ejercicios futuros.
-                </p>
-              )}
-            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {/* Cuenta de resultados */}
+              <SectionCard
+                title={t("gestoria.corporate.pnlTitle", { year })}
+                actions={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportExpenses}
+                    disabled={exportExpensesQ.isFetching}
+                    className="gap-2 text-xs"
+                    title={t("gestoria.corporate.exportHint")}
+                  >
+                    {exportExpensesQ.isFetching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />}
+                    {t("gestoria.corporate.exportExpenses", { year })}
+                  </Button>
+                }
+              >
+                <dl className="divide-y divide-border">
+                  <KeyValueRow label={t("gestoria.corporate.income")} value={money(c.income)} />
+                  <KeyValueRow label={t("gestoria.corporate.opExpenses")} value={"− " + money(c.expensesOperational)} />
+                  {c.expenses - c.expensesOperational !== 0 && <KeyValueRow label={t("gestoria.corporate.taxOnlyExpenses")} value={"− " + money(c.expenses - c.expensesOperational)} muted />}
+                  <KeyValueRow label={t("gestoria.corporate.totalDeductible")} value={"− " + money(c.expenses)} />
+                  <KeyValueRow label={t("gestoria.corporate.opResult")} value={money(c.resultOperational)} muted />
+                  <KeyValueRow label={t("gestoria.corporate.taxResult")} value={money(c.result)} strong />
+                </dl>
+              </SectionCard>
 
-            {/* Modelo 202 */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-foreground mb-2">Modelo 202 · pagos fraccionados (modalidad base)</h2>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-muted-foreground border-b border-border">
-                    <th className="text-left py-1.5">Pago</th>
-                    <th className="text-right py-1.5">Base acumulada</th>
-                    <th className="text-right py-1.5">Importe a ingresar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {c.installments.map((inst) => (
-                    <tr key={inst.period} className="border-b border-border/40 last:border-0">
-                      <td className="py-1.5 text-foreground/80">{inst.period}</td>
-                      <td className="py-1.5 text-right text-foreground/70">{eur(inst.cumulativeBase)}</td>
-                      <td className="py-1.5 text-right font-medium text-foreground">{eur(inst.payment)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+              {/* Modelo 202 */}
+            <SectionCard title={t("gestoria.corporate.m202Title")} description={t("gestoria.corporate.m202Help")}>
+              <FiscalTable
+                caption={t("gestoria.corporate.m202Title")}
+                rows={c.installments}
+                rowKey={(i) => i.period}
+                columns={[
+                  { key: "period", header: t("gestoria.corporate.colPayment"), cell: (i) => i.period },
+                  { key: "base", header: t("gestoria.corporate.colBase"), num: true, cell: (i) => money(i.cumulativeBase) },
+                  { key: "pay", header: t("gestoria.corporate.colPay"), num: true, strong: true, cell: (i) => money(i.payment) },
+                ]}
+              />
+              </SectionCard>
             </div>
           </>
         )}
 
-        <p className="text-xs text-muted-foreground">
-          Pulsa «Recalcular ejercicio» para volcar la estimación a las obligaciones 200 y 202 del
-          calendario fiscal. El tipo impositivo se configura en Configuración Fiscal.
-        </p>
+        <FootNote>{t("gestoria.corporate.footNote")}</FootNote>
       </div>
     </AdminLayout>
-  );
-}
-
-function Row({ k, v, strong, muted }: { k: string; v: string; strong?: boolean; muted?: boolean }) {
-  return (
-    <div className="flex items-center justify-between text-sm py-1">
-      <span className={muted ? "text-foreground/50 text-xs italic" : "text-foreground/70"}>{k}</span>
-      <span className={
-        strong ? "font-semibold text-foreground"
-          : muted ? "text-foreground/60 text-xs italic"
-          : "text-foreground/80"
-      }>{v}</span>
-    </div>
   );
 }

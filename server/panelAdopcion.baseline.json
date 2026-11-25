@@ -2,31 +2,6 @@
   "components/admin/ConfirmHost.tsx": {
     "dialogosNativos": 1
   },
-  "components/admin/studio/Guide.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 1,
-    "textoMinusculo": 3
-  },
-  "components/admin/studio/Inspector.tsx": {
-    "textoMinusculo": 3
-  },
-  "components/admin/studio/LeftPanel.tsx": {
-    "coloresFijos": 2,
-    "hexEnClases": 3,
-    "textoMinusculo": 10
-  },
-  "components/admin/studio/PageSettings.tsx": {
-    "coloresFijos": 2,
-    "hexEnClases": 1,
-    "textoMinusculo": 1
-  },
-  "components/admin/studio/QuickInsert.tsx": {
-    "textoMinusculo": 3
-  },
-  "components/admin/studio/VersionsPanel.tsx": {
-    "coloresFijos": 1,
-    "textoMinusculo": 1
-  },
   "pages/admin/AdminDashboard.tsx": {
     "coloresFijos": 214,
     "hexEnClases": 9,
@@ -38,27 +13,6 @@
   "pages/admin/Copilot.tsx": {
     "coloresFijos": 1,
     "geometriaAjena": 1
-  },
-  "pages/admin/accounting/CostCentersManager.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/accounting/ExpenseCategoriesManager.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/accounting/ExpenseSuppliersManager.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/accounting/FinanceSyncSetup.tsx": {
-    "coloresFijos": 7,
-    "geometriaAjena": 4
-  },
-  "pages/admin/accounting/RecurringExpensesManager.tsx": {
-    "coloresFijos": 6,
-    "textoMinusculo": 3
-  },
-  "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
-    "coloresFijos": 44,
-    "textoMinusculo": 11
   },
   "pages/admin/commercial/CommunicationsMap.tsx": {
     "coloresFijos": 30,
@@ -108,35 +62,6 @@
   "pages/admin/connect/ConnectPage.tsx": {
     "geometriaAjena": 2
   },
-  "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaCalendario.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaConfiguracion.tsx": {
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaDashboard.tsx": {
-    "coloresFijos": 6,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaExpedientes.tsx": {
-    "coloresFijos": 1,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaIVA.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/gestoria/GestoriaLaboral.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/gestoria/GestoriaSociedades.tsx": {
-    "coloresFijos": 3,
-    "textoMinusculo": 1
-  },
   "pages/admin/help/SupportTicketsPage.tsx": {
     "coloresFijos": 4,
     "geometriaAjena": 5
@@ -147,61 +72,5 @@
   },
   "pages/admin/marketing/SeoControl.tsx": {
     "coloresFijos": 3
-  },
-  "pages/admin/netReports/ReportParts.tsx": {
-    "textoMinusculo": 1
-  },
-  "pages/admin/operations/CalendarView.tsx": {
-    "textoMinusculo": 20
-  },
-  "pages/admin/operations/DailyActivities.tsx": {
-    "textoMinusculo": 24
-  },
-  "pages/admin/restaurantNet/Carta.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/restaurantNet/Cocina.tsx": {
-    "textoMinusculo": 2,
-    "geometriaAjena": 1
-  },
-  "pages/admin/restaurantNet/CocinaAjustes.tsx": {
-    "geometriaAjena": 4
-  },
-  "pages/admin/restaurantNet/Comanda.tsx": {
-    "textoMinusculo": 5,
-    "geometriaAjena": 2
-  },
-  "pages/admin/restaurantNet/RestaurantNetParts.tsx": {
-    "textoMinusculo": 4
-  },
-  "pages/admin/restaurantNet/Sala.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/restaurantNet/SalasMesas.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/studio/StudioPage.tsx": {
-    "coloresFijos": 8,
-    "textoMinusculo": 3,
-    "geometriaAjena": 2
-  },
-  "pages/admin/suppliers/SettlementsManager.tsx": {
-    "coloresFijos": 32
-  },
-  "pages/admin/suppliers/SuppliersManager.tsx": {
-    "coloresFijos": 25
-  },
-  "pages/admin/tpv/TpvCashMovement.tsx": {
-    "textoMinusculo": 3
-  },
-  "pages/admin/tpv/TpvCashMovementAccounting.tsx": {
-    "textoMinusculo": 6
-  },
-  "pages/admin/tpv/TpvCashPayment.tsx": {
-    "dialogosNativos": 1
-  },
-  "pages/admin/tpv/TpvScreen.tsx": {
-    "textoMinusculo": 1,
-    "geometriaAjena": 2
   }
 }

@@ -1,0 +1,53 @@
+/** Textos nuevos de Restaurant Net (sala, comanda, cocina y carta): indicadores, resúmenes y avisos de la presentación. */
+export default {
+  parts: {
+    readyDishes: "{count, plural, one {# lista} other {# listas}}",
+  },
+  sala: {
+    summary: "Resumen de la sala",
+    free: "Libres",
+    ofTables: "{count, plural, one {de # mesa} other {de # mesas}}",
+    busy: "Ocupadas",
+    readyToServe: "{count, plural, one {# plato listo para servir} other {# platos listos para servir}}",
+    withOrder: "Con comanda abierta",
+    bill: "Piden la cuenta",
+    billHint: "Listas para cobrar",
+    toSeat: "Reservas por sentar",
+    bookingsToday: "{count, plural, =0 {Sin reservas hoy} one {# reserva hoy} other {# reservas hoy}}",
+    viewPlan: "Plano",
+    viewList: "Lista",
+  },
+  comanda: {
+    progress: "Estado de los platos",
+    dishes: "{count, plural, one {# plato} other {# platos}}",
+    toFire: "{count, plural, one {# por marchar} other {# por marchar}}",
+    readyChip: "{count, plural, one {# lista} other {# listas}}",
+    addDishes: "Añadir platos",
+  },
+  cocina: {
+    summary: "Resumen de la cocina",
+    waiting: "En espera",
+    waitingHint: "Marchados, sin empezar",
+    cooking: "En preparación",
+    cookingHint: "En marcha ahora",
+    ready: "Listos",
+    readyHint: "Pendientes de servir",
+    late: "Comandas retrasadas",
+    lightHint: "Verde hasta {green} min, ámbar hasta {amber} min",
+  },
+  carta: {
+    summary: "Resumen de la carta",
+    dishes: "Platos en carta",
+    dishesHint: "Visibles en las comandas",
+    categories: "Categorías",
+    categoriesHint: "Agrupan la carta en la sala",
+    avgPrice: "Precio medio",
+    vatIncluded: "IVA incluido",
+    archived: "Archivados",
+    archivedHint: "No salen en las comandas",
+    filterByCategory: "Filtrar por categoría",
+  },
+  ajustes: {
+    lightPreview: "Verde hasta {green} min, ámbar hasta {amber} min y, después, rojo.",
+  },
+};

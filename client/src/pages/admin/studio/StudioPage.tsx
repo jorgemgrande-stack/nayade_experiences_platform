@@ -651,9 +651,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <DropdownMenuLabel>{tx("Páginas de tu web")}</DropdownMenuLabel>
             {pages.map((p) => (
               <DropdownMenuItem key={p.slug} onSelect={() => void openPage(p.slug)} className="gap-2">
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", !p.isPublished ? "bg-slate-300" : p.hasDraft ? "bg-amber-400" : "bg-emerald-500")} aria-hidden />
+                <span className={cn("h-2 w-2 shrink-0 rounded-full", !p.isPublished ? "bg-muted-foreground/40" : p.hasDraft ? "bg-warning" : "bg-success")} aria-hidden />
                 <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</span>
-                {p.isHome && <span className="text-[11px] text-muted-foreground">{tx("Portada")}</span>}
+                {p.isHome && <span className="text-xs text-muted-foreground">{tx("Portada")}</span>}
                 {p.slug === slug && <Check className="h-3.5 w-3.5" />}
               </DropdownMenuItem>
             ))}
@@ -666,17 +666,17 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         {status && (
           <span
             className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-medium xl:px-2 xl:py-0.5",
-              status.tone === "ok" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
-              status.tone === "draft" && "bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200",
-              status.tone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full border border-transparent px-2 py-1 text-xs font-medium md:px-2.5",
+              status.tone === "ok" && "border-success/30 bg-success/10 text-success",
+              status.tone === "draft" && "border-warning/30 bg-warning/10 text-warning",
+              status.tone === "error" && "border-danger/30 bg-danger/10 text-danger",
               status.tone === "muted" && "bg-muted text-muted-foreground",
             )}
             title={doc.error ?? (doc.savedAt ? tx("Borrador guardado a las {time}", { time: format.time(doc.savedAt) }) : undefined)}
             role="status"
           >
-            {status.icon ? <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} /> : <span className="h-2 w-2 rounded-full bg-current lg:hidden" aria-hidden />}
-            <span className="sr-only xl:not-sr-only">{status.label}</span>
+            {status.icon ? <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} /> : <span className="h-2 w-2 rounded-full bg-current md:hidden" aria-hidden />}
+            <span className="sr-only md:not-sr-only">{status.label}</span>
           </span>
         )}
         {doc.status === "error" && (
@@ -833,7 +833,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         )}
         {/* ── Panel izquierdo ── */}
         {leftOpen && (
-          <aside className="absolute inset-y-0 left-0 z-30 w-[min(88vw,300px)] shrink-0 overflow-hidden border-r border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-left-3 motion-reduce:animate-none lg:static lg:w-[244px] lg:shadow-none xl:w-[264px] 2xl:w-[280px]" aria-label={tx("Biblioteca y estructura")}>
+          <aside className="absolute inset-y-0 left-0 z-30 w-[min(88vw,300px)] shrink-0 overflow-hidden border-r border-border bg-background shadow-md duration-200 animate-in fade-in slide-in-from-left-3 motion-reduce:animate-none lg:static lg:w-[244px] lg:shadow-none xl:w-[264px] 2xl:w-[280px]" aria-label={tx("Biblioteca y estructura")}>
             <LeftPanel
               tab={leftTab}
               onTab={setLeftTab}
@@ -935,20 +935,20 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 <span />
               )}
               {selected && !rightOpen && (
-                <Button size="sm" variant="outline" className="pointer-events-auto h-8 rounded-full bg-background shadow-md duration-200 animate-in fade-in" onClick={() => openInspector(selected.id, inspTab)}>
+                <Button size="sm" variant="outline" className="pointer-events-auto h-9 rounded-full bg-background shadow-md duration-200 animate-in fade-in" onClick={() => openInspector(selected.id, inspTab)}>
                   <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" style={{ color: ACCENT }} />{" "}{tx("Opciones de «{label}»", { label: tx(blockLabel(selected.type)) })}
                 </Button>
               )}
             </div>
           )}
           {doc.loaded && source === "converted" && !viewing && (
-            <p role="note" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-full border border-sky-200 bg-sky-50 px-4 py-1.5 text-center text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">{tx("Hemos preparado esta página en bloques con todo su contenido. Tu web sigue mostrando la versión actual hasta que publiques.")}</p>
+            <p role="note" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-full border border-info/40 bg-info/10 px-4 py-1.5 text-center text-xs text-foreground shadow-sm">{tx("Hemos preparado esta página en bloques con todo su contenido. Tu web sigue mostrando la versión actual hasta que publiques.")}</p>
           )}
         </main>
 
         {/* ── Inspector ── */}
         {rightOpen && (
-          <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(92vw,340px)] shrink-0 flex-col border-l border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-right-3 motion-reduce:animate-none lg:static lg:w-[272px] lg:shadow-none xl:w-[296px] 2xl:w-[320px]" aria-label={tx("Inspector")}>
+          <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(92vw,340px)] shrink-0 flex-col border-l border-border bg-background shadow-md duration-200 animate-in fade-in slide-in-from-right-3 motion-reduce:animate-none lg:static lg:w-[272px] lg:shadow-none xl:w-[296px] 2xl:w-[320px]" aria-label={tx("Inspector")}>
             <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
               {selected && ModuleIcon ? (
                 <>
@@ -970,10 +970,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   >
                     <BookmarkPlus className="h-4 w-4" />
                   </button>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{tx("{v} de {parentSectionN}", { v: found ? found.index + 1 : 0, parentSectionN: parentSection?.block.type === "section" || parentSection?.block.type === "modal" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length })}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{tx("{v} de {parentSectionN}", { v: found ? found.index + 1 : 0, parentSectionN: parentSection?.block.type === "section" || parentSection?.block.type === "modal" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length })}</span>
                 </>
               ) : (
-                <span className="text-sm font-medium">{tx("Ajustes de la página")}</span>
+                <span className="text-sm font-semibold">{tx("Ajustes de la página")}</span>
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -1020,7 +1020,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   </div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx("Ajustes de esta página")}</p>
                   {missingTokens.length > 0 && (
-                    <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Esta página usa datos de tu empresa que aún no has rellenado (")}{missingTokens.join(", ").toLowerCase()}{tx("). Si falta alguno, esa línea no se muestra en tu web hasta que lo completes en")}{" "}
+                    <p role="note" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-foreground">{tx("Esta página usa datos de tu empresa que aún no has rellenado (")}{missingTokens.join(", ").toLowerCase()}{tx("). Si falta alguno, esa línea no se muestra en tu web hasta que lo completes en")}{" "}
                       <Link href="/admin/configuracion/sitio"className="font-medium underline underline-offset-2">{tx("Datos de la empresa")}</Link>
                       .
                     </p>
@@ -1135,7 +1135,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <SheetTitle>{tx("Estilo global de tu web")}</SheetTitle>
             <SheetDescription>{tx("Colores, tipografía, bordes y logotipo de toda tu web. Cada bloque puede tener además su propio fondo en «Diseño».")}</SheetDescription>
           </SheetHeader>
-          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Atención: este estilo es común a todas las páginas. Al pulsar «Guardar» se aplica al momento en toda tu web publicada y en la pantalla de acceso de tu equipo; no espera a «Publicar».")}</p>
+          <p role="note" className="mx-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">{tx("Atención: este estilo es común a todas las páginas. Al pulsar «Guardar» se aplica al momento en toda tu web publicada y en la pantalla de acceso de tu equipo; no espera a «Publicar».")}</p>
           <div className="px-4 pb-6">
             <BrandIdentityEditor
               variant="full"
@@ -1155,7 +1155,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <SheetTitle>{tx("Cabecera y pie de tu web")}</SheetTitle>
             <SheetDescription>{tx("El botón destacado, los menús y el pie que se ven en todas las páginas.")}</SheetDescription>
           </SheetHeader>
-          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Atención: la cabecera y el pie son comunes a todas las páginas. Los cambios se aplican al momento en tu web publicada; no esperan a «Publicar».")}</p>
+          <p role="note" className="mx-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">{tx("Atención: la cabecera y el pie son comunes a todas las páginas. Los cambios se aplican al momento en tu web publicada; no esperan a «Publicar».")}</p>
           <div className="px-4">
             <SiteChromeEditor
               targets={targets}
