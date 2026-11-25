@@ -243,7 +243,7 @@ export function InvoicesTab({ ctrl, tab }: { ctrl: InvoicesController; tab: Tab 
         </div>
       );
     } },
-    { key: "date", header: t("crmInvoices.fecha"), priority: "lg", num: true, cell: (inv) => <span className="text-xs text-muted-foreground">{format.date(inv.createdAt, {})}</span> },
+    { key: "date", header: t("crmInvoices.fecha"), priority: "lg", num: true, mobile: "footer", cell: (inv) => <span className="text-xs text-muted-foreground">{format.date(inv.createdAt, {})}</span> },
     { key: "total", header: t("crmInvoices.total"), align: "right", num: true, mobile: "amount", cell: (inv) => <BMoney tone={inv.invoiceType === "abono" ? "info" : undefined}>{money(Number(inv.total))}</BMoney> },
   ];
   const rowActions = (inv: any) => {
@@ -344,7 +344,6 @@ export function InvoicesTab({ ctrl, tab }: { ctrl: InvoicesController; tab: Tab 
           onClearFilters={clearAll}
           emptyTitle={t("crmEmpty.empty.invoices")}
           emptyDescription={t("crmEmpty.empty.invoicesHint")}
-          emptyAction={<Button type="button" onClick={() => setNewInvoiceOpen(true)}>{t("crmEmpty.empty.invoicesAction")}</Button>}
           rowClassName={(inv) => (inv.invoiceType === "abono" ? "bg-info/[0.03]" : undefined)}
           actions={rowActions}
           footer={invoicesData && invoicesData.total > 0 ? (

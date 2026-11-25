@@ -319,7 +319,7 @@ export function QuotesTab({ ctrl, tab, setBulkConfirm, filterStatus, search, set
                       cell: (quote: any) => <span className="font-semibold text-foreground">{format.currency(Number(quote.total), "EUR", EUR2)}</span>,
                     },
                     {
-                      key: "fecha", header: t("crmQuotes.fecha"), priority: "md", num: true,
+                      key: "fecha", header: t("crmQuotes.fecha"), priority: "md", num: true, mobile: "footer",
                       cell: (quote: any) => quote.sentAt
                         ? <span className="text-info">{t("crmQuotes.env")}{" "}{format.date(quote.sentAt, {})}</span>
                         : <span className="text-muted-foreground">{format.date(quote.createdAt, {})}</span>,

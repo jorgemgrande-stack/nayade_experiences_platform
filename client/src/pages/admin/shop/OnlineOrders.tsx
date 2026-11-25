@@ -68,7 +68,7 @@ export function OnlineOrdersList() {
     { key: "delivered", label: t("shopOrders.stage.delivered"), value: counts?.delivered ?? 0, tone: "success", active: stage === "delivered", onClick: () => toggleStage("delivered") },
   ];
   const chips: ToolbarChip[] = [
-    ...(stage !== "all" ? [{ id: "stage", label: `${t("shopOrders.list.filterByStatus")}: ${t(`shopOrders.stage.${stage}`)}`, onRemove: () => setStage("all") }] : []),
+    ...(stage !== "all" ? [{ id: "stage", label: `${t("shopOrders.list.statusLabel")}: ${t(`shopOrders.stage.${stage}`)}`, onRemove: () => setStage("all") }] : []),
     ...(search.trim() ? [{ id: "search", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
   ];
   const clearFilters = () => { setStage("all"); setSearch(""); };
@@ -85,7 +85,7 @@ export function OnlineOrdersList() {
           search={{ value: search, onChange: setSearch, placeholder: t("shopOrders.list.searchPlaceholder") }}
           filters={(
             <Select value={stage} onValueChange={(v) => setStage(v as OrderStage | "all")}>
-              <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-56" aria-label={t("shopOrders.list.filterByStatus")}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-60" aria-label={t("shopOrders.list.filterByStatus")}><span className="flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-muted-foreground">{t("shopOrders.list.statusLabel")}:</span><SelectValue /></span></SelectTrigger>
               <SelectContent>
                 {FILTERS.map((f) => <SelectItem key={f} value={f}>{(f === "all" ? t("shopOrders.list.all") : t(`shopOrders.stage.${f}`)) + " (" + (f === "all" ? all : counts?.[f] ?? 0) + ")"}</SelectItem>)}
               </SelectContent>

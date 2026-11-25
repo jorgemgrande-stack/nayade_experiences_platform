@@ -184,7 +184,7 @@ export interface CrmColumn<T> {
   num?: boolean;
   priority?: CrmColumnPriority;
   /** En la tarjeta móvil: «title» (cabecera), «amount» (a la derecha del título) o «hidden» (no se repite). */
-  mobile?: "title" | "amount" | "hidden";
+  mobile?: "title" | "amount" | "hidden" | "footer";
   className?: string;
 }
 
@@ -215,7 +215,8 @@ export function CrmTable<T>({ rows, columns, rowKey, rowId, caption, selection, 
   const { t } = useI18n();
   const titleCol = columns.find((c) => c.mobile === "title") ?? columns[0];
   const amountCol = columns.find((c) => c.mobile === "amount");
-  const bodyCols = columns.filter((c) => c !== titleCol && c !== amountCol && c.mobile !== "hidden");
+  const footerCols = columns.filter((c) => c.mobile === "footer");
+  const bodyCols = columns.filter((c) => c !== titleCol && c !== amountCol && c.mobile !== "hidden" && c.mobile !== "footer");
   const al = (a?: "left" | "right" | "center") => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left");
   const allChecked = !!selection && rows.length > 0 && rowId !== undefined && rows.every((r) => selection.selected.has(rowId(r)));
   const check = (r: T, name: string) =>
@@ -271,8 +272,8 @@ export function CrmTable<T>({ rows, columns, rowKey, rowId, caption, selection, 
               <div className="min-w-0 flex-1 font-medium text-foreground">{titleCol.cell(r)}</div>
               {amountCol && <div className="shrink-0 text-right font-semibold tabular-nums">{amountCol.cell(r)}</div>}
             </div>
-            <div className="mt-1 flex items-end justify-between gap-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground [&>div]:min-w-0 [&>div]:max-w-full">
+            <div className={cn("mt-1 flex gap-2", footerCols.length > 0 ? "flex-col" : "items-end justify-between")}>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground [&>div]:min-w-0 [&>div]:max-w-full [&_span.rounded-full]:px-1.5 [&_span.rounded-full]:py-0 [&_span.rounded-full]:leading-5">
                 {bodyCols.map((c) => (
                   <div key={c.key} className={cn(c.num && "tabular-nums")}>
                     <span className="sr-only">{c.header}: </span>
@@ -280,7 +281,21 @@ export function CrmTable<T>({ rows, columns, rowKey, rowId, caption, selection, 
                   </div>
                 ))}
               </div>
-              {actions && <div className="shrink-0">{actions(r)}</div>}
+              {footerCols.length > 0 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground">
+                    {footerCols.map((c) => (
+                      <div key={c.key} className={cn("min-w-0", c.num && "tabular-nums")}>
+                        <span className="sr-only">{c.header}: </span>
+                        {c.cell(r)}
+                      </div>
+                    ))}
+                  </div>
+                  {actions && <div className="shrink-0">{actions(r)}</div>}
+                </div>
+              ) : (
+                actions && <div className="shrink-0">{actions(r)}</div>
+              )}
             </div>
           </li>
         ))}

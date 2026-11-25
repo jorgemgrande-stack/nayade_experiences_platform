@@ -865,7 +865,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main id="contenido-principal" tabIndex={-1} className="flex-1 p-4 sm:p-6 overflow-auto focus:outline-none">
+        <main id="contenido-principal" tabIndex={-1} className="flex-1 p-4 sm:p-6 overflow-auto sm:[scrollbar-gutter:stable] focus:outline-none">
           {isTaskNav && <SubscriptionRecoveryBanner role={userRole} />}
           {children}
         </main>

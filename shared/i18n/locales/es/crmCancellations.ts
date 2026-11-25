@@ -32,6 +32,7 @@ export default {
   otra: "Otra",
   actualizar: "Actualizar",
   verFormularioPublico: "Ver formulario público",
+  formularioPublicoCorto: "Formulario público",
   solicitante: "Solicitante",
   estadoOp: "Estado op.",
   financiero: "Financiero",

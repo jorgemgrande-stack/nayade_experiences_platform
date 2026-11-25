@@ -34,6 +34,7 @@ export default {
   otra: "Sonstiges",
   actualizar: "Aktualisieren",
   verFormularioPublico: "Öffentliches Formular ansehen",
+  formularioPublicoCorto: "Öffentl. Formular",
   solicitante: "Antragsteller",
   estadoOp: "Bearb.-Status",
   financiero: "Finanzen",
