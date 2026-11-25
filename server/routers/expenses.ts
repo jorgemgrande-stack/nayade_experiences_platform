@@ -26,6 +26,7 @@ import { calcGeneralTax } from "../taxUtils";
 import { TRPCError } from "@trpc/server";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { listExpenses, summarizeExpenses } from "../expensesQuery";
 
 // --- helpers -----------------------------------------------------------------
 function randomSuffix() {
@@ -201,69 +202,38 @@ function computeExpenseFiscal(input: { amount: string; taxRate?: string; retenti
   };
 }
 
+const expenseFilterShape = {
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  categoryId: z.number().optional(),
+  costCenterId: z.number().optional(),
+  supplierId: z.number().optional(),
+  status: z.enum(["pending", "justified", "accounted", "conciliado"]).optional(),
+  paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).optional(),
+  // Filtro por imputación contable.
+  //   "all"          ? ambos tipos (default, comportamiento histórico).
+  //   "operational"  ? solo gastos que computan en P&L.
+  //   "tax_only"     ? solo gastos "solo fiscales".
+  treatment: z.enum(["all", "operational", "tax_only"]).default("all"),
+  // Filtros de solo lectura añadidos con el resumen del filtro completo: búsqueda en servidor, origen y «sin adjunto».
+  search: z.string().max(200).optional(),
+  source: z.string().max(32).optional(),
+  attachment: z.enum(["missing"]).optional(),
+};
+
 const expensesRouter = router({
   list: adminProcedure
     .input(z.object({
-      dateFrom: z.string().optional(),
-      dateTo: z.string().optional(),
-      categoryId: z.number().optional(),
-      costCenterId: z.number().optional(),
-      supplierId: z.number().optional(),
-      status: z.enum(["pending", "justified", "accounted", "conciliado"]).optional(),
-      paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).optional(),
-      // Filtro por imputación contable.
-      //   "all"          ? ambos tipos (default, comportamiento histórico).
-      //   "operational"  ? solo gastos que computan en P&L.
-      //   "tax_only"     ? solo gastos "solo fiscales".
-      treatment: z.enum(["all", "operational", "tax_only"]).default("all"),
+      ...expenseFilterShape,
       limit: z.number().default(100),
       offset: z.number().default(0),
     }))
-    .query(async ({ input }) => {
-      const conditions = [];
-      if (input.dateFrom) conditions.push(gte(expenses.date, input.dateFrom));
-      if (input.dateTo) conditions.push(lte(expenses.date, input.dateTo));
-      if (input.categoryId) conditions.push(eq(expenses.categoryId, input.categoryId));
-      if (input.costCenterId) conditions.push(eq(expenses.costCenterId, input.costCenterId));
-      if (input.supplierId) conditions.push(eq(expenses.supplierId, input.supplierId));
-      if (input.status) conditions.push(eq(expenses.status, input.status));
-      if (input.paymentMethod) conditions.push(eq(expenses.paymentMethod, input.paymentMethod));
-      if (input.treatment === "operational") conditions.push(eq(expenses.isOperational, true));
-      else if (input.treatment === "tax_only") conditions.push(eq(expenses.isOperational, false));
+    .query(async ({ input }) => listExpenses(db, input)),
 
-      const rows = await db
-        .select()
-        .from(expenses)
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(expenses.date), desc(expenses.id))
-        .limit(input.limit)
-        .offset(input.offset);
-
-      const [{ total }] = await db
-        .select({ total: sql<number>`count(*)` })
-        .from(expenses)
-        .where(conditions.length ? and(...conditions) : undefined);
-
-      // Fetch files for each expense
-      const ids = rows.map((r: typeof rows[number]) => r.id);
-      const files = ids.length
-        ? await db.select().from(expenseFiles).where(
-            sql`${expenseFiles.expenseId} IN (${sql.join(ids.map((id: number) => sql`${id}`), sql`, `)})`
-          )
-        : [];
-
-      type ExpenseFileRow = typeof files[number];
-      const filesByExpense: Record<number, ExpenseFileRow[]> = {};
-      for (const f of files) {
-        if (!filesByExpense[f.expenseId]) filesByExpense[f.expenseId] = [];
-        filesByExpense[f.expenseId].push(f);
-      }
-
-      return {
-        items: rows.map((r) => ({ ...r, files: filesByExpense[r.id] ?? [] })),
-        total: Number(total),
-      };
-    }),
+  /** Totales del filtro COMPLETO (no de la página): solo lectura, mismos filtros que `list`. */
+  filterSummary: adminProcedure
+    .input(z.object(expenseFilterShape))
+    .query(async ({ input }) => summarizeExpenses(db, input)),
 
   getById: adminProcedure
     .input(z.object({ id: z.number() }))

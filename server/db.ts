@@ -545,7 +545,7 @@ type TxFilters = {
   limit?: number; offset?: number;
 };
 
-function buildTxWhere(db: any, params: TxFilters) {
+export function buildTxWhere(db: any, params: TxFilters) {
   const conditions: any[] = [];
   if (params.type)        conditions.push(eq(transactions.type, params.type as any));
   if (params.status)      conditions.push(eq(transactions.status, params.status as any));
@@ -589,6 +589,40 @@ export async function getTransactionsCount(params: TxFilters) {
   const q = db.select({ total: sql<number>`COUNT(*)` }).from(transactions);
   const [row] = await (where ? q.where(where) : q);
   return { total: Number(row?.total ?? 0) };
+}
+
+/**
+ * Totales del filtro COMPLETO de Transacciones (solo lectura). Mismo `where` que el listado y el contador
+ * (`buildTxWhere`), agregados en SQL sobre la columna decimal `amount` (sin pasar por coma flotante: los importes
+ * vuelven como texto decimal exacto, «1234567.89»). Criterio de las cifras = el que ya usaba la pantalla:
+ *  - ingresos = tipo «ingreso» y estado «completado»;
+ *  - salidas  = tipos «gasto» y «reembolso» y estado «completado» (las comisiones no entran, como hasta ahora);
+ *  - neto     = ingresos − salidas, calculado también en SQL (decimal).
+ * El aislamiento por empresa es el del listado: la conexión que resuelve `getDb()` para la petición en curso.
+ */
+export async function summarizeTransactions(db: any, params: Omit<TxFilters, "limit" | "offset">) {
+  const where = buildTxWhere(db, params);
+  const q = db.select({
+    count: sql<string>`CAST(COUNT(*) AS CHAR)`,
+    pending: sql<string>`CAST(COALESCE(SUM(CASE WHEN ${transactions.status} = 'pendiente' THEN 1 ELSE 0 END), 0) AS CHAR)`,
+    income: sql<string>`CAST(COALESCE(SUM(CASE WHEN ${transactions.type} = 'ingreso' AND ${transactions.status} = 'completado' THEN ${transactions.amount} ELSE 0 END), 0) AS CHAR)`,
+    outflow: sql<string>`CAST(COALESCE(SUM(CASE WHEN ${transactions.type} IN ('gasto', 'reembolso') AND ${transactions.status} = 'completado' THEN ${transactions.amount} ELSE 0 END), 0) AS CHAR)`,
+    net: sql<string>`CAST(COALESCE(SUM(CASE WHEN ${transactions.status} = 'completado' AND ${transactions.type} = 'ingreso' THEN ${transactions.amount} WHEN ${transactions.status} = 'completado' AND ${transactions.type} IN ('gasto', 'reembolso') THEN -${transactions.amount} ELSE 0 END), 0) AS CHAR)`,
+  }).from(transactions);
+  const [row] = await (where ? q.where(where) : q);
+  return {
+    count: Number(row?.count ?? 0),
+    pending: Number(row?.pending ?? 0),
+    income: String(row?.income ?? "0"),
+    outflow: String(row?.outflow ?? "0"),
+    net: String(row?.net ?? "0"),
+  };
+}
+
+export async function getTransactionsSummary(params: Omit<TxFilters, "limit" | "offset">) {
+  const db = await getDb();
+  if (!db) return { count: 0, pending: 0, income: "0.00", outflow: "0.00", net: "0.00" };
+  return summarizeTransactions(db, params);
 }
 
 export async function getTransactionById(id: number) {
