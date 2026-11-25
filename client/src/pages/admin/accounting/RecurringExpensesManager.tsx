@@ -18,7 +18,8 @@ import { Plus, Pencil, Trash2, RefreshCw, Play, ArrowLeft, CalendarClock, AlertT
 import { TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
-import { FormFooter, MetricCard, EconomySummary, EconomyTable, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { FormFooter, MetricCard, EconomySummary, EconomyTable, FormField, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { CollapsibleSection, ListSearch, filterByText } from "./shared/EconomyParts";
 
 type RecForm = {
   concept: string; amount: string; categoryId: string; costCenterId: string;
@@ -42,6 +43,10 @@ export default function RecurringExpensesManager() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<RecForm>(emptyForm);
   const [showErrors, setShowErrors] = useState(false);
+  const [openExpense, setOpenExpense] = useState(true);
+  const [openClass, setOpenClass] = useState(true);
+  const [openSchedule, setOpenSchedule] = useState(true);
+  const [q, setQ] = useState("");
 
   const listQ = trpc.financial.recurring.list.useQuery();
   const categoriesQ = trpc.financial.categories.list.useQuery();
@@ -82,10 +87,13 @@ export default function RecurringExpensesManager() {
   const recurrenceLabel = (r: string): string =>
     r === "weekly" ? t("accountingConfig.recurring.weekly") : r === "yearly" ? t("accountingConfig.recurring.yearly") : t("accountingConfig.recurring.monthly");
 
+  // Vencidos primero (con su resalte), después el resto por fecha de próxima ejecución
+  const sorted = [...items].sort((a, b) => Number(b.nextExecutionDate < today) - Number(a.nextExecutionDate < today) || a.nextExecutionDate.localeCompare(b.nextExecutionDate));
+  const shown = filterByText(sorted, q, [(i) => i.concept, (i) => getCategoryName(i.categoryId)]);
   const overdueCount = items.filter((i) => i.nextExecutionDate < today).length;
   const taxOnlyCount = items.filter((i) => (i as any).isOperational === false).length;
 
-  function openCreate() { setEditingId(null); setForm(emptyForm); setShowErrors(false); setDialogOpen(true); }
+  function openCreate() { setEditingId(null); setForm(emptyForm); setShowErrors(false); setOpenExpense(true); setOpenClass(true); setOpenSchedule(true); setDialogOpen(true); }
   function openEdit(item: typeof items[number]) {
     setEditingId(item.id);
     setForm({
@@ -131,7 +139,7 @@ export default function RecurringExpensesManager() {
       mobile: "title",
       cell: (i) => (
         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="font-medium text-foreground">{i.concept}</span>
+          <span className="line-clamp-2 min-w-0 break-words font-medium text-foreground" title={i.concept}>{i.concept}</span>
           {(i as any).isOperational === false && (
             <span title={t("accountingConfig.recurring.taxOnlyHint")}>
               <StatusBadge tone="warning">{t("accountingConfig.recurring.taxOnly")}</StatusBadge>
@@ -179,15 +187,17 @@ export default function RecurringExpensesManager() {
           </EconomySummary>
         )}
 
+        {items.length > 15 && <ListSearch value={q} onChange={setQ} />}
+
         <EconomyTable
-          rows={items}
+          rows={shown}
           columns={columns}
           rowKey={(i) => i.id}
           caption={t("accountingConfig.recurring.title")}
           loading={listQ.isLoading}
           error={listQ.error}
           onRetry={() => void listQ.refetch()}
-          emptyTitle={t("accountingConfig.recurring.emptyTitle")}
+          emptyTitle={items.length > 0 ? t("accountingConfig.common.noMatches") : t("accountingConfig.recurring.emptyTitle")}
           emptyDescription={t("accountingConfig.recurring.emptyHelp")}
           emptyAction={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.recurring.new")}</Button>}
           actions={(i) => (
@@ -210,7 +220,7 @@ export default function RecurringExpensesManager() {
             <DialogDescription>{t("accountingConfig.recurring.dialogHelp")}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void handleSave(); }}>
-            <FormSection title={t("accountingConfig.recurring.sectionExpense")}>
+            <CollapsibleSection title={t("accountingConfig.recurring.sectionExpense")} open={openExpense} onOpenChange={setOpenExpense}>
               <FormField label={t("accountingConfig.recurring.concept")} required error={showErrors && !form.concept ? t("accountingConfig.recurring.errConcept") : null}>
                 <Input value={form.concept} onChange={(e) => setForm({ ...form, concept: e.target.value })} autoFocus autoComplete="off" />
               </FormField>
@@ -228,9 +238,9 @@ export default function RecurringExpensesManager() {
                   </Select>
                 </FormField>
               </div>
-            </FormSection>
+            </CollapsibleSection>
 
-            <FormSection title={t("accountingConfig.recurring.sectionClassification")}>
+            <CollapsibleSection title={t("accountingConfig.recurring.sectionClassification")} open={openClass} onOpenChange={setOpenClass}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <FormField label={t("accountingConfig.recurring.category")} required error={showErrors && !form.categoryId ? t("accountingConfig.recurring.errCategory") : null}>
                   <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
@@ -245,9 +255,9 @@ export default function RecurringExpensesManager() {
                   </Select>
                 </FormField>
               </div>
-            </FormSection>
+            </CollapsibleSection>
 
-            <FormSection title={t("accountingConfig.recurring.sectionSchedule")}>
+            <CollapsibleSection title={t("accountingConfig.recurring.sectionSchedule")} open={openSchedule} onOpenChange={setOpenSchedule}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <FormField label={t("accountingConfig.recurring.recurrence")}>
                   <Select value={form.recurrenceType} onValueChange={(v) => setForm({ ...form, recurrenceType: v })}>
@@ -263,7 +273,7 @@ export default function RecurringExpensesManager() {
                   <Input type="date" value={form.nextExecutionDate} onChange={(e) => setForm({ ...form, nextExecutionDate: e.target.value })} />
                 </FormField>
               </div>
-            </FormSection>
+            </CollapsibleSection>
 
             <div className={cn("flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors", form.isOperational ? "border-border bg-muted/20" : TONE_SURFACE.warning)}>
               <div className="min-w-0">
@@ -276,7 +286,8 @@ export default function RecurringExpensesManager() {
               <Switch id="recurring-operational" checked={form.isOperational} onCheckedChange={(v) => setForm({ ...form, isOperational: v })} />
             </div>
 
-            <FormFooter>
+            <FormFooter className="sm:items-center">
+              <p className="mr-auto text-sm text-muted-foreground max-sm:order-last max-sm:w-full">{t("accountingConfig.recurring.footerAmount")} <strong className="tabular-nums text-foreground">{money.eur(parseFloat(form.amount) || 0)}</strong></p>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{t("common.cancel")}</Button>
               <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>{editingId ? t("common.save") : t("common.create")}</Button>
             </FormFooter>

@@ -65,12 +65,13 @@ export function PageOnlyTag({ className }: { className?: string }) {
  * las demás van en una cuadrícula de dos columnas a su lado (o debajo en móvil). Con tres tarjetas o menos van en fila.
  */
 export function EconomySummary({ children, className }: { children: ReactNode; className?: string }) {
+  const { t } = useI18n();
   const items = Children.toArray(children).filter(Boolean);
   const [hero, ...rest] = items;
   const row = items.length <= 3;
   return (
     <section
-      aria-label="Resumen"
+      aria-label={t("economyShell.ui.summary")}
       className={cn(
         "rounded-xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-3 shadow-sm sm:p-4",
         className,
@@ -134,9 +135,10 @@ export function EconomyFilterBar({
   actions?: ReactNode;
   className?: string;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
-    <section aria-label="Filtros" className={cn("space-y-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4", className)}>
+    <section aria-label={t("economyShell.ui.filters")} className={cn("space-y-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4", className)}>
       <div className="flex flex-wrap items-end gap-3">
         {search && (
           <div className="relative min-w-[12rem] flex-1">
@@ -160,7 +162,7 @@ export function EconomyFilterBar({
             className="gap-2"
           >
             <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-            Más filtros
+            {t("economyShell.ui.moreFilters")}
             <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
           </Button>
         )}
@@ -178,7 +180,7 @@ export function EconomyFilterBar({
               <button
                 type="button"
                 onClick={c.onRemove}
-                aria-label={`Quitar filtro: ${c.label}`}
+                aria-label={t("economyShell.ui.removeFilter", { label: c.label })}
                 className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/20 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
@@ -187,7 +189,7 @@ export function EconomyFilterBar({
           ))}
           {chips.length > 0 && (
             <Button type="button" variant="ghost" size="sm" onClick={onClear} className="h-7 gap-1 px-2 text-muted-foreground">
-              <X className="h-3.5 w-3.5" aria-hidden="true" /> Limpiar filtros
+              <X className="h-3.5 w-3.5" aria-hidden="true" /> {t("economyShell.ui.clearFilters")}
             </Button>
           )}
         </div>
@@ -241,6 +243,8 @@ export function EconomyTable<T>({
   actions,
   rowClassName,
   onRowClick,
+  mobileCard,
+  mobileActions,
   footer,
   maxHeightClass = "max-h-[70vh]",
   className,
@@ -260,10 +264,14 @@ export function EconomyTable<T>({
   actions?: (row: T) => ReactNode;
   rowClassName?: (row: T) => string | undefined;
   onRowClick?: (row: T) => void;
+  /** Tarjeta móvil propia (sustituye a la genérica). Recibe la fila y su menú de acciones (`mobileActions`, o `actions`). */
+  mobileCard?: (row: T, menu: ReactNode) => ReactNode;
+  mobileActions?: (row: T) => ReactNode;
   footer?: ReactNode;
   maxHeightClass?: string;
   className?: string;
 }) {
+  const { t } = useI18n();
   if (error) return <PanelError title={errorTitle} error={error} onRetry={onRetry} />;
   if (loading) return <div className="rounded-xl border border-border bg-card"><PanelLoading /></div>;
   if (rows.length === 0) {
@@ -289,7 +297,7 @@ export function EconomyTable<T>({
                   {c.header}
                 </th>
               ))}
-              {actions && <th scope="col" className="sticky right-0 w-px bg-muted px-3 py-2.5 text-right font-medium">Acciones</th>}
+              {actions && <th scope="col" className="sticky right-0 w-px bg-muted px-3 py-2.5 text-right font-medium">{t("economyShell.ui.actions")}</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -322,8 +330,11 @@ export function EconomyTable<T>({
           <li
             key={rowKey(r)}
             onClick={onRowClick ? () => onRowClick(r) : undefined}
-            className={cn("space-y-2 p-4 text-sm", onRowClick && "cursor-pointer", rowClassName?.(r))}
+            className={cn(mobileCard ? "p-4 text-sm" : "space-y-2 p-4 text-sm", onRowClick && "cursor-pointer", rowClassName?.(r))}
           >
+            {mobileCard ? (
+              mobileCard(r, <div onClick={(e) => e.stopPropagation()}>{(mobileActions ?? actions)?.(r)}</div>)
+            ) : (<>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1 break-words font-medium text-foreground">{titleCol.cell(r)}</div>
               {amountCol && <div className="shrink-0 text-right font-semibold tabular-nums">{amountCol.cell(r)}</div>}
@@ -339,6 +350,7 @@ export function EconomyTable<T>({
               </dl>
             )}
             {actions && <div className="flex justify-end pt-1" onClick={(e) => e.stopPropagation()}>{actions(r)}</div>}
+            </>)}
           </li>
         ))}
       </ul>
@@ -357,6 +369,7 @@ export interface RowAction {
 }
 
 export function RowActions({ primary, menu = [], label }: { primary?: RowAction; menu?: RowAction[]; label: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center justify-end gap-1">
       {primary && (
@@ -368,7 +381,7 @@ export function RowActions({ primary, menu = [], label }: { primary?: RowAction;
       {menu.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label={`Más acciones: ${label}`}>
+            <Button type="button" variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8" aria-label={t("economyShell.ui.moreActions", { label })}>
               <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>

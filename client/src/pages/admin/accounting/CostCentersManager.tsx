@@ -16,6 +16,7 @@ import { TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { EconomyTable, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { ListSearch, filterByText } from "./shared/EconomyParts";
 
 export default function CostCentersManager() {
   const { t } = useI18n();
@@ -42,6 +43,8 @@ export default function CostCentersManager() {
   });
 
   const items = listQ.data ?? [];
+  const [q, setQ] = useState("");
+  const shown = filterByText(items, q, [(i) => i.name, (i) => i.description]);
   const activeCount = items.filter((i) => i.active !== false).length;
 
   function openCreate() {
@@ -107,15 +110,17 @@ export default function CostCentersManager() {
           </div>
         </div>
 
+        {items.length > 15 && <ListSearch value={q} onChange={setQ} />}
+
         <EconomyTable
-          rows={items}
+          rows={shown}
           columns={columns}
           rowKey={(i) => i.id}
           caption={t("accountingConfig.costCenters.title")}
           loading={listQ.isLoading}
           error={listQ.error}
           onRetry={() => void listQ.refetch()}
-          emptyTitle={t("accountingConfig.costCenters.emptyTitle")}
+          emptyTitle={items.length > 0 ? t("accountingConfig.common.noMatches") : t("accountingConfig.costCenters.emptyTitle")}
           emptyDescription={t("accountingConfig.costCenters.emptyHelp")}
           emptyAction={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.costCenters.new")}</Button>}
           rowClassName={(i) => (i.active === false ? "opacity-60" : undefined)}

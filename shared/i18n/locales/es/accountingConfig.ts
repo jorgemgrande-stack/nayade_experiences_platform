@@ -1,6 +1,8 @@
 /** Contabilidad: centros de coste, categorías, proveedores y gastos recurrentes (pantallas de configuración de gastos). */
 export default {
   common: {
+    searchPlaceholder: "Buscar…",
+    noMatches: "Ningún elemento coincide con la búsqueda",
     name: "Nombre",
     description: "Descripción",
     status: "Estado",
@@ -82,6 +84,7 @@ export default {
     nameRequired: "El nombre comercial es obligatorio.",
   },
   recurring: {
+    footerAmount: "Importe",
     title: "Gastos Recurrentes",
     description: "Gastos que se generan solos con la periodicidad que indiques",
     new: "Nuevo recurrente",
