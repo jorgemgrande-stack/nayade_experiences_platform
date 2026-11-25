@@ -123,7 +123,7 @@ function CartItemRow({ item }: { item: CartItem }) {
         <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border text-xs">
           <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
             {item.variantName && <Tag className="w-3 h-3 shrink-0 text-primary" aria-hidden="true" />}
-            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{item.variantName ?? t.coPricePerUnit}</span>
+            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{item.variantName ?? t.coPricePerUnit}{item.supplements?.length ? ` + ${item.supplements.map((s) => s.name).join(" + ")}` : ""}</span>
           </span>
           <span className="shrink-0 font-semibold text-foreground">{eur(item.pricePerPerson)}{text.perUnitShort.replace("€", "")}</span>
         </div>
