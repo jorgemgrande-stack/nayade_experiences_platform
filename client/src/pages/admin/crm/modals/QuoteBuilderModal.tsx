@@ -311,10 +311,10 @@ export function QuoteBuilderModal({
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <span className="text-[11px] text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</span>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
+                <span className="text-xs text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
               </div>
               </div>
             ))}
@@ -329,7 +329,7 @@ export function QuoteBuilderModal({
         <div className="bg-foreground/[0.05] rounded-xl p-3">
           <Label className="text-foreground/65 text-xs mb-1.5 block">{t("crmQuotes.codigoDeDescuentoOpcional")}</Label>
           {promoData ? (
-            <div className="flex items-center justify-between bg-success/30 border border-success/40 rounded-lg px-3 py-2">
+            <div className="flex items-center justify-between bg-success/10 border border-success/40 rounded-lg px-3 py-2">
               <span className="font-mono font-bold text-success text-sm">{promoData.code} — -{promoData.discountPercent}%</span>
               <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-foreground/50 hover:text-danger text-xs ml-2">{t("crmQuotes.quitar")}</button>
             </div>

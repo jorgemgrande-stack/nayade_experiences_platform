@@ -132,9 +132,9 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl bg-card border-border text-foreground max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
+        <DialogTitle className="text-foreground flex items-center gap-2">
           <CalendarCheck className="w-5 h-5 text-success" /> {voc.newOrder}
         </DialogTitle>
       </DialogHeader>
@@ -154,12 +154,12 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
                 onChange={e => { setClientSearch(e.target.value); setShowClientSugg(true); }}
                 onFocus={() => setShowClientSugg(true)}
                 placeholder={t("crmReservations.buscarClienteExistenteO")}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground"
               />
               {showClientSugg && clientSuggestions.length > 0 && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
                   {clientSuggestions.map((c) => (
-                    <button key={c.id} type="button" className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-sm text-white"
+                    <button key={c.id} type="button" className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-sm text-foreground"
                       onClick={() => { setCustomerName(c.name); setCustomerEmail(c.email ?? ""); setCustomerPhone(c.phone ?? ""); setClientSearch(""); setShowClientSugg(false); }}>
                       <span className="font-medium">{c.name}</span>
                       <span className="text-foreground/50 ml-2 text-xs">{c.email}</span>
@@ -182,7 +182,7 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
 
           {/* Cliente seleccionado — mostrar resumen con opción de cambiar */}
           {customerName && !showCreateClient && (
-            <div className="flex items-center justify-between bg-success/40 border border-success/25 rounded-lg px-3 py-2">
+            <div className="flex items-center justify-between bg-success/10 border border-success/25 rounded-lg px-3 py-2">
               <div>
                 <p className="text-sm font-medium text-success">{customerName}</p>
                 {customerEmail && <p className="text-xs text-foreground/50">{customerEmail}</p>}
@@ -193,7 +193,7 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
 
           {/* Formulario inline de nuevo cliente */}
           {showCreateClient && (
-            <div className="bg-success/30 border border-success/25 rounded-lg p-3 space-y-2.5">
+            <div className="bg-success/10 border border-success/25 rounded-lg p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-success uppercase tracking-wider flex items-center gap-1.5">
                   <UserPlus className="w-3.5 h-3.5" />{" "}{t("crmReservations.nuevoCliente")}</p>
@@ -204,22 +204,22 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <Label htmlFor="new-client-name" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.nombreCompleto")}</Label>
-                  <Input id="new-client-name" required value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder={t("crmReservations.nombreCompleto2")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.name, "new-client-name-error")} />
+                  <Input id="new-client-name" required value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder={t("crmReservations.nombreCompleto2")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground h-8 text-sm" {...invalidProps(clientErrors.name, "new-client-name-error")} />
                   <FieldError id="new-client-name-error" msg={clientErrors.name} />
                 </div>
                 <div className="col-span-2">
                   <Label htmlFor="new-client-email" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.email")}</Label>
-                  <Input id="new-client-email" required type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.email, "new-client-email-error")} />
+                  <Input id="new-client-email" required type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground h-8 text-sm" {...invalidProps(clientErrors.email, "new-client-email-error")} />
                   <FieldError id="new-client-email-error" msg={clientErrors.email} />
                 </div>
                 <div>
                   <Label htmlFor="new-client-phone" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.telefono")}</Label>
-                  <Input id="new-client-phone" type="tel" value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.phone, "new-client-phone-error")} />
+                  <Input id="new-client-phone" type="tel" value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground h-8 text-sm" {...invalidProps(clientErrors.phone, "new-client-phone-error")} />
                   <FieldError id="new-client-phone-error" msg={clientErrors.phone} />
                 </div>
                 <div>
                   <Label htmlFor="new-client-company" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.empresa")}</Label>
-                  <Input id="new-client-company" value={newClientCompany} onChange={e => setNewClientCompany(e.target.value)} placeholder={t("crmReservations.opcional")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                  <Input id="new-client-company" value={newClientCompany} onChange={e => setNewClientCompany(e.target.value)} placeholder={t("crmReservations.opcional")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground h-8 text-sm" />
                 </div>
               </div>
               <Button
@@ -238,12 +238,12 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="new-order-email" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.email")}</Label>
-                <Input id="new-order-email" required type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.email, "new-order-email-error")} />
+                <Input id="new-order-email" required type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" {...invalidProps(errors.email, "new-order-email-error")} />
                 <FieldError id="new-order-email-error" msg={errors.email} />
               </div>
               <div>
                 <Label htmlFor="new-order-phone" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.telefono")}</Label>
-                <Input id="new-order-phone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.phone, "new-order-phone-error")} />
+                <Input id="new-order-phone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" {...invalidProps(errors.phone, "new-order-phone-error")} />
                 <FieldError id="new-order-phone-error" msg={errors.phone} />
               </div>
             </div>
@@ -255,7 +255,7 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
           <div className="relative">
             <Label htmlFor="new-order-product" className="text-xs text-foreground/60 mb-1 block">{voc.productRequired}</Label>
             {productName ? (
-              <div className="flex items-center justify-between bg-success/40 border border-success/25 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between bg-success/10 border border-success/25 rounded-lg px-3 py-2">
                 <div>
                   <p className="text-sm font-medium text-success">{productName}</p>
                   <p className="text-xs text-foreground/50 mt-0.5">
@@ -274,10 +274,10 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
                   onFocus={() => setShowProductSugg(true)}
                   onBlur={() => setTimeout(() => setShowProductSugg(false), 150)}
                   placeholder={voc.licensed ? voc.productSearch : t("crmReservations.buscarProductoOActividad")}
-                  className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
+                  className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground"
                 />
                 {showProductSugg && productSuggestions.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-56 overflow-y-auto">
                     {productSuggestions.map((p: any) => {
                       const base = Number(p.basePrice ?? 0);
                       const pricing = p.pricingType ?? "per_person";
@@ -286,7 +286,7 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
                         : null;
                       return (
                         <button key={`${p.productType}-${p.id}`} type="button"
-                          className="w-full text-left px-3 py-2.5 hover:bg-foreground/[0.07] text-sm text-white flex items-center gap-2.5 border-b border-foreground/[0.05] last:border-0"
+                          className="w-full text-left px-3 py-2.5 hover:bg-foreground/[0.07] text-sm text-foreground flex items-center gap-2.5 border-b border-foreground/[0.05] last:border-0"
                           onMouseDown={e => e.preventDefault()}
                           onClick={() => {
                             setProductId(p.id);
@@ -309,7 +309,7 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
                 {showProductSugg && productQuery.length > 0 && !productsFetching && productSuggestions.length === 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl px-3 py-3 text-sm text-foreground/40">{t("crmReservations.sinResultadosPara", { productQuery })}</div>
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg px-3 py-3 text-sm text-foreground/40">{t("crmReservations.sinResultadosPara", { productQuery })}</div>
                 )}
               </>
             )}
@@ -318,12 +318,12 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="new-order-date" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? voc.serviceDate : t("crmReservations.fechaDelServicio")} *</Label>
-              <Input id="new-order-date" required type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" {...invalidProps(errors.date, "new-order-date-error")} />
+              <Input id="new-order-date" required type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" {...invalidProps(errors.date, "new-order-date-error")} />
               <FieldError id="new-order-date-error" msg={errors.date} />
             </div>
             <div>
               <Label htmlFor="new-order-people" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? t("crmReservations.cantidad") : t("crmReservations.nPersonas")}</Label>
-              <Input id="new-order-people" type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              <Input id="new-order-people" type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground" />
             </div>
           </div>
         </div>
@@ -333,38 +333,38 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="new-order-total" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.importeTotal")}</Label>
-              <Input id="new-order-total" required type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.amount, "new-order-total-error")} />
+              <Input id="new-order-total" required type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" {...invalidProps(errors.amount, "new-order-total-error")} />
               <FieldError id="new-order-total-error" msg={errors.amount} />
             </div>
             <div>
               <Label htmlFor="new-order-paid" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.importeCobrado")}</Label>
-              <Input id="new-order-paid" type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder={t("crmReservations.igualAlTotalSi")} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+              <Input id="new-order-paid" type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder={t("crmReservations.igualAlTotalSi")} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="new-order-payment" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.metodoDePago")}</Label>
               <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as typeof paymentMethod)}>
-                <SelectTrigger id="new-order-payment" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="efectivo" className="text-white text-xs">{t("crmReservations.efectivo")}</SelectItem>
-                  <SelectItem value="transferencia" className="text-white text-xs">{t("crmReservations.transferencia")}</SelectItem>
-                  <SelectItem value="tarjeta_fisica" className="text-white text-xs">💳 {voc.licensed ? t("crmReservations.tarjetaEnDatafono") : t("crmReservations.tarjetaFisica")}</SelectItem>
-                  <SelectItem value="tarjeta_redsys" className="text-white text-xs">💳 {voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys")}</SelectItem>
-                  {!voc.licensed && <SelectItem value="redsys" className="text-white text-xs">{t("crmReservations.tarjetaRedsysLegacy")}</SelectItem>}
-                  <SelectItem value="otro" className="text-white text-xs">{t("crmReservations.otro")}</SelectItem>
+                <SelectTrigger id="new-order-payment" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  <SelectItem value="efectivo" className="text-foreground text-xs">{t("crmReservations.efectivo")}</SelectItem>
+                  <SelectItem value="transferencia" className="text-foreground text-xs">{t("crmReservations.transferencia")}</SelectItem>
+                  <SelectItem value="tarjeta_fisica" className="text-foreground text-xs">💳 {voc.licensed ? t("crmReservations.tarjetaEnDatafono") : t("crmReservations.tarjetaFisica")}</SelectItem>
+                  <SelectItem value="tarjeta_redsys" className="text-foreground text-xs">💳 {voc.licensed ? t("crmReservations.tarjetaPagoOnline") : t("crmReservations.tarjetaRedsys")}</SelectItem>
+                  {!voc.licensed && <SelectItem value="redsys" className="text-foreground text-xs">{t("crmReservations.tarjetaRedsysLegacy")}</SelectItem>}
+                  <SelectItem value="otro" className="text-foreground text-xs">{t("crmReservations.otro")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label htmlFor="new-order-channel" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.canal")}</Label>
               <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
-                <SelectTrigger id="new-order-channel" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="VENTA_DELEGADA" className="text-white text-xs">{voc.licensed ? t("crmReservations.altaDesdeElPanel") : t("crmReservations.crmAdmin")}</SelectItem>
-                  <SelectItem value="TELEFONO" className="text-white text-xs">{t("crmReservations.telefono2")}</SelectItem>
-                  <SelectItem value="EMAIL" className="text-white text-xs">{t("crmReservations.email2")}</SelectItem>
-                  <SelectItem value="MANUAL" className="text-white text-xs">{t("crmReservations.otro")}</SelectItem>
+                <SelectTrigger id="new-order-channel" className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  <SelectItem value="VENTA_DELEGADA" className="text-foreground text-xs">{voc.licensed ? t("crmReservations.altaDesdeElPanel") : t("crmReservations.crmAdmin")}</SelectItem>
+                  <SelectItem value="TELEFONO" className="text-foreground text-xs">{t("crmReservations.telefono2")}</SelectItem>
+                  <SelectItem value="EMAIL" className="text-foreground text-xs">{t("crmReservations.email2")}</SelectItem>
+                  <SelectItem value="MANUAL" className="text-foreground text-xs">{t("crmReservations.otro")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -372,16 +372,16 @@ export function NewReservationModal({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <Label htmlFor="new-order-notes" className="text-xs text-foreground/60 mb-1 block">{t("crmReservations.notasInternas")}</Label>
-          <Textarea id="new-order-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder={t("crmReservations.notasParaElEquipo")} rows={2} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
+          <Textarea id="new-order-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder={t("crmReservations.notasParaElEquipo")} rows={2} className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground resize-none" />
         </div>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={sendEmailConfirm} onChange={e => setSendEmailConfirm(e.target.checked)} className="rounded" />
           <span className="text-sm text-foreground/65">{t("crmReservations.enviarEmailDeConfirmacion")}</span>
         </label>
       </div>
-      <DialogFooter className="gap-2">
+      <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 gap-2 border-t border-border bg-background px-6 py-4">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmReservations.cancelar")}</Button>
-        <Button size="sm" onClick={handleSubmit} disabled={createManual.isPending} className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
+        <Button size="sm" onClick={handleSubmit} disabled={createManual.isPending}>
           {createManual.isPending ? voc.creatingOrder : voc.createOrder}
         </Button>
       </DialogFooter>

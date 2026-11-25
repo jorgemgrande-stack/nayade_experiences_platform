@@ -193,6 +193,7 @@ export default {
   mes: "Monat",
   desde: "Von",
   hasta: "Bis",
+  fechas: "Zeitraum",
   ticketDeCaja: "Kassenbon",
   ticketsDeCaja: "Kassenbons",
   seIncluiranLasFacturas: "Enthalten sind die in {label} ausgestellten Rechnungen, Gutschriften und Kassenbons (Daten nach spanischer Festlandzeit).",

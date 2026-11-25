@@ -199,7 +199,7 @@ export function DirectQuoteModal({ onClose }: { onClose: () => void }) {
               />
             </div>
             {showClientSuggestions && clientSuggestions.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-foreground/[0.12] rounded-lg shadow-xl max-h-40 overflow-y-auto">
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-foreground/[0.12] rounded-lg shadow-lg max-h-40 overflow-y-auto">
                 {clientSuggestions.map((c) => (
                   <button
                     key={c.id}
@@ -322,10 +322,10 @@ export function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <label htmlFor={`new-quote-line-date-${idx}`} className="text-[11px] text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</label>
+                <label htmlFor={`new-quote-line-date-${idx}`} className="text-xs text-muted-foreground whitespace-nowrap">{t("crmQuotes.opcional", { serviceDateLabel: voc.serviceDateLabel })}</label>
                 <Input id={`new-quote-line-date-${idx}`} type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
+                <span className="text-xs text-muted-foreground">{t("crmQuotes.vacioUsaLaDel", { toLowerCase: voc.serviceDateLabel.toLowerCase() })}</span>
               </div>
               </div>
             ))}

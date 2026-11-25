@@ -86,7 +86,7 @@ export function ReservationDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl bg-card border-border text-foreground">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-warning" />
         </div>
@@ -99,11 +99,11 @@ export function ReservationDetailModal({
   const totalEur = (res.amountTotal / 100).toFixed(2);
 
   return (
-    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+    <DialogContent className="w-[95vw] max-w-2xl bg-card border-border text-foreground max-h-[90vh] flex flex-col overflow-hidden p-0">
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
         <DialogHeader>
-          <DialogTitle className="text-white flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/20 to-emerald-700/20 border border-success/30 flex items-center justify-center">
+          <DialogTitle className="text-foreground flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-success/10 border border-success/30 flex items-center justify-center">
               <CalendarCheck className="w-4 h-4 text-success" />
             </div>
             <div>
@@ -174,12 +174,12 @@ export function ReservationDetailModal({
           )}
 
           {/* Datos del cliente */}
-          <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
+          <div className="bg-muted/40 border border-foreground/[0.10] rounded-xl p-4">
             <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">{t("crmReservations.datosDelCliente")}</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-foreground/50 mb-0.5">{t("crmReservations.nombre")}</div>
-                <div className="text-sm text-white font-medium">{res.customerName}</div>
+                <div className="text-sm text-foreground font-medium">{res.customerName}</div>
               </div>
               <div>
                 <div className="text-xs text-foreground/50 mb-0.5">{t("crmReservations.email4")}</div>
@@ -199,26 +199,26 @@ export function ReservationDetailModal({
           </div>
 
           {/* Detalles de la reserva */}
-          <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
+          <div className="bg-muted/40 border border-foreground/[0.10] rounded-xl p-4">
             <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">{t("crmReservations.detalles")}{" "}{voc.licensed ? t("crmReservations.delPedido") : t("crmReservations.deLaReserva")}</h4>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-foreground/60">{t("crmReservations.producto")}</span>
-                <span className="text-white font-medium text-right max-w-[60%]">{res.productName}</span>
+                <span className="text-foreground font-medium text-right max-w-[60%]">{res.productName}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-foreground/60">{voc.serviceDateLabel}</span>
-                <span className="text-white font-medium">{res.bookingDate || "—"}</span>
+                <span className="text-foreground font-medium">{res.bookingDate || "—"}</span>
               </div>
               {res.selectedTime && (
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground/60">{t("crmReservations.horaSolicitada")}</span>
-                  <span className="text-white font-medium">{res.selectedTime}</span>
+                  <span className="text-foreground font-medium">{res.selectedTime}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-foreground/60">{t("crmReservations.personas")}</span>
-                <span className="text-white font-medium">{t("crmReservations.pax", { people: res.people })}</span>
+                <span className="text-foreground font-medium">{t("crmReservations.pax", { people: res.people })}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-foreground/60">{t("crmReservations.importeTotal2")}</span>
@@ -287,12 +287,12 @@ export function ReservationDetailModal({
                         {format.currency((inst.amountCents / 100))}
                       </span>
                       {inst.isRequiredForConfirmation && (
-                        <span className="text-[10px] bg-warning/20 text-warning border border-warning/30 px-1.5 py-0.5 rounded-full">{t("crmReservations.inaplazable")}</span>
+                        <span className="text-xs bg-warning/20 text-warning border border-warning/30 px-1.5 py-0.5 rounded-full">{t("crmReservations.inaplazable")}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       {inst.dueDate && <span className="text-foreground/40">{inst.dueDate}</span>}
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${
                         inst.status === "paid"
                           ? "bg-success/20 text-success border-success/30"
                           : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
@@ -350,7 +350,7 @@ export function ReservationDetailModal({
             const generalItems = allItems.filter(i => !i.fiscalRegime || i.fiscalRegime !== "reav");
             const reavItems = allItems.filter(i => i.fiscalRegime === "reav");
             return (
-              <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
+              <div className="bg-muted/40 border border-foreground/[0.10] rounded-xl p-4">
                 <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">{t("crmReservations.lineasDelPedido")}</h4>
                 <div className="space-y-1">
                   {/* Header */}
@@ -382,7 +382,7 @@ export function ReservationDetailModal({
                         <div key={`r-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
                           <div className="col-span-6 text-foreground/80 flex items-center gap-1.5">
                             {item.description}
-                            <span className="text-[10px] font-bold text-warning bg-warning/10 border border-warning/20 px-1 py-0.5 rounded">{t("crmReservations.reav")}</span>
+                            <span className="text-xs font-bold text-warning bg-warning/10 border border-warning/20 px-1 py-0.5 rounded">{t("crmReservations.reav")}</span>
                           </div>
                           <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
                           <div className="col-span-2 text-right text-foreground/65">{format.currency(Number(item.unitPrice), "EUR", EUR2)}</div>

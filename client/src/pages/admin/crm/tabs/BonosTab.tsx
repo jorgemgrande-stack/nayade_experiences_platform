@@ -113,13 +113,13 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("crmVouchers.codigoClienteExpediente")}
-            className="pl-8 h-8 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-xs"
+            className="pl-8 h-8 bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-foreground/40 text-xs"
           />
         </div>
       </div>
 
       {/* Tabla */}
-      <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+      <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px]">
             <thead>
@@ -154,7 +154,7 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
 
                     {/* Cliente */}
                     <td className="px-4 py-3">
-                      <p className="text-white text-sm font-medium">{v.clientName ?? "—"}</p>
+                      <p className="text-foreground text-sm font-medium">{v.clientName ?? "—"}</p>
                       {v.clientEmail && <p className="text-foreground/40 text-xs">{v.clientEmail}</p>}
                     </td>
 
@@ -284,9 +284,9 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
 
       {/* Modal: Ampliar caducidad */}
       <Dialog open={!!extendModal} onOpenChange={(o) => !o && setExtendModal(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <CalendarClock className="w-4 h-4 text-warning" />{" "}{t("crmVouchers.ampliarCaducidad")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -301,7 +301,7 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
                 value={newExpiry}
                 onChange={(e) => setNewExpiry(e.target.value)}
                 min={new Date().toISOString().split("T")[0]}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground"
               />
             </div>
           </div>
@@ -321,9 +321,9 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
 
       {/* Modal: Anular bono */}
       <Dialog open={!!cancelModal} onOpenChange={(o) => !o && setCancelModal(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Ban className="w-4 h-4 text-danger" />{" "}{t("crmVouchers.anularBono")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -335,7 +335,7 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
                 onChange={(e) => setCancelReason(e.target.value)}
                 placeholder={t("crmVouchers.ejEmitidoPorError")}
                 rows={3}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-gray-600 resize-none text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground resize-none text-sm"
               />
             </div>
           </div>
@@ -355,9 +355,9 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
 
       {/* Modal: Ver detalle del bono */}
       <Dialog open={!!viewModal} onOpenChange={(o) => !o && setViewModal(null)}>
-        <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-lg bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Eye className="w-4 h-4 text-primary" />{" "}{t("crmVouchers.detalleDelBono")}</DialogTitle>
           </DialogHeader>
           {voucherDetail ? (
@@ -395,7 +395,7 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
                 <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">{t("crmVouchers.cliente")}</p>
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground/50">{t("crmVouchers.nombre")}</span>
-                  <span className="text-white">{voucherDetail.clientName ?? "—"}</span>
+                  <span className="text-foreground">{voucherDetail.clientName ?? "—"}</span>
                 </div>
                 {voucherDetail.clientEmail && (
                   <div className="flex justify-between text-sm">
@@ -464,9 +464,9 @@ export function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpen
 
       {/* Modal: Eliminar bono */}
       <Dialog open={!!deleteConfirm} onOpenChange={(o) => !o && setDeleteConfirm(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+        <DialogContent className="max-w-sm bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Trash2 className="w-4 h-4 text-danger" />{" "}{t("crmVouchers.eliminarBono")}</DialogTitle>
           </DialogHeader>
           <div className="py-2">

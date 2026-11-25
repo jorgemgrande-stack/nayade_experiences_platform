@@ -168,7 +168,7 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   return (
     <div className="fixed inset-0 bg-background/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-card border border-border rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-foreground font-semibold text-lg flex items-center gap-2">
             <Plus className="w-5 h-5 text-warning" />{t("crmCancellations.nuevaSolicitudManual")}</h2>
@@ -473,7 +473,7 @@ export default function CancellationsManager() {
               {rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-border/50 hover:bg-white/2 transition-colors"
+                  className="border-b border-border/50 hover:bg-muted/40 transition-colors"
                 >
                   <td className="px-4 py-3 text-muted-foreground text-sm font-mono">#{row.id}</td>
                   <td className="px-4 py-3">
@@ -564,7 +564,7 @@ export default function CancellationsManager() {
       {/* Modal de confirmación de borrado */}
       {deleteId !== null && (
         <div className="fixed inset-0 bg-background/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-danger/10 rounded-full flex items-center justify-center">
                 <Trash2 className="w-5 h-5 text-danger" />

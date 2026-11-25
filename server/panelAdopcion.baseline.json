@@ -2,89 +2,10 @@
   "components/admin/ConfirmHost.tsx": {
     "dialogosNativos": 1
   },
-  "components/admin/MaintenanceModeControl.tsx": {
-    "coloresFijos": 1
-  },
-  "components/admin/crm/CrmParts.tsx": {
-    "coloresFijos": 5
-  },
-  "components/admin/crm/CustomerEmailDelivery.tsx": {
-    "coloresFijos": 3
-  },
   "pages/admin/connect/ConnectDetailPage.tsx": {
     "geometriaAjena": 5
   },
   "pages/admin/connect/ConnectPage.tsx": {
     "geometriaAjena": 2
-  },
-  "pages/admin/crm/CRMDashboard.tsx": {
-    "coloresFijos": 18,
-    "hexEnClases": 10,
-    "textoMinusculo": 9,
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/CancellationsManager.tsx": {
-    "geometriaAjena": 2
-  },
-  "pages/admin/crm/CreditNoteDialog.tsx": {
-    "coloresFijos": 6,
-    "hexEnClases": 1
-  },
-  "pages/admin/crm/GestoriaExportDialog.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/crm/LeadWebRequestBlock.tsx": {
-    "coloresFijos": 4,
-    "textoMinusculo": 2
-  },
-  "pages/admin/crm/ReservationTicket.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/crm/modals/AnularReservaModal.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/modals/DirectQuoteModal.tsx": {
-    "textoMinusculo": 2,
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/modals/LeadDetailModal.tsx": {
-    "textoMinusculo": 1
-  },
-  "pages/admin/crm/modals/LeadEditModal.tsx": {
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/modals/NewReservationModal.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 6,
-    "geometriaAjena": 3
-  },
-  "pages/admin/crm/modals/QuoteBuilderModal.tsx": {
-    "textoMinusculo": 2
-  },
-  "pages/admin/crm/modals/QuoteDetailModal.tsx": {
-    "textoMinusculo": 3
-  },
-  "pages/admin/crm/modals/QuoteEditModal.tsx": {
-    "textoMinusculo": 2
-  },
-  "pages/admin/crm/modals/ReservationDetailModal.tsx": {
-    "coloresFijos": 1,
-    "hexEnClases": 2,
-    "textoMinusculo": 3
-  },
-  "pages/admin/crm/shared/crmCommon.tsx": {
-    "hexEnClases": 4,
-    "textoMinusculo": 3,
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/tabs/BonosTab.tsx": {
-    "hexEnClases": 4,
-    "geometriaAjena": 1
-  },
-  "pages/admin/crm/tabs/QuotesTab.tsx": {
-    "hexEnClases": 4
-  },
-  "pages/admin/crm/tabs/ReservationsTab.tsx": {
-    "hexEnClases": 3
   }
 }

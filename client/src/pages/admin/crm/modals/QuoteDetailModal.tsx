@@ -602,12 +602,12 @@ export function QuoteDetailModal({
                       {format.currency((inst.amountCents / 100))}
                     </span>
                     {inst.isRequiredForConfirmation && (
-                      <span className="text-[10px] bg-warning/20 text-warning border border-warning/30 px-1.5 py-0.5 rounded-full">{t("crmQuotes.inaplazable")}</span>
+                      <span className="text-xs bg-warning/20 text-warning border border-warning/30 px-1.5 py-0.5 rounded-full">{t("crmQuotes.inaplazable")}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     {inst.dueDate && <span className="text-foreground/40">{inst.dueDate}</span>}
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${
                       inst.status === "paid"
                         ? "bg-success/20 text-success border-success/30"
                         : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
@@ -965,7 +965,7 @@ export function QuoteDetailModal({
             <div className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.03] p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
-                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full bg-info/20 text-info text-[10px] font-bold">{t("crmQuotes.n2a")}</span>{t("crmQuotes.vincularMovimientoBancario")}</div>
+                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full bg-info/20 text-info text-xs font-bold">{t("crmQuotes.n2a")}</span>{t("crmQuotes.vincularMovimientoBancario")}</div>
                 {!selectedBankMovementId && (
                   <Button
                     variant="ghost"
@@ -1242,7 +1242,7 @@ export function QuoteDetailModal({
                       value={tpvOpSearchForConfirm}
                       onChange={(e) => setTpvOpSearchForConfirm(e.target.value)}
                     />
-                    <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-white/5">
+                    <div className="max-h-40 overflow-y-auto rounded-md border border-border divide-y divide-border">
                       {tpvOpsForConfirmQ.isLoading ? (
                         <div className="p-3 text-xs text-foreground/40 text-center">{t("crmQuotes.buscando")}</div>
                       ) : (tpvOpsForConfirmQ.data?.data as any[] | undefined)?.length === 0 ? (

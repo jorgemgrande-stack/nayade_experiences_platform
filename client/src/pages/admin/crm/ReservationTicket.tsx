@@ -178,11 +178,11 @@ export default function ReservationTicket({ open, reservation, onClose }: Props)
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-gray-900 border-gray-700 max-w-sm">
+      <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between text-white" style={{ color: "white" }}>
+          <DialogTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <Printer className="w-5 h-5 text-orange-400" />
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Printer className="h-4 w-4" aria-hidden="true" /></span>
               Imprimir ticket reserva
             </span>
           </DialogTitle>
@@ -190,7 +190,7 @@ export default function ReservationTicket({ open, reservation, onClose }: Props)
 
         {/* Preview del ticket */}
         <div
-          className="rounded-lg p-4 font-mono overflow-auto max-h-80"
+          className="max-h-80 overflow-auto rounded-lg border border-border p-4 font-mono shadow-inner"
           style={{ backgroundColor: "#ffffff", color: "#000000", fontSize: "13px", lineHeight: 1.35 }}
         >
           <div ref={ticketRef}>
@@ -269,7 +269,7 @@ export default function ReservationTicket({ open, reservation, onClose }: Props)
         {/* Actions */}
         <div className="space-y-2">
           <Button
-            className="w-full bg-orange-600 hover:bg-orange-500 text-white gap-2"
+            className="w-full gap-2"
             onClick={handlePrint}
           >
             <Printer className="w-4 h-4" />
@@ -277,7 +277,7 @@ export default function ReservationTicket({ open, reservation, onClose }: Props)
           </Button>
           <Button
             variant="outline"
-            className="w-full text-white border-gray-600 hover:bg-gray-800 gap-2"
+            className="w-full gap-2"
             onClick={onClose}
           >
             <X className="w-4 h-4" />
