@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Tag, ArrowLeft } from "lucide-react";
 import { useLocation } from "wouter";
 import { EconomyTable, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { ListSearch, filterByText } from "./shared/EconomyParts";
 
 export default function ExpenseCategoriesManager() {
   const { t } = useI18n();
@@ -38,6 +39,8 @@ export default function ExpenseCategoriesManager() {
   });
 
   const items = listQ.data ?? [];
+  const [q, setQ] = useState("");
+  const shown = filterByText(items, q, [(i) => i.name, (i) => i.description]);
 
   function openCreate() { setEditingId(null); setForm({ name: "", description: "" }); setShowErrors(false); setDialogOpen(true); }
   function openEdit(item: typeof items[number]) { setEditingId(item.id); setForm({ name: item.name, description: item.description ?? "" }); setShowErrors(false); setDialogOpen(true); }
@@ -72,15 +75,17 @@ export default function ExpenseCategoriesManager() {
           }>
       <div className="space-y-6">
 
+        {items.length > 15 && <ListSearch value={q} onChange={setQ} />}
+
         <EconomyTable
-          rows={items}
+          rows={shown}
           columns={columns}
           rowKey={(i) => i.id}
           caption={t("accountingConfig.categories.title")}
           loading={listQ.isLoading}
           error={listQ.error}
           onRetry={() => void listQ.refetch()}
-          emptyTitle={t("accountingConfig.categories.emptyTitle")}
+          emptyTitle={items.length > 0 ? t("accountingConfig.common.noMatches") : t("accountingConfig.categories.emptyTitle")}
           emptyDescription={t("accountingConfig.categories.emptyHelp")}
           emptyAction={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.categories.new")}</Button>}
           actions={(i) => (
