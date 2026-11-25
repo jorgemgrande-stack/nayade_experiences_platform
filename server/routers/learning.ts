@@ -18,7 +18,7 @@ import {
   grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
-import { grantLearningFromEnrollment, grantLearningFromOrder, pendingLearningOrders, sendLearningInvitation } from "../learningFlow";
+import { grantLearningFromEnrollment, grantLearningFromOrder, pendingLearningOrders, refundOrderSupplement, sendLearningInvitation } from "../learningFlow";
 import { applyExtensionsForOrder, extendableModules, extensionOffers, prepareExtensionOrder } from "../learningExtensions";
 import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
@@ -324,6 +324,11 @@ const admin = router({
   grantDemo: adminProcedure
     .input(z.object({ userId: id, courseId: id, moduleIds: z.array(id).min(1).max(50), trigger: z.string().min(3).max(80), minutes: z.number().int().min(1).max(1440).optional() }))
     .mutation(({ ctx, input }) => guard(() => grantDemo({ ...input, actorUserId: ctx.user.id }))),
+
+  /** Reembolso de UN suplemento pagado (p. ej. Lifetime Access): retira solo ese derecho, no el del programa. */
+  refundSupplement: adminProcedure
+    .input(z.object({ merchantOrder: z.string().trim().min(3).max(40), group: z.string().trim().min(1).max(64), reason }))
+    .mutation(({ ctx, input }) => guard(() => refundOrderSupplement(input.merchantOrder, input.group, input.reason, ctx.user.id))),
 
   revoke: adminProcedure.input(z.object({ enrollmentId: id, reason })).mutation(({ ctx, input }) => guard(() => revokeEnrollment(input.enrollmentId, input.reason, ctx.user.id))),
   suspend: adminProcedure.input(z.object({ enrollmentId: id, reason })).mutation(({ ctx, input }) => guard(() => suspendEnrollment(input.enrollmentId, input.reason, ctx.user.id))),

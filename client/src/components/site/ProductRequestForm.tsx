@@ -44,6 +44,8 @@ export interface SupplementOffer {
   name: string;
   description: string | null;
   tiers: Array<{ id: number; name: string; priceModifier: string; priceType: "fixed" | "per_person"; minQty: number | null; maxQty: number | null }>;
+  /** Opciones del programa con las que se ofrece (null = con cualquiera) */
+  forVariantIds?: number[] | null;
 }
 
 /** Tramo que corresponde a n participantes (el más específico); solo para MOSTRAR: el servidor lo vuelve a decidir. */

@@ -15,9 +15,10 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { getSystemSetting } from "./config";
-import { matchRules, LearningRuleError } from "../shared/learning";
+import { matchRules, matchExactRules, LearningRuleError } from "../shared/learning";
 import { isQuotePaid } from "../shared/enrollmentCommerce";
 import { listRules, grantFromPayment, isMissingLearningSchema } from "./learningDb";
+import { paidOrderSupplements, linkSupplementEnrollment, markSupplementRefunded, markOrderSupplementsRefunded, isMissingSupplementSchema } from "./orderSupplements";
 import { readLinkedQuotes } from "./enrollmentCommerceDb";
 import { ensureAccount } from "./communitiesDb";
 import { sendEmail } from "./mailer";
@@ -160,7 +161,7 @@ export async function sendLearningAccessNotice(to: { userId: number; name: strin
  *  - NUNCA lanza: el cierre del pedido (factura, correo de pedido) no puede romperse por el LMS. El correo de acceso solo sale
  *    con el ajuste `learning_invite_emails` = true (la empresa lo enciende al abrir la venta).
  */
-export async function grantLearningFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<OrderFlowResult> {
+async function grantMainLearningFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<OrderFlowResult> {
   try {
     const lines = await readOrderLines(merchantOrder);
     if (!lines || !lines.length) return { status: "skipped", reason: "no_paid_lines" };
@@ -173,7 +174,7 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     const email = String(first.customer_email ?? "").trim();
     if (!email) return { status: "skipped", reason: "no_email" };
     // ¿Ya está todo concedido? Entonces no se hace nada más.
-    const [done] = (await d.execute(sql`SELECT order_id, user_id FROM learning_enrollments WHERE source = 'payment' AND order_id IN (${sql.join(matched.map((l) => sql`${Number(l.id)}`), sql`, `)})`)) as unknown as [Array<Record<string, any>>];
+    const [done] = (await d.execute(sql`SELECT order_id, user_id FROM learning_enrollments WHERE source = 'payment' AND idempotency_key NOT LIKE 'pay:order-supplement:%' AND order_id IN (${sql.join(matched.map((l) => sql`${Number(l.id)}`), sql`, `)})`)) as unknown as [Array<Record<string, any>>];
     const doneIds = new Set(done.map((r) => Number(r.order_id)));
     const pending = matched.filter((l) => !doneIds.has(Number(l.id)));
     if (!pending.length) {
@@ -226,6 +227,89 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
 }
 
 /**
+ * Suplementos PAGADOS de un pedido → derecho propio (p. ej. Lifetime Access de RECONNECT: acceso permanente a los tres módulos).
+ *  - Solo casa con la regla de ESA variante-suplemento (nunca con reglas genéricas): sin regla activa no concede nada.
+ *  - Una matrícula APARTE de la del programa (clave pay:order-supplement:<línea>:r<regla>:u<usuario>): conceder el suplemento
+ *    dos veces es imposible, y reembolsarlo (refundOrderSupplement) solo retira esa matrícula, nunca la del programa.
+ *  - Con pedido completo reembolsado, la matrícula del suplemento comparte order_id y se revoca con las demás.
+ *  - Nunca lanza: un fallo se registra en el historial del pedido (igual que el programa) y se reintenta.
+ */
+export async function grantSupplementsFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<{ created: number; existing: number; failed: number; userId: number | null }> {
+  const none = { created: 0, existing: 0, failed: 0, userId: null as number | null };
+  try {
+    const supps = await paidOrderSupplements(merchantOrder);
+    if (!supps.length) return none;
+    const rules = await listRules();
+    const todo = supps.filter((s) => matchExactRules(rules, s.productId, s.variantId).length > 0);
+    if (!todo.length) return none;
+    const email = String(todo[0].customerEmail ?? "").trim();
+    if (!email) return none;
+    const d = await getDb();
+    if (!d) return none;
+    // La cuenta ya existe casi siempre (la creó la matrícula del programa): se reutiliza SIN rotar su invitación
+    const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    const userId = u?.[0] ? Number(u[0].id) : (await ensureAccount(String(todo[0].customerName || email), email)).userId;
+    let created = 0;
+    let existing = 0;
+    let failed = 0;
+    for (const s of todo) {
+      try {
+        const res = await grantFromPayment({
+          userId, clientId: null, experienceId: s.productId, variantId: s.variantId, operation: { kind: "order-supplement", id: s.id }, orderId: s.reservationId,
+          payment: { reference: `pedido:${merchantOrder}:${s.group}`, amountCents: s.totalCents, verifiedBy: actor.name || "sistema (pasarela)" }, actorUserId: actor.id, now, exactVariantOnly: true,
+        });
+        for (const g of res.granted) (g.created ? created++ : existing++);
+        const first = res.granted[0];
+        if (first && s.enrollmentId == null) await linkSupplementEnrollment(s.id, first.enrollment.id);
+      } catch (e) {
+        failed++;
+        const code = e instanceof LearningRuleError ? e.code : e instanceof Error ? e.name : "error";
+        console.error(JSON.stringify({ ctx: "Learning", event: "grant_supplement_failed", merchantOrder, group: s.group, error: code, detail: e instanceof Error ? e.message.slice(0, 160) : undefined }));
+        await recordOrderGrantFailure(merchantOrder, `suplemento:${code}`);
+      }
+    }
+    return { created, existing, failed, userId };
+  } catch (e) {
+    if (isMissingLearningSchema(e) || isMissingSupplementSchema(e)) return none;
+    console.error(JSON.stringify({ ctx: "Learning", event: "grant_supplement_failed", merchantOrder, error: e instanceof Error ? e.name : "error" }));
+    return none;
+  }
+}
+
+/**
+ * Pedido de tienda PAGADO → matrícula del programa y, aparte, la de sus suplementos pagados (Lifetime Access). Las dos son
+ * idempotentes e independientes: el fallo de una no impide la otra.
+ */
+export async function grantLearningFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<OrderFlowResult> {
+  const main = await grantMainLearningFromOrder(merchantOrder, actor, now);
+  const supp = await grantSupplementsFromOrder(merchantOrder, actor, now);
+  if (main.status === "skipped" && supp.created + supp.existing > 0 && supp.userId != null) {
+    return { status: "granted", created: supp.created, existing: supp.existing, userId: supp.userId, notified: "none", ...(supp.failed ? { failed: supp.failed } : {}) };
+  }
+  return main;
+}
+
+/**
+ * Reembolso de UN suplemento (p. ej. Lifetime Access) sin tocar el resto del pedido: marca la línea como reembolsada y revoca
+ * SOLO la matrícula que ese suplemento concedió. La matrícula del programa y las ampliaciones siguen intactas. Idempotente.
+ * El reembolso del dinero se hace en Stripe; esto solo retira el derecho (decisión de administración, con motivo).
+ */
+export async function refundOrderSupplement(merchantOrder: string, group: string, reason: string, actorUserId: number | null): Promise<{ refunded: boolean; revokedEnrollmentId: number | null; alreadyRefunded: boolean }> {
+  const m = await markSupplementRefunded(merchantOrder, group, reason);
+  if (!m) throw new LearningRuleError("BAD_REQUEST", "Ese pedido no tiene ese suplemento.");
+  let revoked: number | null = null;
+  if (m.enrollmentId != null) {
+    const { revokeEnrollment, getEnrollment } = await import("./learningDb");
+    const e = await getEnrollment(m.enrollmentId);
+    if (e && e.status !== "revoked") {
+      await revokeEnrollment(m.enrollmentId, `Reembolso del suplemento «${group}»: ${reason}`.slice(0, 300), actorUserId as unknown as number);
+      revoked = m.enrollmentId;
+    }
+  }
+  return { refunded: true, revokedEnrollmentId: revoked, alreadyRefunded: m.alreadyRefunded };
+}
+
+/**
  * Un fallo de matrícula NO queda oculto: además del registro de errores, deja constancia en el historial del pedido
  * (`reservations.changes_log`, visible en su ficha) y el pedido aparece en `pendingLearningOrders` hasta que se repare.
  * Reintento: cada nueva pasada del cierre del pedido, o `learning.admin.grantForOrder`.
@@ -242,19 +326,48 @@ async function recordOrderGrantFailure(merchantOrder: string, code: string): Pro
 }
 
 /** Pedidos pagados cuyas líneas tienen regla de acceso activa y aún NO tienen matrícula (por fallo, correo sin cuenta o reglas activadas después). */
-export async function pendingLearningOrders(limit = 200): Promise<Array<{ merchantOrder: string; reservationId: number; productId: number; variantId: number | null; email: string | null; paidAt: number | null }>> {
+export interface PendingLearningOrder { merchantOrder: string; reservationId: number; productId: number; variantId: number | null; email: string | null; paidAt: number | null }
+
+async function pendingMainLearningOrders(limit = 200): Promise<PendingLearningOrder[]> {
   const d = await getDb();
   if (!d) return [];
   const rules = await listRules();
   if (!rules.some((r) => r.active)) return [];
   const [lines] = (await d.execute(sql`SELECT r.id, r.merchant_order, r.product_id, r.variant_id, r.customer_email, r.paid_at
     FROM reservations r WHERE r.status = 'paid' AND r.merchant_order IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM learning_enrollments le WHERE le.source = 'payment' AND le.order_id = r.id)
+      AND NOT EXISTS (SELECT 1 FROM learning_enrollments le WHERE le.source = 'payment' AND le.idempotency_key NOT LIKE 'pay:order-supplement:%' AND le.order_id = r.id)
     ORDER BY r.id DESC LIMIT 2000`)) as unknown as [Array<Record<string, any>>];
   return lines
     .filter((l) => matchRules(rules, Number(l.product_id), l.variant_id == null ? null : Number(l.variant_id)).length > 0)
     .slice(0, limit)
     .map((l) => ({ merchantOrder: String(l.merchant_order), reservationId: Number(l.id), productId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id), email: l.customer_email ? String(l.customer_email) : null, paidAt: l.paid_at == null ? null : Number(l.paid_at) }));
+}
+
+/** Pedidos pagados con un suplemento (p. ej. Lifetime Access) de regla activa y aún sin su matrícula. */
+async function pendingSupplementOrders(): Promise<PendingLearningOrder[]> {
+  const d = await getDb();
+  if (!d) return [];
+  const rules = await listRules();
+  if (!rules.some((r) => r.active)) return [];
+  try {
+    const [lines] = (await d.execute(sql`SELECT s.merchant_order, s.reservation_id, s.product_id, s.variant_id, r.customer_email, r.paid_at
+      FROM order_supplement_lines s JOIN reservations r ON r.id = s.reservation_id
+      WHERE s.status = 'active' AND s.learning_enrollment_id IS NULL AND r.status = 'paid' ORDER BY s.id DESC LIMIT 500`)) as unknown as [Array<Record<string, any>>];
+    return lines
+      .filter((l) => matchExactRules(rules, Number(l.product_id), Number(l.variant_id)).length > 0)
+      .map((l) => ({ merchantOrder: String(l.merchant_order), reservationId: Number(l.reservation_id), productId: Number(l.product_id), variantId: Number(l.variant_id), email: l.customer_email ? String(l.customer_email) : null, paidAt: l.paid_at == null ? null : Number(l.paid_at) }));
+  } catch (e) {
+    if (isMissingSupplementSchema(e)) return [];
+    throw e;
+  }
+}
+
+/** Pedidos pagados con regla activa y aún sin matrícula: los del programa y los de sus suplementos. */
+export async function pendingLearningOrders(limit = 200): Promise<PendingLearningOrder[]> {
+  const main = await pendingMainLearningOrders(limit);
+  const seen = new Set(main.map((m) => m.merchantOrder));
+  const extra = (await pendingSupplementOrders()).filter((m) => !seen.has(m.merchantOrder));
+  return [...main, ...extra].slice(0, limit);
 }
 
 /**
@@ -300,6 +413,8 @@ export async function changeLearningAccessForOrder(merchantOrder: string, action
         }
       }
     }
+    // Todo el pedido reembolsado: sus suplementos pagados dejan de constar como activos (sus matrículas ya se revocaron arriba)
+    if (action === "revoke") await markOrderSupplementsRefunded(merchantOrder, reason);
     // Ampliación de módulo ya aplicada de un pedido reembolsado: solo se REGISTRA y se avisa (no se retira acceso ni se tocan facturas)
     let extensionsFlagged = 0;
     if (action === "revoke") {

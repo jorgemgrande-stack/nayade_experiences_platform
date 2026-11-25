@@ -153,6 +153,7 @@ import {
 } from "./emailTemplates";
 import { getDb } from "./db";
 import { resolveSupplements, supplementsTotalCents, supplementOffers, SupplementError, type SupplementLine } from "./supplements";
+import { recordOrderSupplements, supplementScopes, setSupplementScope, SupplementScopeError } from "./orderSupplements";
 import { assertChargeable, checkoutFingerprint, discountCents as computeDiscountCents, discountLogEntry, discountProblem, eurosToCents, fingerprintLogEntry, lineTotalCents, acquireCheckoutLock, variantUnitCents, variantQuantityProblem, productPeopleProblem, type OrderDiscount } from "./shopCheckoutRules";
 import { getTenantIdOrDefault } from "./_core/tenant";
 import { assertUserAdminAllowed, OWNER_SETTING_KEY } from "./_core/companyOwner";
@@ -333,11 +334,13 @@ const noClientPricedExtras = z
 installSectorLoyalty(getSdkRuntime().events);
 
 /** Suplementos marcados de un producto en el pago online: ids → líneas con importe del servidor; un id ajeno o caducado se rechaza. */
-async function resolveSuppForCheckout(productId: number, ids: number[] | undefined, people: number): Promise<SupplementLine[]> {
+async function resolveSuppForCheckout(productId: number, ids: number[] | undefined, people: number, programmeVariantId?: number | null): Promise<SupplementLine[]> {
   if (!ids || ids.length === 0) return [];
   const rows = await getVariantsByExperience(productId, { includeSupplements: true });
   try {
-    return resolveSupplements(ids, rows as any, people);
+    // Un suplemento puede estar acotado a ciertas opciones del programa (p. ej. Lifetime Access solo con ONLINE COMPLETO / INTENSIV)
+    const scopes = await supplementScopes(rows.filter((v) => !!v.supplementGroup).map((v) => v.id));
+    return resolveSupplements(ids, rows as any, people, { programmeVariantId: programmeVariantId ?? null, scopes });
   } catch (e) {
     if (e instanceof SupplementError) throw new TRPCError({ code: "BAD_REQUEST", message: `${e.message} No se ha realizado ningún cobro.` });
     throw e;
@@ -484,7 +487,7 @@ export const appRouter = router({
           const [{ localizeVariants }, { sqlI18nRepo }] = await Promise.all([import("./i18nProducts"), import("./i18nSqlRepo")]);
           shown = (await localizeVariants(sqlI18nRepo(), rows, input.locale)) as typeof rows;
         }
-        return supplementOffers(shown);
+        return supplementOffers(shown, await supplementScopes(rows.map((v) => v.id)));
       }),
 
     getVariantsByExperience: publicProcedure
@@ -2008,6 +2011,18 @@ export const appRouter = router({
       }),
 
     // ── VARIANTS ──────────────────────────────────────────────────────────────
+    /** Opciones del programa con las que se puede contratar un suplemento (p. ej. Lifetime Access solo con ONLINE COMPLETO / INTENSIV). Lista vacía = con cualquiera. */
+    setSupplementScope: adminProcedure
+      .input(z.object({ supplementVariantId: z.number().int().positive(), programmeVariantIds: z.array(z.number().int().positive()).max(30) }))
+      .mutation(async ({ input }) => {
+        try {
+          return await setSupplementScope(input.supplementVariantId, input.programmeVariantIds);
+        } catch (e) {
+          if (e instanceof SupplementScopeError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          throw e;
+        }
+      }),
+
     getVariants: adminProcedure
       .input(z.object({ experienceId: z.number().optional() }))
       .query(async ({ input }) => {
@@ -2631,7 +2646,7 @@ export const appRouter = router({
         // Los extras con precio del cliente se rechazan en el esquema de entrada (noClientPricedExtras).
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
         // Suplementos opcionales: solo los marcados, con tramo e importe calculados aquí (nunca los fija el cliente)
-        const suppLines = await resolveSuppForCheckout(input.productId, input.supplementIds, input.people);
+        const suppLines = await resolveSuppForCheckout(input.productId, input.supplementIds, input.people, input.variantId);
         const totalEuros = baseTotal + extrasTotal + supplementsTotalCents(suppLines) / 100;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
 
@@ -2674,6 +2689,7 @@ export const appRouter = router({
         // Artículo inventariable (Business): la línea se descuenta al confirmarse el pago
         await markOrderStockLine(createdReservationId, input.productId, input.variantId);
         await (await import("./orderVariant")).markOrderVariant(createdReservationId, input.variantId);
+        await recordOrderSupplements(createdReservationId, merchantOrder, input.productId, suppLines);
 
         // 5. Construir el formulario Redsys
         const pricingDesc = pricingType === "per_unit" && unitsBooked
@@ -2818,6 +2834,8 @@ export const appRouter = router({
           unitCapacity?: number;
           unitsBooked?: number;
           stockVariantId?: number;
+          /** Suplementos elegidos (importe del servidor): se guardan con la línea pagada */
+          supplementLines?: SupplementLine[];
           /** Convocatoria comprada: plazas retenidas al crear la reserva (editionPurchaseDb) */
           editionLine?: import("./editionPurchaseDb").EditionLine;
           /** Lego Pack: no es un producto del catálogo, nunca descuenta inventario. */
@@ -2908,7 +2926,7 @@ export const appRouter = router({
           unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: editionLine?.bookingDate ?? item.bookingDate }).unitPrice);
           const { totalCents: itemBaseCents, unitsBooked: itemUnits } = lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits);
           // Suplementos opcionales: solo los marcados; importe y tramo (individual / desde 2) los fija el servidor
-          const suppLines = await resolveSuppForCheckout(item.productId, item.supplementIds, item.people);
+          const suppLines = await resolveSuppForCheckout(item.productId, item.supplementIds, item.people, item.variantId);
           lineName += suppNameSuffix(suppLines);
           const itemAmountCents = itemBaseCents + extrasCents + supplementsTotalCents(suppLines);
           totalAmountCents += itemAmountCents;
@@ -2924,6 +2942,7 @@ export const appRouter = router({
             unitCapacity: itemUnitCap ?? undefined,
             unitsBooked: itemUnits || undefined,
             stockVariantId: item.variantId,
+            supplementLines: suppLines,
           });
           productNames.push(lineName);
         }
@@ -2989,7 +3008,7 @@ export const appRouter = router({
           const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
           const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
           const dbForSnapshots = await getDb();
-          for (const { legoPackSnapshot, stockVariantId, stockExcluded, editionLine, ...item } of itemsWithPrices) {
+          for (const { legoPackSnapshot, stockVariantId, stockExcluded, editionLine, supplementLines, ...item } of itemsWithPrices) {
             const reservationData = {
               ...item,
               customerName: input.customerName,
@@ -3012,6 +3031,8 @@ export const appRouter = router({
             if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
             // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
             if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
+            // Suplementos pagados de la línea (dato estructurado: acceso digital y reembolso por separado)
+            if (supplementLines?.length) await recordOrderSupplements(reservationId, merchantOrder, item.productId, supplementLines);
             // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
             // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
             // realmente elegido, en vez de expandir el catálogo completo del pack.
