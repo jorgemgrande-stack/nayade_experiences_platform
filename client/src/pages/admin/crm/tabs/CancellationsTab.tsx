@@ -92,11 +92,11 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
   const resPill = (s: string) => {
     const tone: BTone = s === "rechazada" ? "danger" : s === "aceptada_total" || s === "aceptada_parcial" ? "success" : "muted";
     const icon = s === "rechazada" ? <XCircle /> : s === "sin_resolver" ? <Clock /> : <CheckCircle2 />;
-    return <BPill tone={tone} icon={icon}>{labelOf(resOptions, s)}</BPill>;
+    return <BPill tone={tone} icon={icon} title={t("crmCancellations.resolucion")}>{t("crmCancellations.pillResolucion", { label: labelOf(resOptions, s) })}</BPill>;
   };
   const finPill = (s: string) => {
     const tone: BTone = s === "incidencia_economica" ? "danger" : s === "pendiente_devolucion" ? "warning" : s === "devuelta_economicamente" ? "success" : s === "pendiente_bono" || s === "compensada_bono" ? "primary" : "muted";
-    return <BPill tone={tone} icon={<Wallet />}>{labelOf(finOptions, s)}</BPill>;
+    return <BPill tone={tone} icon={<Wallet />} title={t("crmCancellations.estadoFinanciero")}>{t("crmCancellations.pillFinanciero", { label: labelOf(finOptions, s) })}</BPill>;
   };
   const reasonIcon = (r: string) => (
     r === "meteorologicas" ? <CloudLightning className="h-4 w-4 text-info" aria-hidden="true" /> :
@@ -125,7 +125,7 @@ export function CancellationsTab({ ctrl, tab, setViewResId }: { ctrl: Cancellati
       <span className="inline-flex items-center gap-1.5 text-xs text-foreground">{reasonIcon(row.reason)}<span className="capitalize">{labelOf(reasonOptions, row.reason)}</span></span>
     ) },
     { key: "state", header: t("crmCancellations.estadoOp"), cell: (row) => (
-      <div className="flex flex-col items-start gap-1">{opPill(row.operationalStatus)}{resPill(row.resolutionStatus)}{finPill(row.financialStatus)}</div>
+      <div className="flex flex-wrap items-start gap-1 @2xl:flex-col">{opPill(row.operationalStatus)}{resPill(row.resolutionStatus)}{finPill(row.financialStatus)}</div>
     ) },
     { key: "date", header: t("crmCancellations.fecha"), priority: "lg", num: true, mobile: "footer", cell: (row) => <span className="text-xs text-muted-foreground">{format.date(row.createdAt, {})}</span> },
   ];

@@ -81,6 +81,13 @@ export function useLeadsController({ filterStatus, search, tab }: { filterStatus
 }
 export type LeadsController = ReturnType<typeof useLeadsController>;
 
+/** Texto del producto de una oportunidad (primer producto de la solicitud o el elegido) para la tarjeta de móvil. */
+function leadProductText(lead: any): string {
+  const acts = Array.isArray(lead.activitiesJson) ? (lead.activitiesJson as any[]) : [];
+  if (acts.length > 0) return acts.map((a) => a.experienceTitle).filter(Boolean).join(", ") || "—";
+  return lead.selectedProduct || lead.selectedCategory || "—";
+}
+
 export function LeadsTab({ ctrl, tab, setBulkConfirm, filterStatus, search, setFilterStatus, setSearch }: { ctrl: LeadsController; tab: Tab; setBulkConfirm: React.Dispatch<React.SetStateAction<null | "leads" | "quotes" | "reservations">>; filterStatus: string; search: string; setFilterStatus: React.Dispatch<React.SetStateAction<string>>; setSearch: React.Dispatch<React.SetStateAction<string>> }) {
   const { t, format } = useI18n();
   const voc = useVocabulary();
@@ -139,7 +146,7 @@ export function LeadsTab({ ctrl, tab, setBulkConfirm, filterStatus, search, setF
                     {
                       key: "cliente", header: t("crmLeads.cliente"), mobile: "title",
                       cell: (lead: any) => (
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex min-w-0 items-center gap-2.5">
                           {!lead.seenAt ? (
                             <span className="relative flex h-2.5 w-2.5 shrink-0" title={t("crmOpps.nuevoEtiqueta")}>
                               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-info opacity-75" />
@@ -148,15 +155,15 @@ export function LeadsTab({ ctrl, tab, setBulkConfirm, filterStatus, search, setF
                           ) : (
                             <PriorityDot priority={lead.priority as Priority} />
                           )}
-                          <PersonAvatar name={lead.name || lead.email || "?"} id={lead.id} size="md" />
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5">
+                          <PersonAvatar name={lead.name || lead.email || "?"} id={lead.id} size="md" className="max-sm:h-9 max-sm:w-9" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
                               {(lead as typeof lead & { clientId?: number }).clientId ? (
-                                <a href={`/admin/crm/clientes?clientId=${(lead as typeof lead & { clientId?: number }).clientId}`} className="font-medium text-foreground hover:text-info hover:underline">{lead.name}</a>
+                                <a href={`/admin/crm/clientes?clientId=${(lead as typeof lead & { clientId?: number }).clientId}`} className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground hover:text-info hover:underline @2xl:whitespace-normal">{lead.name}</a>
                               ) : (
-                                <span className="font-medium text-foreground">{lead.name}</span>
+                                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground @2xl:whitespace-normal">{lead.name}</span>
                               )}
-                              {!lead.seenAt && <StatusBadge tone="info">{t("crmLeads.nuevo")}</StatusBadge>}
+                              {!lead.seenAt && <span className="shrink-0"><StatusBadge tone="info">{t("crmLeads.nuevo")}</StatusBadge></span>}
                             </div>
                             <div className="hidden max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs font-normal text-muted-foreground @2xl:block">{lead.email}</div>
                           </div>
@@ -166,7 +173,13 @@ export function LeadsTab({ ctrl, tab, setBulkConfirm, filterStatus, search, setF
                     {
                       key: "producto", header: t("crmLeads.producto"), priority: "md",
                       cell: (lead: any) => (
-                        <div className="min-w-0">
+                        <>
+                        {/* Móvil: producto y fecha prevista en una sola línea con elipsis */}
+                        <div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap @2xl:hidden" title={leadProductText(lead)}>
+                          <span className="text-foreground">{leadProductText(lead)}</span>
+                          {lead.preferredDate && <span className="text-muted-foreground"> · {voc.serviceDateColumn}: {format.date(lead.preferredDate, {})}</span>}
+                        </div>
+                        <div className="hidden min-w-0 @2xl:block">
                           {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 ? (
                             <div className="flex flex-col gap-0.5">
                               {(lead.activitiesJson as any[]).slice(0, 2).map((act: any, i: number) => (
@@ -182,30 +195,33 @@ export function LeadsTab({ ctrl, tab, setBulkConfirm, filterStatus, search, setF
                           )}
                           {lead.preferredDate && <div className="mt-0.5 text-xs text-muted-foreground">{voc.serviceDateColumn}: {format.date(lead.preferredDate, {})}</div>}
                         </div>
+                        </>
                       ),
                     },
                     {
-                      key: "recibido", header: t("crmLeads.recibido"), priority: "md", num: true,
+                      key: "recibido", header: t("crmLeads.recibido"), priority: "md", num: true, mobile: "footer",
                       cell: (lead: any) => (
                         <div>
-                          <div className="text-foreground">{format.date(lead.createdAt, {})}</div>
-                          <div className="text-xs text-muted-foreground">{format.time(lead.createdAt, { hour: "2-digit", minute: "2-digit" })}</div>
+                          <div className="hidden text-foreground @2xl:block">{format.date(lead.createdAt, {})}</div>
+                          <div className="whitespace-nowrap text-muted-foreground @2xl:hidden">{format.date(lead.createdAt, { day: "2-digit", month: "2-digit" })}</div>
+                          <div className="hidden text-xs text-muted-foreground @2xl:block">{format.time(lead.createdAt, { hour: "2-digit", minute: "2-digit" })}</div>
                         </div>
                       ),
                     },
                     {
-                      key: "origen", header: t("crmLeads.origen"), priority: "lg",
+                      key: "origen", header: t("crmLeads.origen"), priority: "lg", mobile: "footer",
                       cell: (lead: any) => lead.lsName ? (
                         <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium" style={{ color: lead.lsColor ?? undefined, borderColor: lead.lsColor ? `${lead.lsColor}40` : undefined, backgroundColor: lead.lsColor ? `${lead.lsColor}15` : undefined }}>
                           {lead.lsName}
                         </span>
                       ) : <span className="text-muted-foreground">—</span>,
                     },
-                    { key: "estado", header: t("crmLeads.estado"), cell: (lead: any) => <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} /> },
+                    { key: "estado", header: t("crmLeads.estado"), mobile: "footer", cell: (lead: any) => <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} /> },
                   ]}
                   actions={(lead: any) => (
                     <CrmRowActions
                       name={lead.name}
+                      iconOnlyOnMobile
                       primary={{ label: t("crmOpps.accionPrincipalVer"), icon: <Eye className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => setSelectedLeadId(lead.id) }}
                       secondary={<ProposalLeadButton leadId={lead.id} leadName={lead.name} />}
                       menu={[

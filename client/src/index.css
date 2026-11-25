@@ -915,6 +915,12 @@ html[data-admin-panel] #panel-sidebar nav a[aria-current="page"] {
 
 /* Barras de desplazamiento discretas dentro del panel. */
 html[data-admin-panel] * { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent; }
+/* Las filas que se desplazan en horizontal (pestañas del flujo…) no enseñan barra: la regla anterior, más específica, la devolvía. */
+html[data-admin-panel] [class*="scrollbar-width:none"] { scrollbar-width: none; }
+[class*="scrollbar-width:none"]::-webkit-scrollbar { display: none; }
+/* Cifra clave de las franjas de resumen: la marca oscurecida en tema claro (contraste AA sobre el degradado suave) y la marca tal cual en oscuro. */
+.text-brand-strong { color: color-mix(in oklab, var(--primary) 68%, black); }
+.dark .text-brand-strong { color: var(--primary); }
 
 /* Respeto a quien pide menos movimiento. */
 @media (prefers-reduced-motion: reduce) {

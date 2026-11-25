@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { TONE_TEXT, type Tone } from "@/lib/panelTones";
+import type { Tone } from "@/lib/panelTones";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useVocabulary, visibleCrmTabs } from "@/lib/vocabulary";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -52,10 +52,14 @@ export function useScrollFade<T extends HTMLElement>(watch: string) {
   useEffect(() => {
     measure();
     const el = ref.current;
-    el?.querySelector<HTMLElement>("[data-active='true']")?.scrollIntoView?.({ block: "nearest", inline: "center" });
+    const center = () => el?.querySelector<HTMLElement>("[data-active='true']")?.scrollIntoView?.({ block: "nearest", inline: "center" });
+    center();
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(measure);
+    // Los contadores llegan después y ensanchan las pestañas: durante el primer momento se vuelve a centrar la activa.
+    const t0 = Date.now();
+    const ro = new ResizeObserver(() => { if (Date.now() - t0 < 2500) center(); measure(); });
     ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
   }, [watch, measure]);
   const fade = `linear-gradient(to right, ${edge.left ? "transparent 0, #000 28px" : "#000 0"}, ${edge.right ? "#000 calc(100% - 28px), transparent 100%" : "#000 100%"})`;
@@ -201,7 +205,7 @@ export function SummaryStrip({ items, label, trailing, className }: { items: Sum
                 <span className="overflow-hidden text-ellipsis whitespace-nowrap">{it.label}</span>
               </span>
               <span className="mt-0.5 flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
-                <span className={cn("text-lg font-semibold leading-tight tabular-nums", it.primary ? TONE_TEXT.brand : "text-foreground")}>{it.value}</span>
+                <span className={cn("text-lg font-semibold leading-tight tabular-nums", it.primary ? "text-brand-strong" : "text-foreground")}>{it.value}</span>
                 {it.detail && <span className="overflow-hidden text-ellipsis text-xs text-muted-foreground">{it.detail}</span>}
               </span>
             </>

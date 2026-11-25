@@ -1,6 +1,8 @@
 /** Textos del CRM (crmCancellations). Idioma principal: fuente de verdad de las claves. */
 export default {
   estadoOperativo: "Estado operativo",
+  pillResolucion: "Resolución: {label}",
+  pillFinanciero: "Finanzas: {label}",
   todosLosEstados: "Todos los estados",
   recibida: "Recibida",
   enRevision: "En revisión",

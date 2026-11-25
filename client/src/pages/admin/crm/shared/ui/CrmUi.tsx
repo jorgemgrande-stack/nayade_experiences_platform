@@ -316,14 +316,14 @@ export interface CrmRowAction {
 }
 
 /** Una acción principal visible (con texto), acciones sueltas opcionales y el resto en el menú «⋯». */
-export function CrmRowActions({ primary, secondary, menu = [], name }: { primary?: CrmRowAction; secondary?: ReactNode; menu?: CrmRowAction[]; name: string }) {
+export function CrmRowActions({ primary, secondary, menu = [], name, iconOnlyOnMobile }: { primary?: CrmRowAction; secondary?: ReactNode; menu?: CrmRowAction[]; name: string; /** En móvil la acción principal se reduce al icono (el nombre sigue para lectores de pantalla). */ iconOnlyOnMobile?: boolean }) {
   const { t } = useI18n();
   return (
     <div className="flex items-center justify-end gap-1">
       {primary && (
-        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={primary.onSelect} disabled={primary.disabled}>
+        <Button type="button" variant="outline" size="sm" className={cn("h-8 gap-1.5", iconOnlyOnMobile && "max-sm:w-8 max-sm:px-0")} onClick={primary.onSelect} disabled={primary.disabled} title={iconOnlyOnMobile ? primary.label : undefined}>
           {primary.icon}
-          {primary.label}
+          <span className={cn(iconOnlyOnMobile && "max-sm:sr-only")}>{primary.label}</span>
         </Button>
       )}
       {secondary}

@@ -3,6 +3,8 @@ import type es from "../es/crmCancellations";
 
 export default {
   estadoOperativo: "Bearbeitungsstatus",
+  pillResolucion: "Entscheidung: {label}",
+  pillFinanciero: "Finanzen: {label}",
   todosLosEstados: "Alle Status",
   recibida: "Eingegangen",
   enRevision: "In Prüfung",
