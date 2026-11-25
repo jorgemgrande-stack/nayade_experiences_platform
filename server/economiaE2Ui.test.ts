@@ -53,7 +53,7 @@ describe("Transacciones y Gastos (E2)", () => {
     expect(same).toEqual([]);
   });
 
-  it("sin clase truncate ni colores literales en las pantallas del lote", () => {
+  it("sin la clase de recorte de Tailwind ni colores literales en las pantallas del lote", () => {
     for (const f of FILES) {
       const src = read(f);
       expect(src, f).not.toMatch(/className="[^"]*\btruncate\b/);

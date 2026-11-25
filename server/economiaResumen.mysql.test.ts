@@ -108,7 +108,9 @@ describe.skipIf(!URL_)("Resúmenes del filtro completo (Transacciones y Gastos) 
   const txA = seedTx(11, 260);
   const txB = seedTx(22, 90);
   const exA = seedEx(33, 240);
-  const exB = seedEx(44, 70);
+  // Casos de IVA: antiguo sin desglose, de RRHH, exento y con cuota guardada (se siembran con el resto de la empresa B)
+  const mk = (concept: string, amount: string, source: string, taxRate: string, taxAmount: string | null): Ex => ({ concept, amount, status: "pending", op: true, source, missing: false, taxAmount, taxRate, supplier: "", date: "2026-01-05", cat: 1, cc: 1 });
+  const exB = [...seedEx(44, 70), mk("caso antiguo 21", "121.00", "manual", "21.00", null), mk("caso nomina", "1000.00", "hr_payroll", "21.00", null), mk("caso exento", "50.00", "manual", "0.00", null), mk("caso guardado", "60.50", "manual", "21.00", "10.50")];
 
   beforeAll(async () => {
     admin = mysql.createPool({ uri: URL_!, connectionLimit: 2 });
@@ -139,10 +141,9 @@ describe.skipIf(!URL_)("Resúmenes del filtro completo (Transacciones y Gastos) 
   }, 180_000);
 
   afterAll(async () => {
-    for (const k of ["a", "b"] as const) {
-      await pools[k]?.end().catch(() => {});
-      await admin?.query(`DROP DATABASE IF EXISTS \`${names[k]}\``).catch(() => {});
-    }
+    // Las bases temporales (e2res_*) llevan el sello de la ejecución y no se borran aquí: en CI el MySQL es efímero y en
+    // local quedan unas pocas tablas pequeñas que se pueden retirar a mano.
+    for (const k of ["a", "b"] as const) await pools[k]?.end().catch(() => {});
     await admin?.end().catch(() => {});
   });
 
@@ -290,15 +291,11 @@ describe.skipIf(!URL_)("Resúmenes del filtro completo (Transacciones y Gastos) 
   });
 
   it("Gastos · la cuota derivada de los gastos antiguos sin desglose usa el tipo (21 % si falta) y los de RRHH no llevan IVA", async () => {
-    await pools.b.query(
-      "INSERT INTO expenses (date, concept, amount, categoryId, costCenterId, source, taxRate, taxAmount) VALUES ('2026-01-05','antiguo 21',121.00,1,1,'manual',21,NULL),('2026-01-05','nomina',1000.00,1,1,'hr_payroll',21,NULL),('2026-01-05','exento',50.00,1,1,'manual',0,NULL),('2026-01-05','guardado',60.50,1,1,'manual',21,10.50)",
-    );
-    const s = await summarizeExpenses(dbs.b, { search: "antiguo" });
+    const s = await summarizeExpenses(dbs.b, { search: "caso antiguo" });
     expect(s.ivaSoportado).toBe("21.00");
-    expect((await summarizeExpenses(dbs.b, { search: "nomina" })).ivaSoportado).toBe("0.00");
-    expect((await summarizeExpenses(dbs.b, { search: "exento" })).ivaSoportado).toBe("0.00");
-    expect((await summarizeExpenses(dbs.b, { search: "guardado" })).ivaSoportado).toBe("10.50");
-    await pools.b.query("DELETE FROM expenses WHERE concept IN ('antiguo 21','nomina','exento','guardado')");
+    expect((await summarizeExpenses(dbs.b, { search: "caso nomina" })).ivaSoportado).toBe("0.00");
+    expect((await summarizeExpenses(dbs.b, { search: "caso exento" })).ivaSoportado).toBe("0.00");
+    expect((await summarizeExpenses(dbs.b, { search: "caso guardado" })).ivaSoportado).toBe("10.50");
   });
 
   it("Gastos · aislamiento: cada empresa suma solo lo suyo", async () => {
