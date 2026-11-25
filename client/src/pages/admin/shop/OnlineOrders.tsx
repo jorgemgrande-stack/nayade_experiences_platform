@@ -121,11 +121,11 @@ export function OnlineOrdersList() {
             rowKey={(o) => o.merchantOrder}
             columns={[
               { key: "pedido", header: t("shopOrders.list.colOrder"), cell: (o) => <Link href={orderHref(o.merchantOrder)} className="whitespace-nowrap font-mono font-medium text-primary hover:underline">{o.merchantOrder}</Link> },
-              { key: "fecha", header: t("shopOrders.list.colDate"), cell: (o) => <span className="whitespace-nowrap text-muted-foreground">{fmtDate(o.createdAt)}</span> },
-              { key: "cliente", header: t("shopOrders.list.colCustomer"), cell: (o) => <><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-foreground">{o.customerName}</div><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{o.customerEmail}</div></> },
-              { key: "articulos", header: t("shopOrders.list.colItems"), cell: (o) => <div className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">{o.productNames.join(", ")}</div> },
-              { key: "total", header: t("shopOrders.list.colTotal"), align: "right", cell: (o) => <span className="font-medium tabular-nums text-foreground">{eur(o.totalCents)}</span> },
-              { key: "estado", header: t("shopOrders.list.colStatus"), cell: (o) => <StageBadge stage={o.stage} /> },
+              { key: "fecha", header: t("shopOrders.list.colDate"), mobile: "footer", cell: (o) => <span className="whitespace-nowrap text-muted-foreground">{fmtDate(o.createdAt)}</span> },
+              { key: "cliente", header: t("shopOrders.list.colCustomer"), mobile: "body", cell: (o) => <div className="flex min-w-0 items-baseline gap-1.5 lg:block"><div className="max-w-[60%] shrink-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground lg:max-w-[14rem] lg:font-normal">{o.customerName}</div><div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground lg:max-w-[14rem]">{o.customerEmail}</div></div> },
+              { key: "articulos", header: t("shopOrders.list.colItems"), mobile: "body", cell: (o) => <div className="max-w-[16rem] max-lg:max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">{o.productNames.join(", ")}</div> },
+              { key: "total", header: t("shopOrders.list.colTotal"), align: "right", mobile: "amount", cell: (o) => <span className="font-medium tabular-nums text-foreground">{eur(o.totalCents)}</span> },
+              { key: "estado", header: t("shopOrders.list.colStatus"), mobile: "footer", cell: (o) => <StageBadge stage={o.stage} /> },
             ]}
           />
         )}

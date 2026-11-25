@@ -59,6 +59,11 @@ export interface PanelColumn<T> {
   align?: "left" | "right";
   /** Solo en la tabla: en la tarjeta de móvil no se repite (p. ej. porque ya va en el título). */
   hideOnMobile?: boolean;
+  /**
+   * Tarjeta compacta de móvil (la misma gramática que `CrmTable`): con al menos una columna que lo indique, la primera
+   * columna es el título, «amount» va a su derecha, «body» se encadena en una línea y «footer» cierra la tarjeta.
+   */
+  mobile?: "amount" | "body" | "footer";
   className?: string;
 }
 
@@ -84,6 +89,10 @@ export function PanelDataList<T>({
   tableFrom?: "md" | "lg";
 }) {
   const [first, ...rest] = columns;
+  const compact = rest.some((c) => c.mobile);
+  const amountCol = rest.find((c) => c.mobile === "amount");
+  const bodyCols = rest.filter((c) => !c.hideOnMobile && c !== amountCol && c.mobile !== "footer");
+  const footerCols = rest.filter((c) => !c.hideOnMobile && c.mobile === "footer");
   return (
     <div className={cn("overflow-hidden rounded-xl border border-border bg-card", className)}>
       <table className={cn("hidden w-full text-sm", tableFrom === "lg" ? "lg:table" : "md:table")}>
@@ -111,17 +120,44 @@ export function PanelDataList<T>({
       </table>
       <ul className={cn("divide-y divide-border", tableFrom === "lg" ? "lg:hidden" : "md:hidden")} aria-label={caption}>
         {rows.map((r) => (
-          <li key={rowKey(r)} className="space-y-1.5 p-4 text-sm">
-            <div className="min-w-0 break-words font-medium text-foreground">{first.cell(r)}</div>
-            {rest
-              .filter((c) => !c.hideOnMobile)
-              .map((c) => (
-                <div key={c.key} className="flex items-start justify-between gap-3">
-                  <span className="shrink-0 text-xs text-muted-foreground">{c.header}</span>
-                  <span className="min-w-0 break-words text-right">{c.cell(r)}</span>
+          compact ? (
+            <li key={rowKey(r)} className="px-3 py-2.5 text-sm">
+              <div className="flex items-start gap-2.5">
+                <div className="min-w-0 flex-1 font-medium text-foreground">{first.cell(r)}</div>
+                {amountCol && <div className="shrink-0 text-right font-semibold tabular-nums">{amountCol.cell(r)}</div>}
+              </div>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground [&>div]:min-w-0 [&>div]:max-w-full">
+                {bodyCols.map((c) => (
+                  <div key={c.key} className="w-full">
+                    <span className="sr-only">{c.header}: </span>
+                    {c.cell(r)}
+                  </div>
+                ))}
+              </div>
+              {footerCols.length > 0 && (
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  {footerCols.map((c) => (
+                    <div key={c.key} className="min-w-0">
+                      <span className="sr-only">{c.header}: </span>
+                      {c.cell(r)}
+                    </div>
+                  ))}
                 </div>
-              ))}
-          </li>
+              )}
+            </li>
+          ) : (
+            <li key={rowKey(r)} className="space-y-1.5 p-4 text-sm">
+              <div className="min-w-0 break-words font-medium text-foreground">{first.cell(r)}</div>
+              {rest
+                .filter((c) => !c.hideOnMobile)
+                .map((c) => (
+                  <div key={c.key} className="flex items-start justify-between gap-3">
+                    <span className="shrink-0 text-xs text-muted-foreground">{c.header}</span>
+                    <span className="min-w-0 break-words text-right">{c.cell(r)}</span>
+                  </div>
+                ))}
+            </li>
+          )
         ))}
       </ul>
     </div>

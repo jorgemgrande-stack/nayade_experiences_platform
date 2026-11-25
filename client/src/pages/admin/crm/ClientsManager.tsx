@@ -321,26 +321,26 @@ export default function ClientsManager() {
                 </tbody>
               </table>
 
-              {/* Móvil: tarjetas con contacto de un toque */}
+              {/* Móvil: tarjeta compacta de una fila (avatar, nombre, tipo y ciudad) con contacto de un toque */}
               <ul className="divide-y divide-border md:hidden" aria-label={t("crmClients.listCaption")}>
                 {clientsList.map((client) => (
-                  <li key={client.id} className="flex items-start gap-3 p-4" data-client-row>
+                  <li key={client.id} className="flex items-center gap-2.5 px-3 py-2.5" data-client-row>
                     <PersonAvatar name={clientDisplayName(client)} id={client.id} company={clientKind(client) === "empresa"} />
                     <div className="min-w-0 flex-1">
-                      <Link href={fichaHref(client)} className="block break-words font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
+                      <Link href={fichaHref(client)} className="block overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground underline-offset-4 hover:text-primary hover:underline">
                         {clientDisplayName(client)}
                       </Link>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <div className="mt-0.5 flex items-center gap-x-2 text-xs text-muted-foreground">
                         {kindBadge(client)}
-                        {client.city && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" aria-hidden="true" /> {client.city}</span>}
+                        {client.city && <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="h-3 w-3 shrink-0" aria-hidden="true" /> <span className="overflow-hidden text-ellipsis whitespace-nowrap">{client.city}</span></span>}
                       </div>
                       {tagsOf(client)}
-                      <div className="mt-2.5 flex flex-wrap gap-2">
-                        <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 rounded-full px-3 text-xs"><a href={`mailto:${client.email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" /> {t("crmClientDetail.email")}</a></Button>
-                        {client.phone && <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 rounded-full px-3 text-xs"><a href={`tel:${client.phone.replace(/\s/g, "")}`}><Phone className="h-3.5 w-3.5" aria-hidden="true" /> {t("crmClientDetail.phone")}</a></Button>}
-                      </div>
                     </div>
-                    {actions(client)}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button asChild size="icon" variant="outline" className="h-8 w-8 rounded-full"><a href={`mailto:${client.email}`} aria-label={t("crmClientDetail.email")} title={t("crmClientDetail.email")}><Mail className="h-3.5 w-3.5" aria-hidden="true" /></a></Button>
+                      {client.phone && <Button asChild size="icon" variant="outline" className="h-8 w-8 rounded-full"><a href={`tel:${client.phone.replace(/\s/g, "")}`} aria-label={t("crmClientDetail.phone")} title={t("crmClientDetail.phone")}><Phone className="h-3.5 w-3.5" aria-hidden="true" /></a></Button>}
+                      {actions(client)}
+                    </div>
                   </li>
                 ))}
               </ul>

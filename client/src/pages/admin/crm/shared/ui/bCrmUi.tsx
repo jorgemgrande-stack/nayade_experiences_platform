@@ -31,9 +31,9 @@ const TONE_TEXT: Record<BTone, string> = {
 };
 
 /** Insignia de estado con icono (el color nunca es la única señal). */
-export function BPill({ tone = "muted", icon, children, className }: { tone?: BTone; icon?: ReactNode; children: ReactNode; className?: string }) {
+export function BPill({ tone = "muted", icon, children, className, title }: { tone?: BTone; icon?: ReactNode; children: ReactNode; className?: string; title?: string }) {
   return (
-    <span className={cn("inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium", TONE_PILL[tone], className)}>
+    <span title={title} className={cn("inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium", TONE_PILL[tone], className)}>
       {icon && <span className="shrink-0 [&>svg]:h-3 [&>svg]:w-3" aria-hidden="true">{icon}</span>}
       {children}
     </span>
@@ -80,7 +80,7 @@ export function BStat({ label, value, hint, tone = "muted", active, onClick, her
         <span className="overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
       </span>
       <span className="mt-0.5 flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
-        <span className={cn("text-lg font-semibold leading-tight tabular-nums", hero ? "text-primary" : TONE_TEXT[tone === "primary" || tone === "info" ? "muted" : tone])}>{value}</span>
+        <span className={cn("text-lg font-semibold leading-tight tabular-nums", hero ? "text-brand-strong" : TONE_TEXT[tone === "primary" || tone === "info" ? "muted" : tone])}>{value}</span>
         {hint && !longHint && <span className="overflow-hidden text-ellipsis text-xs text-muted-foreground">{hint}</span>}
       </span>
       {hint && longHint && <span title={String(hint)} className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{hint}</span>}
@@ -125,11 +125,14 @@ export function BFilterBar({ search, primary, more, chips, onClear, summary, act
             <Input value={search.value} onChange={(e) => search.onChange(e.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} className="h-9 bg-card pl-9" />
           </div>
         )}
-        {primary}
-        {more && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="h-9 gap-2">
+        {primary && (
+          // Móvil: los filtros principales se pliegan con «Filtros (n)» en una sola fila; desde 640 px siguen visibles.
+          <div className={cn("items-center gap-2 max-sm:order-last max-sm:w-full max-sm:grid-cols-1 sm:contents", open ? "max-sm:grid" : "max-sm:hidden")}>{primary}</div>
+        )}
+        {(more || primary) && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen((v) => !v)} aria-expanded={open} className={cn("h-9 gap-2", !more && "sm:hidden")}>
             <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-            <span className="sm:hidden">{t("salesShell.filters")}</span>
+            <span className="sm:hidden">{chips.length > 0 ? t("salesShell.filtersCount", { count: chips.length }) : t("salesShell.filters")}</span>
             <span className="hidden sm:inline">{t("crmShared.masFiltros")}</span>
             <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
           </Button>
