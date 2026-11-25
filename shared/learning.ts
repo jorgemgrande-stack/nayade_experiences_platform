@@ -93,6 +93,15 @@ export function computeModuleWindows(rule: Pick<AccessRule, "durationDays" | "mo
   return { windows: all, enrollmentEndsAt: unlimited ? null : Math.max(...(ends as number[])) };
 }
 
+/**
+ * Reglas activas cuya variante es EXACTAMENTE esta, sin caer nunca en las genéricas del producto. Es lo que casa un
+ * SUPLEMENTO pagado (p. ej. Lifetime Access): un suplemento sin regla propia no concede nada, ni el programa entero.
+ */
+export function matchExactRules(rules: AccessRule[], experienceId: number, variantId: number | null): AccessRule[] {
+  if (variantId == null) return [];
+  return rules.filter((r) => r.active && r.experienceId === experienceId && r.variantId === variantId);
+}
+
 /** Reglas activas que aplican a una compra: la de la variante exacta o, si no hay, las genéricas del producto. */
 export function matchRules(rules: AccessRule[], experienceId: number, variantId: number | null): AccessRule[] {
   const own = rules.filter((r) => r.active && r.experienceId === experienceId);

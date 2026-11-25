@@ -27,6 +27,7 @@ import { normalizeCurrency } from "../shared/leadWebRequest";
 import { formatIsoDayShort, plannedEndDay, requestedStartProblem, todayIso } from "../shared/requestDates";
 import { productPeopleProblem, variantQuantityProblem } from "./shopCheckoutRules";
 import { resolveSupplements, supplementLineText, SupplementError } from "./supplements";
+import { supplementScopes } from "./orderSupplements";
 
 export const PRODUCT_REQUEST_DEDUPE_MS = 10 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -185,7 +186,8 @@ export async function processProductRequest(input: ProductRequestInput, ctx: Pro
     const noSupp = "Los suplementos opcionales no están disponibles para este producto.";
     if (!showsPrice(product)) throw new ProductRequestError("BAD_REQUEST", noSupp, { supplements: noSupp });
     try {
-      suppLines = resolveSupplements(suppIds, variantRows as any, seats);
+      const scopes = await supplementScopes(variantRows.filter((v) => !!v.supplementGroup).map((v) => v.id));
+      suppLines = resolveSupplements(suppIds, variantRows as any, seats, { programmeVariantId: input.variantId ?? null, scopes });
     } catch (e) {
       if (e instanceof SupplementError) throw new ProductRequestError("BAD_REQUEST", e.message, { supplements: e.message });
       throw e;

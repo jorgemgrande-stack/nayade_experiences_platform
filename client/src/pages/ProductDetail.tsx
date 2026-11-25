@@ -405,7 +405,7 @@ export default function ProductDetail() {
         )}
       </div>
 
-      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0], supplements }} open={requestOpen} onOpenChange={setRequestOpen} />}
+      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0], supplements: supplements.filter((o) => !o.forVariantIds?.length || (variant != null && o.forVariantIds.includes(variant.id))) }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Opiniones reales del producto (sin cifras fijas) */}
       <section className="py-12 bg-muted border-t border-border">

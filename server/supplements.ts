@@ -50,7 +50,22 @@ const eur = (cents: number) => `${(cents / 100).toLocaleString("es-ES", { minimu
  * suplementos mezclados). Lanza SupplementError si un id no es un suplemento vigente de ESTE producto o si el grupo no
  * admite ese número de participantes.
  */
-export function resolveSupplements(requestedIds: number[] | undefined | null, all: SupplementVariant[], people: number): SupplementLine[] {
+export interface SupplementContext {
+  /** Opción del programa que se contrata (para los suplementos acotados a ciertas opciones). */
+  programmeVariantId?: number | null;
+  /** Ámbito por id de suplemento (supplement_variant_scope): sin entrada = sin restricción. */
+  scopes?: Map<number, number[]>;
+}
+
+/** Ámbito (opciones del programa admitidas) de un suplemento: el de cualquiera de sus tramos; null = sin restricción. */
+export function supplementScope(group: string, all: SupplementVariant[], scopes?: Map<number, number[]>): number[] | null {
+  if (!scopes) return null;
+  const ids = new Set<number>();
+  for (const v of all) if (isSupplementVariant(v) && String(v.supplementGroup).trim() === group) for (const p of scopes.get(v.id) ?? []) ids.add(p);
+  return ids.size ? Array.from(ids) : null;
+}
+
+export function resolveSupplements(requestedIds: number[] | undefined | null, all: SupplementVariant[], people: number, ctx?: SupplementContext): SupplementLine[] {
   const ids = Array.from(new Set((requestedIds ?? []).filter((n) => Number.isInteger(n) && n > 0)));
   if (!ids.length) return [];
   if (!Number.isInteger(people) || people < 1) throw new SupplementError("Indica el número de participantes para añadir un suplemento.");
@@ -63,6 +78,8 @@ export function resolveSupplements(requestedIds: number[] | undefined | null, al
     const group = String(picked.supplementGroup).trim();
     if (seen.has(group)) continue; // dos tramos del mismo suplemento = un solo suplemento
     seen.add(group);
+    const scope = supplementScope(group, supplements, ctx?.scopes);
+    if (scope && (ctx?.programmeVariantId == null || !scope.includes(ctx.programmeVariantId))) throw new SupplementError(`«${picked.name ?? "El suplemento"}» no está disponible con la opción elegida.`);
     // Tramo que admite este nº de participantes; si hay varios, el más específico (mayor mínimo)
     const fitting = supplements
       .filter((v) => String(v.supplementGroup).trim() === group && !variantQuantityProblem(v, people))
@@ -93,10 +110,12 @@ export interface SupplementOffer {
   name: string;
   description: string | null;
   tiers: Array<{ id: number; name: string; priceModifier: string; priceType: "fixed" | "per_person"; minQty: number | null; maxQty: number | null }>;
+  /** Opciones del programa con las que se puede contratar; null = con cualquiera. */
+  forVariantIds: number[] | null;
 }
 
 /** Suplementos ofrecidos de un producto, agrupados por tramos (para la ficha pública). Solo filas vigentes con importe válido. */
-export function supplementOffers(all: SupplementVariant[]): SupplementOffer[] {
+export function supplementOffers(all: SupplementVariant[], scopes?: Map<number, number[]>): SupplementOffer[] {
   const byGroup = new Map<string, SupplementVariant[]>();
   for (const v of all) {
     if (!isSupplementVariant(v)) continue;
@@ -112,6 +131,7 @@ export function supplementOffers(all: SupplementVariant[]): SupplementOffer[] {
       name: String(sorted[0].name ?? "Suplemento"),
       description: sorted[0].description ?? null,
       tiers: sorted.map((v) => ({ id: v.id, name: String(v.name ?? ""), priceModifier: String(v.priceModifier ?? "0"), priceType: v.priceType as "fixed" | "per_person", minQty: v.minQty ?? null, maxQty: v.maxQty ?? null })),
+      forVariantIds: supplementScope(group, rows, scopes),
     };
   });
 }

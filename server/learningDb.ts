@@ -14,7 +14,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   DAY_MS, DEMO_MS, LearningRuleError, adminKey, assertPaymentConfirmed, assertReason, computeWindow, demoKey, evaluateAny, matchRules,
-  courseOpensFor, isTechnicalGrant, mergeModules, mimeMatchesKind, paymentKey, progressPercent, technicalReason, TECHNICAL_MAX_DAYS, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
+  courseOpensFor, isTechnicalGrant, mergeModules, matchExactRules, mimeMatchesKind, paymentKey, progressPercent, technicalReason, TECHNICAL_MAX_DAYS, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
   MODULE_EXTENSION_DAYS, computeModuleWindows, effectiveEnrollmentStatus, evaluateAccess, extendedEnd, extensionKey, modulesWithoutDuration, moduleWindow, windowsFromRows, type ModuleSchedule, type ModuleWindow,
 } from "../shared/learning";
 
@@ -292,6 +292,8 @@ export interface PaymentGrantInput {
   payment: Partial<PaymentEvidence> | null;
   actorUserId: number | null;
   now?: number;
+  /** Suplemento pagado: solo la regla de ESTA variante (nunca las genéricas del producto). */
+  exactVariantOnly?: boolean;
 }
 
 /**
@@ -303,7 +305,8 @@ export async function grantFromPayment(input: PaymentGrantInput): Promise<{ gran
   const now = input.now ?? Date.now();
   const d = await db();
   return withRetry(() => d.transaction(async (tx) => {
-    const rules = matchRules(await listRules(tx), input.experienceId, input.variantId);
+    const all = await listRules(tx);
+    const rules = input.exactVariantOnly ? matchExactRules(all, input.experienceId, input.variantId) : matchRules(all, input.experienceId, input.variantId);
     const granted: Array<{ enrollment: EnrollmentRow; created: boolean }> = [];
     for (const rule of rules) {
       const w = computeWindow({ startMode: rule.startMode, fixedStart: rule.fixedStart, durationDays: rule.durationDays, grantedAt: now });

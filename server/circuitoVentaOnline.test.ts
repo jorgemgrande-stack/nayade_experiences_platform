@@ -321,7 +321,7 @@ function makeDb(t: any): any {
     if (s.startsWith("SELECT id, product_id, variant_id, customer_name, customer_email, amount_paid, amount_total FROM reservations WHERE merchant_order = ?")) {
       return [t.res.filter((r: any) => r.merchantOrder === p[0] && r.status === "paid").map((r: any) => ({ id: r.id, product_id: r.productId, variant_id: r.variantId, customer_name: r.customerName, customer_email: r.customerEmail, amount_paid: r.amountPaid, amount_total: r.amountTotal }))];
     }
-    if (s.startsWith("SELECT order_id, user_id FROM learning_enrollments WHERE source = 'payment' AND order_id IN")) {
+    if (s.startsWith("SELECT order_id, user_id FROM learning_enrollments WHERE source = 'payment' AND idempotency_key NOT LIKE 'pay:order-supplement:%' AND order_id IN")) {
       return [t.enrol.filter((e: any) => p.includes(e.order_id)).map((e: any) => ({ order_id: e.order_id, user_id: e.user_id }))];
     }
     if (s.startsWith("SELECT e.id AS id, e.status AS status FROM learning_enrollments e JOIN reservations r")) {
@@ -333,6 +333,10 @@ function makeDb(t: any): any {
       return [[{ detail: JSON.stringify({ reason: e?.suspendedWhy ?? "" }) }]];
     }
     if (s.startsWith("SELECT changes_log FROM reservations WHERE merchant_order = ?")) return [t.res.filter((r: any) => r.merchantOrder === p[0]).slice(0, 1).map((r: any) => ({ changes_log: r.changesLog }))];
+    // Suplementos pagados (0091): este circuito no concede Lifetime; solo se simula que no hay filas
+    if (s.includes("order_supplement_lines") && (s.startsWith("SELECT") || s.startsWith("UPDATE"))) return s.startsWith("SELECT") ? [[]] : ok(0);
+    if (s.startsWith("INSERT IGNORE INTO order_supplement_lines")) return ok(1);
+    if (s.startsWith("SELECT supplement_variant_id AS s, programme_variant_id AS p FROM supplement_variant_scope")) return [[]];
     throw new Error("SQL no simulado: " + s);
   }
 
