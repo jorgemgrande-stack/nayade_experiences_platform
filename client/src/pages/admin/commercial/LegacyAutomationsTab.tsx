@@ -1,4 +1,9 @@
-import React, { useState } from "react";
+import { useState } from "react";
+import { Cog, Info, ShieldCheck, ToggleLeft } from "lucide-react";
+import { useI18n } from "@/i18n/I18nProvider";
+import { Button } from "@/components/ui/button";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 
 interface CronCard {
   id: string;
@@ -80,212 +85,122 @@ const CRONS: CronCard[] = [
   },
 ];
 
-const STATUS_COLORS: Record<CronCard["status"], string> = {
-  active_no_flag: "bg-yellow-900/40 text-yellow-300 border border-yellow-700",
-  active_with_flag: "bg-green-900/40 text-green-300 border border-green-700",
-  superseded: "bg-orange-900/40 text-orange-300 border border-orange-700",
-};
-
-const RECIPIENT_LABELS: Record<CronCard["recipient"], string> = {
-  client: "Solo cliente",
-  admin: "Solo admin",
-  both: "Cliente + Admin",
-};
-
-const RECIPIENT_COLORS: Record<CronCard["recipient"], string> = {
-  client: "bg-blue-900/40 text-blue-300",
-  admin: "bg-purple-900/40 text-purple-300",
-  both: "bg-teal-900/40 text-teal-300",
-};
-
-const REC_COLORS: Record<CronCard["recommendationType"], string> = {
-  keep: "border-l-green-500",
-  migrate: "border-l-blue-500",
-  deprecate: "border-l-red-500",
-};
-
-const REC_ICONS: Record<CronCard["recommendationType"], string> = {
-  keep: "✓",
-  migrate: "→",
-  deprecate: "⚠",
-};
+const STATUS_TONE: Record<CronCard["status"], Tone> = { active_no_flag: "warning", active_with_flag: "success", superseded: "neutral" };
+const RECIPIENT_TONE: Record<CronCard["recipient"], Tone> = { client: "info", admin: "brand", both: "success" };
+const REC_BORDER: Record<CronCard["recommendationType"], string> = { keep: "border-l-success", migrate: "border-l-info", deprecate: "border-l-danger" };
 
 function CronDetail({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-2 text-xs">
-      <span className="text-gray-500 shrink-0">{label}:</span>
-      <span className="text-gray-300 font-mono">{value}</span>
+    <div className="flex flex-col gap-0.5 text-xs sm:flex-row sm:gap-2">
+      <span className="shrink-0 text-muted-foreground">{label}:</span>
+      <span className="break-words font-mono text-foreground/80">{value}</span>
     </div>
   );
 }
 
 function CronJobCard({ cron }: { cron: CronCard }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-[#2a2a2a]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm font-semibold text-white">{cron.name}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[cron.status]}`}>
-                {cron.statusLabel}
-              </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${RECIPIENT_COLORS[cron.recipient]}`}>
-                {RECIPIENT_LABELS[cron.recipient]}
-              </span>
-            </div>
-            <div className="mt-1 text-xs text-gray-500 font-mono">{cron.file}</div>
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="space-y-3 border-b border-border p-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="break-all font-mono text-sm font-semibold text-foreground">{cron.name}</h3>
+            <StatusBadge tone={STATUS_TONE[cron.status]}>{t(`legacyCrons.status.${cron.status}`)}</StatusBadge>
+            <StatusBadge tone={RECIPIENT_TONE[cron.recipient]}>{t(`legacyCrons.recipient.${cron.recipient}`)}</StatusBadge>
           </div>
-          <button
-            onClick={() => setExpanded((e) => !e)}
-            className="text-gray-500 hover:text-white transition-colors shrink-0 text-xs"
-          >
-            {expanded ? "▲ Colapsar" : "▼ Expandir"}
-          </button>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{cron.file}</p>
         </div>
-
-        {/* Schedule + flag */}
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="bg-[#111] rounded p-2">
-            <div className="text-xs text-gray-500 mb-1">Frecuencia</div>
-            <div className="font-mono text-xs text-amber-400">{cron.schedule}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{cron.scheduleHuman}</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="rounded-lg bg-muted/50 p-2.5">
+            <p className="mb-1 text-xs text-muted-foreground">{t("legacyCrons.frequency")}</p>
+            <p className="font-mono text-xs text-foreground">{cron.schedule}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{cron.scheduleHuman}</p>
           </div>
-          <div className="bg-[#111] rounded p-2">
-            <div className="text-xs text-gray-500 mb-1">Feature flag</div>
-            {cron.featureFlag ? (
-              <div className="font-mono text-xs text-green-400 break-all">{cron.featureFlag}</div>
-            ) : (
-              <div className="text-xs text-red-400">Sin flag — siempre activo</div>
-            )}
+          <div className="rounded-lg bg-muted/50 p-2.5">
+            <p className="mb-1 text-xs text-muted-foreground">{t("legacyCrons.flag")}</p>
+            {cron.featureFlag ? <p className="break-all font-mono text-xs text-success">{cron.featureFlag}</p> : <p className="text-xs text-warning">{t("legacyCrons.noFlag")}</p>}
           </div>
         </div>
       </div>
 
-      {/* Body — always visible */}
-      <div className="p-4 space-y-3">
-        {/* Condition */}
+      <div className="space-y-3 p-4">
         <div>
-          <div className="text-xs text-gray-500 mb-1">Condición de disparo</div>
-          <div className="text-xs text-gray-300 bg-[#111] rounded p-2 leading-relaxed">{cron.condition}</div>
+          <p className="mb-1 text-xs text-muted-foreground">{t("legacyCrons.condition")}</p>
+          <p className="rounded-lg bg-muted/50 p-2.5 text-xs leading-relaxed text-foreground/80">{cron.condition}</p>
         </div>
-
-        {/* Templates */}
         <div>
-          <div className="text-xs text-gray-500 mb-1">Template(s) usado(s)</div>
+          <p className="mb-1 text-xs text-muted-foreground">{t("legacyCrons.templates")}</p>
           <div className="space-y-1">
-            {cron.templates.map((t) => (
-              <div key={t} className="font-mono text-xs text-blue-300 bg-blue-950/20 rounded px-2 py-1">
-                {t}
-              </div>
+            {cron.templates.map((tpl) => (
+              <p key={tpl} className="rounded-lg bg-info/10 px-2.5 py-1.5 font-mono text-xs text-info">{tpl}</p>
             ))}
           </div>
         </div>
-
-        {/* Subject */}
         <div>
-          <div className="text-xs text-gray-500 mb-1">Subject del email</div>
-          <div className="text-xs text-gray-300 font-mono bg-[#111] rounded px-2 py-1 break-all">{cron.subject}</div>
+          <p className="mb-1 text-xs text-muted-foreground">{t("legacyCrons.subject")}</p>
+          <p className="break-words rounded-lg bg-muted/50 px-2.5 py-1.5 font-mono text-xs text-foreground/80">{cron.subject}</p>
         </div>
-
-        {/* Recommendation */}
-        <div className={`border-l-4 pl-3 py-1 ${REC_COLORS[cron.recommendationType]}`}>
-          <div className="text-xs text-gray-500 mb-0.5">Recomendación</div>
-          <div className="text-xs text-gray-200">
-            <span className="mr-1">{REC_ICONS[cron.recommendationType]}</span>
-            {cron.recommendation}
-          </div>
+        <div className={`border-l-4 py-1 pl-3 ${REC_BORDER[cron.recommendationType]}`}>
+          <p className="mb-0.5 text-xs text-muted-foreground">{t("legacyCrons.recommendation")}</p>
+          <p className="text-xs text-foreground/80">{cron.recommendation}</p>
         </div>
+        <Button variant="ghost" size="sm" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded}>
+          {expanded ? t("legacyCrons.collapse") : t("legacyCrons.expand")}
+        </Button>
       </div>
 
-      {/* Expanded details */}
       {expanded && (
-        <div className="px-4 pb-4 border-t border-[#2a2a2a] pt-4">
-          <div className="text-xs text-gray-500 mb-2">Detalles técnicos</div>
-          <div className="space-y-1.5 bg-[#111] rounded p-3">
-            {cron.maxPerRun !== null && (
-              <CronDetail label="Límite por ejecución" value={`${cron.maxPerRun} registros`} />
-            )}
-            {cron.maxPerQuote !== null && (
-              <CronDetail label="Máx. por presupuesto" value={`${cron.maxPerQuote}`} />
-            )}
+        <div className="border-t border-border p-4">
+          <p className="mb-2 text-xs text-muted-foreground">{t("legacyCrons.details")}</p>
+          <div className="space-y-1.5 rounded-lg bg-muted/50 p-3">
+            {cron.maxPerRun !== null && <CronDetail label={t("legacyCrons.limitRun")} value={t("legacyCrons.records", { n: cron.maxPerRun })} />}
+            {cron.maxPerQuote !== null && <CronDetail label={t("legacyCrons.limitQuote")} value={String(cron.maxPerQuote)} />}
             {cron.details.map((d) => (
               <CronDetail key={d.label} label={d.label} value={d.value} />
             ))}
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
 export default function LegacyAutomationsTab() {
+  const { t } = useI18n();
+  const withoutFlag = CRONS.filter((c) => c.featureFlag === null).length;
+  const keep = CRONS.filter((c) => c.recommendationType === "keep").length;
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Automatizaciones activas</h2>
-          <p className="text-sm text-gray-400 mt-1">
-            Los 3 cron jobs actuales del sistema. Esta vista es de solo lectura — para modificar la configuración
-            edita los archivos de servidor directamente.
-          </p>
-        </div>
+      <header>
+        <h2 className="text-lg font-semibold text-foreground">{t("legacyCrons.title")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("legacyCrons.description")}</p>
+      </header>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <MetricCard tone="brand" icon={<Cog />} label={t("legacyCrons.total")} value={CRONS.length} />
+        <MetricCard tone="warning" icon={<ToggleLeft />} label={t("legacyCrons.withoutFlag")} value={withoutFlag} />
+        <MetricCard tone="success" icon={<ShieldCheck />} label={t("legacyCrons.keep")} value={keep} />
       </div>
 
-      {/* Info banner */}
-      <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-3 flex gap-2 text-xs text-blue-300">
-        <span className="shrink-0">ℹ</span>
-        <span>
-          <strong>commercialFollowupJob</strong> es el sistema de seguimiento de presupuestos — no duplicar con emailAutomationJob.
-          <strong>emailAutomationJob</strong> está reservado para automaciones genéricas en plantillas sin cron propio
-          (post-reserva, post-pago, etc.). <strong>emailManager</strong> bloquea automáticamente el scheduling
-          para <code className="font-mono">'quote'</code> evitando duplicados con quoteReminderJob.
-        </span>
+      <div role="note" className="flex gap-2 rounded-lg border border-info/30 bg-info/5 p-3 text-sm text-foreground">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" aria-hidden="true" />
+        <p><strong className="font-medium">{t("legacyCrons.infoTitle")}.</strong> {t("legacyCrons.info")}</p>
       </div>
 
-      {/* Summary row */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-white">4</div>
-          <div className="text-xs text-gray-500 mt-1">Cron jobs totales</div>
-        </div>
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-yellow-400">2</div>
-          <div className="text-xs text-gray-500 mt-1">Sin feature flag (legacy)</div>
-        </div>
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-green-400">4</div>
-          <div className="text-xs text-gray-500 mt-1">Recomendados mantener</div>
-        </div>
-      </div>
-
-      {/* Cards */}
-      <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-2">
         {CRONS.map((c) => (
           <CronJobCard key={c.id} cron={c} />
         ))}
       </div>
 
-      {/* Legend */}
-      <div className="border border-[#2a2a2a] rounded-lg p-3">
-        <div className="text-xs text-gray-500 mb-2">Leyenda de estados</div>
-        <div className="flex flex-wrap gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-green-500 inline-block" />
-            <span className="text-gray-400">Activo con feature flag — controlado</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" />
-            <span className="text-gray-400">Activo sin flag — siempre corre</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-orange-500 inline-block" />
-            <span className="text-gray-400">Supersedido — funcionalidad reemplazada</span>
-          </div>
+      <div className="rounded-lg border border-border p-3">
+        <p className="mb-2 text-xs text-muted-foreground">{t("legacyCrons.legend")}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden="true" />{t("legacyCrons.legendFlag")}</span>
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden="true" />{t("legacyCrons.legendNoFlag")}</span>
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-muted-foreground" aria-hidden="true" />{t("legacyCrons.legendSuperseded")}</span>
         </div>
       </div>
     </div>

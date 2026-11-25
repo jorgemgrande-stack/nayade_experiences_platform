@@ -29,11 +29,11 @@ type FilterKey = "all" | "unread" | "starred" | "linked_quote" | "linked_reserva
 type StatusKey = "all" | "new" | "open" | "pending" | "replied" | "closed";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  new:     { label: "Nuevo",      color: "text-sky-300",     bg: "bg-sky-500/15" },
-  open:    { label: "Abierto",    color: "text-emerald-300", bg: "bg-emerald-500/15" },
-  pending: { label: "Pendiente",  color: "text-amber-300",   bg: "bg-amber-500/15" },
-  replied: { label: "Respondido", color: "text-purple-300",  bg: "bg-purple-500/15" },
-  closed:  { label: "Cerrado",    color: "text-zinc-400",    bg: "bg-zinc-500/15" },
+  new:     { label: "Nuevo",      color: "text-info",     bg: "bg-info/15" },
+  open:    { label: "Abierto",    color: "text-success", bg: "bg-success/15" },
+  pending: { label: "Pendiente",  color: "text-warning",   bg: "bg-warning/15" },
+  replied: { label: "Respondido", color: "text-primary",  bg: "bg-primary/15" },
+  closed:  { label: "Cerrado",    color: "text-muted-foreground",    bg: "bg-muted/15" },
 };
 
 function fmtTime(d: Date | string | null | undefined): string {
@@ -385,11 +385,11 @@ export default function WhatsAppGHLInbox() {
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/[0.08] shrink-0">
           <div className="flex items-center gap-2">
-            <MessageCircle className="w-5 h-5 text-green-400" />
+            <MessageCircle className="w-5 h-5 text-success" />
             <h1 className="text-base font-bold text-foreground">WhatsApp GHL</h1>
             {sseConnected
-              ? <span className="flex items-center gap-1 text-[10px] text-emerald-400"><Wifi className="w-3 h-3" /> En vivo</span>
-              : <span className="flex items-center gap-1 text-[10px] text-zinc-500"><WifiOff className="w-3 h-3" /> Reconectando...</span>
+              ? <span className="flex items-center gap-1 text-xs text-success"><Wifi className="w-3 h-3" /> En vivo</span>
+              : <span className="flex items-center gap-1 text-xs text-muted-foreground"><WifiOff className="w-3 h-3" /> Reconectando...</span>
             }
           </div>
           <div className="flex items-center gap-2">
@@ -403,7 +403,7 @@ export default function WhatsAppGHLInbox() {
               </button>
             ))}
             <button onClick={syncNow} disabled={syncing}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-success/20 text-success hover:bg-success/15 transition-colors disabled:opacity-50"
               title={`Auto-sync en ${syncCountdown}s`}
             >
               <RefreshCw className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`} />
@@ -418,13 +418,13 @@ export default function WhatsAppGHLInbox() {
             <div className="max-w-3xl grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
                 { label: "Total convs.", value: stats?.conversations.total ?? 0, color: "text-foreground" },
-                { label: "No leídas", value: stats?.conversations.unread ?? 0, color: "text-amber-400" },
-                { label: "Abiertas", value: stats?.conversations.open ?? 0, color: "text-emerald-400" },
-                { label: "Pendientes", value: stats?.conversations.pending ?? 0, color: "text-orange-400" },
-                { label: "Respondidas", value: stats?.conversations.replied ?? 0, color: "text-purple-400" },
-                { label: "Cerradas", value: stats?.conversations.closed ?? 0, color: "text-zinc-400" },
-                { label: "Con presupuesto", value: stats?.conversations.withQuote ?? 0, color: "text-sky-400" },
-                { label: "Con reserva", value: stats?.conversations.withReservation ?? 0, color: "text-violet-400" },
+                { label: "No leídas", value: stats?.conversations.unread ?? 0, color: "text-warning" },
+                { label: "Abiertas", value: stats?.conversations.open ?? 0, color: "text-success" },
+                { label: "Pendientes", value: stats?.conversations.pending ?? 0, color: "text-warning" },
+                { label: "Respondidas", value: stats?.conversations.replied ?? 0, color: "text-primary" },
+                { label: "Cerradas", value: stats?.conversations.closed ?? 0, color: "text-muted-foreground" },
+                { label: "Con presupuesto", value: stats?.conversations.withQuote ?? 0, color: "text-info" },
+                { label: "Con reserva", value: stats?.conversations.withReservation ?? 0, color: "text-primary" },
               ].map(kpi => (
                 <div key={kpi.label} className="rounded-xl border border-foreground/[0.08] bg-background p-4">
                   <div className="text-xs text-foreground/40 mb-1">{kpi.label}</div>
@@ -435,13 +435,13 @@ export default function WhatsAppGHLInbox() {
 
             <div className="max-w-3xl mt-6 rounded-xl border border-foreground/[0.08] bg-background p-4 space-y-2">
               <h3 className="text-sm font-semibold text-foreground/70">Configuración GHL</h3>
-              <div className={`flex items-center gap-2 text-xs ${inboxCreds?.hasToken ? "text-emerald-400" : "text-red-400"}`}>
+              <div className={`flex items-center gap-2 text-xs ${inboxCreds?.hasToken ? "text-success" : "text-danger"}`}>
                 {inboxCreds?.hasToken ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                 {inboxCreds?.hasToken
                   ? `Token configurado${inboxCreds.tokenMasked ? ` (${inboxCreds.tokenMasked})` : ""}`
                   : "Token GHL no configurado"}
               </div>
-              <div className={`flex items-center gap-2 text-xs ${inboxCreds?.locationId ? "text-emerald-400" : "text-red-400"}`}>
+              <div className={`flex items-center gap-2 text-xs ${inboxCreds?.locationId ? "text-success" : "text-danger"}`}>
                 {inboxCreds?.locationId ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                 {inboxCreds?.locationId
                   ? `Location ID: ${inboxCreds.locationId}`
@@ -449,12 +449,12 @@ export default function WhatsAppGHLInbox() {
               </div>
               <div className="text-xs text-foreground/40 mt-3">
                 Webhook URL:{" "}
-                <code className="text-orange-400 font-mono break-all">
+                <code className="text-warning font-mono break-all">
                   {window.location.origin}/api/ghl/inbox/webhook{inboxCreds?.webhookSecret ? `?secret=${inboxCreds.webhookSecret}` : ""}
                 </code>
               </div>
               <div className="text-xs text-foreground/40">
-                Webhooks recibidos: <span className="text-foreground/70">{stats?.webhooks.total ?? 0}</span> · Fallidos: <span className="text-red-400">{stats?.webhooks.failed ?? 0}</span>
+                Webhooks recibidos: <span className="text-foreground/70">{stats?.webhooks.total ?? 0}</span> · Fallidos: <span className="text-danger">{stats?.webhooks.failed ?? 0}</span>
               </div>
             </div>
 
@@ -508,7 +508,7 @@ export default function WhatsAppGHLInbox() {
                     locationId: credLocation.trim(),
                     webhookSecret: credSecret.trim() || inboxCreds?.webhookSecret || randomWebhookSecret(),
                   })}
-                  className="bg-green-600 hover:bg-green-700 text-white"
+                  className="bg-success hover:bg-success text-background"
                 >
                   {saveCredsMut.isPending ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : null}
                   Guardar credenciales
@@ -524,7 +524,7 @@ export default function WhatsAppGHLInbox() {
             <div className="max-w-4xl rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
               <div className="px-4 py-3 border-b border-foreground/[0.08] flex items-center justify-between">
                 <span className="text-sm font-semibold text-foreground/70 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-orange-400" />
+                  <Activity className="w-4 h-4 text-warning" />
                   Últimos webhooks recibidos
                 </span>
                 <button onClick={() => refetchEvents()} className="text-xs text-foreground/40 hover:text-foreground">
@@ -550,20 +550,20 @@ export default function WhatsAppGHLInbox() {
                       <tr key={evt.id} className="border-b border-foreground/[0.04] hover:bg-foreground/[0.02]">
                         <td className="px-3 py-2 text-foreground/50 font-mono">{fmtFull(evt.receivedAt)}</td>
                         <td className="px-3 py-2 text-foreground/70">{evt.eventType}</td>
-                        <td className="px-3 py-2 hidden md:table-cell text-foreground/40 font-mono truncate max-w-[100px]">
+                        <td className="px-3 py-2 hidden md:table-cell text-foreground/40 font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-[100px]">
                           {evt.ghlConversationId ?? "—"}
                         </td>
                         <td className="px-3 py-2">
-                          <span className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                            evt.processedStatus === "processed" ? "text-emerald-300 bg-emerald-500/15" :
-                            evt.processedStatus === "failed" ? "text-red-300 bg-red-500/15" :
-                            evt.processedStatus === "ignored" ? "text-zinc-400 bg-zinc-500/15" :
-                            "text-amber-300 bg-amber-500/15"
+                          <span className={`inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full ${
+                            evt.processedStatus === "processed" ? "text-success bg-success/15" :
+                            evt.processedStatus === "failed" ? "text-danger bg-danger/15" :
+                            evt.processedStatus === "ignored" ? "text-muted-foreground bg-muted/15" :
+                            "text-warning bg-warning/15"
                           }`}>
                             {evt.processedStatus}
                           </span>
                         </td>
-                        <td className="px-3 py-2 hidden lg:table-cell text-red-400/70 truncate max-w-[200px]">
+                        <td className="px-3 py-2 hidden lg:table-cell text-danger/70 overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px]">
                           {evt.errorMessage ?? "—"}
                         </td>
                       </tr>
@@ -595,14 +595,14 @@ export default function WhatsAppGHLInbox() {
                   <button
                     onClick={openNewConv}
                     title="Nueva conversación"
-                    className="h-7 w-7 flex items-center justify-center rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors shrink-0"
+                    className="h-7 w-7 flex items-center justify-center rounded-lg bg-success/20 text-success hover:bg-success/15 transition-colors shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 <div className="flex gap-1.5">
                   <Select value={filter} onValueChange={v => setFilter(v as FilterKey)}>
-                    <SelectTrigger className="h-6 text-[10px] flex-1">
+                    <SelectTrigger className="h-6 text-xs flex-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -614,7 +614,7 @@ export default function WhatsAppGHLInbox() {
                     </SelectContent>
                   </Select>
                   <Select value={statusFilter} onValueChange={v => setStatusFilter(v as StatusKey)}>
-                    <SelectTrigger className="h-6 text-[10px] w-24">
+                    <SelectTrigger className="h-6 text-xs w-24">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -633,7 +633,7 @@ export default function WhatsAppGHLInbox() {
               <div className="flex-1 overflow-y-auto">
                 {convsLoading && (
                   <div className="flex items-center justify-center h-20">
-                    <RefreshCw className="w-4 h-4 animate-spin text-green-400" />
+                    <RefreshCw className="w-4 h-4 animate-spin text-success" />
                   </div>
                 )}
                 {!convsLoading && conversations.length === 0 && (
@@ -650,46 +650,46 @@ export default function WhatsAppGHLInbox() {
                       key={conv.ghlConversationId}
                       onClick={() => setSelectedConvId(conv.ghlConversationId)}
                       className={`w-full text-left px-3 py-2.5 border-b border-foreground/[0.05] transition-colors ${
-                        isSelected ? "bg-green-500/10" : "hover:bg-foreground/[0.03]"
+                        isSelected ? "bg-success/10" : "hover:bg-foreground/[0.03]"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-1">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-green-600/20 flex items-center justify-center shrink-0">
-                            <MessageCircle className="w-3.5 h-3.5 text-green-400" />
+                          <div className="w-7 h-7 rounded-full bg-success/20 flex items-center justify-center shrink-0">
+                            <MessageCircle className="w-3.5 h-3.5 text-success" />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1">
-                              <span className="text-xs font-semibold text-foreground/80 truncate max-w-[100px]">
+                              <span className="text-xs font-semibold text-foreground/80 overflow-hidden text-ellipsis whitespace-nowrap max-w-[100px]">
                                 {conv.customerName ?? conv.phone ?? "Desconocido"}
                               </span>
-                              {conv.starred && <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400 shrink-0" />}
+                              {conv.starred && <Star className="w-2.5 h-2.5 text-warning fill-warning shrink-0" />}
                             </div>
-                            <div className="text-[10px] text-foreground/40 truncate max-w-[130px]">
+                            <div className="text-xs text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap max-w-[130px]">
                               {conv.lastMessagePreview ?? conv.phone ?? ""}
                             </div>
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className="text-[9px] text-foreground/30">{fmtTime(conv.lastMessageAt)}</span>
+                          <span className="text-xs text-foreground/30">{fmtTime(conv.lastMessageAt)}</span>
                           {(conv.unreadCount ?? 0) > 0 && (
-                            <span className="text-[9px] font-bold bg-green-500 text-white rounded-full w-4 h-4 flex items-center justify-center">
+                            <span className="text-xs font-bold bg-success text-background rounded-full w-4 h-4 flex items-center justify-center">
                               {conv.unreadCount}
                             </span>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-1 mt-1">
-                        <span className={`text-[9px] px-1 py-0.5 rounded-full font-medium ${cfg.color} ${cfg.bg}`}>
+                        <span className={`text-xs px-1 py-0.5 rounded-full font-medium ${cfg.color} ${cfg.bg}`}>
                           {cfg.label}
                         </span>
                         {conv.linkedQuoteId && (
-                          <span className="text-[9px] px-1 py-0.5 rounded-full bg-sky-500/15 text-sky-300">
+                          <span className="text-xs px-1 py-0.5 rounded-full bg-info/15 text-info">
                             Presp.
                           </span>
                         )}
                         {conv.linkedReservationId && (
-                          <span className="text-[9px] px-1 py-0.5 rounded-full bg-violet-500/15 text-violet-300">
+                          <span className="text-xs px-1 py-0.5 rounded-full bg-primary/15 text-primary">
                             Reserva
                           </span>
                         )}
@@ -697,7 +697,7 @@ export default function WhatsAppGHLInbox() {
                     </button>
                   );
                 })}
-                <div className="px-3 py-2 text-[10px] text-foreground/20 text-center">
+                <div className="px-3 py-2 text-xs text-foreground/20 text-center">
                   {totalConvs} conversaciones
                 </div>
               </div>
@@ -709,14 +709,14 @@ export default function WhatsAppGHLInbox() {
                 {/* Header del chat */}
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-foreground/[0.08] shrink-0">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-green-600/20 flex items-center justify-center">
-                      <MessageCircle className="w-4 h-4 text-green-400" />
+                    <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center">
+                      <MessageCircle className="w-4 h-4 text-success" />
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-foreground/80">
                         {selectedConv.customerName ?? selectedConv.phone ?? "Desconocido"}
                       </div>
-                      <div className="text-[10px] text-foreground/40">
+                      <div className="text-xs text-foreground/40">
                         {selectedConv.phone ?? ""} {selectedConv.email ? `· ${selectedConv.email}` : ""}
                       </div>
                     </div>
@@ -741,9 +741,9 @@ export default function WhatsAppGHLInbox() {
                     {/* Estrella */}
                     <button
                       onClick={() => toggleStarred.mutate({ ghlConversationId: selectedConv.ghlConversationId, starred: !selectedConv.starred })}
-                      className={`p-1.5 rounded-lg hover:bg-foreground/[0.08] transition-colors ${selectedConv.starred ? "text-amber-400" : "text-foreground/30"}`}
+                      className={`p-1.5 rounded-lg hover:bg-foreground/[0.08] transition-colors ${selectedConv.starred ? "text-warning" : "text-foreground/30"}`}
                     >
-                      <Star className={`w-3.5 h-3.5 ${selectedConv.starred ? "fill-amber-400" : ""}`} />
+                      <Star className={`w-3.5 h-3.5 ${selectedConv.starred ? "fill-warning" : ""}`} />
                     </button>
                     {/* GHL externo */}
                     {selectedConv.ghlContactId && (
@@ -751,7 +751,7 @@ export default function WhatsAppGHLInbox() {
                         href={`https://app.gohighlevel.com/contacts/${selectedConv.ghlContactId}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/30 hover:text-sky-400 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/30 hover:text-info transition-colors"
                         title="Abrir en GHL"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -764,7 +764,7 @@ export default function WhatsAppGHLInbox() {
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {msgsLoading && (
                     <div className="flex items-center justify-center h-20">
-                      <RefreshCw className="w-4 h-4 animate-spin text-green-400" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-success" />
                     </div>
                   )}
                   {!msgsLoading && (messages ?? []).length === 0 && (
@@ -776,16 +776,16 @@ export default function WhatsAppGHLInbox() {
                     const isOut = msg.direction === "outbound";
                     return (
                       <div key={msg.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs ${
+                        <div className={`max-w-[75%] rounded-xl px-3.5 py-2.5 text-xs ${
                           isOut
-                            ? "bg-green-600/30 text-green-100 rounded-br-sm"
+                            ? "bg-success/15 text-success rounded-br-sm"
                             : "bg-foreground/[0.07] text-foreground/80 rounded-bl-sm"
                         }`}>
                           {msg.body && <p className="whitespace-pre-wrap">{msg.body}</p>}
                           {!msg.body && msg.messageType !== "text" && (
                             <p className="italic text-foreground/40">[{msg.messageType}]</p>
                           )}
-                          <div className={`text-[9px] mt-1 ${isOut ? "text-green-200/50 text-right" : "text-foreground/30"}`}>
+                          <div className={`text-xs mt-1 ${isOut ? "text-success/50 text-right" : "text-foreground/30"}`}>
                             {fmtTime(msg.sentAt)}
                             {isOut && msg.deliveryStatus === "sent" && " ✓"}
                           </div>
@@ -799,7 +799,7 @@ export default function WhatsAppGHLInbox() {
                 {/* Área de respuesta */}
                 <div className="border-t border-foreground/[0.08] p-3 shrink-0">
                   {replyError && (
-                    <div className="mb-2 text-xs text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2 flex items-start gap-2">
+                    <div className="mb-2 text-xs text-warning bg-warning/10 rounded-lg px-3 py-2 flex items-start gap-2">
                       <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                       <span>{replyError}</span>
                     </div>
@@ -822,7 +822,7 @@ export default function WhatsAppGHLInbox() {
                       size="sm"
                       disabled={replySending || !replyText.trim()}
                       onClick={sendReply}
-                      className="bg-green-600 hover:bg-green-700 text-white self-end"
+                      className="bg-success hover:bg-success text-background self-end"
                     >
                       {replySending
                         ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -830,7 +830,7 @@ export default function WhatsAppGHLInbox() {
                       }
                     </Button>
                   </div>
-                  <p className="text-[10px] text-foreground/20 mt-1">
+                  <p className="text-xs text-foreground/20 mt-1">
                     Si el envío no está habilitado, se mostrará el motivo arriba.
                   </p>
                 </div>
@@ -846,7 +846,7 @@ export default function WhatsAppGHLInbox() {
               <div className="w-56 shrink-0 border-l border-foreground/[0.08] overflow-y-auto p-3 space-y-4">
                 {/* Cliente */}
                 <div>
-                  <h3 className="text-[10px] font-semibold text-foreground/40 uppercase tracking-wider mb-2">Cliente</h3>
+                  <h3 className="text-xs font-semibold text-foreground/40 uppercase tracking-wider mb-2">Cliente</h3>
                   <div className="space-y-1.5 text-xs">
                     {selectedConv.customerName && (
                       <div className="flex items-center gap-1.5 text-foreground/70">
@@ -857,13 +857,13 @@ export default function WhatsAppGHLInbox() {
                     {selectedConv.phone && (
                       <div className="flex items-center gap-1.5 text-foreground/70">
                         <Phone className="w-3 h-3 text-foreground/30 shrink-0" />
-                        <a href={`tel:${selectedConv.phone}`} className="hover:text-green-400">{selectedConv.phone}</a>
+                        <a href={`tel:${selectedConv.phone}`} className="hover:text-success">{selectedConv.phone}</a>
                       </div>
                     )}
                     {selectedConv.email && (
                       <div className="flex items-center gap-1.5 text-foreground/70">
                         <Mail className="w-3 h-3 text-foreground/30 shrink-0" />
-                        <span className="truncate">{selectedConv.email}</span>
+                        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{selectedConv.email}</span>
                       </div>
                     )}
                     {selectedConv.channel && (
@@ -877,27 +877,27 @@ export default function WhatsAppGHLInbox() {
 
                 {/* Vinculaciones */}
                 <div>
-                  <h3 className="text-[10px] font-semibold text-foreground/40 uppercase tracking-wider mb-2">Vinculaciones</h3>
+                  <h3 className="text-xs font-semibold text-foreground/40 uppercase tracking-wider mb-2">Vinculaciones</h3>
                   <div className="space-y-2">
                     {/* Presupuesto */}
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-foreground/50 flex items-center gap-1">
+                      <span className="text-xs text-foreground/50 flex items-center gap-1">
                         <FileText className="w-3 h-3" /> Presupuesto
                       </span>
                       {selectedConv.linkedQuoteId ? (
                         <div className="flex items-center gap-1">
                           <a href={`/admin/crm?tab=quotes&search=${(selectedConv as any).linkedQuoteNumber ?? selectedConv.linkedQuoteId}`}
-                            className="text-[10px] text-sky-400 hover:underline font-mono">
+                            className="text-xs text-info hover:underline font-mono">
                             {(selectedConv as any).linkedQuoteNumber ?? `#${selectedConv.linkedQuoteId}`}
                           </a>
                           <button onClick={() => linkQuoteMut.mutate({ ghlConversationId: selectedConv.ghlConversationId, quoteId: null })}
-                            className="text-foreground/20 hover:text-red-400 transition-colors">
+                            className="text-foreground/20 hover:text-danger transition-colors">
                             <Unlink className="w-2.5 h-2.5" />
                           </button>
                         </div>
                       ) : (
                         <button onClick={() => { setLinkQuoteSearch(""); setLinkQuoteSelected(null); setLinkQuoteOpen(true); }}
-                          className="text-[10px] text-foreground/30 hover:text-sky-400 flex items-center gap-0.5">
+                          className="text-xs text-foreground/30 hover:text-info flex items-center gap-0.5">
                           <Link2 className="w-2.5 h-2.5" /> Vincular
                         </button>
                       )}
@@ -905,23 +905,23 @@ export default function WhatsAppGHLInbox() {
 
                     {/* Reserva */}
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-foreground/50 flex items-center gap-1">
+                      <span className="text-xs text-foreground/50 flex items-center gap-1">
                         <CalendarDays className="w-3 h-3" /> Reserva
                       </span>
                       {selectedConv.linkedReservationId ? (
                         <div className="flex items-center gap-1">
                           <a href={`/admin/crm?tab=reservations&search=${(selectedConv as any).linkedReservationNumber ?? selectedConv.linkedReservationId}`}
-                            className="text-[10px] text-violet-400 hover:underline font-mono">
+                            className="text-xs text-primary hover:underline font-mono">
                             {(selectedConv as any).linkedReservationNumber ?? `#${selectedConv.linkedReservationId}`}
                           </a>
                           <button onClick={() => linkResMut.mutate({ ghlConversationId: selectedConv.ghlConversationId, reservationId: null })}
-                            className="text-foreground/20 hover:text-red-400 transition-colors">
+                            className="text-foreground/20 hover:text-danger transition-colors">
                             <Unlink className="w-2.5 h-2.5" />
                           </button>
                         </div>
                       ) : (
                         <button onClick={() => { setLinkResSearch(""); setLinkResSelected(null); setLinkResOpen(true); }}
-                          className="text-[10px] text-foreground/30 hover:text-violet-400 flex items-center gap-0.5">
+                          className="text-xs text-foreground/30 hover:text-primary flex items-center gap-0.5">
                           <Link2 className="w-2.5 h-2.5" /> Vincular
                         </button>
                       )}
@@ -931,20 +931,20 @@ export default function WhatsAppGHLInbox() {
 
                 {/* Acciones rápidas */}
                 <div>
-                  <h3 className="text-[10px] font-semibold text-foreground/40 uppercase tracking-wider mb-2">Acceso rápido</h3>
+                  <h3 className="text-xs font-semibold text-foreground/40 uppercase tracking-wider mb-2">Acceso rápido</h3>
                   <div className="space-y-1.5">
                     <a href={`/admin/crm?tab=quotes&newContact=${encodeURIComponent(selectedConv.customerName ?? "")}&newPhone=${encodeURIComponent(selectedConv.phone ?? "")}&newEmail=${encodeURIComponent(selectedConv.email ?? "")}`}
-                      className="flex items-center gap-1.5 text-[10px] text-foreground/40 hover:text-sky-400 transition-colors">
+                      className="flex items-center gap-1.5 text-xs text-foreground/40 hover:text-info transition-colors">
                       <FileText className="w-3 h-3" /> Nuevo presupuesto
                     </a>
                     <a href={`/admin/crm?tab=reservations&newContact=${encodeURIComponent(selectedConv.customerName ?? "")}&newPhone=${encodeURIComponent(selectedConv.phone ?? "")}&newEmail=${encodeURIComponent(selectedConv.email ?? "")}`}
-                      className="flex items-center gap-1.5 text-[10px] text-foreground/40 hover:text-violet-400 transition-colors">
+                      className="flex items-center gap-1.5 text-xs text-foreground/40 hover:text-primary transition-colors">
                       <CalendarDays className="w-3 h-3" /> Nueva reserva
                     </a>
                     {selectedConv.ghlContactId && (
                       <a href={`https://app.gohighlevel.com/contacts/${selectedConv.ghlContactId}`}
                         target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-[10px] text-foreground/40 hover:text-green-400 transition-colors">
+                        className="flex items-center gap-1.5 text-xs text-foreground/40 hover:text-success transition-colors">
                         <ExternalLink className="w-3 h-3" /> Abrir en GHL
                       </a>
                     )}
@@ -952,7 +952,7 @@ export default function WhatsAppGHLInbox() {
                 </div>
 
                 {/* Meta */}
-                <div className="text-[9px] text-foreground/20 space-y-0.5 pt-2 border-t border-foreground/[0.06]">
+                <div className="text-xs text-foreground/20 space-y-0.5 pt-2 border-t border-foreground/[0.06]">
                   <div>Conv: <span className="font-mono">{selectedConv.ghlConversationId.slice(0, 12)}…</span></div>
                   {selectedConv.lastMessageAt && (
                     <div>Último: {fmtFull(selectedConv.lastMessageAt)}</div>
@@ -970,12 +970,12 @@ export default function WhatsAppGHLInbox() {
           <DialogHeader><DialogTitle>Vincular presupuesto</DialogTitle></DialogHeader>
           <div className="space-y-3">
             {linkQuoteSelected ? (
-              <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 flex items-center justify-between">
+              <div className="rounded-lg border border-info/40 bg-info/10 p-3 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-mono text-sky-400">{linkQuoteSelected.quoteNumber}</p>
-                  <p className="text-[10px] text-foreground/60">{linkQuoteSelected.clientName}</p>
+                  <p className="text-xs font-mono text-info">{linkQuoteSelected.quoteNumber}</p>
+                  <p className="text-xs text-foreground/60">{linkQuoteSelected.clientName}</p>
                 </div>
-                <button onClick={() => setLinkQuoteSelected(null)} className="text-foreground/30 hover:text-red-400 text-[10px]">✕ Cambiar</button>
+                <button onClick={() => setLinkQuoteSelected(null)} className="text-foreground/30 hover:text-danger text-xs">✕ Cambiar</button>
               </div>
             ) : (
               <div className="space-y-1">
@@ -990,13 +990,13 @@ export default function WhatsAppGHLInbox() {
                 {linkQuoteSearch.length >= 1 && (
                   <div className="mt-1 rounded-md border border-border/40 bg-card overflow-hidden max-h-48 overflow-y-auto">
                     {!quoteSearchResults?.length ? (
-                      <p className="text-[10px] text-foreground/40 text-center py-3">Sin resultados</p>
+                      <p className="text-xs text-foreground/40 text-center py-3">Sin resultados</p>
                     ) : quoteSearchResults.map(q => (
                       <button key={q.id}
                         onClick={() => setLinkQuoteSelected({ id: q.id, quoteNumber: q.quoteNumber, clientName: q.clientName })}
                         className="w-full text-left px-3 py-2 hover:bg-foreground/5 border-b border-border/20 last:border-0">
-                        <p className="text-xs font-mono text-sky-400">{q.quoteNumber}</p>
-                        <p className="text-[10px] text-foreground/60 truncate">{q.clientName || q.title} · {q.status} · {q.total}€</p>
+                        <p className="text-xs font-mono text-info">{q.quoteNumber}</p>
+                        <p className="text-xs text-foreground/60 overflow-hidden text-ellipsis whitespace-nowrap">{q.clientName || q.title} · {q.status} · {q.total}€</p>
                       </button>
                     ))}
                   </div>
@@ -1024,12 +1024,12 @@ export default function WhatsAppGHLInbox() {
           <DialogHeader><DialogTitle>Vincular reserva</DialogTitle></DialogHeader>
           <div className="space-y-3">
             {linkResSelected ? (
-              <div className="rounded-lg border border-violet-500/40 bg-violet-500/10 p-3 flex items-center justify-between">
+              <div className="rounded-lg border border-primary/40 bg-primary/10 p-3 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-mono text-violet-400">{linkResSelected.bookingNumber}</p>
-                  <p className="text-[10px] text-foreground/60">{linkResSelected.clientName}</p>
+                  <p className="text-xs font-mono text-primary">{linkResSelected.bookingNumber}</p>
+                  <p className="text-xs text-foreground/60">{linkResSelected.clientName}</p>
                 </div>
-                <button onClick={() => setLinkResSelected(null)} className="text-foreground/30 hover:text-red-400 text-[10px]">✕ Cambiar</button>
+                <button onClick={() => setLinkResSelected(null)} className="text-foreground/30 hover:text-danger text-xs">✕ Cambiar</button>
               </div>
             ) : (
               <div className="space-y-1">
@@ -1044,13 +1044,13 @@ export default function WhatsAppGHLInbox() {
                 {linkResSearch.length >= 1 && (
                   <div className="mt-1 rounded-md border border-border/40 bg-card overflow-hidden max-h-48 overflow-y-auto">
                     {!resSearchResults?.length ? (
-                      <p className="text-[10px] text-foreground/40 text-center py-3">Sin resultados</p>
+                      <p className="text-xs text-foreground/40 text-center py-3">Sin resultados</p>
                     ) : resSearchResults.map(r => (
                       <button key={r.id}
                         onClick={() => setLinkResSelected({ id: r.id, bookingNumber: r.bookingNumber, clientName: r.clientName })}
                         className="w-full text-left px-3 py-2 hover:bg-foreground/5 border-b border-border/20 last:border-0">
-                        <p className="text-xs font-mono text-violet-400">{r.bookingNumber}</p>
-                        <p className="text-[10px] text-foreground/60 truncate">{r.clientName} · {r.status} · {r.totalAmount}€</p>
+                        <p className="text-xs font-mono text-primary">{r.bookingNumber}</p>
+                        <p className="text-xs text-foreground/60 overflow-hidden text-ellipsis whitespace-nowrap">{r.clientName} · {r.status} · {r.totalAmount}€</p>
                       </button>
                     ))}
                   </div>
@@ -1076,7 +1076,7 @@ export default function WhatsAppGHLInbox() {
         <DialogContent className="max-w-md flex flex-col max-h-[90vh]">
           <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
-              <MessageCircle className="w-4 h-4 text-green-400" />
+              <MessageCircle className="w-4 h-4 text-success" />
               Nueva conversación WhatsApp
             </DialogTitle>
           </DialogHeader>
@@ -1090,7 +1090,7 @@ export default function WhatsAppGHLInbox() {
                 placeholder="+34 600 000 000"
                 className="h-8 text-xs font-mono"
               />
-              <p className="text-[10px] text-foreground/40">Incluye el código de país. Si el contacto no existe en GHL se creará automáticamente.</p>
+              <p className="text-xs text-foreground/40">Incluye el código de país. Si el contacto no existe en GHL se creará automáticamente.</p>
             </div>
 
             <div className="space-y-1">
@@ -1107,13 +1107,13 @@ export default function WhatsAppGHLInbox() {
             <div className="flex rounded-lg overflow-hidden border border-foreground/[0.12] text-xs font-medium">
               <button
                 onClick={() => setNewConvMode("text")}
-                className={`flex-1 py-1.5 transition-colors ${newConvMode === "text" ? "bg-green-600/20 text-green-400" : "text-foreground/40 hover:text-foreground"}`}
+                className={`flex-1 py-1.5 transition-colors ${newConvMode === "text" ? "bg-success/20 text-success" : "text-foreground/40 hover:text-foreground"}`}
               >
                 Texto libre
               </button>
               <button
                 onClick={() => setNewConvMode("template")}
-                className={`flex-1 py-1.5 transition-colors border-l border-foreground/[0.12] ${newConvMode === "template" ? "bg-green-600/20 text-green-400" : "text-foreground/40 hover:text-foreground"}`}
+                className={`flex-1 py-1.5 transition-colors border-l border-foreground/[0.12] ${newConvMode === "template" ? "bg-success/20 text-success" : "text-foreground/40 hover:text-foreground"}`}
               >
                 Plantilla WhatsApp
               </button>
@@ -1129,7 +1129,7 @@ export default function WhatsAppGHLInbox() {
                   rows={3}
                   className="text-xs resize-none"
                 />
-                <p className="text-[10px] text-amber-400/80">Solo funciona si el contacto te ha escrito en las últimas 24h. Para contactos nuevos usa plantilla.</p>
+                <p className="text-xs text-warning/80">Solo funciona si el contacto te ha escrito en las últimas 24h. Para contactos nuevos usa plantilla.</p>
               </div>
             )}
 
@@ -1141,7 +1141,7 @@ export default function WhatsAppGHLInbox() {
                     <RefreshCw className="w-3 h-3 animate-spin" /> Cargando plantillas...
                   </div>
                 ) : templates.length === 0 ? (
-                  <p className="text-xs text-red-400/80">No se encontraron plantillas aprobadas en GHL. Créalas en GHL → Marketing → Plantillas.</p>
+                  <p className="text-xs text-danger/80">No se encontraron plantillas aprobadas en GHL. Créalas en GHL → Marketing → Plantillas.</p>
                 ) : (
                   <Select value={newConvTemplateId} onValueChange={setNewConvTemplateId}>
                     <SelectTrigger className="h-8 text-xs">
@@ -1152,7 +1152,7 @@ export default function WhatsAppGHLInbox() {
                         <SelectItem key={t.id ?? t._id} value={t.id ?? t._id}>
                           <div className="py-0.5">
                             <div className="font-medium text-xs">{t.name ?? t.title}</div>
-                            {t.body && <div className="text-[10px] text-foreground/50 truncate max-w-[260px]">{t.body}</div>}
+                            {t.body && <div className="text-xs text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap max-w-[260px]">{t.body}</div>}
                           </div>
                         </SelectItem>
                       ))}
@@ -1160,7 +1160,7 @@ export default function WhatsAppGHLInbox() {
                   </Select>
                 )}
                 {newConvTemplateId && templates.find((t: any) => (t.id ?? t._id) === newConvTemplateId)?.body && (
-                  <div className="rounded-lg bg-green-500/5 border border-green-500/20 p-3 text-xs text-foreground/70 whitespace-pre-wrap">
+                  <div className="rounded-lg bg-success/5 border border-success/20 p-3 text-xs text-foreground/70 whitespace-pre-wrap">
                     {templates.find((t: any) => (t.id ?? t._id) === newConvTemplateId).body}
                   </div>
                 )}
@@ -1172,7 +1172,7 @@ export default function WhatsAppGHLInbox() {
             <Button variant="outline" size="sm" onClick={() => setShowNewConv(false)}>Cancelar</Button>
             <Button
               size="sm"
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-success hover:bg-success text-background"
               disabled={newConvSending}
               onClick={sendNewConv}
             >

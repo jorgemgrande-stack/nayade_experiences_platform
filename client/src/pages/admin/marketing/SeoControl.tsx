@@ -56,7 +56,7 @@ function Delta({ delta }: { delta: number | null }) {
   if (delta == null) return <span className="text-muted-foreground">—</span>;
   if (delta === 0) return <span className="text-muted-foreground">=</span>;
   // Posición mayor = peor
-  return delta > 0 ? <span className="text-red-600 dark:text-red-400">▼ {fmtPos(delta)}</span> : <span className="text-emerald-600 dark:text-emerald-400">▲ {fmtPos(-delta)}</span>;
+  return delta > 0 ? <span className="text-danger ">▼ {fmtPos(delta)}</span> : <span className="text-success ">▲ {fmtPos(-delta)}</span>;
 }
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ function Dashboard() {
           <ul className="space-y-2">
             {d.alerts.map((a, i) => (
               <li key={i} className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-foreground">{a.title}</span>
@@ -537,7 +537,7 @@ function Reviews() {
             {q.data!.recent.map((r) => (
               <li key={r.id} className="rounded-lg border border-border p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex items-center gap-0.5 font-semibold text-foreground">{r.rating}<Star className="h-3.5 w-3.5 fill-current text-amber-500" /></span>
+                  <span className="flex items-center gap-0.5 font-semibold text-foreground">{r.rating}<Star className="h-3.5 w-3.5 fill-current text-warning" /></span>
                   <span className="text-foreground">{r.author ?? "Anónimo"}</span>
                   <Badge variant="outline">{SEO_REVIEW_SOURCE_LABELS[r.source]}</Badge>
                   {r.pending && <Badge variant="secondary">Pendiente de moderar</Badge>}

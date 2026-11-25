@@ -421,15 +421,15 @@ const CATALOG: CategoryEntry[] = [
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
 const COLOR_MAP: Record<string, { border: string; bg: string; text: string; badge: string }> = {
-  sky:     { border: "border-sky-500/25",     bg: "bg-sky-500/5",     text: "text-sky-400",     badge: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
-  orange:  { border: "border-orange-500/25",  bg: "bg-orange-500/5",  text: "text-orange-400",  badge: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
-  emerald: { border: "border-emerald-500/25", bg: "bg-emerald-500/5", text: "text-emerald-400", badge: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  violet:  { border: "border-violet-500/25",  bg: "bg-violet-500/5",  text: "text-violet-400",  badge: "bg-violet-500/15 text-violet-300 border-violet-500/30" },
-  red:     { border: "border-red-500/25",     bg: "bg-red-500/5",     text: "text-red-400",     badge: "bg-red-500/15 text-red-300 border-red-500/30" },
-  amber:   { border: "border-amber-500/25",   bg: "bg-amber-500/5",   text: "text-amber-400",   badge: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  rose:    { border: "border-rose-500/25",    bg: "bg-rose-500/5",    text: "text-rose-400",    badge: "bg-rose-500/15 text-rose-300 border-rose-500/30" },
-  zinc:    { border: "border-zinc-500/25",    bg: "bg-zinc-500/5",    text: "text-zinc-400",    badge: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30" },
-  teal:    { border: "border-teal-500/25",    bg: "bg-teal-500/5",    text: "text-teal-400",    badge: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
+  sky:     { border: "border-info/25",     bg: "bg-info/5",     text: "text-info",     badge: "bg-info/15 text-info border-info/30" },
+  orange:  { border: "border-warning/25",  bg: "bg-warning/5",  text: "text-warning",  badge: "bg-warning/15 text-warning border-warning/30" },
+  emerald: { border: "border-success/25", bg: "bg-success/5", text: "text-success", badge: "bg-success/15 text-success border-success/30" },
+  violet:  { border: "border-primary/25",  bg: "bg-primary/5",  text: "text-primary",  badge: "bg-primary/15 text-primary border-primary/30" },
+  red:     { border: "border-danger/25",     bg: "bg-danger/5",     text: "text-danger",     badge: "bg-danger/15 text-danger border-danger/30" },
+  amber:   { border: "border-warning/25",   bg: "bg-warning/5",   text: "text-warning",   badge: "bg-warning/15 text-warning border-warning/30" },
+  rose:    { border: "border-danger/25",    bg: "bg-danger/5",    text: "text-danger",    badge: "bg-danger/15 text-danger border-danger/30" },
+  zinc:    { border: "border-border",    bg: "bg-muted/5",    text: "text-muted-foreground",    badge: "bg-muted/15 text-foreground/70 border-border" },
+  teal:    { border: "border-success/25",    bg: "bg-success/5",    text: "text-success",    badge: "bg-success/15 text-success border-success/30" },
 };
 
 // ─── Template card ─────────────────────────────────────────────────────────────
@@ -440,40 +440,40 @@ function TemplateCard({ tmpl, color }: { tmpl: TemplateEntry; color: string }) {
     <div className="rounded-lg border border-foreground/[0.07] bg-background/60 p-3 space-y-2 hover:border-foreground/[0.14] transition-colors">
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-foreground/85 leading-snug">{tmpl.name}</span>
-        <span className={`shrink-0 inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
-          tmpl.status === "active" ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30" :
-          tmpl.status === "inactive" ? "text-red-300 bg-red-500/15 border-red-500/30" :
-          "text-amber-300 bg-amber-500/15 border-amber-500/30"
+        <span className={`shrink-0 inline-flex items-center text-xs font-bold px-1.5 py-0.5 rounded-full border ${
+          tmpl.status === "active" ? "text-success bg-success/15 border-success/30" :
+          tmpl.status === "inactive" ? "text-danger bg-danger/15 border-danger/30" :
+          "text-warning bg-warning/15 border-warning/30"
         }`}>
           {tmpl.status === "active" ? "Activa" : tmpl.status === "inactive" ? "Inactiva" : "Manual"}
         </span>
       </div>
 
-      <div className="text-[10px] text-foreground/45 leading-relaxed">{tmpl.trigger}</div>
+      <div className="text-xs text-foreground/45 leading-relaxed">{tmpl.trigger}</div>
 
       <div className="flex flex-wrap gap-1.5 items-center">
         {tmpl.sendToCustomer && (
-          <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-300 border border-sky-500/20">
+          <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-info/10 text-info border border-info/20">
             <Mail className="w-2.5 h-2.5" /> Cliente
           </span>
         )}
         {tmpl.sendToAdmin && (
-          <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
+          <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/20">
             <Copy className="w-2.5 h-2.5" /> Admin
           </span>
         )}
         {tmpl.hasReminders && (
-          <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
+          <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
             <RefreshCw className="w-2.5 h-2.5" /> {tmpl.reminderCount ?? "?"} reenvío{(tmpl.reminderCount ?? 1) !== 1 ? "s" : ""}
           </span>
         )}
-        <span className="inline-flex items-center gap-0.5 text-[9px] font-mono text-foreground/30">
+        <span className="inline-flex items-center gap-0.5 text-xs font-mono text-foreground/30">
           {tmpl.function}
         </span>
       </div>
 
       {tmpl.notes && (
-        <div className="text-[9px] text-foreground/35 italic border-t border-foreground/[0.05] pt-1.5">{tmpl.notes}</div>
+        <div className="text-xs text-foreground/35 italic border-t border-foreground/[0.05] pt-1.5">{tmpl.notes}</div>
       )}
     </div>
   );
@@ -497,10 +497,10 @@ function CategoryBlock({ cat }: { cat: CategoryEntry }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className={`text-sm font-bold ${c.text}`}>{cat.label}</div>
-          <div className="text-[10px] text-foreground/40">{cat.description}</div>
+          <div className="text-xs text-foreground/40">{cat.description}</div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${c.badge}`}>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${c.badge}`}>
             {cat.templates.length} plantilla{cat.templates.length !== 1 ? "s" : ""}
           </span>
           {open ? <ChevronDown className="w-3.5 h-3.5 text-foreground/30" /> : <ChevronRight className="w-3.5 h-3.5 text-foreground/30" />}
@@ -552,17 +552,17 @@ export default function CommunicationsMap() {
           <div className="text-xs text-foreground/50 mb-1">Total plantillas</div>
           <div className="text-2xl font-bold text-foreground">{totalTemplates}</div>
         </div>
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+        <div className="rounded-xl border border-success/20 bg-success/5 p-4">
           <div className="text-xs text-foreground/50 mb-1">Activas</div>
-          <div className="text-2xl font-bold text-emerald-400">{activeTemplates}</div>
+          <div className="text-2xl font-bold text-success">{activeTemplates}</div>
         </div>
-        <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
           <div className="text-xs text-foreground/50 mb-1">Con reenvíos</div>
-          <div className="text-2xl font-bold text-purple-400">{withReminders}</div>
+          <div className="text-2xl font-bold text-primary">{withReminders}</div>
         </div>
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+        <div className="rounded-xl border border-warning/20 bg-warning/5 p-4">
           <div className="text-xs text-foreground/50 mb-1">Solo admin</div>
-          <div className="text-2xl font-bold text-amber-400">{adminOnly}</div>
+          <div className="text-2xl font-bold text-warning">{adminOnly}</div>
         </div>
       </div>
 
@@ -573,7 +573,7 @@ export default function CommunicationsMap() {
           placeholder="Buscar plantilla, disparador o función…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 h-8 px-3 text-xs bg-foreground/[0.04] border border-foreground/[0.08] rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-orange-400/50"
+          className="flex-1 h-8 px-3 text-xs bg-foreground/[0.04] border border-foreground/[0.08] rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-warning/50"
         />
         <a
           href="/admin/plantillas-email"
@@ -585,13 +585,13 @@ export default function CommunicationsMap() {
       </div>
 
       {/* Info banner */}
-      <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 px-4 py-3 flex items-start gap-3">
-        <ShieldCheck className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-        <div className="text-[11px] text-foreground/60 leading-relaxed">
+      <div className="rounded-lg border border-info/20 bg-info/5 px-4 py-3 flex items-start gap-3">
+        <ShieldCheck className="w-4 h-4 text-info shrink-0 mt-0.5" />
+        <div className="text-xs text-foreground/60 leading-relaxed">
           <strong className="text-foreground/80">Modo lectura.</strong> Este mapa refleja las plantillas codificadas en{" "}
-          <code className="text-sky-300/80">server/emailTemplates.ts</code>. El estado "Activa" indica que el disparador backend existe y está conectado.
+          <code className="text-info/80">server/emailTemplates.ts</code>. El estado "Activa" indica que el disparador backend existe y está conectado.
           Para editar el HTML de cada plantilla, usa el módulo{" "}
-          <a href="/admin/plantillas-email" className="underline text-sky-300 hover:text-sky-200">Plantillas de email</a>.
+          <a href="/admin/plantillas-email" className="underline text-info hover:text-info">Plantillas de email</a>.
         </div>
       </div>
 
@@ -605,12 +605,12 @@ export default function CommunicationsMap() {
       </div>
 
       {/* Legend */}
-      <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3 flex flex-wrap gap-4 text-[10px] text-foreground/40">
-        <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-sky-400" /> Se envía al cliente</span>
-        <span className="flex items-center gap-1"><Copy className="w-3 h-3 text-amber-400" /> Se envía/copia al admin</span>
-        <span className="flex items-center gap-1"><RefreshCw className="w-3 h-3 text-purple-400" /> Tiene reenvíos programados</span>
-        <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-400" /> Plantilla activa</span>
-        <span className="flex items-center gap-1"><XCircle className="w-3 h-3 text-red-400" /> Plantilla inactiva</span>
+      <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3 flex flex-wrap gap-4 text-xs text-foreground/40">
+        <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-info" /> Se envía al cliente</span>
+        <span className="flex items-center gap-1"><Copy className="w-3 h-3 text-warning" /> Se envía/copia al admin</span>
+        <span className="flex items-center gap-1"><RefreshCw className="w-3 h-3 text-primary" /> Tiene reenvíos programados</span>
+        <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-success" /> Plantilla activa</span>
+        <span className="flex items-center gap-1"><XCircle className="w-3 h-3 text-danger" /> Plantilla inactiva</span>
       </div>
     </div>
   );

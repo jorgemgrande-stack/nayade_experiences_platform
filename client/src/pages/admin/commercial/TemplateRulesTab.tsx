@@ -64,10 +64,10 @@ const LEGACY_CRON_KEYS: Record<string, string> = {
 function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs text-gray-400">{label}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
       <button
         onClick={() => onChange(!value)}
-        className={`w-9 h-5 rounded-full transition-colors ${value ? "bg-emerald-500" : "bg-gray-700"}`}
+        className={`w-9 h-5 rounded-full transition-colors ${value ? "bg-success" : "bg-muted/50"}`}
       >
         <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${value ? "translate-x-4" : "translate-x-0"}`} />
       </button>
@@ -93,14 +93,14 @@ function RuleCard({
   };
 
   return (
-    <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-3">
+    <div className="bg-muted border border-border rounded-lg p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${rule.isActive ? "bg-emerald-400" : "bg-gray-600"}`} />
-            <span className="text-sm font-medium text-white">{rule.name}</span>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${rule.isActive ? "bg-success" : "bg-muted/50"}`} />
+            <span className="text-sm font-medium text-foreground">{rule.name}</span>
           </div>
-          <div className="mt-1 text-xs text-gray-500 font-mono">
+          <div className="mt-1 text-xs text-muted-foreground font-mono">
             +{rule.delayHours}h desde {rule.calculateFrom === "trigger_time" ? "trigger" : rule.calculateFrom}
             {" · "}{rule.allowedSendStart}–{rule.allowedSendEnd}
             {" · "}max {rule.maxSendsPerEntity}x
@@ -109,22 +109,22 @@ function RuleCard({
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
             {rule.respectCommercialPause && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-900/30 border border-purple-700/50 text-purple-300">comercial</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-primary/15 border border-primary/50 text-primary">comercial</span>
             )}
             {rule.onlyIfNotViewed && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-900/30 border border-blue-700/50 text-blue-300">solo no vistos</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-info/15 border border-info/50 text-info">solo no vistos</span>
             )}
             {!rule.allowIfViewedButUnpaid && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/30 border border-amber-700/50 text-amber-300">no enviar si visto</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-warning/15 border border-warning/50 text-warning">no enviar si visto</span>
             )}
           </div>
           {rule.emailSubject && (
-            <div className="mt-1 text-xs text-gray-400 truncate">Asunto: {rule.emailSubject}</div>
+            <div className="mt-1 text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">Asunto: {rule.emailSubject}</div>
           )}
         </div>
         <div className="flex gap-1 shrink-0">
-          <button onClick={() => setEditing(true)} className="text-xs text-gray-500 hover:text-white px-2 py-1 rounded hover:bg-[#2a2a2a] transition-colors">Editar</button>
-          <button onClick={() => onDelete(rule.id)} className="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-[#2a2a2a] transition-colors">Borrar</button>
+          <button onClick={() => setEditing(true)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors">Editar</button>
+          <button onClick={() => onDelete(rule.id)} className="text-xs text-danger hover:text-danger px-2 py-1 rounded hover:bg-muted transition-colors">Borrar</button>
         </div>
       </div>
 
@@ -171,18 +171,18 @@ function RuleCard({
                 <Input type="number" value={form.sortOrder} onChange={e => setForm(f => ({ ...f, sortOrder: +e.target.value }))} className="h-8 text-xs" />
               </div>
             </div>
-            <div className="space-y-2 border border-[#2a2a2a] rounded p-3">
-              <div className="text-xs text-gray-500 mb-1">Condiciones de parada</div>
+            <div className="space-y-2 border border-border rounded p-3">
+              <div className="text-xs text-muted-foreground mb-1">Condiciones de parada</div>
               <Toggle value={form.stopIfConverted} onChange={v => setForm(f => ({ ...f, stopIfConverted: v }))} label="Parar si ya hay reserva" />
               <Toggle value={form.stopIfPaid} onChange={v => setForm(f => ({ ...f, stopIfPaid: v }))} label="Parar si ya está pagado" />
               <Toggle value={form.isActive} onChange={v => setForm(f => ({ ...f, isActive: v }))} label="Regla activa" />
             </div>
 
             {/* Bloque comercial (Fase 2 — solo aplica si respectCommercialPause=true) */}
-            <div className="space-y-3 border border-purple-900/40 bg-purple-950/10 rounded p-3">
+            <div className="space-y-3 border border-primary/40 bg-primary/10 rounded p-3">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-medium text-purple-300">Comportamiento comercial</div>
-                <span className="text-[10px] text-purple-400/70 italic">aplica solo si está activado</span>
+                <div className="text-xs font-medium text-primary">Comportamiento comercial</div>
+                <span className="text-xs text-primary/70 italic">aplica solo si está activado</span>
               </div>
               <Toggle
                 value={form.respectCommercialPause}
@@ -226,15 +226,15 @@ function RuleCard({
                 </>
               )}
             </div>
-            <div className="col-span-2 rounded-md bg-blue-950/40 border border-blue-800/40 px-3 py-2 text-xs text-blue-300">
+            <div className="col-span-2 rounded-md bg-info/15 border border-info/40 px-3 py-2 text-xs text-info">
               El contenido del email se lee automáticamente desde <strong>/admin/plantillas-email</strong>. Los campos de abajo son opcionales: solo rellena si quieres sobrescribir el asunto o usar un cuerpo distinto al de la plantilla.
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Sobrescribir asunto <span className="text-gray-600">(opcional)</span></Label>
+              <Label className="text-xs">Sobrescribir asunto <span className="text-muted-foreground">(opcional)</span></Label>
               <Input value={form.emailSubject ?? ""} onChange={e => setForm(f => ({ ...f, emailSubject: e.target.value || null }))} className="h-8 text-xs" placeholder="Vacío = usa el asunto de la plantilla" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Cuerpo alternativo en HTML <span className="text-gray-600">(fallback si no hay plantilla)</span></Label>
+              <Label className="text-xs">Cuerpo alternativo en HTML <span className="text-muted-foreground">(fallback si no hay plantilla)</span></Label>
               <Textarea value={form.emailBody ?? ""} onChange={e => setForm(f => ({ ...f, emailBody: e.target.value || null }))} rows={4} className="text-xs font-mono" placeholder="Vacío = usa el diseño de /admin/plantillas-email" />
             </div>
           </div>
@@ -331,53 +331,53 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
     });
   };
 
-  const statusColor = localActive ? "bg-emerald-900/30 border-emerald-700/50 text-emerald-400" : "bg-red-900/20 border-red-700/30 text-red-400";
+  const statusColor = localActive ? "bg-success/15 border-success/50 text-success" : "bg-danger/20 border-danger/30 text-danger";
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg overflow-hidden">
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="p-3 flex items-center justify-between gap-3 cursor-pointer" onClick={() => setExpanded(e => !e)}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${statusColor}`}>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full border ${statusColor}`}>
             {localActive ? "Activa" : "Inactiva"}
           </span>
-          <span className="text-sm font-medium text-white truncate">{config.friendlyName ?? config.key}</span>
+          <span className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{config.friendlyName ?? config.key}</span>
           {rules && rules.length > 0 && (
-            <span className="text-xs text-amber-400 shrink-0">{rules.length} regla{rules.length !== 1 ? "s" : ""}</span>
+            <span className="text-xs text-warning shrink-0">{rules.length} regla{rules.length !== 1 ? "s" : ""}</span>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-600">{config.category}</span>
-          <span className="text-gray-600 text-xs">{expanded ? "▲" : "▼"}</span>
+          <span className="text-xs text-muted-foreground">{config.category}</span>
+          <span className="text-muted-foreground text-xs">{expanded ? "▲" : "▼"}</span>
         </div>
       </div>
 
       {expanded && (
-        <div className="border-t border-[#2a2a2a] p-4 space-y-4">
+        <div className="border-t border-border p-4 space-y-4">
           {/* Aviso de cobertura legacy */}
           {LEGACY_CRON_KEYS[config.key] && (
-            <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg p-3 flex gap-2 text-xs text-amber-300">
+            <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 flex gap-2 text-xs text-warning">
               <span className="shrink-0 mt-0.5">⚠</span>
               <div>
                 <span className="font-semibold">Cron legacy activo:</span>{" "}
                 {LEGACY_CRON_KEYS[config.key]}.<br />
                 Las reglas de automatización que crees aquí <strong>no generarán jobs automáticos</strong> para esta plantilla
-                — el sistema los bloquea en <code className="font-mono text-amber-200">emailManager.ts</code> para evitar duplicados.
+                — el sistema los bloquea en <code className="font-mono text-warning">emailManager.ts</code> para evitar duplicados.
                 Los recordatorios siguen siendo gestionados por el cron legacy.
               </div>
             </div>
           )}
           {/* Config toggles */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-3 bg-[#111] rounded-lg p-3">
-              <div className="text-xs text-gray-500 font-medium mb-2">Envío principal</div>
+            <div className="space-y-3 bg-muted rounded-lg p-3">
+              <div className="text-xs text-muted-foreground font-medium mb-2">Envío principal</div>
               <Toggle value={localActive} onChange={setLocalActive} label="Plantilla activa" />
               <Toggle value={localToCustomer} onChange={setLocalToCustomer} label="Enviar al cliente" />
               <Toggle value={localToAdmin} onChange={setLocalToAdmin} label="Copia al admin" />
             </div>
-            <div className="space-y-3 bg-[#111] rounded-lg p-3">
-              <div className="text-xs text-gray-500 font-medium mb-2">Email admin</div>
+            <div className="space-y-3 bg-muted rounded-lg p-3">
+              <div className="text-xs text-muted-foreground font-medium mb-2">Email admin</div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Email de copia (override)</Label>
+                <Label className="text-xs text-muted-foreground">Email de copia (override)</Label>
                 <Input
                   type="email"
                   value={localAdminEmail}
@@ -387,7 +387,7 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Asunto personalizado (override)</Label>
+                <Label className="text-xs text-muted-foreground">Asunto personalizado (override)</Label>
                 <Input
                   value={localSubject}
                   onChange={e => setLocalSubject(e.target.value)}
@@ -410,12 +410,12 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
           {/* Rules */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-gray-400">Reglas de automatización / reenvíos</div>
-              <button onClick={() => setShowNewRule(true)} className="text-xs text-orange-400 hover:text-orange-300 transition-colors">+ Nueva regla</button>
+              <div className="text-xs font-medium text-muted-foreground">Reglas de automatización / reenvíos</div>
+              <button onClick={() => setShowNewRule(true)} className="text-xs text-warning hover:text-warning transition-colors">+ Nueva regla</button>
             </div>
 
             {(!rules || rules.length === 0) ? (
-              <div className="text-xs text-gray-600 py-2">Sin reglas de automatización configuradas</div>
+              <div className="text-xs text-muted-foreground py-2">Sin reglas de automatización configuradas</div>
             ) : (
               <div className="space-y-2">
                 {rules.map(r => (
@@ -437,8 +437,8 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Nueva regla de automatización</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="text-xs text-gray-500 bg-[#111] rounded p-2">
-              Plantilla: <span className="text-white font-mono">{config.key}</span>
+            <div className="text-xs text-muted-foreground bg-muted rounded p-2">
+              Plantilla: <span className="text-foreground font-mono">{config.key}</span>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Nombre de la regla</Label>
@@ -470,8 +470,8 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
               </div>
             </div>
             {/* Bloque comercial (Fase 2) */}
-            <div className="space-y-3 border border-purple-900/40 bg-purple-950/10 rounded p-3">
-              <div className="text-xs font-medium text-purple-300">Comportamiento comercial</div>
+            <div className="space-y-3 border border-primary/40 bg-primary/10 rounded p-3">
+              <div className="text-xs font-medium text-primary">Comportamiento comercial</div>
               <Toggle
                 value={ruleForm.respectCommercialPause}
                 onChange={v => setRuleForm(f => ({ ...f, respectCommercialPause: v }))}
@@ -515,15 +515,15 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
               )}
             </div>
 
-            <div className="col-span-2 rounded-md bg-blue-950/40 border border-blue-800/40 px-3 py-2 text-xs text-blue-300">
+            <div className="col-span-2 rounded-md bg-info/15 border border-info/40 px-3 py-2 text-xs text-info">
               El contenido del email se lee automáticamente desde <strong>/admin/plantillas-email</strong>. Los campos de abajo son opcionales: solo rellena si quieres sobrescribir el asunto o usar un cuerpo distinto al de la plantilla.
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Sobrescribir asunto <span className="text-gray-600">(opcional)</span></Label>
+              <Label className="text-xs">Sobrescribir asunto <span className="text-muted-foreground">(opcional)</span></Label>
               <Input value={ruleForm.emailSubject} onChange={e => setRuleForm(f => ({ ...f, emailSubject: e.target.value }))} className="h-8 text-xs" placeholder="Vacío = usa el asunto de la plantilla" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Cuerpo alternativo en HTML <span className="text-gray-600">(fallback si no hay plantilla)</span></Label>
+              <Label className="text-xs">Cuerpo alternativo en HTML <span className="text-muted-foreground">(fallback si no hay plantilla)</span></Label>
               <Textarea value={ruleForm.emailBody} onChange={e => setRuleForm(f => ({ ...f, emailBody: e.target.value }))} rows={4} className="text-xs font-mono" placeholder="Vacío = usa el diseño de /admin/plantillas-email" />
             </div>
           </div>
@@ -543,7 +543,7 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Enviar email de prueba</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="text-xs text-gray-400">Plantilla: <span className="font-mono text-white">{config.key}</span></div>
+            <div className="text-xs text-muted-foreground">Plantilla: <span className="font-mono text-foreground">{config.key}</span></div>
             <div className="space-y-1">
               <Label className="text-xs">Email destinatario</Label>
               <Input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="test@ejemplo.com" className="h-8 text-xs" />
@@ -589,14 +589,14 @@ export default function TemplateRulesTab() {
 
   const uncategorized = filtered.filter(c => !CATEGORIES.includes(c?.category ?? ""));
 
-  if (isLoading) return <div className="py-12 text-center text-gray-600 text-sm">Cargando plantillas...</div>;
+  if (isLoading) return <div className="py-12 text-center text-muted-foreground text-sm">Cargando plantillas...</div>;
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold text-white">Plantillas y reglas</h2>
-        <p className="text-sm text-gray-400 mt-1">
+        <h2 className="text-lg font-semibold text-foreground">Plantillas y reglas</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           Configura el comportamiento de cada plantilla de email. Expande una plantilla para ver y crear reglas de automatización.
         </p>
       </div>
@@ -608,12 +608,12 @@ export default function TemplateRulesTab() {
           placeholder="Buscar plantilla..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-white rounded px-3 py-1.5 w-48 focus:outline-none focus:border-[#444]"
+          className="bg-card border border-border text-sm text-foreground rounded px-3 py-1.5 w-48 focus:outline-none focus:border-primary"
         />
         <select
           value={filterCategory}
           onChange={e => setFilterCategory(e.target.value)}
-          className="bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-gray-300 rounded px-3 py-1.5 focus:outline-none"
+          className="bg-card border border-border text-sm text-foreground/70 rounded px-3 py-1.5 focus:outline-none"
         >
           <option value="all">Todas las categorías</option>
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -624,7 +624,7 @@ export default function TemplateRulesTab() {
       <div className="space-y-6">
         {byCategory.map(({ cat, items }) => (
           <div key={cat}>
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{cat} ({items.length})</div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{cat} ({items.length})</div>
             <div className="space-y-2">
               {items.map(c => c && <TemplateCard key={c.key} config={c as TemplateConfig} />)}
             </div>
@@ -632,7 +632,7 @@ export default function TemplateRulesTab() {
         ))}
         {uncategorized.length > 0 && (
           <div>
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Sin categoría ({uncategorized.length})</div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sin categoría ({uncategorized.length})</div>
             <div className="space-y-2">
               {uncategorized.map(c => c && <TemplateCard key={c.key} config={c as TemplateConfig} />)}
             </div>

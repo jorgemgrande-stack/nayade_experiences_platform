@@ -532,30 +532,30 @@ const AUDIT_DATA: AuditEntry[] = [
 const CATEGORIES = Array.from(new Set(AUDIT_DATA.map((e) => e.category)));
 
 const STATUS_CONFIG = {
-  ok: { label: "OK", color: "text-green-400", bg: "bg-green-900/20", icon: "✓" },
-  warning: { label: "Revisar", color: "text-yellow-400", bg: "bg-yellow-900/20", icon: "⚠" },
-  unknown: { label: "Sin trigger", color: "text-gray-500", bg: "bg-gray-900/20", icon: "?" },
+  ok: { label: "OK", color: "text-success", bg: "bg-success/20", icon: "✓" },
+  warning: { label: "Revisar", color: "text-warning", bg: "bg-warning/20", icon: "⚠" },
+  unknown: { label: "Sin trigger", color: "text-muted-foreground", bg: "bg-muted/20", icon: "?" },
 };
 
 const RECIPIENT_CONFIG = {
-  client: { label: "Cliente", color: "text-blue-300 bg-blue-900/30" },
-  admin: { label: "Admin", color: "text-purple-300 bg-purple-900/30" },
-  both: { label: "Ambos", color: "text-teal-300 bg-teal-900/30" },
-  user: { label: "Usuario", color: "text-indigo-300 bg-indigo-900/30" },
+  client: { label: "Cliente", color: "text-info bg-info/15" },
+  admin: { label: "Admin", color: "text-primary bg-primary/15" },
+  both: { label: "Ambos", color: "text-success bg-success/15" },
+  user: { label: "Usuario", color: "text-info bg-info/15" },
 };
 
 const TRIGGER_CONFIG: Record<TriggerType, { label: string; color: string }> = {
-  event: { label: "Evento", color: "text-cyan-400" },
-  cron: { label: "Cron", color: "text-amber-400" },
-  manual: { label: "Manual", color: "text-gray-400" },
-  unknown: { label: "Desconocido", color: "text-red-400" },
+  event: { label: "Evento", color: "text-info" },
+  cron: { label: "Cron", color: "text-warning" },
+  manual: { label: "Manual", color: "text-muted-foreground" },
+  unknown: { label: "Desconocido", color: "text-danger" },
 };
 
 function CheckMark({ ok }: { ok: boolean }) {
   return ok ? (
-    <span className="text-green-400 text-sm">✓</span>
+    <span className="text-success text-sm">✓</span>
   ) : (
-    <span className="text-red-400 text-sm">✗</span>
+    <span className="text-danger text-sm">✗</span>
   );
 }
 
@@ -565,20 +565,20 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
   const tc = TRIGGER_CONFIG[entry.triggerType];
 
   return (
-    <tr className="border-b border-[#1e1e1e] hover:bg-[#1a1a1a] transition-colors">
+    <tr className="border-b border-border hover:bg-muted transition-colors">
       {/* Category */}
-      <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{entry.category}</td>
+      <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{entry.category}</td>
 
       {/* Function + friendly name */}
       <td className="px-3 py-2 min-w-0">
-        <div className="font-mono text-xs text-white">{entry.functionName}</div>
-        <div className="text-xs text-gray-500 mt-0.5">{entry.friendlyName}</div>
+        <div className="font-mono text-xs text-foreground">{entry.functionName}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{entry.friendlyName}</div>
       </td>
 
       {/* Trigger */}
       <td className="px-3 py-2">
         <div className={`text-xs font-medium ${tc.color}`}>{tc.label}</div>
-        <div className="text-xs text-gray-400 mt-0.5 max-w-[200px] leading-relaxed">{entry.trigger}</div>
+        <div className="text-xs text-muted-foreground mt-0.5 max-w-[200px] leading-relaxed">{entry.trigger}</div>
       </td>
 
       {/* Recipient */}
@@ -598,9 +598,9 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
       </td>
       <td className="px-3 py-2 text-center">
         {entry.isCronDriven ? (
-          <span className="text-amber-400 text-sm" title={entry.cronSource}>⏱</span>
+          <span className="text-warning text-sm" title={entry.cronSource}>⏱</span>
         ) : (
-          <span className="text-gray-700 text-sm">—</span>
+          <span className="text-muted-foreground text-sm">—</span>
         )}
       </td>
 
@@ -611,7 +611,7 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
           <span>{sc.label}</span>
         </span>
         {entry.notes && (
-          <div className="text-xs text-yellow-500 mt-1 max-w-[140px] leading-relaxed">{entry.notes}</div>
+          <div className="text-xs text-warning mt-1 max-w-[140px] leading-relaxed">{entry.notes}</div>
         )}
       </td>
     </tr>
@@ -646,30 +646,30 @@ export default function EmailAuditTab() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold text-white">Auditoría de plantillas de email</h2>
-        <p className="text-sm text-gray-400 mt-1">
+        <h2 className="text-lg font-semibold text-foreground">Auditoría de plantillas de email</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           Estado de las {total} funciones de plantilla definidas en{" "}
-          <span className="font-mono text-gray-300">server/emailTemplates.ts</span>. Solo lectura.
+          <span className="font-mono text-foreground/70">server/emailTemplates.ts</span>. Solo lectura.
         </p>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-white">{total}</div>
-          <div className="text-xs text-gray-500 mt-1">Plantillas totales</div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-foreground">{total}</div>
+          <div className="text-xs text-muted-foreground mt-1">Plantillas totales</div>
         </div>
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-green-400">{okCount}</div>
-          <div className="text-xs text-gray-500 mt-1">Sin incidencias</div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-success">{okCount}</div>
+          <div className="text-xs text-muted-foreground mt-1">Sin incidencias</div>
         </div>
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-yellow-400">{warnCount}</div>
-          <div className="text-xs text-gray-500 mt-1">Requieren revisión</div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-warning">{warnCount}</div>
+          <div className="text-xs text-muted-foreground mt-1">Requieren revisión</div>
         </div>
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-amber-400">{cronCount}</div>
-          <div className="text-xs text-gray-500 mt-1">Accionadas por cron</div>
+        <div className="bg-card border border-border rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-warning">{cronCount}</div>
+          <div className="text-xs text-muted-foreground mt-1">Accionadas por cron</div>
         </div>
       </div>
 
@@ -680,12 +680,12 @@ export default function EmailAuditTab() {
           placeholder="Buscar plantilla..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-white rounded px-3 py-1.5 w-48 focus:outline-none focus:border-[#444]"
+          className="bg-card border border-border text-sm text-foreground rounded px-3 py-1.5 w-48 focus:outline-none focus:border-primary"
         />
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-gray-300 rounded px-3 py-1.5 focus:outline-none"
+          className="bg-card border border-border text-sm text-foreground/70 rounded px-3 py-1.5 focus:outline-none"
         >
           <option value="all">Todas las categorías</option>
           {CATEGORIES.map((c) => (
@@ -695,7 +695,7 @@ export default function EmailAuditTab() {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-gray-300 rounded px-3 py-1.5 focus:outline-none"
+          className="bg-card border border-border text-sm text-foreground/70 rounded px-3 py-1.5 focus:outline-none"
         >
           <option value="all">Todos los estados</option>
           <option value="ok">OK</option>
@@ -705,7 +705,7 @@ export default function EmailAuditTab() {
         {(filterCategory !== "all" || filterStatus !== "all" || search) && (
           <button
             onClick={() => { setFilterCategory("all"); setFilterStatus("all"); setSearch(""); }}
-            className="text-xs text-gray-500 hover:text-white transition-colors px-2"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2"
           >
             Limpiar filtros
           </button>
@@ -713,25 +713,25 @@ export default function EmailAuditTab() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-[#2a2a2a]">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm min-w-[900px]">
           <thead>
-            <tr className="bg-[#111] border-b border-[#2a2a2a]">
-              <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Categoría</th>
-              <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Función / Nombre</th>
-              <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Trigger</th>
-              <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium">Destinatario</th>
-              <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium" title="Función definida">Fn</th>
-              <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium" title="Subject definido">Subj</th>
-              <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium" title="Body definido">Body</th>
-              <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium" title="Accionada por cron">Cron</th>
-              <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium">Estado</th>
+            <tr className="bg-muted border-b border-border">
+              <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Categoría</th>
+              <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Función / Nombre</th>
+              <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Trigger</th>
+              <th className="px-3 py-2 text-center text-xs text-muted-foreground font-medium">Destinatario</th>
+              <th className="px-3 py-2 text-center text-xs text-muted-foreground font-medium" title="Función definida">Fn</th>
+              <th className="px-3 py-2 text-center text-xs text-muted-foreground font-medium" title="Subject definido">Subj</th>
+              <th className="px-3 py-2 text-center text-xs text-muted-foreground font-medium" title="Body definido">Body</th>
+              <th className="px-3 py-2 text-center text-xs text-muted-foreground font-medium" title="Accionada por cron">Cron</th>
+              <th className="px-3 py-2 text-center text-xs text-muted-foreground font-medium">Estado</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-600 text-sm">
+                <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground text-sm">
                   Sin resultados para los filtros actuales
                 </td>
               </tr>
@@ -743,24 +743,24 @@ export default function EmailAuditTab() {
       </div>
 
       {/* Legend */}
-      <div className="border border-[#2a2a2a] rounded-lg p-3 text-xs text-gray-500 flex flex-wrap gap-4">
+      <div className="border border-border rounded-lg p-3 text-xs text-muted-foreground flex flex-wrap gap-4">
         <div className="flex items-center gap-1.5">
-          <span className="text-green-400">✓</span> Sin incidencias
+          <span className="text-success">✓</span> Sin incidencias
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-yellow-400">⚠</span> Función existe pero requiere atención
+          <span className="text-warning">⚠</span> Función existe pero requiere atención
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-amber-400">⏱</span> Accionada automáticamente por cron
+          <span className="text-warning">⏱</span> Accionada automáticamente por cron
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-cyan-400">Evento</span> — trigger directo (tRPC / API)
+          <span className="text-info">Evento</span> — trigger directo (tRPC / API)
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-amber-400">Cron</span> — dispara el job programado
+          <span className="text-warning">Cron</span> — dispara el job programado
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-gray-400">Manual</span> — envío manual desde CRM
+          <span className="text-muted-foreground">Manual</span> — envío manual desde CRM
         </div>
       </div>
     </div>
