@@ -136,14 +136,10 @@ export default function CRMDashboard() {
     setFilterStatus("all");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchStr]);
-  const [kpisExpanded, setKpisExpanded] = useState<boolean>(() => {
-    try { return localStorage.getItem("crm_kpis_expanded") === "true"; } catch { return false; }
-  });
-  const toggleKpis = () => setKpisExpanded(prev => {
-    const next = !prev;
-    try { localStorage.setItem("crm_kpis_expanded", String(next)); } catch {}
-    return next;
-  });
+  // Panorama general: panel lateral secundario (nunca desplaza la lista). Cerrado por defecto, sin recordar el estado y cerrado al cambiar de pestaña.
+  const [kpisExpanded, setKpisExpanded] = useState(false);
+  const toggleKpis = () => setKpisExpanded((prev) => !prev);
+  useEffect(() => { setKpisExpanded(false); }, [tab]);
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery();
   const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery();
   const { data: resCounters } = trpc.crm.reservations.counters.useQuery();
