@@ -1,4 +1,3 @@
--- irreversible: tablas nuevas y aditivas (sin datos previos); revertir el código las deja sin uso, no se eliminan (expand/contract)
 -- Trazabilidad de los suplementos realmente pagados (p. ej. Lifetime Access de RECONNECT) y su ámbito. Aditiva, BD de cada empresa.
 --
 -- order_supplement_lines: un suplemento elegido en una línea de pedido (se guarda al crear el pedido, con el tramo e importe que
