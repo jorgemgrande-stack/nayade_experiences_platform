@@ -37,6 +37,8 @@ export interface AccessRule {
   permanent?: boolean;
   /** true = concede un derecho PENDIENTE DE ACTIVAR: `durationDays` se cuenta desde que el alumno lo activa (sin fecha automática). */
   activationRequired?: boolean;
+  /** Solo concede si la duración CONTRATADA confirmada es de al menos estos días (p. ej. 6); null/undefined = sin condición. */
+  minContractedDays?: number | null;
   /** Calendario por módulo: desbloqueo progresivo y duración propia. Sin entrada = desde el primer día y duración de la regla. */
   moduleSchedule?: Record<number, ModuleSchedule>;
 }

@@ -16,7 +16,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { getSystemSetting } from "./config";
 import { matchRules, matchExactRules, LearningRuleError } from "../shared/learning";
-import { isQuotePaid } from "../shared/enrollmentCommerce";
+import { effectiveQuoteStatus, isQuotePaid } from "../shared/enrollmentCommerce";
 import { listRules, grantFromPayment, isMissingLearningSchema } from "./learningDb";
 import { paidOrderSupplements, linkSupplementEnrollment, markSupplementRefunded, markOrderSupplementsRefunded, isMissingSupplementSchema } from "./orderSupplements";
 import { readLinkedQuotes } from "./enrollmentCommerceDb";
@@ -287,6 +287,143 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     return { status: "granted", created: supp.created, existing: supp.existing, userId: supp.userId, notified: "none", ...(supp.failed ? { failed: supp.failed } : {}) };
   }
   return main;
+}
+
+
+// ─── Presupuesto PAGADO → derecho (retiros sin convocatoria) ─────────────────────────────────────────────
+
+export type QuoteFlowResult =
+  | { status: "skipped"; reason: "not_found" | "not_paid" | "no_lead" | "no_rule" | "no_email" | "no_schema" | "via_enrollment" | "via_order" | "no_amount" | "error" }
+  | { status: "needs_terms"; quoteId: number; minDays: number }
+  | { status: "granted"; created: number; existing: number; userId: number; blockedByTerms: number };
+
+/** Duración contratada confirmada de un presupuesto (null si nadie la ha confirmado o si no existe la migración 0093). */
+async function contractedDaysOf(quoteId: number): Promise<number | null> {
+  try {
+    const d = await getDb();
+    if (!d) return null;
+    const [r] = (await d.execute(sql`SELECT contracted_days FROM quote_access_terms WHERE quote_id = ${quoteId} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    return r?.[0] ? Number(r[0].contracted_days) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reserva CONFIRMADA y pago VERIFICADO → derecho de acceso, para retiros SIN convocatoria. La «confirmación previa de
+ * disponibilidad» es el propio presupuesto: solo el equipo lo emite, con la fecha confirmada, tras aceptar la petición; que esté
+ * PAGADO (pasarela autenticada o cobro manual verificado) es el pago confirmado. Con él:
+ *  - la opción y el producto salen de la solicitud que originó el presupuesto (lead) y casan con las reglas ACTIVAS del catálogo;
+ *  - una regla con duración mínima exige la duración CONTRATADA confirmada (opciones de duración variable: «5–6 días»): sin
+ *    confirmación o con menos días NO se concede nunca, y el presupuesto queda «pendiente de confirmar duración»;
+ *  - idempotente por presupuesto, regla y persona (la misma clave que cualquier otra operación): reintentos, barridos y
+ *    recuperaciones manuales no duplican nada;
+ *  - no duplica lo que ya concede una inscripción a convocatoria o un pedido de tienda del mismo presupuesto.
+ * Nunca lanza por falta de esquema.
+ */
+export async function grantLearningFromQuote(quoteId: number, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<QuoteFlowResult> {
+  try {
+    const d = await getDb();
+    if (!d) return { status: "skipped", reason: "no_schema" };
+    const [q] = ((await d.execute(sql`SELECT id, quoteNumber, status, total, paidAt, leadId FROM quotes WHERE id = ${quoteId}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+    if (!q) return { status: "skipped", reason: "not_found" };
+    const status = effectiveQuoteStatus(String(q.status), q.paidAt) ?? String(q.status);
+    if (!isQuotePaid(status)) return { status: "skipped", reason: "not_paid" };
+    const cents = Math.round(Number(q.total ?? 0) * 100);
+    if (!(cents > 0)) return { status: "skipped", reason: "no_amount" };
+    const [enr] = ((await d.execute(sql`SELECT 1 FROM edition_enrollments WHERE quote_id = ${quoteId} LIMIT 1`).catch(() => [[]])) as unknown as [Array<Record<string, any>>]);
+    if (enr?.length) return { status: "skipped", reason: "via_enrollment" };
+    const [viaOrder] = (await d.execute(sql`SELECT 1 FROM learning_enrollments le JOIN reservations r ON r.id = le.order_id WHERE r.quote_id = ${quoteId} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    if (viaOrder?.length) return { status: "skipped", reason: "via_order" };
+    const [lead] = ((await d.execute(sql`SELECT id, name, email, experienceId, variant_id FROM leads WHERE id = ${Number(q.leadId)}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+    if (!lead || lead.experienceId == null) return { status: "skipped", reason: "no_lead" };
+    const experienceId = Number(lead.experienceId);
+    const variantId = lead.variant_id == null ? null : Number(lead.variant_id);
+    const matched = matchRules(await listRules(), experienceId, variantId);
+    if (!matched.length) return { status: "skipped", reason: "no_rule" };
+    const email = String(lead.email ?? "").trim();
+    if (!email) return { status: "skipped", reason: "no_email" };
+    const contractedDays = await contractedDaysOf(quoteId);
+    const needing = matched.filter((r) => r.minContractedDays && (contractedDays == null || contractedDays < r.minContractedDays));
+    if (needing.length === matched.length) return { status: "needs_terms", quoteId, minDays: Math.min(...needing.map((r) => r.minContractedDays as number)) };
+    const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    const acc = u?.[0] ? { userId: Number(u[0].id), invite: null, created: false } : await ensureAccount(String(lead.name || email), email);
+    const res = await grantFromPayment({
+      userId: acc.userId, clientId: null, experienceId, variantId, operation: { kind: "quote", id: quoteId }, quoteId,
+      payment: { reference: String(q.quoteNumber || `quote:${quoteId}`), amountCents: cents, verifiedBy: actor.name || "sistema (presupuesto pagado)" }, actorUserId: actor.id, now, contractedDays,
+    });
+    const created = res.granted.filter((g) => g.created).length;
+    const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
+    if (created > 0 && auto) {
+      if (acc.invite) await sendLearningInvitation(acc.invite);
+      else await sendLearningAccessNotice({ userId: acc.userId, name: String(lead.name || email), email }, `quote:${q.quoteNumber ?? quoteId}`);
+    }
+    return { status: "granted", created, existing: res.granted.length - created, userId: acc.userId, blockedByTerms: res.blockedByTerms };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { status: "skipped", reason: "no_schema" };
+    console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_quote_failed", quoteId, error: e instanceof Error ? e.name : "error", detail: e instanceof Error ? e.message.slice(0, 160) : undefined }));
+    return { status: "skipped", reason: "error" };
+  }
+}
+
+export interface PendingQuote { quoteId: number; quoteNumber: string; email: string | null; experienceId: number; variantId: number | null; needsTermsMinDays: number | null; paidAt: number | null }
+
+/** Presupuestos PAGADOS con regla activa y aún sin derecho; los de duración variable llevan los días mínimos que falta confirmar. */
+export async function pendingLearningQuotes(limit = 200): Promise<PendingQuote[]> {
+  const d = await getDb();
+  if (!d) return [];
+  const rules = await listRules();
+  if (!rules.some((r) => r.active)) return [];
+  let rowsQ: Array<Record<string, any>> = [];
+  try {
+    [rowsQ] = (await d.execute(sql`SELECT q.id, q.quoteNumber, q.status, q.paidAt, l.email, l.experienceId, l.variant_id
+      FROM quotes q JOIN leads l ON l.id = q.leadId
+      WHERE l.experienceId IS NOT NULL AND (q.paidAt IS NOT NULL OR q.status IN ('pagado', 'convertido_reserva', 'facturado'))
+        AND NOT EXISTS (SELECT 1 FROM learning_enrollments le WHERE le.source = 'payment' AND le.quote_id = q.id)
+      ORDER BY q.id DESC LIMIT 1000`)) as unknown as [Array<Record<string, any>>];
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return [];
+    throw e;
+  }
+  const out: PendingQuote[] = [];
+  for (const r of rowsQ) {
+    if (!isQuotePaid(effectiveQuoteStatus(String(r.status), r.paidAt) ?? String(r.status))) continue;
+    const variantId = r.variant_id == null ? null : Number(r.variant_id);
+    const matched = matchRules(rules, Number(r.experienceId), variantId);
+    if (!matched.length) continue;
+    const days = await contractedDaysOf(Number(r.id));
+    const needing = matched.filter((m) => m.minContractedDays && (days == null || days < m.minContractedDays));
+    out.push({ quoteId: Number(r.id), quoteNumber: String(r.quoteNumber ?? ""), email: r.email ? String(r.email) : null, experienceId: Number(r.experienceId), variantId, needsTermsMinDays: needing.length === matched.length ? Math.min(...needing.map((m) => m.minContractedDays as number)) : null, paidAt: r.paidAt ? new Date(r.paidAt).getTime() : null });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Barrido (tarea programada y recuperación): concede lo pendiente de presupuestos pagados y reintenta los pedidos pendientes. Idempotente. */
+export async function sweepLearningGrants(now = Date.now()): Promise<{ quotes: number; granted: number; needsTerms: number; orders: number }> {
+  const out = { quotes: 0, granted: 0, needsTerms: 0, orders: 0 };
+  for (const p of await pendingLearningQuotes(50)) {
+    out.quotes++;
+    if (p.needsTermsMinDays != null) { out.needsTerms++; continue; }
+    const r = await grantLearningFromQuote(p.quoteId, { id: null, name: "sistema (barrido)" }, now);
+    if (r.status === "granted" && r.created > 0) out.granted++;
+  }
+  for (const p of (await pendingLearningOrders(50)).filter((o) => o.paidAt != null)) {
+    const r = await grantLearningFromOrder(p.merchantOrder, { id: null, name: "sistema (barrido)" }, now);
+    if (r.status === "granted" && r.created > 0) out.orders++;
+  }
+  return out;
+}
+
+/** La administración confirma los días CONTRATADOS de un presupuesto (duración variable) y, si basta, se concede el derecho. */
+export async function confirmQuoteContractedDays(quoteId: number, days: number, reason: string, actorUserId: number | null, now = Date.now()): Promise<QuoteFlowResult> {
+  if (!Number.isInteger(days) || days < 1 || days > 365) throw new LearningRuleError("BAD_REQUEST", "Los días contratados deben ser un entero entre 1 y 365.");
+  if (!reason.trim()) throw new LearningRuleError("REASON_REQUIRED", "Indica el motivo o el acuerdo con la persona.");
+  const d = await getDb();
+  if (!d) return { status: "skipped", reason: "no_schema" };
+  await d.execute(sql`INSERT INTO quote_access_terms (quote_id, contracted_days, reason, confirmed_by, confirmed_at) VALUES (${quoteId}, ${days}, ${reason.trim().slice(0, 255)}, ${actorUserId}, ${now})
+    ON DUPLICATE KEY UPDATE contracted_days = VALUES(contracted_days), reason = VALUES(reason), confirmed_by = VALUES(confirmed_by), confirmed_at = VALUES(confirmed_at)`);
+  return grantLearningFromQuote(quoteId, { id: actorUserId, name: null }, now);
 }
 
 /**

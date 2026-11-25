@@ -26,3 +26,17 @@ El módulo no se asigna por llamarse «retiro»: la regla va por opción.
 
 ## Dónde está cada cosa
 Rama de reglas, activación y aula en el Core; las reglas del tenant se crean tras publicar el código, inactivas.
+
+## Retiros sin convocatoria: circuito general (sin concesiones manuales habituales)
+1. **Solicitud** del retiro (con la opción elegida y, en su caso, la fecha deseada) → el equipo **confirma la disponibilidad** y emite el **presupuesto** (con la fecha confirmada). Solo el equipo emite el presupuesto: ese es el paso de confirmación previa.
+2. **Pago**: pasarela autenticada o cobro manual verificado. El presupuesto queda pagado.
+3. **Derecho automático**: un barrido por empresa (cada 10 min) y, a demanda, `learning.admin.grantForQuote` leen los presupuestos pagados con solicitud de un producto con regla de acceso activa y crean el derecho **pendiente de activar**. Clave de idempotencia por presupuesto + regla + persona: reintentos y barridos no duplican; no se duplica lo que ya concede una inscripción a convocatoria o un pedido de tienda del mismo presupuesto.
+4. La persona **activa** desde su área privada y los 30 días empiezan ahí.
+
+### Duración variable («5–6 días»)
+La regla de la opción de duración variable lleva **días mínimos contratados = 6**. Sin duración **confirmada** (o con menos de 6) el barrido jamás concede: el presupuesto aparece en «Retiros pagados sin acceso» y la administración confirma los días acordados (`learning.admin.confirmContractedDays`, con motivo, queda registrado). Solo si alcanzan el mínimo se concede el derecho. Una reserva de cinco días nunca recibe el módulo. Las opciones de duración fija («6 Tage») no necesitan confirmación: la propia opción lo dice.
+
+### Límites conocidos
+- Un derecho por presupuesto pagado: los acompañantes de una reserva «desde 2» no tienen derecho propio hasta que existan sus datos de participante (pendiente de la decisión de datos de viajeros).
+- El reembolso de un presupuesto no tiene aún enlace automático con el derecho (la administración lo revoca desde Formación); el de pedidos de tienda sí.
+- Confirmar la disponibilidad es un paso humano previo al presupuesto; el sistema no la inventa ni la deduce.

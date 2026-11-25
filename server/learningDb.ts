@@ -126,7 +126,7 @@ export async function listRules(exec?: Exec): Promise<AccessRule[]> {
       id: n(r.id), experienceId: n(r.experience_id), variantId: r.variant_id == null ? null : n(r.variant_id), courseId: n(r.course_id),
       moduleIds: own.map((m) => n(m.module_id)), durationDays: r.duration_days == null ? null : n(r.duration_days),
       startMode: r.start_mode as StartMode, fixedStart: r.fixed_start == null ? null : n(r.fixed_start), active: !!n(r.active),
-      permanent: !!n(r.permanent), activationRequired: !!n(r.activation_required), ...(Object.keys(moduleSchedule).length ? { moduleSchedule } : {}),
+      permanent: !!n(r.permanent), activationRequired: !!n(r.activation_required), minContractedDays: r.min_contracted_days == null ? null : n(r.min_contracted_days), ...(Object.keys(moduleSchedule).length ? { moduleSchedule } : {}),
     };
   });
 }
@@ -144,6 +144,8 @@ export interface RuleInput {
   permanent?: boolean;
   /** Derecho pendiente de activar: la duración de la regla se cuenta desde que el alumno lo activa (exige duración y no admite desbloqueo progresivo). */
   activationRequired?: boolean;
+  /** Solo concede si la duración contratada confirmada es de al menos estos días (null = sin condición). */
+  minContractedDays?: number | null;
   /** Desbloqueo progresivo y duración propia por módulo (los módulos sin entrada: desde el primer día y duración de la regla). */
   moduleSettings?: Array<{ moduleId: number; unlockOffsetDays?: number | null; durationDays?: number | null }>;
 }
@@ -164,6 +166,7 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
     if (input.startMode !== "on_grant") throw new LearningError("BAD_REQUEST", "La activación voluntaria no se combina con una fecha fija de inicio.");
     if (Object.values(schedule).some((s) => (s.unlockOffsetDays ?? 0) > 0)) throw new LearningError("BAD_REQUEST", "La activación voluntaria no admite desbloqueo progresivo de módulos.");
   }
+  if (input.minContractedDays != null && (!Number.isInteger(input.minContractedDays) || input.minContractedDays < 1 || input.minContractedDays > 365)) throw new LearningError("BAD_REQUEST", "Los días mínimos contratados deben ser un entero entre 1 y 365.");
   const assertActivable = (permanent: boolean, sched: Record<number, ModuleSchedule>) => {
     if (!input.active || permanent) return;
     const missing = modulesWithoutDuration({ durationDays: input.durationDays, moduleSchedule: sched, moduleIds: input.moduleIds });
@@ -176,7 +179,7 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
     const mods = await rows(tx, sql`SELECT id FROM learning_modules WHERE course_id = ${input.courseId} AND id IN (${sql.join(input.moduleIds.map((m) => sql`${m}`), sql`, `)})`);
     if (mods.length !== new Set(input.moduleIds).size) throw new LearningError("BAD_REQUEST", "Algún módulo no pertenece al curso.");
     const wanted = Array.from(new Set(input.moduleIds)).sort((x, y) => x - y);
-    const insertRule = async (activation: boolean) => {
+    const insertRule = async (activation: boolean, minDays: number | null) => {
       const rid = (await run(tx, sql`INSERT INTO learning_access_rules (experience_id, variant_id, course_id, duration_days, start_mode, fixed_start, active, created_at, updated_at)
         VALUES (${input.experienceId}, ${input.variantId}, ${input.courseId}, ${input.durationDays}, ${input.startMode}, ${input.fixedStart}, ${input.active ? 1 : 0}, ${now}, ${now})`)).insertId;
       for (const m of wanted) {
@@ -186,9 +189,10 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
       }
       if (input.permanent) await run(tx, sql`UPDATE learning_access_rules SET permanent = 1 WHERE id = ${rid}`);
       if (activation) await run(tx, sql`UPDATE learning_access_rules SET activation_required = 1 WHERE id = ${rid}`);
+      if (minDays != null) await run(tx, sql`UPDATE learning_access_rules SET min_contracted_days = ${minDays} WHERE id = ${rid}`);
       return rid;
     };
-    if (!id) return insertRule(!!input.activationRequired);
+    if (!id) return insertRule(!!input.activationRequired, input.minContractedDays ?? null);
     const [cur] = await rows(tx, sql`SELECT * FROM learning_access_rules WHERE id = ${id} FOR UPDATE`);
     if (!cur) throw new LearningError("NOT_FOUND", "La regla no existe.");
     const curMods = (await rows(tx, sql`SELECT module_id FROM learning_access_rule_modules WHERE rule_id = ${id} ORDER BY module_id`)).map((r) => n(r.module_id));
@@ -205,6 +209,7 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
       assertActivable(effPermanent, effSchedule);
       await run(tx, sql`UPDATE learning_access_rules SET duration_days = ${input.durationDays}, start_mode = ${input.startMode}, fixed_start = ${input.fixedStart}, active = ${input.active ? 1 : 0}, updated_at = ${now} WHERE id = ${id}`);
       if (input.activationRequired !== undefined) await run(tx, sql`UPDATE learning_access_rules SET activation_required = ${input.activationRequired ? 1 : 0} WHERE id = ${id}`);
+      if (input.minContractedDays !== undefined) await run(tx, sql`UPDATE learning_access_rules SET min_contracted_days = ${input.minContractedDays} WHERE id = ${id}`);
       if (input.moduleSettings !== undefined || input.permanent !== undefined) {
         await run(tx, sql`UPDATE learning_access_rules SET permanent = ${effPermanent ? 1 : 0} WHERE id = ${id}`);
         if (input.moduleSettings !== undefined) await run(tx, sql`UPDATE learning_access_rule_modules SET unlock_offset_days = NULL, duration_days = NULL WHERE rule_id = ${id}`);
@@ -216,7 +221,7 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
     // matrículas ya concedidas guardan la regla con la que nacieron; nada se borra)
     assertActivable(!!input.permanent, schedule);
     await run(tx, sql`UPDATE learning_access_rules SET active = 0, updated_at = ${now} WHERE id = ${id}`);
-    return insertRule(input.activationRequired ?? !!n(cur.activation_required));
+    return insertRule(input.activationRequired ?? !!n(cur.activation_required), input.minContractedDays !== undefined ? input.minContractedDays : cur.min_contracted_days == null ? null : n(cur.min_contracted_days));
   });
 }
 
@@ -306,19 +311,24 @@ export interface PaymentGrantInput {
   now?: number;
   /** Suplemento pagado: solo la regla de ESTA variante (nunca las genéricas del producto). */
   exactVariantOnly?: boolean;
+  /** Duración CONTRATADA confirmada (días): las reglas con `minContractedDays` solo conceden si es suficiente; sin dato, no conceden. */
+  contractedDays?: number | null;
 }
 
 /**
  * Libera el acceso de una compra con PAGO CONFIRMADO según las reglas de catálogo. Sin pago verificado lanza
  * PAYMENT_NOT_CONFIRMED. Sin regla para la variante (p. ej. RECONNECT LIVE) no crea nada.
  */
-export async function grantFromPayment(input: PaymentGrantInput): Promise<{ granted: Array<{ enrollment: EnrollmentRow; created: boolean }>; rules: number }> {
+export async function grantFromPayment(input: PaymentGrantInput): Promise<{ granted: Array<{ enrollment: EnrollmentRow; created: boolean }>; rules: number; blockedByTerms: number }> {
   const pay = assertPaymentConfirmed(input.payment);
   const now = input.now ?? Date.now();
   const d = await db();
   return withRetry(() => d.transaction(async (tx) => {
     const all = await listRules(tx);
-    const rules = input.exactVariantOnly ? matchExactRules(all, input.experienceId, input.variantId) : matchRules(all, input.experienceId, input.variantId);
+    const matched = input.exactVariantOnly ? matchExactRules(all, input.experienceId, input.variantId) : matchRules(all, input.experienceId, input.variantId);
+    // Duración variable (p. ej. «5–6 días»): nunca se concede por una duración no confirmada o insuficiente
+    const rules = matched.filter((r) => !r.minContractedDays || (input.contractedDays != null && input.contractedDays >= r.minContractedDays));
+    const blockedByTerms = matched.length - rules.length;
     const granted: Array<{ enrollment: EnrollmentRow; created: boolean }> = [];
     for (const rule of rules) {
       // Derecho PENDIENTE DE ACTIVAR: sin ventana ni fecha automática; los días arrancan cuando el alumno lo activa
@@ -337,7 +347,7 @@ export async function grantFromPayment(input: PaymentGrantInput): Promise<{ gran
         }, now),
       );
     }
-    return { granted, rules: rules.length };
+    return { granted, rules: rules.length, blockedByTerms };
   }));
 }
 
