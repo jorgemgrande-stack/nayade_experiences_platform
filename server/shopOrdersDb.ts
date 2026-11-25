@@ -128,7 +128,8 @@ export async function finalizePaidShopOrder(merchantOrder: string, paymentMethod
   const clientId = await linkClient(rows, billing);
   // LMS: con el pago confirmado, las reglas de catálogo matriculan en lo contratado. Idempotente y nunca lanza: se ejecuta
   // también en las pasadas de recuperación (reintento del cobro, aviso repetido), así un fallo parcial se repara solo.
-  await (await import("./learningFlow")).grantLearningFromOrder(merchantOrder);
+  // Con la licencia exigida (LEARNING_LICENSE_ENFORCED) y sin licencia `learning`, no se concede; el barrido lo recupera al volver la licencia
+  if (await (await import("./learningLicense")).learningLicensed()) await (await import("./learningFlow")).grantLearningFromOrder(merchantOrder);
   // Ampliaciones de acceso por módulo compradas desde el aula (idempotente y sin lanzar)
   await (await import("./learningExtensions")).applyExtensionsForOrder(merchantOrder);
   const existing = rows.find((r) => r.invoiceId);
