@@ -18,7 +18,7 @@ import {
   grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
-import { grantLearningFromEnrollment, grantLearningFromOrder, pendingLearningOrders, refundOrderSupplement, sendLearningInvitation } from "../learningFlow";
+import { confirmQuoteContractedDays, grantLearningFromEnrollment, grantLearningFromOrder, grantLearningFromQuote, pendingLearningOrders, pendingLearningQuotes, refundOrderSupplement, sendLearningInvitation, sweepLearningGrants } from "../learningFlow";
 import { applyExtensionsForOrder, extendableModules, extensionOffers, prepareExtensionOrder } from "../learningExtensions";
 import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
@@ -205,7 +205,7 @@ const admin = router({
     };
   })),
   saveRule: adminProcedure
-    .input(z.object({ id: id.optional(), activationRequired: z.boolean().optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean(),
+    .input(z.object({ id: id.optional(), activationRequired: z.boolean().optional(), minContractedDays: z.number().int().min(1).max(365).nullable().optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean(),
       permanent: z.boolean().optional(),
       moduleSettings: z.array(z.object({ moduleId: id, unlockOffsetDays: z.number().int().min(0).max(3650).nullable().optional(), durationDays: z.number().int().min(1).max(3650).nullable().optional() })).max(50).optional() }))
     .mutation(({ input }) => guard(async () => ({ id: await saveRule({ ...input }, input.id) }))),
@@ -332,6 +332,15 @@ const admin = router({
   grantDemo: adminProcedure
     .input(z.object({ userId: id, courseId: id, moduleIds: z.array(id).min(1).max(50), trigger: z.string().min(3).max(80), minutes: z.number().int().min(1).max(1440).optional() }))
     .mutation(({ ctx, input }) => guard(() => grantDemo({ ...input, actorUserId: ctx.user.id }))),
+
+  /** Presupuestos pagados (retiros sin convocatoria) con regla activa y aún sin derecho; los de duración variable piden confirmar días. */
+  pendingQuotes: adminProcedure.query(() => guard(() => pendingLearningQuotes())),
+  /** Concede (o reintenta) el derecho de un presupuesto pagado; idempotente. */
+  grantForQuote: adminProcedure.input(z.object({ quoteId: id })).mutation(({ ctx, input }) => guard(() => grantLearningFromQuote(input.quoteId, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
+  /** Confirma los días CONTRATADOS (duración variable, p. ej. «5–6 días») y concede si alcanzan el mínimo de la regla. */
+  confirmContractedDays: adminProcedure.input(z.object({ quoteId: id, days: z.number().int().min(1).max(365), reason })).mutation(({ ctx, input }) => guard(() => confirmQuoteContractedDays(input.quoteId, input.days, input.reason, ctx.user.id))),
+  /** Barrido manual de lo pendiente (presupuestos y pedidos pagados). */
+  sweep: adminProcedure.mutation(() => guard(() => sweepLearningGrants())),
 
   /** Reembolso de UN suplemento pagado (p. ej. Lifetime Access): retira solo ese derecho, no el del programa. */
   refundSupplement: adminProcedure

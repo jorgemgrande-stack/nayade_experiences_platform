@@ -1855,6 +1855,7 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "brevo-marketing-sync", flag: "brevo_marketing_sync_enabled", start: startBrevoMarketingJob, label: "Brevo Marketing Sync", def: false },
   // Desactivado por defecto: además, cada empresa decide con su interruptor de inventario de Veturis
   { name: "veturis-inventory", flag: "veturis_inventory_enabled", start: startVeturisInventoryJob, label: "Veturis Inventory", def: false },
+  { name: "learning-sweep", flag: "learning_sweep_job_enabled", start: () => void import("../learningSweepJob").then((m) => m.startLearningSweepJob(), (e) => console.error("[Jobs] 'Learning Sweep' no se ha podido registrar:", e instanceof Error ? e.message : e)), label: "Learning Sweep", def: true },
   { name: "hotel-guest-retention", flag: "hotel_guest_retention_job_enabled", start: startHotelGuestRetentionJob, label: "Hotel Guest Retention", def: false },
   // Life Net: solo actúa en empresas con la capacidad life-net y la migración 0047 (el resto se omite sin tocar nada)
   { name: "life-net-reminders", flag: "life_net_reminders_enabled", start: startLifeRemindersJob, label: "Life Net Reminders", def: true },

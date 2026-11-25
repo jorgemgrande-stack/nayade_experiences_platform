@@ -103,6 +103,86 @@ function PendingOrders() {
   );
 }
 
+/**
+ * Retiros SIN convocatoria: presupuestos PAGADOS con regla de acceso activa y aún sin derecho. Los de duración variable piden
+ * confirmar los días contratados (nunca se conceden solos); el resto se concede en el barrido o con «Conceder ahora». Todo
+ * idempotente: el derecho nace pendiente de activar por la persona.
+ */
+function PendingQuotes() {
+  const { t, format } = useI18n();
+  const utils = trpc.useUtils();
+  const q = trpc.learning.admin.pendingQuotes.useQuery();
+  const [days, setDays] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState<number | null>(null);
+  const confirmDays = trpc.learning.admin.confirmContractedDays.useMutation();
+  const grantForQuote = trpc.learning.admin.grantForQuote.useMutation();
+  const refresh = () => Promise.all([utils.learning.admin.pendingQuotes.invalidate(), utils.learning.admin.enrollments.invalidate()]);
+  async function confirmTerms(p: { quoteId: number; quoteNumber: string }) {
+    const n = Number(days[p.quoteId]);
+    if (!Number.isInteger(n) || n < 1) return;
+    if (!(await confirmAction({ title: t("learningAdmin.pendingQuotes.confirmTitle"), description: t("learningAdmin.pendingQuotes.confirmDesc", { days: n, quote: p.quoteNumber }), confirmLabel: t("learningAdmin.pendingQuotes.confirm") }))) return;
+    setBusy(p.quoteId);
+    try {
+      const r = await confirmDays.mutateAsync({ quoteId: p.quoteId, days: n, reason: t("learningAdmin.pendingQuotes.reasonDefault") });
+      if (r.status === "granted") toast.success(t("learningAdmin.pendingQuotes.granted", { created: r.created, existing: r.existing }));
+      else if (r.status === "needs_terms") toast.info(t("learningAdmin.pendingQuotes.notYet"));
+      else toast.error(t("learningAdmin.pendingQuotes.skipped", { reason: r.reason }));
+      await refresh();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function grant(p: { quoteId: number }) {
+    setBusy(p.quoteId);
+    try {
+      const r = await grantForQuote.mutateAsync({ quoteId: p.quoteId });
+      if (r.status === "granted") toast.success(t("learningAdmin.pendingQuotes.granted", { created: r.created, existing: r.existing }));
+      else toast.error(t("learningAdmin.pendingQuotes.skipped", { reason: r.status === "skipped" ? r.reason : r.status }));
+      await refresh();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+  if (q.isLoading) return null;
+  if (q.isError) return <PanelError title={t("learningAdmin.pendingQuotes.errorTitle")} error={q.error} onRetry={() => q.refetch()} />;
+  if (!q.data!.length) return null;
+  return (
+    <section className="space-y-3 rounded-xl border border-warning/50 bg-warning/10 p-4" aria-labelledby="learning-pending-quotes-title">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
+        <div>
+          <h2 id="learning-pending-quotes-title" className="font-semibold text-foreground">{t("learningAdmin.pendingQuotes.title", { n: q.data!.length })}</h2>
+          <p className="text-sm text-muted-foreground">{t("learningAdmin.pendingQuotes.intro")}</p>
+        </div>
+      </div>
+      <PanelDataList
+        caption={t("learningAdmin.pendingQuotes.title", { n: q.data!.length })}
+        rows={q.data!}
+        rowKey={(p) => p.quoteId}
+        columns={[
+          { key: "quote", header: t("learningAdmin.pendingQuotes.quote"), cell: (p) => <span className="font-mono">{p.quoteNumber}</span> },
+          { key: "email", header: t("learningAdmin.pendingQuotes.email"), cell: (p) => p.email ?? t("learningAdmin.pending.noEmail") },
+          { key: "paid", header: t("learningAdmin.pending.paidAt"), cell: (p) => (p.paidAt ? format.dateTime(p.paidAt, { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }) : "—") },
+          { key: "state", header: "", cell: (p) => (p.needsTermsMinDays != null ? t("learningAdmin.pendingQuotes.needs", { n: p.needsTermsMinDays }) : t("learningAdmin.pendingQuotes.ready")) },
+          {
+            key: "actions", header: t("learningAdmin.enrollments.actions"), align: "right",
+            cell: (p) => p.needsTermsMinDays != null ? (
+              <span className="inline-flex items-center gap-2">
+                <input aria-label={t("learningAdmin.pendingQuotes.days")} type="number" min={1} max={365} className="h-8 w-16 rounded-md border bg-background px-2 text-sm" value={days[p.quoteId] ?? ""} onChange={(e) => setDays({ ...days, [p.quoteId]: e.target.value })} />
+                <Button size="sm" variant="outline" disabled={busy != null || !(Number(days[p.quoteId]) >= 1)} onClick={() => void confirmTerms(p)}>{t("learningAdmin.pendingQuotes.confirm")}</Button>
+              </span>
+            ) : <Button size="sm" variant="outline" disabled={busy != null} onClick={() => void grant(p)}>{t("learningAdmin.pendingQuotes.grant")}</Button>,
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
 function Enrollments() {
   const { t } = useI18n();
   const fmt = useFmt();
@@ -120,10 +200,11 @@ function Enrollments() {
   if (q.isLoading) return <PanelLoading />;
   if (q.isError) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
   const now = Date.now();
-  if (!q.data!.length) return <div className="space-y-4"><PendingOrders /><PanelEmpty title={t("learningAdmin.enrollments.emptyTitle")} description={t("learningAdmin.enrollments.emptyDesc")} /></div>;
+  if (!q.data!.length) return <div className="space-y-4"><PendingOrders /><PendingQuotes /><PanelEmpty title={t("learningAdmin.enrollments.emptyTitle")} description={t("learningAdmin.enrollments.emptyDesc")} /></div>;
   return (
     <div className="space-y-4">
       <PendingOrders />
+      <PendingQuotes />
       <PanelDataList
         caption={t("learningAdmin.tabs.enrollments")}
         rows={q.data!}
