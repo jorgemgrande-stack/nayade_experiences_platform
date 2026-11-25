@@ -7,10 +7,22 @@ import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expen
 import * as XLSX from "xlsx";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { listBankMovements, summarizeBankMovements } from "../bankQuery";
 import { BankStatementError, parseBankStatement, type ParsedBankRow } from "../bankStatementImport";
 
 const _pool = legacyPool();
 const db = legacyDb();
+
+const bankListInput = z.object({
+  importId: z.number().optional(),
+  status: z.enum(["pendiente", "ignorado", "todos"]).default("todos"),
+  conciliation: z.enum(["todos", "sin_conciliar", "conciliado", "gasto_vinculado", "ignorado"]).default("todos"),
+  fechaFrom: z.string().optional(),
+  fechaTo: z.string().optional(),
+  search: z.string().optional(),
+  page: z.number().default(1),
+  pageSize: z.number().default(50),
+});
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if ((ctx.user as { role: string }).role !== "admin") {
@@ -126,51 +138,17 @@ export const bankMovementsRouter = router({
     }),
 
   listMovements: adminProc
-    .input(z.object({
-      importId: z.number().optional(),
-      status: z.enum(["pendiente", "ignorado", "todos"]).default("todos"),
-      fechaFrom: z.string().optional(),
-      fechaTo: z.string().optional(),
-      search: z.string().optional(),
-      page: z.number().default(1),
-      pageSize: z.number().default(50),
-    }))
+    .input(bankListInput)
     .query(async ({ input }) => {
-      const conditions: ReturnType<typeof eq>[] = [];
-      if (input.importId) conditions.push(eq(bankMovements.importId, input.importId));
-      if (input.status !== "todos") conditions.push(eq(bankMovements.status, input.status as "pendiente" | "ignorado"));
-      if (input.fechaFrom) conditions.push(gte(bankMovements.fecha, input.fechaFrom));
-      if (input.fechaTo) conditions.push(lte(bankMovements.fecha, input.fechaTo));
-
-      const baseQuery = db.select().from(bankMovements);
-      const withWhere = conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
-
-      const rows = await withWhere.orderBy(desc(bankMovements.fecha), desc(bankMovements.id));
-
-      // Client-side search filter (movimiento + masDatos)
-      const search = input.search?.toLowerCase().trim();
-      const filtered = search
-        ? rows.filter(
-            (r) =>
-              r.movimiento?.toLowerCase().includes(search) ||
-              r.masDatos?.toLowerCase().includes(search)
-          )
-        : rows;
-
-      const total = filtered.length;
-      const offset = (input.page - 1) * input.pageSize;
-      const data = filtered.slice(offset, offset + input.pageSize);
-
-      // Totals
-      const totalIngresado = filtered
-        .filter((r) => r.status !== "ignorado" && parseFloat(r.importe) > 0)
-        .reduce((s, r) => s + parseFloat(r.importe), 0);
-      const totalCargado = filtered
-        .filter((r) => r.status !== "ignorado" && parseFloat(r.importe) < 0)
-        .reduce((s, r) => s + parseFloat(r.importe), 0);
-
-      return { data, total, totalIngresado, totalCargado };
+      // Misma consulta para el listado y los totales (server/bankQuery.ts): búsqueda y página en SQL.
+      const r = await listBankMovements(db, input);
+      return { data: r.data, total: r.total, totalIngresado: Number(r.totals.ingresado), totalCargado: Number(r.totals.cargado) };
     }),
+
+  /** Totales exactos (texto decimal) del filtro COMPLETO del listado: ingresado, cargado y estados de conciliación. Solo lectura. */
+  movementsSummary: adminProc
+    .input(bankListInput.omit({ page: true, pageSize: true }))
+    .query(async ({ input }) => summarizeBankMovements(db, input)),
 
   updateMovementStatus: adminProc
     .input(z.object({
