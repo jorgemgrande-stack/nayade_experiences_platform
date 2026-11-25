@@ -40,3 +40,19 @@ La regla de la opción de duración variable lleva **días mínimos contratados 
 - Un derecho por presupuesto pagado: los acompañantes de una reserva «desde 2» no tienen derecho propio hasta que existan sus datos de participante (pendiente de la decisión de datos de viajeros).
 - El reembolso de un presupuesto no tiene aún enlace automático con el derecho (la administración lo revoca desde Formación); el de pedidos de tienda sí.
 - Confirmar la disponibilidad es un paso humano previo al presupuesto; el sistema no la inventa ni la deduce.
+
+## Reservas de varias plazas (participantes)
+- Las plazas las fija la **reserva confirmada** (las de la solicitud que originó el presupuesto). Quien reservó cuenta como una y recibe su derecho solo; las demás personas se **identifican** (nombre y correo) en Formación → «Retiros pagados sin acceso» → columna «Plazas».
+- **Cada persona recibe SU PROPIO derecho** (una matrícula por persona) pendiente de activar, y lo activa cuando quiera: activar el de una no cambia el de las demás. Una persona se identifica una sola vez (no hay duplicados) y no se admiten más personas que plazas ni a quien reservó.
+- Si se añade antes del pago, no hay derecho hasta que el presupuesto está pagado; después lo concede el barrido. Retirar a una persona libera su plaza y revoca solo su derecho (no puede volver sola: se reactiva su acceso desde Formación).
+
+## Reembolsos y cancelaciones de presupuestos
+| Hecho | Efecto sobre los accesos de la reserva |
+|---|---|
+| Reembolso total (Stripe) o disputa perdida | Se revocan los de TODAS las personas |
+| Disputa abierta | Se suspenden; si se gana, se reabren solo los suspendidos por Stripe (nunca una suspensión manual) |
+| **Reembolso o cancelación PARCIAL** | **No se retira nada por sí solo**: se anota en el historial y la reserva sale en «Devoluciones parciales por decidir»; la administración marca a las personas cuyo derecho deja de valer y las demás conservan el suyo |
+| Solicitud de cancelación aceptada del todo | Se revoca la reserva entera (presupuesto y pedido) |
+| Solicitud de cancelación aceptada parcial o por líneas | Solo se anota para decidir |
+| Presupuesto «perdido» o «rechazado» sin cobro | Se revocan los accesos |
+No se cambia ningún importe ni se ejecuta ningún reembolso desde aquí. Todo es idempotente.

@@ -346,19 +346,31 @@ export async function grantLearningFromQuote(quoteId: number, actor: { id: numbe
     const contractedDays = await contractedDaysOf(quoteId);
     const needing = matched.filter((r) => r.minContractedDays && (contractedDays == null || contractedDays < r.minContractedDays));
     if (needing.length === matched.length) return { status: "needs_terms", quoteId, minDays: Math.min(...needing.map((r) => r.minContractedDays as number)) };
-    const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
-    const acc = u?.[0] ? { userId: Number(u[0].id), invite: null, created: false } : await ensureAccount(String(lead.name || email), email);
+    // Cada plaza identificada recibe su PROPIO derecho: quien reservó y cada participante registrado (sin duplicar nunca a la misma persona)
+    const recipients = await quoteRecipients(quoteId, { name: String(lead.name || email), email });
+    let created = 0;
+    let existing = 0;
+    let blockedByTerms = 0;
+    let buyerUserId = 0;
+    for (const rc of recipients) {
+    const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${rc.email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    const acc = u?.[0] ? { userId: Number(u[0].id), invite: null, created: false } : await ensureAccount(rc.name, rc.email);
+    if (!buyerUserId) buyerUserId = acc.userId;
     const res = await grantFromPayment({
       userId: acc.userId, clientId: null, experienceId, variantId, operation: { kind: "quote", id: quoteId }, quoteId,
       payment: { reference: String(q.quoteNumber || `quote:${quoteId}`), amountCents: cents, verifiedBy: actor.name || "sistema (presupuesto pagado)" }, actorUserId: actor.id, now, contractedDays,
     });
-    const created = res.granted.filter((g) => g.created).length;
+    const made = res.granted.filter((g) => g.created).length;
+    created += made;
+    existing += res.granted.length - made;
+    blockedByTerms += res.blockedByTerms;
     const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
-    if (created > 0 && auto) {
+    if (made > 0 && auto) {
       if (acc.invite) await sendLearningInvitation(acc.invite);
-      else await sendLearningAccessNotice({ userId: acc.userId, name: String(lead.name || email), email }, `quote:${q.quoteNumber ?? quoteId}`);
+      else await sendLearningAccessNotice({ userId: acc.userId, name: rc.name, email: rc.email }, `quote:${q.quoteNumber ?? quoteId}`);
     }
-    return { status: "granted", created, existing: res.granted.length - created, userId: acc.userId, blockedByTerms: res.blockedByTerms };
+    }
+    return { status: "granted", created, existing, userId: buyerUserId, blockedByTerms };
   } catch (e) {
     if (isMissingLearningSchema(e)) return { status: "skipped", reason: "no_schema" };
     console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_quote_failed", quoteId, error: e instanceof Error ? e.name : "error", detail: e instanceof Error ? e.message.slice(0, 160) : undefined }));
@@ -366,20 +378,271 @@ export async function grantLearningFromQuote(quoteId: number, actor: { id: numbe
   }
 }
 
-export interface PendingQuote { quoteId: number; quoteNumber: string; email: string | null; experienceId: number; variantId: number | null; needsTermsMinDays: number | null; paidAt: number | null }
+// ─── Participantes de una reserva de retiro ───────────────────────────────────────────────────────────────
 
-/** Presupuestos PAGADOS con regla activa y aún sin derecho; los de duración variable llevan los días mínimos que falta confirmar. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const emailKey = (e: string) => e.trim().toLowerCase();
+
+export interface QuoteParticipant { id: number; quoteId: number; name: string; email: string; status: "active" | "removed" }
+
+/** Participantes identificados de una reserva (sin la migración 0094, ninguno). */
+export async function listQuoteParticipants(quoteId: number, includeRemoved = false): Promise<QuoteParticipant[]> {
+  try {
+    const d = await getDb();
+    if (!d) return [];
+    const [r] = (await d.execute(sql`SELECT id, quote_id, name, email, status FROM quote_participants WHERE quote_id = ${quoteId} ${includeRemoved ? sql`` : sql`AND status = 'active'`} ORDER BY id`)) as unknown as [Array<Record<string, any>>];
+    return r.map((x) => ({ id: Number(x.id), quoteId: Number(x.quote_id), name: String(x.name), email: String(x.email), status: String(x.status) === "removed" ? "removed" : "active" }));
+  } catch {
+    return [];
+  }
+}
+
+/** Quien recibe derecho por este presupuesto: quien reservó y cada participante activo (una sola vez cada correo). */
+async function quoteRecipients(quoteId: number, buyer: { name: string; email: string }): Promise<Array<{ name: string; email: string }>> {
+  const out = [{ name: buyer.name, email: buyer.email.trim() }];
+  const seen = new Set([emailKey(buyer.email)]);
+  for (const p of await listQuoteParticipants(quoteId)) {
+    if (seen.has(emailKey(p.email))) continue;
+    seen.add(emailKey(p.email));
+    out.push({ name: p.name, email: p.email });
+  }
+  return out;
+}
+
+/** Plazas de la reserva confirmada (las de la solicitud que originó el presupuesto; al menos una). */
+const seatsOf = (lead: Record<string, any>): number => Math.max(1, Number(lead.numberOfPersons ?? 1) || 1);
+
+async function readQuoteAndLead(quoteId: number): Promise<{ quote: Record<string, any>; lead: Record<string, any> } | null> {
+  const d = await getDb();
+  if (!d) return null;
+  const [q] = ((await d.execute(sql`SELECT id, quoteNumber, status, paidAt, leadId FROM quotes WHERE id = ${quoteId}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+  if (!q) return null;
+  const [lead] = ((await d.execute(sql`SELECT id, name, email, numberOfPersons, experienceId, variant_id FROM leads WHERE id = ${Number(q.leadId)}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+  return lead ? { quote: q, lead } : null;
+}
+
+/**
+ * Identifica a una persona de la reserva. Las plazas las fija la reserva confirmada (quien reservó cuenta como una): no se admiten
+ * más personas que plazas, ni dos veces el mismo correo, ni a quien reservó. Si el presupuesto ya está pagado, la persona recibe SU
+ * derecho en el acto (pendiente de activar); si no, cuando se pague. Idempotente.
+ */
+export async function addQuoteParticipant(quoteId: number, p: { name: string; email: string }, actorUserId: number | null, now = Date.now()): Promise<{ participant: QuoteParticipant; created: boolean; grant: QuoteFlowResult | null }> {
+  const name = p.name.trim().slice(0, 190);
+  const email = emailKey(p.email);
+  if (!name) throw new LearningRuleError("BAD_REQUEST", "Indica el nombre de la persona.");
+  if (!EMAIL_RE.test(email) || email.length > 190) throw new LearningRuleError("BAD_REQUEST", "Indica un correo válido: es donde recibirá su acceso.");
+  const base = await readQuoteAndLead(quoteId);
+  if (!base) throw new LearningRuleError("BAD_REQUEST", "El presupuesto no existe.");
+  const status = String(base.quote.status);
+  if (["perdido", "rechazado", "expirado"].includes(status) && !base.quote.paidAt) throw new LearningRuleError("BAD_REQUEST", "Este presupuesto está cancelado: no admite participantes.");
+  if (email === emailKey(String(base.lead.email ?? ""))) throw new LearningRuleError("BAD_REQUEST", "Esa persona es quien hizo la reserva: ya tiene su plaza.");
+  const d = (await getDb())!;
+  const all = await listQuoteParticipants(quoteId, true);
+  const same = all.find((x) => x.email === email);
+  if (same?.status === "active") return { participant: same, created: false, grant: await grantLearningFromQuote(quoteId, { id: actorUserId, name: null }, now) };
+  if (same) throw new LearningRuleError("BAD_REQUEST", "Esa persona fue retirada de la reserva: para volver a admitirla, reactiva su acceso desde Formación.");
+  const seats = seatsOf(base.lead);
+  const active = all.filter((x) => x.status === "active").length;
+  if (active + 1 >= seats) throw new LearningRuleError("BAD_REQUEST", seats === 1 ? "Esta reserva es de una sola plaza." : `Las ${seats} plazas de esta reserva ya están identificadas.`);
+  await d.execute(sql`INSERT INTO quote_participants (quote_id, name, email, status, created_by, created_at) VALUES (${quoteId}, ${name}, ${email}, 'active', ${actorUserId}, ${now})`);
+  const [row] = await listQuoteParticipants(quoteId).then((l) => l.filter((x) => x.email === email));
+  return { participant: row, created: true, grant: await grantLearningFromQuote(quoteId, { id: actorUserId, name: null }, now) };
+}
+
+/** Retira a una persona de la reserva (libera su plaza) y revoca SOLO su derecho; el resto de la reserva sigue como estaba. */
+export async function removeQuoteParticipant(participantId: number, reason: string, actorUserId: number | null, now = Date.now()): Promise<{ removed: boolean; revokedEnrollments: number }> {
+  if (!reason.trim()) throw new LearningRuleError("REASON_REQUIRED", "Indica el motivo.");
+  const d = await getDb();
+  if (!d) throw new LearningRuleError("BAD_REQUEST", "Base de datos no disponible.");
+  const [r] = ((await d.execute(sql`SELECT id, quote_id, email, status FROM quote_participants WHERE id = ${participantId}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+  if (!r) throw new LearningRuleError("BAD_REQUEST", "La persona no consta en ninguna reserva.");
+  if (String(r.status) !== "active") return { removed: false, revokedEnrollments: 0 };
+  await d.execute(sql`UPDATE quote_participants SET status = 'removed', removed_at = ${now}, removed_reason = ${reason.trim().slice(0, 255)} WHERE id = ${participantId} AND status = 'active'`);
+  const [list] = (await d.execute(sql`SELECT e.id FROM learning_enrollments e JOIN users u ON u.id = e.user_id WHERE e.quote_id = ${Number(r.quote_id)} AND e.source = 'payment' AND LOWER(u.email) = ${String(r.email).toLowerCase()} AND e.status <> 'revoked'`)) as unknown as [Array<Record<string, any>>];
+  const { revokeEnrollment } = await import("./learningDb");
+  for (const e of list) await revokeEnrollment(Number(e.id), `Participante retirado de la reserva: ${reason.trim()}`.slice(0, 300), actorUserId as unknown as number, now);
+  return { removed: true, revokedEnrollments: list.length };
+}
+
+// ─── Reembolsos y cancelaciones de presupuestos ────────────────────────────────────────────────────────────
+
+/**
+ * Hecho de pago sobre un presupuesto (reembolso total, disputa…): protege el acceso SIN borrar nada, igual que en los pedidos.
+ *  - «revoke»: reembolso total o disputa perdida; «suspend»: disputa abierta; «reactivate»: disputa ganada (solo reabre lo
+ *    suspendido por Stripe, nunca una suspensión manual). Afecta a TODAS las personas de la reserva. Idempotente.
+ */
+export async function changeLearningAccessForQuote(quoteId: number, action: "revoke" | "suspend" | "reactivate", reason: string): Promise<{ changed: number }> {
+  try {
+    const d = await getDb();
+    if (!d) return { changed: 0 };
+    const [list] = (await d.execute(sql`SELECT id, status FROM learning_enrollments WHERE source = 'payment' AND quote_id = ${quoteId}`)) as unknown as [Array<Record<string, any>>];
+    const { revokeEnrollment, suspendEnrollment, reactivateEnrollment } = await import("./learningDb");
+    const actor = null as unknown as number;
+    let changed = 0;
+    for (const e of list) {
+      const id = Number(e.id);
+      const status = String(e.status);
+      if (action === "revoke" && status !== "revoked") { await revokeEnrollment(id, reason, actor); changed++; }
+      else if (action === "suspend" && status === "active") { await suspendEnrollment(id, reason, actor); changed++; }
+      else if (action === "reactivate" && status === "suspended") {
+        const [ev] = (await d.execute(sql`SELECT detail FROM learning_access_events WHERE enrollment_id = ${id} AND type = 'suspended' ORDER BY id DESC LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+        let why = "";
+        try { const raw = ev?.[0]?.detail; why = String((typeof raw === "string" ? JSON.parse(raw) : raw)?.reason ?? ""); } catch { why = ""; }
+        if (why.startsWith("Stripe:")) { await reactivateEnrollment(id, reason, actor); changed++; }
+      }
+    }
+    return { changed };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { changed: 0 };
+    throw e;
+  }
+}
+
+/**
+ * Reembolso PARCIAL (o cancelación parcial) de un presupuesto: NO se retira ningún acceso por sí solo: una devolución parcial puede
+ * ser una plaza, un descuento o un gesto, y solo la administración sabe qué personas dejan de tener derecho. Se anota en el
+ * historial de cada acceso vigente y el presupuesto queda en «por revisar» hasta que la administración decide. Idempotente por hecho.
+ */
+export async function flagPartialQuoteRefund(quoteId: number, info: { key: string; refundedCents?: number | null; chargedCents?: number | null; source: string }, now = Date.now()): Promise<number> {
+  try {
+    const d = await getDb();
+    if (!d) return 0;
+    const [list] = (await d.execute(sql`SELECT id FROM learning_enrollments WHERE source = 'payment' AND quote_id = ${quoteId} AND status <> 'revoked'`)) as unknown as [Array<Record<string, any>>];
+    const { logEnrollmentEvent } = await import("./learningDb");
+    let n = 0;
+    for (const e of list) {
+      const [dup] = (await d.execute(sql`SELECT 1 FROM learning_access_events WHERE enrollment_id = ${Number(e.id)} AND type = 'quote_partial_refund' AND JSON_UNQUOTE(JSON_EXTRACT(detail, '$.key')) = ${info.key} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+      if (dup?.length) continue;
+      await logEnrollmentEvent(Number(e.id), "quote_partial_refund", { quoteId, ...info }, null, now);
+      n++;
+    }
+    return n;
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return 0;
+    throw e;
+  }
+}
+
+export interface QuoteRefundReview { quoteId: number; quoteNumber: string; source: string; refundedCents: number | null; chargedCents: number | null; people: Array<{ enrollmentId: number; userId: number; name: string | null; email: string | null; status: string }> }
+
+/** Presupuestos con una devolución parcial pendiente de decidir, con las personas cuyo derecho sigue vigente. */
+export async function listQuoteRefundReviews(): Promise<QuoteRefundReview[]> {
+  try {
+    const d = await getDb();
+    if (!d) return [];
+    const [list] = (await d.execute(sql`SELECT e.id AS enrollment_id, e.user_id, e.status, e.quote_id, u.name, u.email, q.quoteNumber, ev.detail
+      FROM learning_enrollments e
+      JOIN learning_access_events ev ON ev.enrollment_id = e.id AND ev.type = 'quote_partial_refund'
+      LEFT JOIN users u ON u.id = e.user_id LEFT JOIN quotes q ON q.id = e.quote_id
+      WHERE e.quote_id IS NOT NULL AND e.status <> 'revoked'
+        AND NOT EXISTS (SELECT 1 FROM learning_access_events r WHERE r.enrollment_id = e.id AND r.type = 'quote_refund_reviewed' AND r.id > ev.id)
+      ORDER BY ev.id DESC`)) as unknown as [Array<Record<string, any>>];
+    const out = new Map<number, QuoteRefundReview>();
+    for (const r of list) {
+      const qid = Number(r.quote_id);
+      let det: Record<string, any> = {};
+      try { det = typeof r.detail === "string" ? JSON.parse(r.detail) : (r.detail ?? {}); } catch { det = {}; }
+      const cur: QuoteRefundReview = out.get(qid) ?? { quoteId: qid, quoteNumber: String(r.quoteNumber ?? ""), source: String(det.source ?? ""), refundedCents: det.refundedCents ?? null, chargedCents: det.chargedCents ?? null, people: [] };
+      if (!cur.people.some((x) => x.enrollmentId === Number(r.enrollment_id))) cur.people.push({ enrollmentId: Number(r.enrollment_id), userId: Number(r.user_id), name: r.name ?? null, email: r.email ?? null, status: String(r.status) });
+      out.set(qid, cur);
+    }
+    return Array.from(out.values());
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return [];
+    throw e;
+  }
+}
+
+/**
+ * La administración decide una devolución parcial: retira el derecho de las personas indicadas (solo de ESTE presupuesto) y deja
+ * constancia de la revisión en las demás, que conservan su acceso. Idempotente.
+ */
+export async function resolveQuoteRefundReview(quoteId: number, revokeEnrollmentIds: number[], reason: string, actorUserId: number | null, now = Date.now()): Promise<{ revoked: number; kept: number }> {
+  if (!reason.trim()) throw new LearningRuleError("REASON_REQUIRED", "Indica el motivo de la decisión.");
+  const d = await getDb();
+  if (!d) throw new LearningRuleError("BAD_REQUEST", "Base de datos no disponible.");
+  const [list] = (await d.execute(sql`SELECT id, status FROM learning_enrollments WHERE source = 'payment' AND quote_id = ${quoteId}`)) as unknown as [Array<Record<string, any>>];
+  const own = new Set(list.map((e) => Number(e.id)));
+  if (revokeEnrollmentIds.some((id) => !own.has(id))) throw new LearningRuleError("BAD_REQUEST", "Algún acceso no pertenece a este presupuesto.");
+  const { revokeEnrollment, logEnrollmentEvent } = await import("./learningDb");
+  let revoked = 0;
+  let kept = 0;
+  for (const e of list) {
+    const id = Number(e.id);
+    if (revokeEnrollmentIds.includes(id)) {
+      if (String(e.status) !== "revoked") { await revokeEnrollment(id, `Devolución parcial del presupuesto: ${reason.trim()}`.slice(0, 300), actorUserId as unknown as number, now); revoked++; }
+    } else if (String(e.status) !== "revoked") {
+      await logEnrollmentEvent(id, "quote_refund_reviewed", { quoteId, reason: reason.trim().slice(0, 255), decision: "keep" }, actorUserId, now);
+      kept++;
+    }
+  }
+  return { revoked, kept };
+}
+
+/**
+ * Cancelaciones SIN hecho de pago automático (barrido): (a) presupuesto «perdido» o «rechazado» con accesos vigentes y sin cobro
+ * en pie; (b) solicitud de cancelación ACEPTADA del todo → se revoca la reserva entera (presupuesto y pedido); ACEPTADA PARCIAL o
+ * por líneas → solo se anota para decidir. Nada de esto toca importes ni ejecuta reembolsos. Idempotente.
+ */
+export async function reconcileCancelledQuoteRights(now = Date.now()): Promise<{ revoked: number; flagged: number }> {
+  const out = { revoked: 0, flagged: 0 };
+  const d = await getDb();
+  if (!d) return out;
+  try {
+    const [dead] = (await d.execute(sql`SELECT DISTINCT q.id, q.status FROM quotes q JOIN learning_enrollments e ON e.quote_id = q.id AND e.source = 'payment' AND e.status <> 'revoked'
+      WHERE q.status IN ('perdido', 'rechazado') AND q.paidAt IS NULL LIMIT 200`)) as unknown as [Array<Record<string, any>>];
+    for (const q of dead) out.revoked += (await changeLearningAccessForQuote(Number(q.id), "revoke", `Presupuesto ${String(q.status) === "perdido" ? "perdido" : "rechazado"}`)).changed;
+  } catch (e) {
+    if (!isMissingLearningSchema(e)) throw e;
+  }
+  try {
+    const [cancels] = (await d.execute(sql`SELECT c.id, c.cancellation_number, c.linked_quote_id, c.linked_reservation_id, c.resolution_status, c.cancellation_scope, r.quote_id AS res_quote_id, r.merchant_order
+      FROM cancellation_requests c LEFT JOIN reservations r ON r.id = c.linked_reservation_id
+      WHERE c.resolution_status IN ('aceptada_total', 'aceptada_parcial') AND (c.linked_quote_id IS NOT NULL OR c.linked_reservation_id IS NOT NULL) ORDER BY c.id DESC LIMIT 300`)) as unknown as [Array<Record<string, any>>];
+    for (const c of cancels) {
+      const quoteId = Number(c.linked_quote_id ?? c.res_quote_id ?? 0) || null;
+      const total = String(c.resolution_status) === "aceptada_total" && (c.cancellation_scope == null || String(c.cancellation_scope) === "total");
+      const why = `Cancelación ${c.cancellation_number ?? c.id} aceptada`;
+      if (total) {
+        if (quoteId) out.revoked += (await changeLearningAccessForQuote(quoteId, "revoke", why)).changed;
+        if (c.merchant_order) out.revoked += (await changeLearningAccessForOrder(String(c.merchant_order), "revoke", why)).changed;
+      } else if (quoteId) {
+        out.flagged += await flagPartialQuoteRefund(quoteId, { key: `cancellation:${c.id}`, source: `cancelación ${c.cancellation_number ?? c.id} (parcial)` }, now);
+      }
+    }
+  } catch (e) {
+    if (!isMissingLearningSchema(e) && !isMissingTable(e)) throw e;
+  }
+  return out;
+}
+
+function isMissingTable(e: unknown): boolean {
+  for (let x: any = e, depth = 0; x && depth < 5; x = x.cause, depth++) if (x?.errno === 1146 || x?.code === "ER_NO_SUCH_TABLE") return true;
+  return false;
+}
+
+export interface PendingQuote {
+  quoteId: number; quoteNumber: string; email: string | null; experienceId: number; variantId: number | null; needsTermsMinDays: number | null; paidAt: number | null;
+  /** Plazas de la reserva, participantes identificados (sin contar a quien reservó) y personas con derecho aún por conceder */
+  seats: number; participants: number; missingRecipients: number;
+}
+
+/**
+ * Presupuestos PAGADOS con regla activa y algo por hacer: derecho aún por conceder (a quien reservó o a una persona identificada),
+ * duración variable por confirmar o plazas sin identificar. Los de duración variable llevan los días mínimos por confirmar.
+ */
 export async function pendingLearningQuotes(limit = 200): Promise<PendingQuote[]> {
   const d = await getDb();
   if (!d) return [];
   const rules = await listRules();
-  if (!rules.some((r) => r.active)) return [];
+  const active = rules.filter((r) => r.active);
+  if (!active.length) return [];
+  const expIds = Array.from(new Set(active.map((r) => r.experienceId)));
   let rowsQ: Array<Record<string, any>> = [];
   try {
-    [rowsQ] = (await d.execute(sql`SELECT q.id, q.quoteNumber, q.status, q.paidAt, l.email, l.experienceId, l.variant_id
+    [rowsQ] = (await d.execute(sql`SELECT q.id, q.quoteNumber, q.status, q.paidAt, l.name, l.email, l.experienceId, l.variant_id, l.numberOfPersons
       FROM quotes q JOIN leads l ON l.id = q.leadId
-      WHERE l.experienceId IS NOT NULL AND (q.paidAt IS NOT NULL OR q.status IN ('pagado', 'convertido_reserva', 'facturado'))
-        AND NOT EXISTS (SELECT 1 FROM learning_enrollments le WHERE le.source = 'payment' AND le.quote_id = q.id)
+      WHERE l.experienceId IN (${sql.join(expIds.map((i) => sql`${i}`), sql`, `)}) AND (q.paidAt IS NOT NULL OR q.status IN ('pagado', 'convertido_reserva', 'facturado'))
       ORDER BY q.id DESC LIMIT 1000`)) as unknown as [Array<Record<string, any>>];
   } catch (e) {
     if (isMissingLearningSchema(e)) return [];
@@ -391,20 +654,30 @@ export async function pendingLearningQuotes(limit = 200): Promise<PendingQuote[]
     const variantId = r.variant_id == null ? null : Number(r.variant_id);
     const matched = matchRules(rules, Number(r.experienceId), variantId);
     if (!matched.length) continue;
-    const days = await contractedDaysOf(Number(r.id));
+    const quoteId = Number(r.id);
+    const days = await contractedDaysOf(quoteId);
     const needing = matched.filter((m) => m.minContractedDays && (days == null || days < m.minContractedDays));
-    out.push({ quoteId: Number(r.id), quoteNumber: String(r.quoteNumber ?? ""), email: r.email ? String(r.email) : null, experienceId: Number(r.experienceId), variantId, needsTermsMinDays: needing.length === matched.length ? Math.min(...needing.map((m) => m.minContractedDays as number)) : null, paidAt: r.paidAt ? new Date(r.paidAt).getTime() : null });
+    const needsTermsMinDays = needing.length === matched.length ? Math.min(...needing.map((m) => m.minContractedDays as number)) : null;
+    const seats = seatsOf(r);
+    const participants = (await listQuoteParticipants(quoteId)).length;
+    const recipients = await quoteRecipients(quoteId, { name: String(r.name ?? r.email ?? ""), email: String(r.email ?? "") });
+    const [have] = (await d.execute(sql`SELECT LOWER(u.email) AS email FROM learning_enrollments e JOIN users u ON u.id = e.user_id WHERE e.source = 'payment' AND e.quote_id = ${quoteId}`)) as unknown as [Array<Record<string, any>>];
+    const covered = new Set(have.map((h) => String(h.email)));
+    const missingRecipients = recipients.filter((x) => x.email && !covered.has(emailKey(x.email))).length;
+    if (needsTermsMinDays == null && missingRecipients === 0 && participants + 1 >= seats) continue;
+    out.push({ quoteId, quoteNumber: String(r.quoteNumber ?? ""), email: r.email ? String(r.email) : null, experienceId: Number(r.experienceId), variantId, needsTermsMinDays, paidAt: r.paidAt ? new Date(r.paidAt).getTime() : null, seats, participants, missingRecipients });
     if (out.length >= limit) break;
   }
   return out;
 }
 
 /** Barrido (tarea programada y recuperación): concede lo pendiente de presupuestos pagados y reintenta los pedidos pendientes. Idempotente. */
-export async function sweepLearningGrants(now = Date.now()): Promise<{ quotes: number; granted: number; needsTerms: number; orders: number }> {
-  const out = { quotes: 0, granted: 0, needsTerms: 0, orders: 0 };
+export async function sweepLearningGrants(now = Date.now()): Promise<{ quotes: number; granted: number; needsTerms: number; orders: number; revoked: number }> {
+  const out = { quotes: 0, granted: 0, needsTerms: 0, orders: 0, revoked: 0 };
   for (const p of await pendingLearningQuotes(50)) {
     out.quotes++;
     if (p.needsTermsMinDays != null) { out.needsTerms++; continue; }
+    if (p.missingRecipients === 0) continue; // solo faltan plazas por identificar: lo hace la administración
     const r = await grantLearningFromQuote(p.quoteId, { id: null, name: "sistema (barrido)" }, now);
     if (r.status === "granted" && r.created > 0) out.granted++;
   }
@@ -412,6 +685,7 @@ export async function sweepLearningGrants(now = Date.now()): Promise<{ quotes: n
     const r = await grantLearningFromOrder(p.merchantOrder, { id: null, name: "sistema (barrido)" }, now);
     if (r.status === "granted" && r.created > 0) out.orders++;
   }
+  out.revoked = (await reconcileCancelledQuoteRights(now)).revoked;
   return out;
 }
 

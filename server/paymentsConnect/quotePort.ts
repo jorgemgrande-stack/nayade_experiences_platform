@@ -8,6 +8,15 @@ import { invoices, quotes, leads, reservations } from "../../drizzle/schema";
 import { getDb, logActivity } from "../db";
 import { alertAdmin, INCIDENT_LABEL } from "./incidents";
 import type { QuoteInfo, QuotePort } from "./service";
+import { changeLearningAccessForQuote, flagPartialQuoteRefund } from "../learningFlow";
+
+/** Acción sobre los accesos de la reserva según el hecho. El reembolso parcial NO retira nada: queda por decidir (ver learningFlow). */
+const QUOTE_ACCESS: Partial<Record<string, { action: "revoke" | "suspend" | "reactivate"; reason: string }>> = {
+  refund_full: { action: "revoke", reason: "Stripe: reembolso total del presupuesto" },
+  dispute_lost: { action: "revoke", reason: "Stripe: disputa perdida" },
+  dispute_opened: { action: "suspend", reason: "Stripe: disputa abierta, acceso en pausa" },
+  dispute_won: { action: "reactivate", reason: "Stripe: disputa ganada, acceso restablecido" },
+};
 
 export const STRIPE_SYSTEM_ACTOR = "Sistema (Stripe)";
 
@@ -33,6 +42,10 @@ export function realQuotePort(): QuotePort {
       return info;
     },
     async noteIncident(quoteId, i) {
+      // Primero la protección del acceso (idempotente; si falla, el evento se reintenta y no queda abierto en silencio)
+      const access = QUOTE_ACCESS[i.kind];
+      if (access) await changeLearningAccessForQuote(quoteId, access.action, access.reason);
+      else if (i.kind === "refund_partial") await flagPartialQuoteRefund(quoteId, { key: i.eventId, refundedCents: i.refundedCents, chargedCents: i.chargedCents, source: "Stripe: reembolso parcial" });
       // Solo constancia y aviso: el presupuesto, su factura y sus reservas no se tocan (decisión fiscal de la administración)
       await logActivity("quote", quoteId, `stripe_${i.kind}`, null, STRIPE_SYSTEM_ACTOR, { label: INCIDENT_LABEL[i.kind], ...i });
       await alertAdmin(`presupuesto ${quoteId}`, i);

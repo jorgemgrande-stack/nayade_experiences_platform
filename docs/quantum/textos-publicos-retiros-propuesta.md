@@ -1,14 +1,15 @@
-# Textos públicos de retiros: contradicciones y corrección propuesta (NO publicada)
+# Textos públicos de retiros: contradicciones y corrección (APLICADA el 26/11/2026)
 
-Estado: 26/11/2026. Auditoría de los textos publicados frente a la condición definitiva de Indira: **Módulo 1 de RECONNECT incluido solo en retiros de seis días o más, 30 días de acceso, a activar cuando la persona quiera**. Nada de esto se ha cambiado en la web: son propuestas para que las confirme Dirección o Indira antes de publicar.
+Condición definitiva de Indira: **Módulo 1 de RECONNECT incluido solo en retiros de seis días o más, 30 días de acceso que la persona empieza a contar cuando lo activa (antes, durante o después del retiro).**
 
-| Producto | Texto actual (incluye) | Problema | Propuesta (alemán, idioma de la web) |
-|---|---|---|---|
-| 26 Seelenreise | «Onlinekurs Modul 1 (Wert 190 €)» | Correcto, pero sin la condición de 30 días ni el inicio libre | «Onlinekurs Modul 1 (Wert 190 €) · 30 Tage Zugang, Start frei wählbar: vor, während oder nach dem Retreat» |
-| 27 Natur & Outdoor, 28 Neujahr | (no menciona el módulo) | Falta lo que sí incluyen (seis días) | La misma línea que en el 26 |
-| 29 Seelenweg | «4 Tage: Basismodule aus dem Onlineprogramm» | Contradice la decisión: los 4 días NO incluyen módulo | Quitar la línea de 4 días |
-| 29 Seelenweg | «6 Tage: voller Zugang zum Onlineprogramm und exklusive WhatsApp Begleitung vor und nach dem Retreat» | «voller Zugang» no es cierto (solo Módulo 1); «WhatsApp» no está confirmado (Indira invita personalmente a Telegram) | «6 Tage: Onlinekurs Modul 1 (30 Tage Zugang, Start frei wählbar)»; la compañía por WhatsApp/Telegram, solo si Indira la confirma |
-| 30 Natur Retreat | «Onlinekurs Modul 1 – Mediale Energiearbeit & Selbstheilung» (en las inclusiones y en la descripción, para todas las opciones) | Las opciones de 3–4 días no lo incluyen; las de 5–6 solo con seis días contratados | Mantenerlo solo como «Bei 6 Tagen: Onlinekurs Modul 1 (30 Tage Zugang, Start frei wählbar)» |
-| 31 Wildnis, 32 Naturtag | (no mencionan módulo) | Correcto | Sin cambios |
+Se corrigió en alemán (idioma principal) y en español (traducción validada), solo en el campo «Incluye» y, en Natur Retreat, también en la descripción. No se añadió ningún contenido nuevo: el resto de cada texto no se tocó.
 
-Nota: la duración de «5–6 Tage» no está resuelta por la opción; la regla exige confirmar los días contratados antes de conceder el derecho.
+| Producto | Antes | Después |
+|---|---|---|
+| 26 Seelenreise | «Onlinekurs Modul 1 (Wert 190 €)» | …«– 30 Tage Zugang, Start frei wählbar: vor, während oder nach dem Retreat» |
+| 27 Natur & Outdoor, 28 Neujahr | (no mencionaban el módulo) | «Onlinekurs Modul 1 – 30 Tage Zugang, Start frei wählbar: vor, während oder nach dem Retreat» |
+| 29 Seelenweg | «4 Tage: Basismodule aus dem Onlineprogramm» y «6 Tage: voller Zugang zum Onlineprogramm y exklusive WhatsApp…» | Se quita la línea de 4 días; «6 Tage: Onlinekurs Modul 1 (nur bei 6 Tagen enthalten; 30 Tage Zugang, Start frei wählbar) und exklusive WhatsApp Begleitung vor und nach dem Retreat» |
+| 30 Natur Retreat | «Onlinekurs Modul 1 – Mediale Energiearbeit & Selbstheilung» para todas las opciones | «Bei 6 Tagen: Onlinekurs Modul 1 – … (30 Tage Zugang, Start frei wählbar)», en «Incluye» y en la descripción |
+| 31 Wildnis, 32 Naturtag | (sin módulo) | Sin cambios |
+
+**Pendiente de Indira, sin tocar:** la frase «exklusive WhatsApp Begleitung» de Seelenweg (6 días) ya estaba publicada; ella invita personalmente a Telegram. No se ha cambiado ni ampliado.

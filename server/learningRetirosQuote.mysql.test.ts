@@ -56,7 +56,7 @@ describe.skipIf(!URL_)("Retiros sin convocatoria: presupuesto pagado → derecho
     database = drizzle(pool);
     for (const f of ["0079_learning_core.sql", "0089_learning_acceso_por_modulo.sql", "0092_learning_activacion_voluntaria.sql", "0093_learning_retiros_terminos.sql"]) await pool.query(readFileSync(new URL(`../db/migrations/${f}`, import.meta.url), "utf8"));
     await pool.query("CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(190), name VARCHAR(190) NULL, passwordHash VARCHAR(255) NULL, inviteAccepted TINYINT NULL)");
-    await pool.query("CREATE TABLE leads (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(190), email VARCHAR(190), experienceId INT NULL, variant_id INT NULL)");
+    await pool.query("CREATE TABLE leads (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(190), email VARCHAR(190), experienceId INT NULL, variant_id INT NULL, numberOfPersons INT NULL)");
     await pool.query("CREATE TABLE quotes (id INT AUTO_INCREMENT PRIMARY KEY, quoteNumber VARCHAR(32) UNIQUE, status VARCHAR(30), total DECIMAL(10,2), paidAt DATETIME NULL, leadId INT)");
     await pool.query("CREATE TABLE edition_enrollments (id INT AUTO_INCREMENT PRIMARY KEY, quote_id INT NULL)");
     await pool.query("CREATE TABLE reservations (id INT AUTO_INCREMENT PRIMARY KEY, merchant_order VARCHAR(30), product_id INT, variant_id INT NULL, status VARCHAR(20), customer_name VARCHAR(120), customer_email VARCHAR(190), amount_paid INT NULL, amount_total INT NULL, paid_at BIGINT NULL, quote_id INT NULL, changes_log JSON NULL)");

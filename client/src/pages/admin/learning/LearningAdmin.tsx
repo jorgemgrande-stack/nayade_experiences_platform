@@ -23,6 +23,7 @@ import Materials from "./Materials";
 import Authoring from "./Authoring";
 import Rules from "./Rules";
 import StudentProgress from "./StudentProgress";
+import { QuoteParticipantsManager, QuoteRefundReviews } from "./QuoteParticipants";
 
 function useFmt() {
   const { t, format } = useI18n();
@@ -113,6 +114,7 @@ function PendingQuotes() {
   const utils = trpc.useUtils();
   const q = trpc.learning.admin.pendingQuotes.useQuery();
   const [days, setDays] = useState<Record<number, string>>({});
+  const [open, setOpen] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const confirmDays = trpc.learning.admin.confirmContractedDays.useMutation();
   const grantForQuote = trpc.learning.admin.grantForQuote.useMutation();
@@ -167,6 +169,9 @@ function PendingQuotes() {
           { key: "quote", header: t("learningAdmin.pendingQuotes.quote"), cell: (p) => <span className="font-mono">{p.quoteNumber}</span> },
           { key: "email", header: t("learningAdmin.pendingQuotes.email"), cell: (p) => p.email ?? t("learningAdmin.pending.noEmail") },
           { key: "paid", header: t("learningAdmin.pending.paidAt"), cell: (p) => (p.paidAt ? format.dateTime(p.paidAt, { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }) : "—") },
+          { key: "seats", header: t("learningAdmin.pendingQuotes.seats"), cell: (p) => (
+            <Button size="sm" variant="ghost" onClick={() => setOpen(open === p.quoteId ? null : p.quoteId)} aria-expanded={open === p.quoteId}>{t("learningAdmin.pendingQuotes.seatsValue", { p: p.participants + 1, n: p.seats })}</Button>
+          ) },
           { key: "state", header: "", cell: (p) => (p.needsTermsMinDays != null ? t("learningAdmin.pendingQuotes.needs", { n: p.needsTermsMinDays }) : t("learningAdmin.pendingQuotes.ready")) },
           {
             key: "actions", header: t("learningAdmin.enrollments.actions"), align: "right",
@@ -179,6 +184,7 @@ function PendingQuotes() {
           },
         ]}
       />
+      {open != null && q.data!.some((p) => p.quoteId === open) && <QuoteParticipantsManager quoteId={open} seats={q.data!.find((p) => p.quoteId === open)!.seats} onChanged={() => void refresh()} />}
     </section>
   );
 }
@@ -200,11 +206,12 @@ function Enrollments() {
   if (q.isLoading) return <PanelLoading />;
   if (q.isError) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
   const now = Date.now();
-  if (!q.data!.length) return <div className="space-y-4"><PendingOrders /><PendingQuotes /><PanelEmpty title={t("learningAdmin.enrollments.emptyTitle")} description={t("learningAdmin.enrollments.emptyDesc")} /></div>;
+  if (!q.data!.length) return <div className="space-y-4"><PendingOrders /><PendingQuotes /><QuoteRefundReviews /><PanelEmpty title={t("learningAdmin.enrollments.emptyTitle")} description={t("learningAdmin.enrollments.emptyDesc")} /></div>;
   return (
     <div className="space-y-4">
       <PendingOrders />
       <PendingQuotes />
+      <QuoteRefundReviews />
       <PanelDataList
         caption={t("learningAdmin.tabs.enrollments")}
         rows={q.data!}
