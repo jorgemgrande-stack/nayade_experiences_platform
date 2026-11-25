@@ -235,7 +235,7 @@ export function NewLeadModal({ onClose }: { onClose: () => void }) {
         </div>
         </CrmFormSection>
       </div>
-      <DialogFooter className="gap-2 sticky bottom-0 z-10 -mx-6 -mb-6 border-t border-border bg-card px-6 py-3">
+      <DialogFooter className="gap-2 sticky -bottom-6 z-10 -mx-6 -mb-6 border-t border-border bg-background px-6 pb-9 pt-3 max-sm:[&>button]:w-full">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">{t("crmLeads.cancelar")}</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createLead.isPending}>
           {createLead.isPending ? t("crmLeads.creando") : voc.createLead}

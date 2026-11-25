@@ -234,7 +234,7 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
 
         <p className="text-xs text-foreground/50 mt-2">{t("crmInvoices.alEmitirlaLaFactura")}</p>
 
-        <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 border-t border-border bg-card px-6 py-3">
+        <DialogFooter className="sticky -bottom-6 z-10 -mx-6 -mb-6 border-t border-border bg-background px-6 pb-9 pt-3 max-sm:[&>button]:w-full">
           <Button variant="outline" size="sm" onClick={() => { reset(); onOpenChange(false); }} className="border-foreground/[0.15] text-foreground/65">{t("crmInvoices.cancelar")}</Button>
           <Button size="sm" onClick={submit} disabled={create.isPending}>
             {create.isPending && <RefreshCw className="w-4 h-4 animate-spin mr-1" />}{t("crmInvoices.emitirFactura")}</Button>
