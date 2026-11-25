@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
@@ -30,9 +30,10 @@ import EmailAuditTab from "./EmailAuditTab";
 import TemplateRulesTab from "./TemplateRulesTab";
 import PendingJobsTab from "./PendingJobsTab";
 import { toastError } from "@/lib/errorMessage";
-import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
-import { PanelDataList, PanelPageHeader, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
-import { HeroCard, MetricCard } from "@/components/admin/PanelVisual";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { CompactEmpty, SummaryStrip, ToolbarRow, SCROLL_NAV, TAB_BASE, TAB_ON, TAB_OFF, useScrollFade } from "@/components/admin/SalesFamilyShell";
+import { cn } from "@/lib/utils";
+import { PanelDataList, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -317,6 +318,8 @@ export default function CommercialFollowupDashboard() {
   ];
 
   const kpis = dashboard?.kpis;
+  const tabScroll = useScrollFade<HTMLDivElement>(tab);
+  const [, setLocation] = useLocation();
   const quoteColumns = useQuoteColumns(handleAction, true);
   const attention = dashboard?.attentionList ?? [];
   const openRows = openData?.rows ?? [];
@@ -352,33 +355,38 @@ export default function CommercialFollowupDashboard() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 py-6">
-        {/* Header */}
-        <PanelPageHeader
-          icon={<Target />}
-          title={t("crmFollowup.title")}
-          description={t("crmFollowup.subtitle")}
-          actions={
-            <Button type="button" variant="outline" size="icon" aria-label={t("panelStates.retry")} onClick={() => { refetchDash(); refetchOpen(); }}>
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          }
-        />
-        <WorkplaceLocks place="crm" className="mb-6" />
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 pb-6 pt-3">
+        {/* Cabecera compacta: título y actualizar en una fila; el subtítulo solo en pantallas anchas */}
+        <header className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:h-4 [&_svg]:w-4"><Target /></span>
+            <div className="min-w-0">
+              <h1 className="overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight text-foreground">{t("crmFollowup.title")}</h1>
+              <p className="hidden overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground lg:block">{t("crmFollowup.subtitle")}</p>
+            </div>
+          </div>
+          <Button type="button" variant="outline" size="icon" className="shrink-0" aria-label={t("panelStates.retry")} onClick={() => { refetchDash(); refetchOpen(); }}>
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </header>
+        <WorkplaceLocks place="crm" className="mb-3" />
 
-        {/* Pestañas: franja desplazable en móvil, con la activa marcada con el color de la marca */}
-        <div role="tablist" aria-label={t("crmFollowup.tabsLabel")} className="-mx-4 mb-6 flex w-auto min-w-0 max-w-[100vw] gap-1 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0">
-          {tabs.map(tb => (
-            <button key={tb.id} type="button" role="tab" aria-selected={tab === tb.id} onClick={() => setTab(tb.id)}
-              className={`-mb-px flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                tab === tb.id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-              }`}>
-              <tb.icon className="h-4 w-4" aria-hidden="true" />
-              {tb.label}
-            </button>
-          ))}
+        {/* Pestañas: pastillas con desplazamiento suave y desvanecido; la activa va con el color de la marca y «Abiertos» avisa de lo que pide atención */}
+        <div className="mb-4 flex min-w-0">
+          <div ref={tabScroll.ref} onScroll={tabScroll.onScroll} style={tabScroll.style} className={`${SCROLL_NAV} flex-1`}>
+            <div role="tablist" aria-label={t("crmFollowup.tabsLabel")} className="inline-flex min-w-max gap-0.5 rounded-xl border border-border bg-card/80 p-1 shadow-sm">
+              {tabs.map(tb => (
+                <button key={tb.id} type="button" role="tab" aria-selected={tab === tb.id} data-active={tab === tb.id} onClick={() => setTab(tb.id)}
+                  className={cn(TAB_BASE, tab === tb.id ? TAB_ON : TAB_OFF)}>
+                  <tb.icon className="h-4 w-4" aria-hidden="true" />
+                  {tb.label}
+                  {tb.id === "open" && (kpis?.needsAttention ?? 0) > 0 && (
+                    <span title={t("crmFollowup.kpi.needsAttention")} className="rounded-full bg-warning/15 px-1.5 text-xs font-semibold tabular-nums text-warning">{kpis?.needsAttention}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* ── TAB: DASHBOARD ──────────────────────────────────────────────── */}
@@ -390,53 +398,41 @@ export default function CommercialFollowupDashboard() {
               <PanelLoading />
             ) : (
               <>
-                {/* Lo primero: cuántos presupuestos piden atención hoy */}
-                <HeroCard>
-                  <div className="flex flex-wrap items-center gap-4 p-5">
-                    <span className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl [&_svg]:h-6 [&_svg]:w-6 ${(kpis?.needsAttention ?? 0) > 0 ? "bg-warning/15 text-warning" : "bg-success/15 text-success"}`} aria-hidden="true">
-                      {(kpis?.needsAttention ?? 0) > 0 ? <AlertTriangle /> : <CheckCircle2 />}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-muted-foreground">{t("crmFollowup.kpi.needsAttention")}</p>
-                      <p className="text-3xl font-semibold leading-tight tabular-nums text-foreground">{kpis?.needsAttention ?? 0}</p>
-                      <p className="text-xs text-muted-foreground">{t("crmFollowup.kpi.activeQuotes")}</p>
-                    </div>
-                    <Button type="button" variant="outline" onClick={() => setTab("open")}>
-                      {t("crmFollowup.attention.seeAll")} <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </HeroCard>
-
-                {/* Estado de los presupuestos: los tres primeros filtran la lista de abiertos */}
-                <section aria-labelledby="seg-quotes" className="space-y-3">
-                  <h2 id="seg-quotes" className="text-sm font-semibold text-foreground">{t("crmFollowup.section.quotes")}</h2>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <MetricCard tone="neutral" icon={<EyeOff />} label={t("crmFollowup.kpi.notViewed")} value={kpis?.notViewed ?? 0} onClick={() => goOpen("all", "no")} className="bg-gradient-to-br from-primary/5 to-card" />
-                    <MetricCard tone="info" icon={<Eye />} label={t("crmFollowup.kpi.viewedUnpaid")} value={kpis?.viewed ?? 0} onClick={() => goOpen("all", "yes")} className="bg-gradient-to-br from-primary/5 to-card" />
-                    <MetricCard tone="warning" icon={<Pause />} label={t("crmFollowup.kpi.paused")} value={kpis?.paused ?? 0} onClick={() => goOpen("paused", "all")} className="bg-gradient-to-br from-primary/5 to-card" />
-                    <MetricCard tone="brand" icon={<Send />} label={t("crmFollowup.kpi.sentToday")} value={kpis?.sentToday ?? 0} detail={t("crmFollowup.kpi.autoReminders")} className="bg-gradient-to-br from-primary/5 to-card" />
-                    <MetricCard tone="neutral" icon={<Clock />} label={t("crmFollowup.kpi.cold")} value={kpis?.cold ?? 0} className="bg-gradient-to-br from-primary/5 to-card" />
-                    <MetricCard tone="success" icon={<CheckCircle2 />} label={t("crmFollowup.kpi.converted")} value={kpis?.converted ?? 0} className="bg-gradient-to-br from-primary/5 to-card" />
-                    <MetricCard tone="danger" icon={<XCircle />} label={t("crmFollowup.kpi.lost")} value={kpis?.lost ?? 0} className="bg-gradient-to-br from-primary/5 to-card" />
+                {/* Presupuestos: lo que pide atención (clave) y cómo está el resto; las primeras cifras filtran la lista de abiertos */}
+                <section aria-labelledby="seg-quotes" className="space-y-2">
+                  <h2 id="seg-quotes" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("crmFollowup.section.quotes")}</h2>
+                  <div className="grid gap-2">
+                    <SummaryStrip label={t("crmFollowup.section.quotes")} items={[
+                      { key: "attention", label: t("crmFollowup.kpi.needsAttention"), value: kpis?.needsAttention ?? 0, detail: t("crmFollowup.kpi.activeQuotes"), primary: true, tone: (kpis?.needsAttention ?? 0) > 0 ? "warning" : "success", onClick: () => setTab("open") },
+                      { key: "notViewed", label: t("crmFollowup.kpi.notViewed"), value: kpis?.notViewed ?? 0, tone: "neutral", onClick: () => goOpen("all", "no") },
+                      { key: "viewed", label: t("crmFollowup.kpi.viewedUnpaid"), value: kpis?.viewed ?? 0, tone: "info", onClick: () => goOpen("all", "yes") },
+                      { key: "paused", label: t("crmFollowup.kpi.paused"), value: kpis?.paused ?? 0, tone: "warning", onClick: () => goOpen("paused", "all") },
+                    ]} />
+                    <SummaryStrip label={t("crmFollowup.section.quotes")} items={[
+                      { key: "sent", label: t("crmFollowup.kpi.sentToday"), value: kpis?.sentToday ?? 0, detail: t("crmFollowup.kpi.autoReminders"), tone: "brand" },
+                      { key: "cold", label: t("crmFollowup.kpi.cold"), value: kpis?.cold ?? 0, tone: "neutral" },
+                      { key: "converted", label: t("crmFollowup.kpi.converted"), value: kpis?.converted ?? 0, tone: "success" },
+                      { key: "lost", label: t("crmFollowup.kpi.lost"), value: kpis?.lost ?? 0, tone: "danger" },
+                    ]} />
                   </div>
                 </section>
 
                 {/* Canales de entrada: WhatsApp y llamadas solo con su módulo contratado */}
-                <section aria-labelledby="seg-channels" className="space-y-3">
-                  <h2 id="seg-channels" className="text-sm font-semibold text-foreground">{t("crmFollowup.section.channels")}</h2>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-                    {hasWhatsApp && (<>
-                      <MetricCard tone="success" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappToday")} value={whatsappStats?.conversations?.newToday ?? 0} />
-                      <MetricCard tone="info" icon={<MessageCircle />} label={t("crmFollowup.kpi.whatsappUnread")} value={whatsappStats?.conversations?.unread ?? 0} />
-                    </>)}
-                    {hasVoice && (<>
-                      <MetricCard tone="brand" icon={<Bot />} label={t("crmFollowup.kpi.callsToday")} value={vapiStats?.today ?? 0} />
-                      <MetricCard tone="warning" icon={<Bot />} label={t("crmFollowup.kpi.callsUnreviewed")} value={vapiStats?.unreviewed ?? 0} />
-                    </>)}
-                    <MetricCard tone="info" icon={<Mail />} label={t("crmFollowup.kpi.emailsToday")} value={emailStats?.receivedToday ?? 0} href="/admin/atencion-comercial/email" />
-                    <MetricCard tone="warning" icon={<MailOpen />} label={t("crmFollowup.kpi.emailsUnread")} value={emailStats?.unreadInbox ?? 0} href="/admin/atencion-comercial/email" />
-                    <MetricCard tone="info" icon={<SendHorizonal />} label={t("crmFollowup.kpi.emailsSent")} value={emailStats?.sent ?? 0} href="/admin/atencion-comercial/email?folder=sent" />
-                  </div>
+                <section aria-labelledby="seg-channels" className="space-y-2">
+                  <h2 id="seg-channels" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("crmFollowup.section.channels")}</h2>
+                  <SummaryStrip label={t("crmFollowup.section.channels")} items={[
+                    ...(hasWhatsApp ? [
+                      { key: "wa1", label: t("crmFollowup.kpi.whatsappToday"), value: whatsappStats?.conversations?.newToday ?? 0, tone: "success" as const },
+                      { key: "wa2", label: t("crmFollowup.kpi.whatsappUnread"), value: whatsappStats?.conversations?.unread ?? 0, tone: "info" as const },
+                    ] : []),
+                    ...(hasVoice ? [
+                      { key: "vo1", label: t("crmFollowup.kpi.callsToday"), value: vapiStats?.today ?? 0, tone: "brand" as const },
+                      { key: "vo2", label: t("crmFollowup.kpi.callsUnreviewed"), value: vapiStats?.unreviewed ?? 0, tone: "warning" as const },
+                    ] : []),
+                    { key: "em1", label: t("crmFollowup.kpi.emailsToday"), value: emailStats?.receivedToday ?? 0, tone: "info" as const, onClick: () => setLocation("/admin/atencion-comercial/email") },
+                    { key: "em2", label: t("crmFollowup.kpi.emailsUnread"), value: emailStats?.unreadInbox ?? 0, tone: "warning" as const, onClick: () => setLocation("/admin/atencion-comercial/email") },
+                    { key: "em3", label: t("crmFollowup.kpi.emailsSent"), value: emailStats?.sent ?? 0, tone: "info" as const, onClick: () => setLocation("/admin/atencion-comercial/email?folder=sent") },
+                  ]} />
                 </section>
 
                 {/* Avisos de WhatsApp en este navegador */}
@@ -463,7 +459,7 @@ export default function CommercialFollowupDashboard() {
                     </h2>
                   </div>
                   {attention.length === 0 ? (
-                    <PanelEmpty icon={<CheckCircle2 />} title={t("crmFollowup.attention.empty")} description={t("crmFollowup.attention.emptyHint")} />
+                    <CompactEmpty icon={<CheckCircle2 />} title={t("crmFollowup.attention.empty")} description={t("crmFollowup.attention.emptyHint")} />
                   ) : (
                     <PanelDataList rows={attention} columns={quoteColumns} rowKey={(q) => q.id} caption={t("crmFollowup.attention.title")} tableFrom="lg" />
                   )}
@@ -476,43 +472,40 @@ export default function CommercialFollowupDashboard() {
         {/* ── TAB: OPEN QUOTES ────────────────────────────────────────────── */}
         {tab === "open" && (
           <div className="space-y-4">
-            {/* Filtros */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="relative min-w-0 sm:w-80">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input placeholder={t("crmFollowup.open.search")} aria-label={t("crmFollowup.open.search")} value={openSearch}
-                  onChange={e => setOpenSearch(e.target.value)} className="h-10 pl-9" />
-              </div>
-              <Select value={openStatus} onValueChange={setOpenStatus}>
-                <SelectTrigger className="h-10 w-full sm:w-52" aria-label={t("crmFollowup.open.statusPlaceholder")}>
-                  <SelectValue placeholder={t("crmFollowup.open.statusPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("crmFollowup.open.allStatuses")}</SelectItem>
-                  {Object.keys(COMMERCIAL_STATUS_TONE).map((k) => (
-                    <SelectItem key={k} value={k}>{t(`crmFollowup.status.${k}`)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={openViewed} onValueChange={v => setOpenViewed(v as any)}>
-                <SelectTrigger className="h-10 w-full sm:w-44" aria-label={t("crmFollowup.col.seen")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("crmFollowup.open.all")}</SelectItem>
-                  <SelectItem value="yes">{t("crmFollowup.open.viewed")}</SelectItem>
-                  <SelectItem value="no">{t("crmFollowup.open.notViewed")}</SelectItem>
-                </SelectContent>
-              </Select>
-              {!openLoading && !openError && <span className="text-sm text-muted-foreground sm:ml-auto">{t("crmFollowup.open.count", { n: openData?.total ?? 0 })}</span>}
-            </div>
+            <ToolbarRow
+              search={{ value: openSearch, onChange: setOpenSearch, placeholder: t("crmFollowup.open.search") }}
+              filters={<>
+                <Select value={openStatus} onValueChange={setOpenStatus}>
+                  <SelectTrigger className="h-9 w-full bg-card sm:w-52" aria-label={t("crmFollowup.open.statusPlaceholder")}>
+                    <SelectValue placeholder={t("crmFollowup.open.statusPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("crmFollowup.open.allStatuses")}</SelectItem>
+                    {Object.keys(COMMERCIAL_STATUS_TONE).map((k) => (
+                      <SelectItem key={k} value={k}>{t(`crmFollowup.status.${k}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={openViewed} onValueChange={v => setOpenViewed(v as any)}>
+                  <SelectTrigger className="h-9 w-full bg-card sm:w-44" aria-label={t("crmFollowup.col.seen")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("crmFollowup.open.all")}</SelectItem>
+                    <SelectItem value="yes">{t("crmFollowup.open.viewed")}</SelectItem>
+                    <SelectItem value="no">{t("crmFollowup.open.notViewed")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>}
+              summary={!openLoading && !openError ? t("crmFollowup.open.count", { n: openData?.total ?? 0 }) : undefined}
+            />
 
             {openLoading ? (
               <PanelLoading />
             ) : openError ? (
               <PanelError title={t("crmFollowup.loadError")} error={openError} onRetry={() => void refetchOpen()} />
             ) : openRows.length === 0 ? (
-              <PanelEmpty icon={<List />} title={t("crmFollowup.open.empty")} description={t("crmFollowup.open.emptyHint")} />
+              <CompactEmpty icon={<List />} title={t("crmFollowup.open.empty")} description={t("crmFollowup.open.emptyHint")} />
             ) : (
               <PanelDataList rows={openRows} columns={quoteColumns} rowKey={(q) => q.id} caption={t("crmFollowup.tab.open")} tableFrom="lg" />
             )}
@@ -528,7 +521,7 @@ export default function CommercialFollowupDashboard() {
             ) : histError ? (
               <PanelError title={t("crmFollowup.loadError")} error={histError} onRetry={() => void refetchHist()} />
             ) : historyRows.length === 0 ? (
-              <PanelEmpty icon={<History />} title={t("crmFollowup.history.empty")} description={t("crmFollowup.history.emptyHint")} />
+              <CompactEmpty icon={<History />} title={t("crmFollowup.history.empty")} description={t("crmFollowup.history.emptyHint")} />
             ) : (
               <PanelDataList rows={historyRows} columns={historyColumns} rowKey={(c) => c.id} caption={t("crmFollowup.tab.history")} />
             )}

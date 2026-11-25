@@ -1,16 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
-import { PanelEmpty, errorMessage } from "@/components/admin/PanelStates";
-import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { errorMessage } from "@/components/admin/PanelStates";
+import { StatusBadge } from "@/components/admin/PanelUi";
+import { CompactEmpty, SummaryStrip, ToolbarRow, type ToolbarChip } from "@/components/admin/SalesFamilyShell";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  Users, Plus, Search, RefreshCw, Phone, Mail, Building2, MapPin, Tag, AlertCircle, Download, Upload, User, Loader2, MoreHorizontal, Sparkles, X,
+  Users, Plus, RefreshCw, Phone, Mail, Building2, MapPin, Tag, AlertCircle, Download, Upload, User, Loader2, MoreHorizontal, 
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { PersonAvatar } from "@/components/admin/PanelVisual";
 import ClientImportDialog, { downloadTextFile } from "@/components/admin/crm/ClientImportDialog";
 import AdminLayout from "@/components/AdminLayout";
 import { Link, useLocation } from "wouter";
@@ -161,40 +162,80 @@ export default function ClientsManager() {
   };
 
   const emptyState = hasFilters ? (
-    <PanelEmpty
-      className="border-0"
+    <CompactEmpty
+      className="rounded-none border-0 shadow-none"
       icon={<Users />}
       title={search.trim() ? t("crmClients.emptyNoMatch", { q: search.trim() }) : tagFilter && canTags ? t("crmClients.emptyNoTag", { tag: tagFilterName ? `«${tagFilterName}»` : t("crmClients.emptyNoTagChosen") }) : t("crmClients.emptyNoFilters")}
-    >
-      <Button size="sm" variant="outline" onClick={clearFilters}>{t("crmClients.clearFilters")}</Button>
-    </PanelEmpty>
+      action={<Button size="sm" variant="outline" onClick={clearFilters}>{t("crmClients.clearFilters")}</Button>}
+    />
   ) : (
-    <PanelEmpty
-      className="border-0"
+    <CompactEmpty
+      className="rounded-none border-0 shadow-none"
       icon={<Users />}
       title={t("crmClients.emptyTitle")}
       description={t("crmClients.emptyDesc")}
-    >
-      {canEdit && (
+      action={canEdit ? (
         <Button size="sm" onClick={() => setCreating(true)}>
           <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClients.createFirst")}
         </Button>
-      )}
-    </PanelEmpty>
+      ) : undefined}
+    />
   );
+
+  const chips: ToolbarChip[] = [
+    ...(typeFilter ? [{ id: "type", label: typeFilter === "empresa" ? t("crmClients.companies") : t("crmClients.individuals"), onRemove: () => setTypeFilter("") }] : []),
+    ...(canTags && tagFilter ? [{ id: "tag", label: tagFilterName ?? t("crmClients.filterTag"), onRemove: () => setTagFilter(null) }] : []),
+    ...(search.trim() ? [{ id: "q", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
+  ];
+  const toggleType = (k: ClientKind) => setTypeFilter((cur) => (cur === k ? "" : k));
+  const stripItems = stats.data ? [
+    { key: "total", label: t("crmClients.stats.total"), value: stats.data.total, primary: true, tone: "brand" as const, active: typeFilter === "", onClick: () => setTypeFilter("") },
+    { key: "empresa", label: t("crmClients.companies"), value: stats.data.companies, tone: "info" as const, active: typeFilter === "empresa", onClick: () => toggleType("empresa") },
+    { key: "particular", label: t("crmClients.individuals"), value: stats.data.individuals, tone: "neutral" as const, active: typeFilter === "particular", onClick: () => toggleType("particular") },
+    { key: "new", label: t("crmClients.stats.newThisMonth"), value: stats.data.newThisMonth, tone: "success" as const },
+  ] : [];
 
   return (
     <AdminLayout>
-      <div className="mx-auto w-full max-w-[1680px] px-4 py-5 sm:px-6">
-        {/* Cabecera: la acción principal es una; importar y exportar pasan a «Más» */}
-        <PanelPageHeader
-          icon={<Users />}
-          title={t("crmClients.title")}
-          description={t("crmClients.description")}
-          actions={<>
+      <div className="mx-auto w-full max-w-[1680px] px-4 pb-5 pt-3 sm:px-6">
+        {/* Cabecera compacta: título y acción principal en una fila; importar y exportar pasan a «Más» */}
+        <header className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:h-4 [&_svg]:w-4"><Users /></span>
+            <h1 className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight text-foreground">{t("crmClients.title")}</h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {canEdit && (
+              <Button onClick={() => setCreating(true)}>
+                <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmClients.newClient")}
+              </Button>
+            )}
+          </div>
+        </header>
+
+        {stripItems.length > 0 && <SummaryStrip className="mb-3" items={stripItems} />}
+
+        <ToolbarRow
+          className="mb-3"
+          search={{ value: search, onChange: setSearch, placeholder: t("crmClients.searchPlaceholder") }}
+          filters={canTags ? (
+            <>
+              <label htmlFor="clients-tag-filter" className="sr-only">{t("crmClients.filterTag")}</label>
+              <select
+                id="clients-tag-filter"
+                value={tagFilter ?? ""}
+                onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
+                className={selectClass}
+              >
+                <option value="">{t("crmClients.allTags")}</option>
+                {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </>
+          ) : undefined}
+          trailing={(
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label={t("crmClients.colActions")} disabled={exporting}>
+                <Button variant="outline" size="icon" className="h-9 w-9" aria-label={t("crmClients.colActions")} disabled={exporting}>
                   {exporting ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" aria-hidden="true" />}
                 </Button>
               </DropdownMenuTrigger>
@@ -209,63 +250,11 @@ export default function ClientsManager() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-            {canEdit && (
-              <Button onClick={() => setCreating(true)}>
-                <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("crmClients.newClient")}
-              </Button>
-            )}
-          </>}
+          )}
+          chips={chips}
+          onClear={clearFilters}
+          summary={hasFilters && clientsData ? t("crmOpps.resultados", { count: total }) : undefined}
         />
-
-        {/* Barra de filtros */}
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("crmClients.searchPlaceholder")}
-              aria-label={t("crmClients.searchAria")}
-              className="h-11 rounded-xl pl-10 pr-10"
-            />
-            {search && (
-              <button type="button" onClick={() => setSearch("")} aria-label={t("crmClients.clearFilters")} className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          <SegmentedTabs
-            label={t("crmClients.filterType")}
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={[
-              { value: "", label: t("crmClients.stats.total"), count: stats.data?.total ?? null },
-              { value: "empresa", label: t("crmClients.companies"), count: stats.data?.companies ?? null },
-              { value: "particular", label: t("crmClients.individuals"), count: stats.data?.individuals ?? null },
-            ]}
-          />
-          {stats.data && (
-            <p className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground" data-clients-new-this-month>
-              <Sparkles className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
-              <span className="tabular-nums font-medium text-foreground">{stats.data.newThisMonth}</span> {t("crmClients.stats.newThisMonth").toLowerCase()}
-            </p>
-          )}
-          {canTags && (
-            <div className="flex items-center gap-2 lg:w-56">
-              <label htmlFor="clients-tag-filter" className="sr-only">{t("crmClients.filterTag")}</label>
-              <Tag className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <select
-                id="clients-tag-filter"
-                value={tagFilter ?? ""}
-                onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
-                className={selectClass}
-              >
-                <option value="">{t("crmClients.allTags")}</option>
-                {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-          )}
-        </div>
 
         {/* Listado */}
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -305,7 +294,7 @@ export default function ClientsManager() {
                 <tbody>
                   {clientsList.map((client) => (
                     <tr key={client.id} className="group cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40" data-client-row onClick={(e) => { if (!(e.target as HTMLElement).closest("a,button,[role=menuitem]")) setLocation(fichaHref(client)); }}>
-                      <td className="px-4 py-3 align-middle">
+                      <td className="px-4 py-2.5 align-middle">
                         <div className="flex items-center gap-3">
                           <PersonAvatar name={clientDisplayName(client)} id={client.id} company={clientKind(client) === "empresa"} />
                           <div className="min-w-0">
@@ -321,12 +310,12 @@ export default function ClientsManager() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 align-middle">
-                        <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 break-all text-xs text-foreground hover:text-primary hover:underline"><Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> {client.email}</a>
+                      <td className="px-4 py-2.5 align-middle">
+                        <a href={`mailto:${client.email}`} className="flex max-w-[18rem] items-center gap-1.5 text-xs text-foreground hover:text-primary hover:underline"><Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> <span className="overflow-hidden text-ellipsis whitespace-nowrap">{client.email}</span></a>
                         {client.phone && <a href={`tel:${client.phone.replace(/\s/g, "")}`} className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary hover:underline"><Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {client.phone}</a>}
                       </td>
-                      <td className="px-4 py-3 align-middle text-xs text-muted-foreground">{client.city ? <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" aria-hidden="true" /> {client.city}</span> : "—"}</td>
-                      <td className="px-4 py-3 text-right align-middle">{actions(client)}</td>
+                      <td className="px-4 py-2.5 align-middle text-xs text-muted-foreground">{client.city ? <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" aria-hidden="true" /> {client.city}</span> : "—"}</td>
+                      <td className="px-4 py-2.5 text-right align-middle">{actions(client)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -282,11 +282,11 @@ export function QuotesTab({ ctrl, tab, setBulkConfirm, filterStatus, search, set
                       cell: (quote: any) => (
                         <div className="min-w-0">
                           {(quote as typeof quote & { clientId?: number }).clientId ? (
-                            <a href={`/admin/crm/clientes?clientId=${(quote as typeof quote & { clientId?: number }).clientId}`} className="font-medium text-foreground hover:text-info hover:underline">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</a>
+                            <a href={`/admin/crm/clientes?clientId=${(quote as typeof quote & { clientId?: number }).clientId}`} className="block max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground hover:text-info hover:underline">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</a>
                           ) : (
-                            <div className="font-medium text-foreground">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
+                            <div className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
                           )}
-                          <div className="break-all text-xs text-muted-foreground">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
+                          <div className="hidden max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground @2xl:block">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
                         </div>
                       ),
                     },

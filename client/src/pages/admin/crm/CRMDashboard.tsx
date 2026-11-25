@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { BarChart3, Users, FileText, CalendarCheck, Calendar, Search, Plus, Send, CheckCircle, XCircle, Clock, Star, AlertTriangle, Filter, Banknote, Receipt, CreditCard, ExternalLink, FilePlus, Gift, AlertCircle, Archive, X, ChevronDown, ChevronUp } from "lucide-react";
+import { BarChart3, Users, FileText, CalendarCheck, Calendar, Search, Plus, Send, CheckCircle, XCircle, Clock, Star, AlertTriangle, Filter, Banknote, Receipt, CreditCard, ExternalLink, FilePlus, Gift, AlertCircle, Archive, X, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { MetricCard } from "@/components/admin/PanelVisual";
 import { SalesFamilyShell, SummaryStrip, ToolbarRow, type SummaryStripItem, type ToolbarChip } from "@/components/admin/SalesFamilyShell";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -254,6 +254,13 @@ export default function CRMDashboard() {
     <Button onClick={() => setShowDirectQuoteModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.licensed ? t("crmDashboard.nuevoPresupuesto") : t("crmDashboard.nuevoPresupuesto2")}</Button>
   ) : tab === "reservations" ? (
     <Button onClick={() => setShowNewReservationModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.newOrder}</Button>
+  ) : tab === "anulaciones" ? (
+    <Button onClick={() => window.open("/solicitar-anulacion", "_blank")}><ExternalLink className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmCancellations.verFormularioPublico")}</Button>
+  ) : tab === "invoices" ? (
+    <>
+      <Button variant="outline" onClick={() => invoices.setGestoriaExportOpen(true)}><Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmInvoices.exportarParaLaGestoria")}</Button>
+      <Button onClick={() => setNewInvoiceOpen(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmInvoices.nuevaFactura")}</Button>
+    </>
   ) : undefined;
   const kpiLabel = kpisExpanded ? t("salesShell.lessIndicators") : t("salesShell.moreIndicators");
   const kpiToggle = (

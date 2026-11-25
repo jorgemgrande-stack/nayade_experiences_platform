@@ -218,7 +218,7 @@ export function InvoicesTab({ ctrl, tab }: { ctrl: InvoicesController; tab: Tab 
     { key: "client", header: t("crmInvoices.cliente"), cell: (inv) => (
       <div className="min-w-0">
         <div className="break-words font-medium text-foreground">{inv.clientName}</div>
-        <div className="break-all text-xs text-muted-foreground">{inv.clientEmail}</div>
+        <div className="hidden max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground @2xl:block">{inv.clientEmail}</div>
       </div>
     ) },
     { key: "method", header: t("crmInvoices.metodoPago"), priority: "lg", cell: (inv) => {
@@ -270,14 +270,8 @@ export function InvoicesTab({ ctrl, tab }: { ctrl: InvoicesController; tab: Tab 
 {/* ─── TABLA DE FACTURAS ──────────────────────────────────────────────── */}
 {tab === "invoices" && (
       <div className="space-y-4">
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button size="sm" variant="outline" onClick={() => setGestoriaExportOpen(true)}>
-            <Download className="mr-1 h-4 w-4" aria-hidden="true" />{" "}{t("crmInvoices.exportarParaLaGestoria")}</Button>
-          <GestoriaExportDialog open={gestoriaExportOpen} onOpenChange={setGestoriaExportOpen} />
-          <Button size="sm" onClick={() => setNewInvoiceOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" aria-hidden="true" />{" "}{t("crmInvoices.nuevaFactura")}</Button>
-          <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
-        </div>
+        <GestoriaExportDialog open={gestoriaExportOpen} onOpenChange={setGestoriaExportOpen} />
+        <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
         {summary && (
           <BSummary>
             <BStat tone="primary" icon={<Receipt />} label={t("crmInvoices.brutoIvaIncl")} value={money(summary.grandTotal)}

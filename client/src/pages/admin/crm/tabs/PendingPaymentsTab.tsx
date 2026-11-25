@@ -92,7 +92,7 @@ export function PagosPendientesTab() {
     { key: "client", header: t("crmPayments.cliente"), mobile: "title", cell: (row) => (
       <div className="min-w-0">
         <div className="flex items-baseline gap-2"><span className="font-mono text-xs text-muted-foreground">#{row.id}</span><span className="break-words font-medium text-foreground">{row.clientName}</span></div>
-        {row.clientEmail && <div className="break-all text-xs text-muted-foreground">{row.clientEmail}</div>}
+        {row.clientEmail && <div className="hidden max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground @2xl:block">{row.clientEmail}</div>}
       </div>
     ) },
     { key: "quote", header: t("crmPayments.presupuesto"), priority: "md", cell: (row) => row.quoteId ? <span className="font-mono text-xs text-foreground">{t("crmPayments.pres", { quoteId: row.quoteId })}</span> : <span className="text-muted-foreground">—</span> },
@@ -112,11 +112,6 @@ export function PagosPendientesTab() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-foreground">{voc.pendingPayments}</h2>
-        <p className="text-sm text-muted-foreground">{t("crmPayments.registro", { total })}{" "}{t("crmPayments.enTotal")}</p>
-      </div>
-
       {allData && (
         <BSummary>
           <BStat tone="primary" icon={<Clock />} label={t("crmShared.porCobrar")} value={money(sumCents(openRows))} hint={`${openRows.length} · ${t("crmShared.importeAbierto").toLowerCase()}`} />
@@ -144,6 +139,7 @@ export function PagosPendientesTab() {
         )}
         chips={chips}
         onClear={clearAll}
+        summary={t("crmPayments.registro", { total })}
         actions={<Button type="button" variant="outline" onClick={() => refetch()} className="gap-1.5"><RefreshCw className="h-4 w-4" aria-hidden="true" />{t("crmCancellations.actualizar")}</Button>}
       />
 

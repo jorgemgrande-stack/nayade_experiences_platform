@@ -47,45 +47,49 @@ export function BMoney({ children, tone, className }: { children: ReactNode; ton
 
 // ─── Resumen superior ────────────────────────────────────────────────────────
 
-export function BSummary({ children, className }: { children: ReactNode; className?: string }) {
+const DOT: Record<BTone, string> = { success: "bg-success", warning: "bg-warning", danger: "bg-danger", info: "bg-info", primary: "bg-primary", muted: "bg-muted-foreground/50" };
+
+/**
+ * Franja de resumen de la familia Ventas: cifras separadas por líneas finas sobre un degradado suave de la marca. La
+ * primera cifra es la clave (color de la marca); en móvil van de dos en dos.
+ */
+export function BSummary({ children, className, hero = true }: { children: ReactNode; className?: string; /** La primera cifra es la clave (color de la marca). */ hero?: boolean }) {
   const { t } = useI18n();
   const items = Children.toArray(children).filter(Boolean);
-  const [hero, ...rest] = items;
-  const row = items.length <= 3;
   return (
-    <section aria-label={t("crmShared.resumen")} className={cn("rounded-xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-3 shadow-sm sm:p-4", className)}>
-      {row ? (
-        <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-3", items.length === 2 && "sm:grid-cols-2")}>{items}</div>
-      ) : (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-          <div className="min-w-0 [&>*]:h-full">{hero}</div>
-          <div className="grid min-w-0 grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
-            {rest.map((c) => (isValidElement(c) ? cloneElement(c as ReactElement<{ compact?: boolean }>, { compact: true }) : c))}
-          </div>
-        </div>
-      )}
+    <section aria-label={t("crmShared.resumen")} className={cn("relative overflow-hidden rounded-xl border border-border bg-card shadow-sm", className)}>
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-r from-primary/[0.14] via-primary/[0.04] to-transparent" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-primary/60 via-primary/15 to-transparent" />
+      <div className="relative grid grid-cols-2 gap-px bg-border/70 sm:flex">
+        {items.map((c, i) => (isValidElement(c) ? cloneElement(c as ReactElement<{ hero?: boolean }>, { hero: hero && i === 0 }) : c))}
+      </div>
     </section>
   );
 }
 
-/** Tarjeta de indicador; con `onClick` filtra la lista (y marca `active` cuando el filtro está puesto). */
-export function BStat({ label, value, hint, icon, tone = "muted", active, onClick, compact, className }: {
-  label: ReactNode; value: ReactNode; hint?: ReactNode; icon?: ReactNode; tone?: BTone; active?: boolean; onClick?: () => void; compact?: boolean; className?: string;
+/** Cifra de la franja; con `onClick` filtra la lista (y marca `active` cuando el filtro está puesto). */
+export function BStat({ label, value, hint, tone = "muted", active, onClick, hero, className }: {
+  label: ReactNode; value: ReactNode; hint?: ReactNode; icon?: ReactNode; tone?: BTone; active?: boolean; onClick?: () => void; compact?: boolean; hero?: boolean; className?: string;
 }) {
+  // Un texto de apoyo corto va junto a la cifra; uno largo, en su propia línea (sin cortarlo contra la cifra).
+  const longHint = typeof hint === "string" && hint.length > 9;
   const body = (
     <>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        {icon && <span className={cn("shrink-0 [&>svg]:h-4 [&>svg]:w-4", TONE_TEXT[tone === "muted" ? "primary" : tone])} aria-hidden="true">{icon}</span>}
-      </div>
-      <div className={cn("mt-1 font-semibold tabular-nums leading-tight", compact ? "text-xl" : "text-3xl", TONE_TEXT[tone])}>{value}</div>
-      {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", DOT[tone === "muted" && hero ? "primary" : tone])} />
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
+      </span>
+      <span className="mt-0.5 flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
+        <span className={cn("text-lg font-semibold leading-tight tabular-nums", hero ? "text-primary" : TONE_TEXT[tone === "primary" || tone === "info" ? "muted" : tone])}>{value}</span>
+        {hint && !longHint && <span className="overflow-hidden text-ellipsis text-xs text-muted-foreground">{hint}</span>}
+      </span>
+      {hint && longHint && <span title={String(hint)} className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{hint}</span>}
     </>
   );
-  const base = cn("block w-full min-w-0 rounded-lg border bg-card/80 p-3 text-left", active ? "border-primary ring-1 ring-primary/40" : "border-border", className);
+  const base = cn("block min-w-0 bg-card px-4 py-2.5 text-left sm:flex-1", active && "bg-primary/10 shadow-[inset_0_-2px_0_0_var(--primary)]", className);
   if (!onClick) return <div className={base}>{body}</div>;
   return (
-    <button type="button" onClick={onClick} aria-pressed={active} className={cn(base, "transition-colors hover:border-primary/50 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
+    <button type="button" onClick={onClick} aria-pressed={!!active} className={cn(base, "transition hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}>
       {body}
     </button>
   );
@@ -112,17 +116,17 @@ export function BFilterBar({ search, primary, more, chips, onClear, summary, act
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
-    <section aria-label={t("crmShared.filtros")} className={cn("space-y-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4", className)}>
-      <div className="flex flex-wrap items-end gap-3">
+    <section aria-label={t("crmShared.filtros")} className={cn("space-y-2", className)}>
+      <div className="flex flex-wrap items-center gap-2 [&_label]:sr-only [&_button[role=combobox]]:h-9 [&_input]:h-9">
         {search && (
-          <div className="relative min-w-[12rem] flex-1">
+          <div className="relative min-w-0 flex-1 basis-full sm:basis-64">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={search.value} onChange={(e) => search.onChange(e.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} className="pl-9" />
+            <Input value={search.value} onChange={(e) => search.onChange(e.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} className="h-9 bg-card pl-9" />
           </div>
         )}
         {primary}
         {more && (
-          <Button type="button" variant="outline" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="h-9 gap-2">
             <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
             {t("crmShared.masFiltros")}
             <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
@@ -130,7 +134,7 @@ export function BFilterBar({ search, primary, more, chips, onClear, summary, act
         )}
         {actions}
       </div>
-      {more && open && <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-2 lg:grid-cols-4">{more}</div>}
+      {more && open && <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-2 lg:grid-cols-4 [&_label]:not-sr-only">{more}</div>}
       {(chips.length > 0 || summary) && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {summary && <span className="mr-1 text-muted-foreground">{summary}</span>}
@@ -239,25 +243,23 @@ export function BTable<T>({ rows, columns, rowKey, caption, loading, error, onRe
       </div>
       <ul className="divide-y divide-border @2xl:hidden" aria-label={caption}>
         {rows.map((r) => (
-          <li key={rowKey(r)} onClick={onRowClick ? () => onRowClick(r) : undefined} className={cn("space-y-2 p-4 text-sm", onRowClick && "cursor-pointer", selection?.isSelected(r) && "bg-primary/5", rowClassName?.(r))}>
-            <div className="flex items-start gap-3">
-              {selection && (
-                <input type="checkbox" className={cn(checkCls, "mt-1")} checked={selection.isSelected(r)} onClick={(e) => e.stopPropagation()} onChange={(e) => selection.onToggle(r, e.target.checked)} aria-label={t("crmShared.seleccionarFila", { label: selection.rowLabel(r) })} />
-              )}
-              <div className="min-w-0 flex-1 break-words font-medium text-foreground">{titleCol.cell(r)}</div>
+          <li key={rowKey(r)} onClick={onRowClick ? () => onRowClick(r) : undefined} className={cn("px-3 py-2.5 text-sm", onRowClick && "cursor-pointer", selection?.isSelected(r) && "bg-primary/5", rowClassName?.(r))}>
+            <div className="flex items-start gap-2.5">
+              {selection && (<input type="checkbox" className={cn(checkCls, "mt-1")} checked={selection.isSelected(r)} onClick={(e) => e.stopPropagation()} onChange={(e) => selection.onToggle(r, e.target.checked)} aria-label={t("crmShared.seleccionarFila", { label: selection.rowLabel(r) })} />)}
+              <div className="min-w-0 flex-1 font-medium text-foreground">{titleCol.cell(r)}</div>
               {amountCol && <div className="shrink-0 text-right font-semibold tabular-nums">{amountCol.cell(r)}</div>}
             </div>
-            {bodyCols.length > 0 && (
-              <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+            <div className="mt-1 flex items-end justify-between gap-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground [&>div]:min-w-0 [&>div]:max-w-full">
                 {bodyCols.map((c) => (
-                  <div key={c.key} className="min-w-0">
-                    <dt className="text-muted-foreground">{c.header}</dt>
-                    <dd className={cn("break-words text-foreground", c.num && "tabular-nums")}>{c.cell(r)}</dd>
+                  <div key={c.key} className={cn(c.num && "tabular-nums")}>
+                    <span className="sr-only">{c.header}: </span>
+                    {c.cell(r)}
                   </div>
                 ))}
-              </dl>
-            )}
-            {actions && <div className="flex justify-end pt-1" onClick={(e) => e.stopPropagation()}>{actions(r)}</div>}
+              </div>
+              {actions && <div className="shrink-0" onClick={(e) => e.stopPropagation()}>{actions(r)}</div>}
+            </div>
           </li>
         ))}
       </ul>
