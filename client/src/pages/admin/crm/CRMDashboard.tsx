@@ -10,10 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Users, FileText, CalendarCheck, Calendar, Search, Plus, Send, CheckCircle, XCircle, Clock, Star, AlertTriangle, Filter, Banknote, Receipt, CreditCard, ExternalLink, FilePlus, Gift, AlertCircle, Archive, X, ChevronDown, ChevronUp } from "lucide-react";
+import { BarChart3, Users, FileText, CalendarCheck, Calendar, Search, Plus, Send, CheckCircle, XCircle, Clock, Star, AlertTriangle, Filter, Banknote, Receipt, CreditCard, ExternalLink, FilePlus, Gift, AlertCircle, Archive, X, ChevronDown, ChevronUp } from "lucide-react";
 import { MetricCard } from "@/components/admin/PanelVisual";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
-import { CrmSummary, CrmSummaryCard, CrmFilterBar, CrmFilterField, type CrmFilterChip } from "./shared/ui/CrmUi";
+import { SalesFamilyShell, SummaryStrip, ToolbarRow, type SummaryStripItem, type ToolbarChip } from "@/components/admin/SalesFamilyShell";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Tab, ConfirmDialog, CHANNEL_META } from "./shared/crmCommon";
 import { BonosManager } from "./tabs/BonosTab";
@@ -210,44 +209,9 @@ export default function CRMDashboard() {
     window.history.replaceState({}, "", url.toString());
   }, [searchStr]);
 
-  // ─── Oportunidades y Presupuestos: cabecera, resumen y filtros unificados (C4a) ───
-  const unified: boolean = tab === "leads" || tab === "quotes";
+  // ─── Familia Ventas: cabecera única, franja de resumen y barra de herramientas integradas ───
   const toggleStatus = (status: string) => setFilterStatus((cur) => (cur === status ? "all" : status));
   const moneyShort = (v: number | string | null | undefined) => format.currency(Number(v) || 0, "EUR", { maximumFractionDigits: 0 });
-  const tabsNode = (
-        <div className="px-4 sm:px-6">
-          <div className="-mx-1 overflow-x-auto px-1 pb-1">
-          <div className="flex min-w-max gap-1 rounded-xl border border-border bg-muted/50 p-1">
-            {([
-              { key: "leads", label: voc.leads, icon: Users, count: leadCounters?.total },
-              { key: "quotes", label: voc.quotes, icon: FileText, count: quoteCounters?.enviado },
-              { key: "reservations", label: voc.orders, icon: CalendarCheck, count: resCounters?.confirmadas },
-              { key: "invoices", label: voc.invoices, icon: Receipt, count: undefined },
-              { key: "anulaciones", label: voc.cancellations, icon: AlertTriangle, count: anulCounters?.pending },
-              { key: "bonos", label: voc.coupons, icon: Gift, count: undefined },
-              { key: "pagos_pendientes", label: voc.pendingPayments, icon: Clock, count: undefined },
-            ] as const).filter(({ key }) => visibleTabs.includes(key)).map(({ key, label, icon: Icon, count }) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={tab === key}
-                onClick={() => handleTabChange(key)}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-                  ${tab === key ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground"}`}
-              >
-                <Icon className="h-4 w-4 sm:hidden 2xl:block" />
-                {label}
-                {count !== undefined && count > 0 && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${tab === key ? "bg-primary-foreground/20 text-primary-foreground" : "bg-foreground/[0.08] text-foreground/70"}`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          </div>
-        </div>
-  );
   const leadStatusLabel: Record<string, string> = { nueva: t("crmLeads.nueva"), enviada: t("crmLeads.enviada"), ganada: t("crmLeads.ganada"), perdida: t("crmLeads.perdida") };
   const quoteStatusLabel: Record<string, string> = {
     borrador: t("crmQuotes.borrador"), enviado: t("crmQuotes.enviado"), visualizado: t("crmQuotes.visualizado"), convertido_carrito: t("crmQuotes.pagoIniciado"),
@@ -257,7 +221,7 @@ export default function CRMDashboard() {
   const sourceLabel = leadSourceFilter === "web"
     ? t("crmDashboard.solicitudesWeb")
     : typeof leadSourceFilter === "number" ? ((leadSourcesData ?? []) as any[]).find((s) => s.id === leadSourceFilter)?.name ?? String(leadSourceFilter) : "";
-  const filterChips: CrmFilterChip[] = [
+  const filterChips: ToolbarChip[] = [
     ...(filterStatus !== "all" ? [{ id: "estado", label: `${t("crmOpps.estado")}: ${statusLabels[filterStatus] ?? filterStatus}`, onRemove: () => setFilterStatus("all") }] : []),
     ...(tab === "leads" && leadSourceFilter !== "all" ? [{ id: "origen", label: `${t("crmOpps.origen")}: ${sourceLabel}`, onRemove: () => setLeadSourceFilter("all") }] : []),
     ...(search.trim() ? [{ id: "busqueda", label: t("crmOpps.busqueda", { text: search.trim() }), onRemove: () => setSearch("") }] : []),
@@ -266,108 +230,115 @@ export default function CRMDashboard() {
   const activeTotal = tab === "leads" ? leads.leadsData?.total : quotes.quotesData?.total;
   const leadsConversion = leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0;
   const withAmount = (text: string, amount: number | string | null | undefined) => (Number(amount) > 0 ? `${text} · ${moneyShort(amount)}` : text);
-  const summaryNode = tab === "leads" ? (
-    <CrmSummary label={t("crmOpps.resumen")}>
-      <CrmSummaryCard tone="info" icon={<Users />} label={t("crmOpps.leadsNuevas")} value={leadCounters?.nueva ?? 0}
-        detail={withAmount((leadCounters?.sinLeer ?? 0) > 0 ? t("crmOpps.leadsSinLeer", { count: leadCounters?.sinLeer ?? 0 }) : t("crmOpps.leadsNuevasDetalle"), leadCounters?.valorNueva)}
-        active={filterStatus === "nueva"} onClick={() => toggleStatus("nueva")} />
-      <CrmSummaryCard tone="warning" icon={<Send />} label={t("crmOpps.leadsSeguimiento")} value={leadCounters?.enviada ?? 0}
-        detail={withAmount(t("crmOpps.leadsSeguimientoDetalle"), leadCounters?.valorEnviada)} active={filterStatus === "enviada"} onClick={() => toggleStatus("enviada")} />
-      <CrmSummaryCard tone="success" icon={<Star />} label={t("crmOpps.leadsGanadas")} value={leadCounters?.ganada ?? 0}
-        detail={withAmount(t("crmOpps.leadsGanadasDetalle", { pct: leadsConversion }), leadCounters?.valorGanada)} active={filterStatus === "ganada"} onClick={() => toggleStatus("ganada")} />
-      <CrmSummaryCard tone="danger" icon={<XCircle />} label={t("crmOpps.leadsPerdidas")} value={leadCounters?.perdida ?? 0}
-        detail={t("crmOpps.leadsPerdidasDetalle")} active={filterStatus === "perdida"} onClick={() => toggleStatus("perdida")} />
-    </CrmSummary>
-  ) : (
-    <CrmSummary label={t("crmOpps.resumen")}>
-      <CrmSummaryCard tone="brand" icon={<Clock />} label={t("crmOpps.quotesPendiente")} value={moneyShort(quoteCounters?.importeEnviado)}
-        detail={t("crmOpps.quotesPendienteDetalle", { count: quoteCounters?.enviado ?? 0 })} active={filterStatus === "enviado"} onClick={() => toggleStatus("enviado")} />
-      <CrmSummaryCard tone="neutral" icon={<FileText />} label={t("crmOpps.quotesBorradores")} value={quoteCounters?.borrador ?? 0}
-        detail={withAmount(t("crmOpps.quotesBorradoresDetalle"), quoteCounters?.importeBorrador)} active={filterStatus === "borrador"} onClick={() => toggleStatus("borrador")} />
-      <CrmSummaryCard tone="success" icon={<CheckCircle />} label={t("crmOpps.quotesAceptados")} value={quoteCounters?.ganado ?? 0}
-        detail={withAmount(t("crmOpps.quotesAceptadosDetalle", { count: quoteCounters?.ganado ?? 0 }), quoteCounters?.importeTotal)} active={filterStatus === "aceptado"} onClick={() => toggleStatus("aceptado")} />
-      {(quoteCounters?.pagoFallido ?? 0) > 0 && (
-        <CrmSummaryCard tone="danger" icon={<XCircle />} label={t("crmOpps.quotesPagoFallido")} value={quoteCounters?.pagoFallido ?? 0}
-          detail={withAmount(t("crmOpps.quotesPagoFallidoDetalle"), quoteCounters?.importePagoFallido)} active={filterStatus === "pago_fallido"} onClick={() => toggleStatus("pago_fallido")} />
-      )}
-    </CrmSummary>
-  );
   const statusOptions = tab === "leads" ? ["nueva", "enviada", "ganada", "perdida"] : ["borrador", "enviado", "visualizado", "convertido_carrito", "pago_fallido", "aceptado", "rechazado", "expirado", "perdido"];
-  const headerIcon = tab === "leads" ? <Users /> : <FileText />;
-  const newButton = tab === "leads" ? (
+  const resMoney = (v: number | string | null | undefined) => format.currency(Number(v) || 0, "EUR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const stripItems: SummaryStripItem[] = tab === "leads" ? [
+    { key: "nueva", label: t("crmOpps.leadsNuevas"), value: leadCounters?.nueva ?? 0, detail: (leadCounters?.sinLeer ?? 0) > 0 ? t("crmOpps.leadsSinLeer", { count: leadCounters?.sinLeer ?? 0 }) : undefined, primary: true, tone: "info", active: filterStatus === "nueva", onClick: () => toggleStatus("nueva") },
+    { key: "enviada", label: t("crmOpps.leadsSeguimiento"), value: leadCounters?.enviada ?? 0, detail: Number(leadCounters?.valorEnviada) > 0 ? moneyShort(leadCounters?.valorEnviada) : undefined, tone: "warning", active: filterStatus === "enviada", onClick: () => toggleStatus("enviada") },
+    { key: "ganada", label: t("crmOpps.leadsGanadas"), value: leadCounters?.ganada ?? 0, detail: `${leadsConversion}%`, tone: "success", active: filterStatus === "ganada", onClick: () => toggleStatus("ganada") },
+    { key: "perdida", label: t("crmOpps.leadsPerdidas"), value: leadCounters?.perdida ?? 0, tone: "danger", active: filterStatus === "perdida", onClick: () => toggleStatus("perdida") },
+  ] : tab === "quotes" ? [
+    { key: "enviado", label: t("crmOpps.quotesPendiente"), value: moneyShort(quoteCounters?.importeEnviado), detail: quoteCounters?.enviado ?? 0, primary: true, tone: "brand", active: filterStatus === "enviado", onClick: () => toggleStatus("enviado") },
+    { key: "borrador", label: t("crmOpps.quotesBorradores"), value: quoteCounters?.borrador ?? 0, detail: Number(quoteCounters?.importeBorrador) > 0 ? moneyShort(quoteCounters?.importeBorrador) : undefined, tone: "neutral", active: filterStatus === "borrador", onClick: () => toggleStatus("borrador") },
+    { key: "aceptado", label: t("crmOpps.quotesAceptados"), value: quoteCounters?.ganado ?? 0, detail: Number(quoteCounters?.importeTotal) > 0 ? moneyShort(quoteCounters?.importeTotal) : undefined, tone: "success", active: filterStatus === "aceptado", onClick: () => toggleStatus("aceptado") },
+    ...((quoteCounters?.pagoFallido ?? 0) > 0 ? [{ key: "pago_fallido", label: t("crmOpps.quotesPagoFallido"), value: quoteCounters?.pagoFallido ?? 0, detail: Number(quoteCounters?.importePagoFallido) > 0 ? moneyShort(quoteCounters?.importePagoFallido) : undefined, tone: "danger" as const, active: filterStatus === "pago_fallido", onClick: () => toggleStatus("pago_fallido") }] : []),
+  ] : tab === "reservations" ? [
+    { key: "cobrado", label: t("crmShared.cobrado"), value: resMoney(resCounters?.ingresos), detail: `${Number(resCounters?.confirmadas ?? 0) + Number(resCounters?.pendientePago ?? 0) + Number(resCounters?.canceladas ?? 0)} ${voc.ordersLower}`, primary: true, tone: "brand", active: false, onClick: () => setFilterStatus("all") },
+    { key: "paid", label: t("crmReservations.pagada"), value: Number(resCounters?.confirmadas ?? 0), detail: Number(resCounters?.importeConfirmadas ?? 0) > 0 ? resMoney(resCounters?.importeConfirmadas) : undefined, tone: "success", active: filterStatus === "paid", onClick: () => toggleStatus("paid") },
+    { key: "pending_payment", label: t("crmReservations.pendientePago"), value: Number(resCounters?.pendientePago ?? 0), detail: Number(resCounters?.importePendientePago ?? 0) > 0 ? resMoney(resCounters?.importePendientePago) : undefined, tone: "warning", active: filterStatus === "pending_payment", onClick: () => toggleStatus("pending_payment") },
+    { key: "cancelled", label: t("crmReservations.cancelada"), value: Number(resCounters?.canceladas ?? 0), tone: "danger", active: filterStatus === "cancelled", onClick: () => toggleStatus("cancelled") },
+  ] : [];
+  const actionNode = tab === "leads" ? (
     <Button onClick={() => setShowNewLeadModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.newLead}</Button>
-  ) : (
+  ) : tab === "quotes" ? (
     <Button onClick={() => setShowDirectQuoteModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.licensed ? t("crmDashboard.nuevoPresupuesto") : t("crmDashboard.nuevoPresupuesto2")}</Button>
+  ) : tab === "reservations" ? (
+    <Button onClick={() => setShowNewReservationModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {voc.newOrder}</Button>
+  ) : undefined;
+  const kpiLabel = kpisExpanded ? t("salesShell.lessIndicators") : t("salesShell.moreIndicators");
+  const kpiToggle = (
+    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0" onClick={toggleKpis} aria-expanded={kpisExpanded} aria-label={kpiLabel} title={kpiLabel}>
+      <BarChart3 className="h-4 w-4" aria-hidden="true" />
+    </Button>
   );
-  const filterBarNode = (
-    <CrmFilterBar
+  const resStatusLabels: Record<string, string> = { paid: t("crmReservations.pagada"), pending_payment: t("crmReservations.pendientePago"), cancelled: t("crmReservations.cancelada") };
+  const channelNames: Record<string, string> = {
+    TPV_FISICO: t("crmReservations.tpv"), VENTA_DELEGADA: t("crmReservations.delegada"), ONLINE_DIRECTO: t("crmReservations.online"), ONLINE_ASISTIDO: t("crmReservations.asistido"),
+    TELEFONO: t("crmReservations.tel"), EMAIL: t("crmReservations.email3"), PARTNER: t("crmReservations.partner"), TICKETING: t("crmReservations.ticketing"),
+    MANUAL: t("crmDashboard.manualOtro"), API: t("crmDashboard.api"), coupon: t("crmDashboard.cuponOrigen"),
+  };
+  const resChips: ToolbarChip[] = [
+    ...(filterStatus !== "all" ? [{ id: "status", label: `${t("crmShared.filtroEstado")}: ${resStatusLabels[filterStatus] ?? filterStatus}`, onRemove: () => setFilterStatus("all") }] : []),
+    ...(resChannelFilter !== "all" ? [{ id: "channel", label: `${t("crmShared.filtroCanal")}: ${channelNames[resChannelFilter] ?? resChannelFilter}`, onRemove: () => setResChannelFilter("all") }] : []),
+    ...(search.trim() ? [{ id: "search", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
+  ];
+  const clearResFilters = () => { setFilterStatus("all"); setResChannelFilter("all"); setSearch(""); };
+  const statusSelect = (
+    <Select value={filterStatus} onValueChange={setFilterStatus}>
+      <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-44" aria-label={t("crmOpps.estado")}><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{t("crmOpps.todosLosEstados")}</SelectItem>
+        {(tab === "reservations" ? ["paid", "pending_payment", "cancelled"] : statusOptions).map((s) => <SelectItem key={s} value={s}>{(tab === "reservations" ? resStatusLabels : statusLabels)[s]}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+  const sourceSelect = (
+    <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" || v === "web" ? v : Number(v))}>
+      <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-44" aria-label={t("crmOpps.origen")}><SelectValue placeholder={t("crmDashboard.origen")} /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{t("crmDashboard.todosLosOrigenes")}</SelectItem>
+        <SelectItem value="web">{t("crmDashboard.solicitudesWeb")}</SelectItem>
+        {(leadSourcesData ?? []).map((src: any) => (
+          <SelectItem key={src.id} value={String(src.id)}><span style={{ color: src.color ?? undefined }}>{src.name}</span></SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+  const channelSelect = (
+    <Select value={resChannelFilter} onValueChange={setResChannelFilter}>
+              <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-44" aria-label={t("crmDashboard.canal")}>
+                <SelectValue placeholder={t("crmDashboard.canal")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosCanales")}</SelectItem>
+                <SelectItem value="TPV_FISICO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TPV_FISICO.tone}`}>{(() => { const I = CHANNEL_META.TPV_FISICO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.tpvPresencial"))}</span></SelectItem>
+                <SelectItem value="ONLINE_DIRECTO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.ONLINE_DIRECTO.tone}`}>{(() => { const I = CHANNEL_META.ONLINE_DIRECTO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.onlineDirecto"))}</span></SelectItem>
+                <SelectItem value="ONLINE_ASISTIDO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.ONLINE_ASISTIDO.tone}`}>{(() => { const I = CHANNEL_META.ONLINE_ASISTIDO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.onlineAsistido"))}</span></SelectItem>
+                <SelectItem value="VENTA_DELEGADA" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.VENTA_DELEGADA.tone}`}>{(() => { const I = CHANNEL_META.VENTA_DELEGADA.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.crmDelegado"))}</span></SelectItem>
+                <SelectItem value="TELEFONO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TELEFONO.tone}`}>{(() => { const I = CHANNEL_META.TELEFONO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.telefono"))}</span></SelectItem>
+                <SelectItem value="EMAIL" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.EMAIL.tone}`}>{(() => { const I = CHANNEL_META.EMAIL.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.email"))}</span></SelectItem>
+                <SelectItem value="PARTNER" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.PARTNER.tone}`}>{(() => { const I = CHANNEL_META.PARTNER.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.partner"))}</span></SelectItem>
+                <SelectItem value="TICKETING" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TICKETING.tone}`}>{(() => { const I = CHANNEL_META.TICKETING.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.ticketing"))}</span></SelectItem>
+                <SelectItem value="coupon" className="text-warning text-xs">{t("crmDashboard.cuponOrigen")}</SelectItem>
+                <SelectItem value="MANUAL" className="text-foreground/60 text-xs">{t("crmDashboard.manualOtro")}</SelectItem>
+                <SelectItem value="API" className="text-foreground/60 text-xs">{t("crmDashboard.api")}</SelectItem>
+              </SelectContent>
+            </Select>
+  );
+  const toolbarNode = tab === "reservations" ? (
+    <ToolbarRow
+      search={{ value: search, onChange: setSearch, placeholder: t("crmEmpty.search.orders", { ordersLower: voc.ordersLower }) }}
+      filters={<>{statusSelect}{channelSelect}</>}
+      chips={resChips}
+      onClear={clearResFilters}
+      summary={res.resData ? `${res.resData.total} ${res.ordersWord}` : undefined}
+    />
+  ) : tab === "leads" || tab === "quotes" ? (
+    <ToolbarRow
       search={{ value: search, onChange: setSearch, placeholder: tab === "leads" ? t("crmEmpty.search.leads", { leadsLower: voc.leadsLower }) : t("crmEmpty.search.quotes") }}
-      primary={(
-        <CrmFilterField label={t("crmOpps.estado")} className="w-full sm:w-48">
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="h-9 w-full text-sm" aria-label={t("crmOpps.estado")}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crmOpps.todosLosEstados")}</SelectItem>
-              {statusOptions.map((s) => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </CrmFilterField>
-      )}
-      more={tab === "leads" ? (
-        <CrmFilterField label={t("crmOpps.origen")}>
-          <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" || v === "web" ? v : Number(v))}>
-            <SelectTrigger className="h-9 w-full text-sm" aria-label={t("crmOpps.origen")}><SelectValue placeholder={t("crmDashboard.origen")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crmDashboard.todosLosOrigenes")}</SelectItem>
-              <SelectItem value="web">{t("crmDashboard.solicitudesWeb")}</SelectItem>
-              {(leadSourcesData ?? []).map((src: any) => (
-                <SelectItem key={src.id} value={String(src.id)}><span style={{ color: src.color ?? undefined }}>{src.name}</span></SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CrmFilterField>
-      ) : undefined}
+      filters={<>{statusSelect}{tab === "leads" && sourceSelect}</>}
       chips={filterChips}
       onClear={clearAllFilters}
       summary={filterChips.length > 0 && activeTotal !== undefined ? t("crmOpps.resultados", { count: activeTotal }) : undefined}
     />
-  );
+  ) : null;
 
   return (
     <AdminLayout title={voc.crmTitle}>
       <div className="flex min-h-screen flex-col bg-background text-foreground">
-        {unified && (
-          <>
-            {tabsNode}
-            <div className="px-4 pt-4 sm:px-6 sm:pt-5">
-              <PanelPageHeader
-                className="mb-4 border-b-0 pb-0"
-                icon={headerIcon}
-                title={tab === "leads" ? voc.leads : voc.quotes}
-                description={tab === "leads" ? t("crmOpps.leadsDescripcion") : t("crmOpps.quotesDescripcion")}
-                actions={newButton}
-              />
-              {summaryNode}
-            </div>
-          </>
-        )}
-        {!unified && (
-        <>
-        {/* Header compacto: el trabajo va primero; la franja «Amplía tu empresa» pasa al final */}
-        <div className="px-4 sm:px-6 pt-3 sm:pt-4 pb-3 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between mb-1">
-            <div>
-              {/* El título «Ventas» ya está en la barra superior: aquí solo el recorrido, sin repetirlo */}
-              <h1 className="sr-only">{voc.crmTitle}</h1>
-              <p className="text-sm text-foreground/60">{voc.crmSubtitle}</p>
-            </div>
-          </div>
-        </div>
-        </>
-        )}
-        <div className="order-last px-4 sm:px-6 pb-6">
-          <WorkplaceLocks place="crm" className="mt-3" />
-        </div>
+        <SalesFamilyShell active={tab} onSelect={handleTabChange} action={actionNode} headerExtra={stripItems.length > 0 ? undefined : kpiToggle}>
+        {stripItems.length > 0 && <SummaryStrip items={stripItems} trailing={kpiToggle} />}
+
 
         {/* ── Alertas de pagos fraccionados urgentes ── */}
         {(() => {
@@ -380,7 +351,7 @@ export default function CRMDashboard() {
           );
           if (overdue.length === 0 && dueToday.length === 0) return null;
           return (
-            <div className="mx-4 sm:mx-6 mt-4 rounded-xl border border-danger/30 bg-danger/8 p-3 space-y-1.5">
+            <div className="rounded-xl border border-danger/30 bg-danger/8 p-3 space-y-1.5">
               <p className="text-xs font-bold uppercase tracking-wider text-danger flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5" />{" "}{t("crmDashboard.incidenciasDePagosFraccionados")}</p>
               {overdue.length > 0 && (
@@ -397,55 +368,9 @@ export default function CRMDashboard() {
           );
         })()}
 
-        {/* ── KPI PANEL COLAPSABLE ─────────────────────────────────────────── */}
-        <div className="px-4 sm:px-6 pb-1">
-          {/* Cabecera toggle — siempre visible */}
-          <button
-            onClick={toggleKpis}
-            className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl bg-foreground/[0.03] border border-foreground/[0.08] hover:bg-foreground/[0.06] transition-colors group"
-          >
-            <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap gap-y-1">
-              {/* Pills resumen cuando está colapsado */}
-              {!kpisExpanded && !unified && (
-                <>
-                  {(leadCounters?.ganada ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-xs font-medium">
-                      <Star className="w-2.5 h-2.5" />{t("crmDashboard.ganadas", { ganada: leadCounters?.ganada })}</span>
-                  )}
-                  {(leadCounters?.enviada ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-xs font-medium">
-                      <Send className="w-2.5 h-2.5" />{t("crmDashboard.enviadas", { enviada: leadCounters?.enviada })}</span>
-                  )}
-                  {(resCounters?.confirmadas ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-xs font-medium">
-                      <CheckCircle className="w-2.5 h-2.5" />{resCounters?.confirmadas} {voc.ordersLower}
-                      {(resCounters?.importeConfirmadas ?? 0) > 0 && <span className="opacity-60">· {format.number(Math.round(resCounters!.importeConfirmadas))} €</span>}
-                    </span>
-                  )}
-                  {(resCounters?.pendientePago ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/10 border border-warning/20 text-warning text-xs font-medium">
-                      <Clock className="w-2.5 h-2.5" />{t("crmDashboard.pendPago", { pendientePago: resCounters?.pendientePago })}</span>
-                  )}
-                  {(anulCounters?.pending ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-danger/10 border border-danger/20 text-danger text-xs font-medium">
-                      <AlertTriangle className="w-2.5 h-2.5" />{t("crmDashboard.anulaciones", { pending: anulCounters?.pending })}</span>
-                  )}
-                </>
-              )}
-              {(kpisExpanded || unified) && (
-                <span className="text-xs text-foreground/40 font-medium">{t("crmDashboard.panelDeIndicadores")}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 text-foreground/40 group-hover:text-foreground/70 transition-colors flex-shrink-0">
-              <span className="text-xs">{kpisExpanded ? t("crmDashboard.ocultar") : t("crmDashboard.verKpis")}</span>
-              {kpisExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </div>
-          </button>
-        </div>
-
         {/* Top KPI strip — dos grupos diferenciados */}
         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${kpisExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"}`}>
-        <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-4">
+        <div className="py-1 space-y-4">
 
           {/* Grupo 1: Pipeline de Oportunidades */}
           <div>
@@ -811,7 +736,7 @@ export default function CRMDashboard() {
 
         {/* Barra de ratio de conversión */}
         {(leadCounters?.total ?? 0) > 0 && (
-          <div className="px-6 pb-4">
+          <div className="pb-1">
             <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -875,7 +800,7 @@ export default function CRMDashboard() {
 
         {/* ── Banner auditoría reservas sin factura / sin REAV ─────────────── */}
         {auditData && (auditData.sinFacturaCount > 0 || auditData.sinReavCount > 0) && (
-          <div className="mx-6 mb-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 flex flex-col gap-2">
+          <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-warning font-semibold text-sm">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />{voc.agree(t("crmEmpty.audit.reviewM", { ordersLower: voc.ordersLower }), t("crmEmpty.audit.reviewF", { ordersLower: voc.ordersLower }))}</div>
             {auditData.sinFacturaCount > 0 && (() => {
@@ -973,7 +898,7 @@ export default function CRMDashboard() {
         {/* ── Banner alertas TPV / coherencia cobros + gastos ─────────────── */}
         {((tpvPaymentAlerts && (tpvPaymentAlerts.unlinkedTpvOps > 0 || tpvPaymentAlerts.staleFailedPayments > 0)) ||
           (expenseStats && (expenseStats.candidatesCount > 0 || expenseStats.staleExpensesCount > 0))) && (
-          <div className="mx-4 sm:mx-6 mb-2 rounded-xl border border-info/30 bg-info/8 px-4 py-3 flex flex-col gap-1.5">
+          <div className="rounded-xl border border-info/30 bg-info/8 px-4 py-3 flex flex-col gap-1.5">
             <div className="flex items-center gap-2 text-info font-semibold text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />{t("crmDashboard.coherenciaFinancieraIncidencia")}</div>
             {(tpvPaymentAlerts?.unlinkedTpvOps ?? 0) > 0 && (
@@ -991,101 +916,8 @@ export default function CRMDashboard() {
           </div>
         )}
 
-        {!unified && tabsNode}
-
-        {/* Search & filter */}
-        {unified && (
-          <div className="px-4 sm:px-6 py-3 sm:py-4">{filterBarNode}</div>
-        )}
-        {!unified && tab !== "anulaciones" && tab !== "bonos" && tab !== "invoices" && (
-        <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap gap-2 items-center">
-          <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label={t("crmDashboard.buscar")}
-              placeholder={tab === "leads" ? t("crmEmpty.search.leads", { leadsLower: voc.leadsLower }) : tab === "quotes" ? t("crmEmpty.search.quotes") : tab === "reservations" ? t("crmEmpty.search.orders", { ordersLower: voc.ordersLower }) : t("crmEmpty.search.invoices")}
-              className="pl-9"
-            />
-          </div>
-          {filterStatus !== "all" && (
-            <Button size="sm" variant="outline" className="border-warning/30 text-warning hover:bg-warning/10 text-xs" onClick={() => setFilterStatus("all")}>
-              <Filter className="w-3.5 h-3.5 mr-1" />{" "}{t("crmDashboard.limpiarFiltro")}</Button>
-          )}
-          {/* Filtro por canal — visible solo en el tab de reservas */}
-          {tab === "reservations" && (
-            <Select value={resChannelFilter} onValueChange={setResChannelFilter}>
-              <SelectTrigger className="h-9 w-full text-xs sm:w-40">
-                <SelectValue placeholder={t("crmDashboard.canal")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosCanales")}</SelectItem>
-                <SelectItem value="TPV_FISICO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TPV_FISICO.tone}`}>{(() => { const I = CHANNEL_META.TPV_FISICO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.tpvPresencial"))}</span></SelectItem>
-                <SelectItem value="ONLINE_DIRECTO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.ONLINE_DIRECTO.tone}`}>{(() => { const I = CHANNEL_META.ONLINE_DIRECTO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.onlineDirecto"))}</span></SelectItem>
-                <SelectItem value="ONLINE_ASISTIDO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.ONLINE_ASISTIDO.tone}`}>{(() => { const I = CHANNEL_META.ONLINE_ASISTIDO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.onlineAsistido"))}</span></SelectItem>
-                <SelectItem value="VENTA_DELEGADA" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.VENTA_DELEGADA.tone}`}>{(() => { const I = CHANNEL_META.VENTA_DELEGADA.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.crmDelegado"))}</span></SelectItem>
-                <SelectItem value="TELEFONO" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TELEFONO.tone}`}>{(() => { const I = CHANNEL_META.TELEFONO.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.telefono"))}</span></SelectItem>
-                <SelectItem value="EMAIL" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.EMAIL.tone}`}>{(() => { const I = CHANNEL_META.EMAIL.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.email"))}</span></SelectItem>
-                <SelectItem value="PARTNER" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.PARTNER.tone}`}>{(() => { const I = CHANNEL_META.PARTNER.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.partner"))}</span></SelectItem>
-                <SelectItem value="TICKETING" className="text-xs"><span className="inline-flex items-center gap-2"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${CHANNEL_META.TICKETING.tone}`}>{(() => { const I = CHANNEL_META.TICKETING.Icon; return <I className="h-3 w-3" aria-hidden />; })()}</span>{noEmoji(t("crmDashboard.ticketing"))}</span></SelectItem>
-                <SelectItem value="coupon" className="text-warning text-xs">{t("crmDashboard.cuponOrigen")}</SelectItem>
-                <SelectItem value="MANUAL" className="text-foreground/60 text-xs">{t("crmDashboard.manualOtro")}</SelectItem>
-                <SelectItem value="API" className="text-foreground/60 text-xs">{t("crmDashboard.api")}</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          {/* Filtro por origen — visible solo en el tab de leads */}
-          {tab === "leads" && (
-            <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" || v === "web" ? v : Number(v))}>
-              <SelectTrigger className="h-9 w-full text-xs sm:w-44">
-                <SelectValue placeholder={t("crmDashboard.origen")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-foreground/70 text-xs">{t("crmDashboard.todosLosOrigenes")}</SelectItem>
-                {/* Solicitudes de información o de plaza hechas desde la ficha de un producto */}
-                <SelectItem value="web" className="text-info text-xs">{t("crmDashboard.solicitudesWeb")}</SelectItem>
-                {(leadSourcesData ?? []).map((src: any) => (
-                  <SelectItem key={src.id} value={String(src.id)} className="text-xs">
-                    <span style={{ color: src.color ?? undefined }}>{src.name}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {/* Botones de creación manual — visibles según el tab activo */}
-          {tab === "leads" && (
-            <Button
-              size="sm"
-              onClick={() => setShowNewLeadModal(true)}
-              className="sm:ml-auto"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> {voc.newLead}
-            </Button>
-          )}
-          {tab === "reservations" && (
-            <Button
-              size="sm"
-              onClick={() => setShowNewReservationModal(true)}
-              className="sm:ml-auto"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> {voc.newOrder}
-            </Button>
-          )}
-          {tab === "quotes" && (
-            <Button
-              size="sm"
-              onClick={() => setShowDirectQuoteModal(true)}
-              className="sm:ml-auto"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> {voc.licensed ? t("crmDashboard.nuevoPresupuesto") : t("crmDashboard.nuevoPresupuesto2")}
-            </Button>
-          )}
-        </div>
-        )}
-
-        {/* Table */}
-        <div className="px-4 sm:px-6 pb-8">
+        {toolbarNode}
+        <div>
           <LeadsTab ctrl={leads} tab={tab} setBulkConfirm={setBulkConfirm} filterStatus={filterStatus} search={search} setFilterStatus={setFilterStatus} setSearch={setSearch} />
 
           <QuotesTab ctrl={quotes} tab={tab} setBulkConfirm={setBulkConfirm} filterStatus={filterStatus} search={search} setFilterStatus={setFilterStatus} setSearch={setSearch} />
@@ -1105,6 +937,10 @@ export default function CRMDashboard() {
           {tab === "pagos_pendientes" && (
             <PagosPendientesTab />
           )}
+        </div>
+        </SalesFamilyShell>
+        <div className="order-last px-4 sm:px-6 pb-6">
+          <WorkplaceLocks place="crm" className="mt-3" />
         </div>
       </div>
 

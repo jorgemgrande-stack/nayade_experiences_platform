@@ -5,16 +5,17 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, ExternalLink, Loader2, Mail, Package, Phone, Receipt, Search, ShoppingBag, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, Loader2, Mail, Package, Phone, Plus, Receipt, ShoppingBag, User } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { PanelDataList, PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { PanelDataList, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { CompactEmpty, SalesFamilyShell, SummaryStrip, ToolbarRow, type SummaryStripItem, type ToolbarChip } from "@/components/admin/SalesFamilyShell";
+import { useVocabulary } from "@/lib/vocabulary";
 import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
-import { SegmentedTabs } from "@/components/admin/PanelVisual";
 import { TONE_TEXT } from "@/lib/panelTones";
 import { toastError } from "@/lib/errorMessage";
 import { ORDER_STAGE_FLOW, STAGES_NOTIFIED, type OrderStage } from "@shared/shopOrders";
@@ -51,6 +52,7 @@ const FILTERS: Array<OrderStage | "all"> = ["all", "pending_payment", "paid", "p
 
 export function OnlineOrdersList() {
   const { t } = useI18n();
+  const voc = useVocabulary();
   const { eur, fmtDate } = useOrderFormat();
   const [stage, setStage] = useState<OrderStage | "all">("all");
   const [search, setSearch] = useState("");
@@ -58,48 +60,68 @@ export function OnlineOrdersList() {
   const counts = q.data?.counts;
   const all = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
 
-  return (
-    <AdminLayout>
-      <div className="mx-auto w-full max-w-6xl space-y-5 p-4 md:p-6">
-        <PanelPageHeader
-          className="mb-0"
-          icon={<ShoppingBag />}
-          title={t("shopOrders.list.title")}
-          description={t("shopOrders.list.description")}
-        />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input aria-label={t("shopOrders.list.searchLabel")} placeholder={t("shopOrders.list.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-          </div>
-        </div>
-        <SegmentedTabs
-          label={t("shopOrders.list.filterByStatus")}
-          value={stage}
-          onChange={setStage}
-          options={FILTERS.map((f) => ({ value: f, label: f === "all" ? t("shopOrders.list.all") : t(`shopOrders.stage.${f}`), count: f === "all" ? all : counts?.[f] ?? 0 }))}
-        />
+  const toggleStage = (s: OrderStage) => setStage((cur) => (cur === s ? "all" : s));
+  const strip: SummaryStripItem[] = [
+    { key: "paid", label: t("shopOrders.stage.paid"), value: counts?.paid ?? 0, primary: true, tone: "brand", active: stage === "paid", onClick: () => toggleStage("paid") },
+    { key: "pending_payment", label: t("shopOrders.stage.pending_payment"), value: counts?.pending_payment ?? 0, tone: "warning", active: stage === "pending_payment", onClick: () => toggleStage("pending_payment") },
+    { key: "prepared", label: t("shopOrders.stage.prepared"), value: counts?.prepared ?? 0, tone: "info", active: stage === "prepared", onClick: () => toggleStage("prepared") },
+    { key: "delivered", label: t("shopOrders.stage.delivered"), value: counts?.delivered ?? 0, tone: "success", active: stage === "delivered", onClick: () => toggleStage("delivered") },
+  ];
+  const chips: ToolbarChip[] = [
+    ...(stage !== "all" ? [{ id: "stage", label: `${t("shopOrders.list.filterByStatus")}: ${t(`shopOrders.stage.${stage}`)}`, onRemove: () => setStage("all") }] : []),
+    ...(search.trim() ? [{ id: "search", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
+  ];
+  const clearFilters = () => { setStage("all"); setSearch(""); };
 
+  return (
+    <AdminLayout title={voc.crmTitle}>
+      <SalesFamilyShell
+        active="reservations"
+        action={<Button asChild><Link href="/admin/crm?tab=reservations&nuevo=1"><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{voc.newOrder}</Link></Button>}
+      >
+        <h1 className="sr-only">{t("shopOrders.list.title")}</h1>
+        <SummaryStrip items={strip} label={t("shopOrders.list.title")} />
+        <ToolbarRow
+          search={{ value: search, onChange: setSearch, placeholder: t("shopOrders.list.searchPlaceholder") }}
+          filters={(
+            <Select value={stage} onValueChange={(v) => setStage(v as OrderStage | "all")}>
+              <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-56" aria-label={t("shopOrders.list.filterByStatus")}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FILTERS.map((f) => <SelectItem key={f} value={f}>{(f === "all" ? t("shopOrders.list.all") : t(`shopOrders.stage.${f}`)) + " (" + (f === "all" ? all : counts?.[f] ?? 0) + ")"}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          trailing={(
+            <>
+              <StatusBadge tone="brand" icon={<ShoppingBag />}>{t("salesShell.shopChannel")}</StatusBadge>
+              <Button asChild variant="ghost" size="sm" className="h-9 gap-1 text-muted-foreground"><Link href="/admin/crm?tab=reservations">{t("salesShell.allOrders")}<ArrowRight className="h-4 w-4" aria-hidden="true" /></Link></Button>
+            </>
+          )}
+          chips={chips}
+          onClear={clearFilters}
+          summary={chips.length > 0 && q.data ? t("shopOrders.list.showing", { shown: q.data.items.length, total: q.data.total }) : undefined}
+        />
         {q.isLoading ? (
-          <div className="flex justify-center py-16" role="status" aria-label={t("shopOrders.list.loading")}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          <div className="flex justify-center rounded-xl border border-border bg-card py-12" role="status" aria-label={t("shopOrders.list.loading")}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : q.error ? (
           <PanelError error={q.error} onRetry={() => q.refetch()} title={t("shopOrders.list.loadError")} />
         ) : !q.data?.items.length ? (
-          <PanelEmpty
+          <CompactEmpty
             icon={<ShoppingBag />}
             title={all === 0 ? t("shopOrders.list.emptyNone") : t("shopOrders.list.emptyFilter")}
             description={all === 0 ? t("shopOrders.list.emptyNoneText") : undefined}
-          >
-            {all > 0 && <Button size="sm" variant="outline" onClick={() => { setStage("all"); setSearch(""); }}>{t("shopOrders.list.seeAll")}</Button>}
-          </PanelEmpty>
+            action={all > 0 ? <Button size="sm" variant="outline" onClick={clearFilters}>{t("shopOrders.list.seeAll")}</Button> : undefined}
+          />
         ) : (
           <PanelDataList
+            tableFrom="lg"
+            className="shadow-sm [&_td]:py-2 [&_td]:align-middle"
             caption={t("shopOrders.list.title")}
             rows={q.data.items}
             rowKey={(o) => o.merchantOrder}
             columns={[
-              { key: "pedido", header: t("shopOrders.list.colOrder"), cell: (o) => <Link href={orderHref(o.merchantOrder)} className="font-mono font-medium text-primary hover:underline">{o.merchantOrder}</Link> },
-              { key: "fecha", header: t("shopOrders.list.colDate"), cell: (o) => <span className="text-muted-foreground">{fmtDate(o.createdAt)}</span> },
+              { key: "pedido", header: t("shopOrders.list.colOrder"), cell: (o) => <Link href={orderHref(o.merchantOrder)} className="whitespace-nowrap font-mono font-medium text-primary hover:underline">{o.merchantOrder}</Link> },
+              { key: "fecha", header: t("shopOrders.list.colDate"), cell: (o) => <span className="whitespace-nowrap text-muted-foreground">{fmtDate(o.createdAt)}</span> },
               { key: "cliente", header: t("shopOrders.list.colCustomer"), cell: (o) => <><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-foreground">{o.customerName}</div><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{o.customerEmail}</div></> },
               { key: "articulos", header: t("shopOrders.list.colItems"), cell: (o) => <div className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">{o.productNames.join(", ")}</div> },
               { key: "total", header: t("shopOrders.list.colTotal"), align: "right", cell: (o) => <span className="font-medium tabular-nums text-foreground">{eur(o.totalCents)}</span> },
@@ -108,7 +130,7 @@ export function OnlineOrdersList() {
           />
         )}
         {q.data && q.data.total > q.data.items.length && <p className="text-xs text-muted-foreground">{t("shopOrders.list.showing", { shown: q.data.items.length, total: q.data.total })}</p>}
-      </div>
+      </SalesFamilyShell>
     </AdminLayout>
   );
 }
@@ -240,7 +262,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                     <ul className="space-y-2">
                       {o.invoices.map((inv) => (
                         <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2">
-                          <Link href={`/admin/crm?tab=invoices&search=${encodeURIComponent(inv.invoiceNumber)}`} className="font-mono font-medium text-primary hover:underline">{inv.invoiceNumber}</Link>
+                          <Link href={`/admin/crm?tab=invoices&search=${encodeURIComponent(inv.invoiceNumber)}`} className="whitespace-nowrap font-mono font-medium text-primary hover:underline">{inv.invoiceNumber}</Link>
                           <a href={inv.pdfUrl ?? `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">{t("shopOrders.detail.viewPdf")} <ExternalLink className="h-3 w-3" aria-hidden="true" /></a>
                         </li>
                       ))}

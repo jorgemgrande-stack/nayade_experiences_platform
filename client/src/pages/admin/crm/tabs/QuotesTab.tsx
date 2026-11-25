@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { Eye, Send, CheckCircle, XCircle, Clock, AlertTriangle, RefreshCw, Trash2, Copy, Banknote, Pencil, FileDown, Sparkles, Receipt, CreditCard, Upload, X, CalendarDays, Plus, FileText } from "lucide-react";
 import { StatusBadge } from "@/components/admin/PanelUi";
-import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { CompactEmpty } from "@/components/admin/SalesFamilyShell";
 import { useI18n } from "@/i18n/I18nProvider";
 import { DT_FULL, EUR2, toastQuoteMail, Tab, QuoteStatus, QuoteStatusBadge, PAGE_SIZE } from "../shared/crmCommon";
 import { CrmBulkBar, CrmPager, CrmRowActions, CrmTable } from "../shared/ui/CrmUi";
@@ -234,17 +235,16 @@ export function QuotesTab({ ctrl, tab, setBulkConfirm, filterStatus, search, set
             ) : quotesLoading ? (
               <div className="rounded-xl border border-border bg-card"><PanelLoading /></div>
             ) : !quotesData?.rows?.length ? (
-              <PanelEmpty
-                icon={<FileText className="h-5 w-5" />}
+              <CompactEmpty
+                icon={<FileText />}
                 title={filtered ? t("crmShared.ningunResultadoConEstos") : t("crmEmpty.empty.quotes")}
                 description={filtered ? undefined : t("crmEmpty.empty.quotesHint")}
-              >
-                {filtered ? (
+                action={filtered ? (
                   <Button variant="outline" onClick={() => { setFilterStatus("all"); setSearch(""); }}>{t("crmShared.quitarFiltros")}</Button>
                 ) : (
                   <Button onClick={() => setShowDirectQuoteModal(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("crmEmpty.empty.quotesAction")}</Button>
                 )}
-              </PanelEmpty>
+              />
             ) : (
               <>
                 <CrmBulkBar count={selectedQuotes.size} label={t("crmQuotes.seleccionadoS", { size: selectedQuotes.size })} onClear={() => setSelectedQuotes(new Set())}>

@@ -16,7 +16,7 @@ import { Calendar, Eye, Send, XCircle, Phone, Mail, AlertTriangle, RefreshCw, Tr
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/i18n/I18nProvider";
 import { EUR2, Tab, FieldError, invalidProps, CHANNEL_META, CHANNEL_FALLBACK, CrmTableState, PAGE_SIZE } from "../shared/crmCommon";
-import { BPill, BMoney, BStat, BSummary, BTable, BRowActions, BBulkBar, BPager, type BChip, type BColumn, type BTone } from "../shared/ui/bCrmUi";
+import { BPill, BMoney, BTable, BRowActions, BBulkBar, BPager, type BColumn, type BTone } from "../shared/ui/bCrmUi";
 import { NewReservationModal } from "../modals/NewReservationModal";
 import { ReservationDetailModal } from "../modals/ReservationDetailModal";
 
@@ -167,8 +167,6 @@ export function ReservationsTab({ ctrl, tab, setBulkConfirm, filterStatus, searc
   const voc = useVocabulary();
   const panelSub = usePanelSubscription();
   const { selectedRes, bulkResStatus, bulkUpdateResStatus, bulkDeleteRes, setSelectedRes, resData, resLoading, resError, refetchResList, resChannelFilter, setResChannelFilter, ordersWord, setShowNewReservationModal, getPaymentMethodLabel, setViewResId, setEditResData, setEditResStatus, setEditResNotes, setEditResStatusReservation, setEditResStatusPayment, setEditResChannel, setEditResChannelDetail, setEditResNewDate, setEditResDateReason, setShowChangeDateSection, setEditResId, resendResMutation, setPrintTicketRes, setGenInvoiceResId, setDeleteResId, resPage, setResPage } = ctrl;
-  // Mismos contadores que el panel de indicadores del contenedor (misma consulta, misma caché): solo lectura
-  const { data: counters } = trpc.crm.reservations.counters.useQuery(undefined, { enabled: tab === "reservations" });
   const money = (v: number) => format.currency(v, "EUR", EUR2);
   const channelLabel = (res: any): string =>
     res.originSource === "coupon_redemption" ? (res.platformName ?? t("crmReservations.cupon")) :
@@ -183,13 +181,6 @@ export function ReservationsTab({ ctrl, tab, setBulkConfirm, filterStatus, searc
     res.channel === "MANUAL" ? t("crmReservations.manual2") :
     res.channel === "API" ? t("crmReservations.api2") :
     res.channel ?? "—";
-  const statusFilterLabel: Record<string, string> = { paid: t("crmReservations.pagada"), pending_payment: t("crmReservations.pendientePago"), cancelled: t("crmReservations.cancelada") };
-  const clearAll = () => { setFilterStatus("all"); setResChannelFilter("all"); setSearch(""); };
-  const chips: BChip[] = [
-    ...(filterStatus !== "all" ? [{ id: "status", label: `${t("crmShared.filtroEstado")}: ${statusFilterLabel[filterStatus] ?? filterStatus}`, onRemove: () => setFilterStatus("all") }] : []),
-    ...(resChannelFilter !== "all" ? [{ id: "channel", label: `${t("crmShared.filtroCanal")}: ${resChannelFilter === "coupon" ? t("crmDashboard.cuponOrigen") : channelLabel({ channel: resChannelFilter })}`, onRemove: () => setResChannelFilter("all") }] : []),
-    ...(search.trim() ? [{ id: "search", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
-  ];
   const stateBadge = (res: any) => {
     const sr = res.statusReservation;
     if (sr) {
@@ -236,47 +227,52 @@ export function ReservationsTab({ ctrl, tab, setBulkConfirm, filterStatus, searc
   const rows: any[] = resData?.rows ?? [];
   const columns: BColumn<any>[] = [
     { key: "number", header: voc.orderNumber, mobile: "hidden", cell: (res) => (
-      <div className="space-y-1">
-        {res.reservationNumber ? <span className="font-mono text-xs font-semibold text-foreground">{res.reservationNumber}</span> : <span className="text-muted-foreground">—</span>}
-        <div className="text-xs text-muted-foreground tabular-nums">{format.date(res.createdAt, {})}</div>
-        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs font-medium ${res.originSource === "coupon_redemption" ? "border-warning/30 bg-warning/10 text-warning" : (CHANNEL_META[res.channel ?? ""]?.tone ?? CHANNEL_FALLBACK)}`}>
-          {res.originSource !== "coupon_redemption" && CHANNEL_META[res.channel ?? ""] ? (() => { const I = CHANNEL_META[res.channel ?? ""].Icon; return <I className="h-3 w-3 shrink-0" aria-hidden />; })() : null}
-          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{channelLabel(res)}</span>
-        </span>
-        {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
-          <a href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`} className="block font-mono text-xs text-primary hover:underline">#{(res as any).tpvOperationNumber}</a>
-        ) : res.channelDetail ? <div className="max-w-[9rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{res.channelDetail}</div> : null}
-      </div>
-    ) },
-    { key: "customer", header: t("crmReservations.cliente"), mobile: "title", cell: (res) => (
       <div className="min-w-0">
-        {(res as typeof res & { clientId?: number }).clientId ? (
-          <a href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`} onClick={(e) => e.stopPropagation()} className="block break-words font-medium text-foreground hover:text-primary hover:underline">{customerOf(res)}</a>
-        ) : (
-          <div className="break-words font-medium text-foreground">{customerOf(res)}</div>
-        )}
-        {res.reservationNumber && <div className="font-mono text-xs text-muted-foreground @2xl:hidden">{res.reservationNumber}</div>}
-        <div className="break-all text-xs text-muted-foreground">{res.customerEmail}</div>
-        {res.customerPhone && <div className="text-xs text-muted-foreground">{res.customerPhone}</div>}
-        {res.merchantOrder && <div className="font-mono text-xs text-muted-foreground">{res.merchantOrder}</div>}
+        {res.reservationNumber ? <span className="whitespace-nowrap font-mono text-xs font-semibold text-foreground">{res.reservationNumber}</span> : <span className="text-muted-foreground">—</span>}
+        <div className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{format.date(res.createdAt, {})}</div>
       </div>
     ) },
+    { key: "customer", header: t("crmReservations.cliente"), mobile: "title", cell: (res) => {
+      const extra = [res.customerEmail, res.customerPhone, res.merchantOrder].filter(Boolean).join(" · ");
+      return (
+        <div className="min-w-0 @2xl:max-w-[11rem]">
+          {(res as typeof res & { clientId?: number }).clientId ? (
+            <a href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`} onClick={(e) => e.stopPropagation()} className="block break-words font-medium text-foreground hover:text-primary hover:underline @2xl:overflow-hidden @2xl:text-ellipsis @2xl:whitespace-nowrap">{customerOf(res)}</a>
+          ) : (
+            <div className="break-words font-medium text-foreground @2xl:overflow-hidden @2xl:text-ellipsis @2xl:whitespace-nowrap">{customerOf(res)}</div>
+          )}
+          {res.reservationNumber && <div className="font-mono text-xs text-muted-foreground @2xl:hidden">{res.reservationNumber}</div>}
+          <div title={extra} className="break-all text-xs text-muted-foreground @2xl:overflow-hidden @2xl:text-ellipsis @2xl:whitespace-nowrap">{extra}</div>
+        </div>
+      );
+    } },
     { key: "product", header: `${t("crmReservations.producto")} / ${voc.serviceDateShort}`, priority: "md", cell: (res) => (
-      <div className="min-w-0 space-y-0.5">
-        <div className="break-words text-foreground">{res.productName}</div>
+      <div className="min-w-0 @2xl:max-w-[10.5rem]">
+        <div className="break-words text-foreground @2xl:overflow-hidden @2xl:text-ellipsis @2xl:whitespace-nowrap" title={res.productName}>{res.productName}</div>
         <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
           {res.bookingDate && <span className="inline-flex items-center gap-1 tabular-nums"><Calendar className="h-3 w-3" aria-hidden="true" />{formatDayEs(res.bookingDate)}</span>}
           {res.paymentMethod && <span>{getPaymentMethodLabel(res.paymentMethod)}</span>}
+          {res.invoiceNumber && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }} className="inline-flex items-center gap-1 font-mono text-primary hover:underline">
+              <Receipt className="h-3 w-3" aria-hidden="true" />{res.invoiceNumber}
+            </button>
+          )}
         </div>
-        {res.invoiceNumber && (
-          <button type="button" onClick={(e) => { e.stopPropagation(); setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }} className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline">
-            <Receipt className="h-3 w-3" aria-hidden="true" />{res.invoiceNumber}
-          </button>
-        )}
+      </div>
+    ) },
+    { key: "channel", header: t("crmShared.filtroCanal"), priority: "lg", cell: (res) => (
+      <div className="min-w-0">
+        <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-xs font-medium ${res.originSource === "coupon_redemption" ? "border-warning/30 bg-warning/10 text-warning" : (CHANNEL_META[res.channel ?? ""]?.tone ?? CHANNEL_FALLBACK)}`}>
+          {res.originSource !== "coupon_redemption" && CHANNEL_META[res.channel ?? ""] ? (() => { const I = CHANNEL_META[res.channel ?? ""].Icon; return <I className="h-3 w-3 shrink-0" aria-hidden />; })() : null}
+          <span>{channelLabel(res)}</span>
+        </span>
+        {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
+          <a href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`} onClick={(e) => e.stopPropagation()} className="block font-mono text-xs text-primary hover:underline">#{(res as any).tpvOperationNumber}</a>
+        ) : res.channelDetail ? <div className="max-w-[9rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground" title={res.channelDetail}>{res.channelDetail}</div> : null}
       </div>
     ) },
     { key: "state", header: voc.orderStatus, cell: (res) => (
-      <div className="flex flex-col items-start gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {stateBadge(res)}
         {payBadge(res)}
         {res.cancellationRequestId && <BPill tone="warning" icon={<AlertTriangle />}>{t("crmReservations.anulacion", { cancellationRequestId: res.cancellationRequestId })}</BPill>}
@@ -309,35 +305,6 @@ export function ReservationsTab({ ctrl, tab, setBulkConfirm, filterStatus, searc
     <>
 {tab === "reservations" && (
       <div className="space-y-4">
-        {counters && (
-          <BSummary>
-            <BStat tone="primary" icon={<Wallet />} label={t("crmShared.cobrado")} value={money(Number(counters.ingresos ?? 0))}
-              hint={`${Number(counters.confirmadas ?? 0) + Number(counters.pendientePago ?? 0) + Number(counters.canceladas ?? 0)} ${voc.ordersLower}`}
-              onClick={() => setFilterStatus("all")} />
-            <BStat tone="success" icon={<CheckCircle2 />} label={t("crmReservations.pagada")} value={Number(counters.confirmadas ?? 0)}
-              hint={Number(counters.importeConfirmadas ?? 0) > 0 ? money(Number(counters.importeConfirmadas)) : undefined}
-              onClick={() => setFilterStatus(filterStatus === "paid" ? "all" : "paid")} active={filterStatus === "paid"} />
-            <BStat tone="warning" icon={<Clock />} label={t("crmReservations.pendientePago")} value={Number(counters.pendientePago ?? 0)}
-              hint={Number(counters.importePendientePago ?? 0) > 0 ? money(Number(counters.importePendientePago)) : undefined}
-              onClick={() => setFilterStatus(filterStatus === "pending_payment" ? "all" : "pending_payment")} active={filterStatus === "pending_payment"} />
-            <BStat tone="danger" icon={<XCircle />} label={t("crmReservations.cancelada")} value={Number(counters.canceladas ?? 0)}
-              onClick={() => setFilterStatus(filterStatus === "cancelled" ? "all" : "cancelled")} active={filterStatus === "cancelled"} />
-          </BSummary>
-        )}
-        {(chips.length > 0 || resData) && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            {resData && <span className="mr-1 text-muted-foreground">{resData.total} {ordersWord}</span>}
-            {chips.map((c) => (
-              <span key={c.id} className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-foreground">
-                <span className="overflow-hidden text-ellipsis whitespace-nowrap">{c.label}</span>
-                <button type="button" onClick={c.onRemove} aria-label={t("crmShared.quitarFiltro", { label: c.label })} className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/20 hover:text-foreground">
-                  <X className="h-3 w-3" aria-hidden="true" />
-                </button>
-              </span>
-            ))}
-            {chips.length > 0 && <Button type="button" variant="ghost" size="sm" onClick={clearAll} className="h-7 gap-1 px-2 text-muted-foreground"><X className="h-3.5 w-3.5" aria-hidden="true" /> {t("crmShared.limpiarFiltros")}</Button>}
-          </div>
-        )}
         <BBulkBar count={selectedRes.size} label={t("crmReservations.seleccionadoS", { size: selectedRes.size })} onClear={() => setSelectedRes(new Set())}>
           <select value={bulkResStatus} onChange={e => { if (e.target.value) bulkUpdateResStatus.mutate({ ids: Array.from(selectedRes), status: e.target.value as any }); }} disabled={bulkUpdateResStatus.isPending} aria-label={t("crmReservations.cambiarEstado")} className="rounded-md border border-border bg-background px-2 py-1 text-xs disabled:opacity-40">
             <option value="">{t("crmReservations.cambiarEstado")}</option>
@@ -358,7 +325,7 @@ export function ReservationsTab({ ctrl, tab, setBulkConfirm, filterStatus, searc
           error={resError}
           onRetry={() => refetchResList()}
           filtered={filterStatus !== "all" || resChannelFilter !== "all" || !!search.trim()}
-          onClearFilters={clearAll}
+          onClearFilters={() => { setFilterStatus("all"); setResChannelFilter("all"); setSearch(""); }}
           emptyTitle={t("crmEmpty.empty.orders", { ordersLower: ordersWord })}
           emptyDescription={panelSub.isLicensed ? t("crmEmpty.empty.ordersHint") : undefined}
           emptyAction={<Button type="button" onClick={() => setShowNewReservationModal(true)}>{panelSub.isLicensed ? t("crmEmpty.empty.ordersActionLicensed") : t("crmEmpty.empty.ordersActionLegacy")}</Button>}
