@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { StatusBadge } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/button";
@@ -87,18 +88,15 @@ export default function CostCentersManager() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-5xl space-y-6 p-6">
-        <PanelPageHeader
-          icon={<Layers />}
-          title={t("accountingConfig.costCenters.title")}
-          description={t("accountingConfig.costCenters.description", { active: activeCount, total: items.length })}
-          actions={
+      <EconomyShell screen="costCenters"
+        description={t("accountingConfig.costCenters.description", { active: activeCount, total: items.length })}
+        action={
             <>
               <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")} className="gap-1.5"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.common.backToExpenses")}</Button>
               <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.costCenters.new")}</Button>
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
 
         {/* Qué es un centro de coste */}
         <div className={cn("flex items-start gap-3 rounded-xl border p-4 text-sm", TONE_SURFACE.info)}>
@@ -175,6 +173,7 @@ export default function CostCentersManager() {
           </form>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

@@ -16,8 +16,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge as ToneBadge, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { StatusBadge as ToneBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import type { DailyControlData } from "../../../../../server/routers/dailyControl";
@@ -28,9 +30,7 @@ function today(): string {
   return new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
 }
 
-function fmtEur(v: number): string {
-  return v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-}
+const fmtEur = (v: number): string => formatEur(v);
 
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -229,13 +229,10 @@ export default function DailyControlCenter() {
   const kpis = d?.kpis;
 
   return (
-    <AdminLayout title="Centro de Control Diario">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <PanelPageHeader
-        icon={<Activity />}
-        title="Centro de Control Diario"
+    <AdminLayout>
+      <EconomyShell screen="daily"
         description={<>Informe económico-operativo en tiempo real · <span className="font-medium text-foreground">{fmtDate(date)}</span></>}
-        actions={
+        action={
           <>
             <Button variant="outline" size="icon" className="h-9 w-9"
               onClick={() => setDate(d => offsetDate(d, -1))}>
@@ -266,8 +263,7 @@ export default function DailyControlCenter() {
               </span>
             )}
           </>
-        }
-      />
+        }>
 
       {/* ── KPI Cards ────────────────────────────────────────────────────── */}
       <section className="mb-8">
@@ -996,6 +992,7 @@ export default function DailyControlCenter() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

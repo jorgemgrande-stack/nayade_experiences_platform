@@ -3,18 +3,60 @@
  * TPV): resumen superior, barra de filtros con «Más filtros» y chips, tabla con cabecera fija y tarjetas en móvil, menú de
  * acciones por fila y secciones de formulario. Solo presentación: no calculan nada contable ni tocan permisos.
  */
-import { Children, cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { ChevronDown, MoreHorizontal, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { MetricCard as BaseMetricCard } from "@/components/admin/PanelVisual";
 import { cn } from "@/lib/utils";
+import { formatEur, type MoneyOptions } from "@/lib/money";
+import { useI18n } from "@/i18n/I18nProvider";
 
-/** Importe en euros con el formato de la casa (cifras agrupadas y dos decimales). */
-export const eur = (v: number | string | null | undefined): string =>
-  new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(v) || 0);
+/** Importe en euros con el formato único del panel («1.234.567,89 €»): ver `@/lib/money`. */
+export { formatEur as eur, formatEurCents as eurCents, formatAmount } from "@/lib/money";
+
+/**
+ * Cifra grande que no se parte ni se corta: una sola línea, cifras tabulares y un tamaño que se ajusta al ancho de su
+ * caja (contenedor de tamaño en línea). Con pocas cifras conserva el tamaño del contexto; con siete cifras y el «€» se
+ * reduce lo justo para caber. Solo cambia cómo se ve, nunca el valor.
+ */
+export function FitFigure({ children, className }: { children: string; className?: string }) {
+  // Importes cortos caben siempre: sin ajuste. Los largos (siete cifras y «€») se reducen hasta un mínimo legible (60 %).
+  if (children.length <= 11) return <span className={cn("whitespace-nowrap tabular-nums", className)}>{children}</span>;
+  return (
+    <span className="block w-full min-w-0 [container-type:inline-size]">
+      <span
+        className={cn("inline-block whitespace-nowrap tabular-nums", className)}
+        style={{ fontSize: `clamp(0.6em, ${(100 / (children.length * 0.64)).toFixed(2)}cqi, 1em)` }}
+      >
+        {children}
+      </span>
+    </span>
+  );
+}
+
+export function Money({ value, className, ...opts }: { value: number | string | null | undefined; className?: string } & MoneyOptions) {
+  return <FitFigure className={className}>{formatEur(value, opts)}</FitFigure>;
+}
+
+/** Tarjeta de métrica de Economía: igual que `MetricCard`, con las cifras en euros ajustadas a su caja (nunca partidas ni cortadas). */
+export function MetricCard(props: ComponentProps<typeof BaseMetricCard>) {
+  const v = props.value;
+  return <BaseMetricCard {...props} value={typeof v === "string" && v.includes("€") ? <FitFigure>{v}</FitFigure> : v} />;
+}
+
+/** Etiqueta pequeña para cifras que suman solo las filas cargadas en la página («de esta página»): no es el total del filtro. */
+export function PageOnlyTag({ className }: { className?: string }) {
+  const { t } = useI18n();
+  return (
+    <span title={t("economyShell.partial.pageHint")} className={cn("inline-flex items-center whitespace-nowrap rounded-full border border-border bg-muted/60 px-1.5 text-xs font-medium leading-5 text-muted-foreground", className)}>
+      {t("economyShell.partial.page")}
+    </span>
+  );
+}
 
 // ─── Resumen superior ────────────────────────────────────────────────────────
 
@@ -371,6 +413,24 @@ export function FormField({ label, required, error, hint, children, className }:
       {children}
       {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Pie fijo de un diálogo largo: los botones de acción quedan siempre a la vista al desplazar el formulario. Va dentro de
+ * `DialogContent` (relleno de 24 px) con desplazamiento propio (`max-h-[90vh] overflow-y-auto`). En móvil los botones ocupan todo el ancho.
+ */
+export function FormFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      data-slot="dialog-footer"
+      className={cn(
+        "sticky -bottom-6 z-10 -mx-6 -mb-6 flex flex-col-reverse gap-2 border-t border-border bg-background px-6 pb-9 pt-3 sm:flex-row sm:justify-end max-sm:[&>button]:w-full",
+        className,
+      )}
+    >
+      {children}
     </div>
   );
 }

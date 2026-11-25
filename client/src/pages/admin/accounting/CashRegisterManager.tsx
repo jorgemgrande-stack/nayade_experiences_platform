@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
-import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard, EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,8 +21,7 @@ import {
   RefreshCw, AlertTriangle, ShoppingCart, Receipt, Bell, ExternalLink,
 } from "lucide-react";
 
-const fmtEur = (v: number | string) =>
-  new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(v));
+const fmtEur = (v: number | string) => formatEur(v);
 
 const today = () => new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
 
@@ -434,21 +434,17 @@ export default function CashRegisterManager() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
-
-        {/* Header */}
-        <PanelPageHeader
-          icon={<Wallet />}
-          title="Caja"
-          description="Gestión de efectivo y movimientos de caja"
-          actions={
+      <EconomyShell screen="cash"
+        description="Gestión de efectivo y movimientos de caja"
+        action={
             <>
           <Button onClick={() => { setMovForm(emptyMovForm()); setMovDialog(true); }}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo movimiento
           </Button>
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
+
 
         {/* Panel de alertas de descuadre */}
         {(alertsQ.data?.length ?? 0) > 0 && (
@@ -828,7 +824,7 @@ export default function CashRegisterManager() {
         return (
           <>
             <Dialog open={selectedClosureId != null && actionModal == null} onOpenChange={open => { if (!open) setSelectedClosureId(null); }}>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-2xl sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2 text-base">
                     <span>{statusMeta.icon}</span>
@@ -1210,6 +1206,7 @@ export default function CashRegisterManager() {
           </form>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

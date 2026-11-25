@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
+import { MetricCard, PageOnlyTag, EconomyFilterBar, EconomySummary, EconomyTable, FilterField, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -64,12 +65,7 @@ function scoreIcon(score: number | null | undefined): string {
   return "🔴";
 }
 
-function fmt(v: string | number | null | undefined): string {
-  if (v == null) return "—";
-  const n = parseFloat(String(v));
-  if (isNaN(n)) return "—";
-  return n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-}
+const fmt = (v: string | number | null | undefined): string => formatEur(v, { nullAs: "—" });
 
 function fmtDate(s: string | null | undefined): string {
   if (!s) return "—";
@@ -172,7 +168,7 @@ export default function CardTerminalBatchesManager() {
   const acceptMut = trpc.cardTerminalBatches.acceptSuggestion.useMutation({
     onSuccess: (res) => {
       if (res.hasDifference) {
-        toast.warning(`Conciliada con diferencia de ${res.differenceAmount?.toFixed(2)} €`);
+        toast.warning(`Conciliada con diferencia de ${formatEur(res.differenceAmount)}`);
       } else {
         toast.success("Sugerencia aceptada — remesa conciliada");
       }
@@ -192,7 +188,7 @@ export default function CardTerminalBatchesManager() {
   const reconcileMut = trpc.cardTerminalBatches.reconcile.useMutation({
     onSuccess: (res) => {
       if (res.hasDifference) {
-        toast.warning(`Conciliada con diferencia de ${res.differenceAmount?.toFixed(2)} €`);
+        toast.warning(`Conciliada con diferencia de ${formatEur(res.differenceAmount)}`);
       } else {
         toast.success("Remesa conciliada correctamente");
       }
@@ -231,7 +227,7 @@ export default function CardTerminalBatchesManager() {
 
   const removeOpMut = trpc.cardTerminalBatches.removeOperation.useMutation({
     onSuccess: (res) => {
-      toast.success(`Operación eliminada. Nuevo neto: ${res.newTotalNet.toFixed(2)} € · ${res.remainingOps} operaciones restantes`);
+      toast.success(`Operación eliminada. Nuevo neto: ${formatEur(res.newTotalNet)} · ${res.remainingOps} operaciones restantes`);
       setDelOpOpen(false);
       setDelOpTarget(null);
       invalidateAll();
@@ -260,6 +256,8 @@ export default function CardTerminalBatchesManager() {
     reconciled: batches.filter(b => ["reconciled", "difference"].includes(b.status)).length,
   };
 
+  // La consulta trae como máximo 100 remesas: si llega al tope, las cifras son de las cargadas, no del filtro completo
+  const partialList = batches.length >= 100;
   const isSuggested = (s: string) => s === "suggested" || s === "auto_ready";
   const isReconciled = (s: string) => s === "reconciled" || s === "difference";
 
@@ -309,13 +307,9 @@ export default function CardTerminalBatchesManager() {
 
   return (
     <AdminLayout>
-      <div className="flex flex-col gap-6 p-6">
-        {/* Header */}
-        <PanelPageHeader
-          icon={<Package />}
-          title="Remesas TPV"
-          description="Agrupa operaciones TPV diarias y concília con movimientos bancarios"
-          actions={
+      <EconomyShell screen="batches"
+        description="Agrupa operaciones TPV diarias y concília con movimientos bancarios"
+        action={
             <>
               <Button
                 variant="outline"
@@ -331,15 +325,15 @@ export default function CardTerminalBatchesManager() {
                 Generar remesas
               </Button>
             </>
-          }
-        />
+          }>
+      <div className="flex flex-col gap-6">
 
         {/* Resumen */}
         <EconomySummary>
-          <MetricCard icon={<Package />} tone="neutral" label="Remesas del periodo" value={stats.total} detail={`neto ${fmt(netoTotal)}`} />
-          <MetricCard icon={<Clock />} tone="warning" label="Pendientes" value={stats.pending} detail="sin conciliar o a revisar" />
-          <MetricCard icon={<Zap />} tone="info" label="Acción requerida" value={stats.needsAction} detail="con propuesta de banco" />
-          <MetricCard icon={<CheckCircle2 />} tone="success" label="Conciliadas" value={stats.reconciled} detail="incluye con diferencia" />
+          <MetricCard icon={<Package />} tone="neutral" label="Remesas del periodo" value={stats.total} detail={<>neto {fmt(netoTotal)}{partialList && <> <PageOnlyTag /></>}</>} />
+          <MetricCard icon={<Clock />} tone="warning" label="Pendientes" value={stats.pending} detail={<>sin conciliar o a revisar{partialList && <> <PageOnlyTag /></>}</>} />
+          <MetricCard icon={<Zap />} tone="info" label="Acción requerida" value={stats.needsAction} detail={<>con propuesta de banco{partialList && <> <PageOnlyTag /></>}</>} />
+          <MetricCard icon={<CheckCircle2 />} tone="success" label="Conciliadas" value={stats.reconciled} detail={<>incluye con diferencia{partialList && <> <PageOnlyTag /></>}</>} />
         </EconomySummary>
 
         {/* Filtros */}
@@ -939,6 +933,7 @@ export default function CardTerminalBatchesManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

@@ -9,18 +9,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
 import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
-import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { FitFigure, MetricCard } from "./shared/EconomyUi";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useVocabulary } from "@/lib/vocabulary";
 import { trpc } from "@/lib/trpc";
 import { transactionDescription } from "@shared/transactionText";
 import { cn } from "@/lib/utils";
 
-function fmtEur(v: number): string {
-  return v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-}
+const fmtEur = (v: number): string => formatEur(v);
 
 const CATEGORY_COLORS = ["#2563eb", "#10b981", "#d4a017", "#8b5cf6", "#ef4444", "#0ea5e9", "#f97316", "#6b7280"];
 
@@ -100,8 +100,10 @@ export default function AccountingDashboard() {
   const categories = summary?.categories ?? [];
 
   return (
-    <AdminLayout title="Contabilidad e Informes">
-      <PanelPageHeader icon={<BarChart3 />} title="Contabilidad e Informes" description="Ventas, cobros, facturas y tesorería de tu empresa" />
+    <AdminLayout>
+      <EconomyShell screen="summary"
+        description="Ventas, cobros, facturas y tesorería de tu empresa">
+
       {mainError && (
         <PanelError
           className="mb-6"
@@ -119,7 +121,7 @@ export default function AccountingDashboard() {
           </h2>
           <span className="text-xs text-muted-foreground">Resultado, costes laborales y carga fiscal · estimación</span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           <HealthTile to="/admin/contabilidad/cuenta-resultados" label="Ingresos"
             value={exec ? fmtEur(exec.income) : "—"} />
           <HealthTile to="/admin/contabilidad/cuenta-resultados" label="EBITDA operativo"
@@ -172,7 +174,7 @@ export default function AccountingDashboard() {
             </p>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-xl font-bold text-warning">{fmtEur(metrics?.partnerPendingAmount ?? 0)}</p>
+            <p className="whitespace-nowrap text-xl font-bold tabular-nums text-warning">{fmtEur(metrics?.partnerPendingAmount ?? 0)}</p>
             <p className="text-xs text-warning mt-0.5">Por cobrar</p>
           </div>
         </div>
@@ -422,6 +424,7 @@ export default function AccountingDashboard() {
         </div>
         )}
       </div>
+    </EconomyShell>
     </AdminLayout>
   );
 }
@@ -439,7 +442,7 @@ function HealthTile({ to, label, value, sub, tone }: {
             : tone === "emerald" ? "text-success"
             : tone === "amber" ? "text-warning"
             : "text-foreground",
-        )}>{value}</div>
+        )}><FitFigure>{value}</FitFigure></div>
         {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
       </div>
     </Link>

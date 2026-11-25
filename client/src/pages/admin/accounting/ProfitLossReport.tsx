@@ -3,7 +3,9 @@
  */
 import { useState, useMemo } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { FitFigure } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +21,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   web: "Web", tpv: "TPV", phone: "Teléfono", agency: "Agencia", direct: "Directo", admin: "Admin",
 };
 
-function fmt(n: number) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " €"; }
+const fmt = (n: number) => formatEur(n);
 
 function DeltaBadge({ current, prev }: { current: number; prev: number }) {
   if (prev === 0) return null;
@@ -125,7 +127,7 @@ export default function ProfitLossReport() {
               <div className={`h-full rounded-full ${colorClass} transition-all`}
                 style={{ width: `${maxVal > 0 ? (d.value / maxVal) * 100 : 0}%` }} />
             </div>
-            <span className="w-24 text-right font-medium text-xs">{fmt(d.value)}</span>
+            <span className="w-28 shrink-0 whitespace-nowrap text-right font-medium text-xs tabular-nums">{fmt(d.value)}</span>
           </div>
         ))}
       </div>
@@ -134,13 +136,9 @@ export default function ProfitLossReport() {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <PanelPageHeader
-          icon={<BarChart3 />}
-          title="Cuenta de Resultados"
-          description="Análisis financiero integrado · EBITDA · Previsión de tesorería"
-          actions={
+      <EconomyShell screen="profitLoss"
+        description="Análisis financiero integrado · EBITDA · Previsión de tesorería"
+        action={
             <>
               <Button variant="outline" size="sm" onClick={() => reportQ.refetch()} disabled={reportQ.isFetching}>
                 <RefreshCw className={`w-4 h-4 mr-1 ${reportQ.isFetching ? "animate-spin" : ""}`} />
@@ -150,8 +148,8 @@ export default function ProfitLossReport() {
                 <Download className="w-4 h-4 mr-1" /> Exportar CSV
               </Button>
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
 
         {/* Filtros + Toggle */}
         <div className="flex flex-wrap gap-4 items-end p-4 bg-muted/30 rounded-lg border">
@@ -231,7 +229,7 @@ export default function ProfitLossReport() {
                     <span className="text-xs font-medium">Ingresos</span>
                     {prev && <DeltaBadge current={report.summary.totalRevenue} prev={prev.totalRevenue} />}
                   </div>
-                  <p className="text-2xl font-bold text-success">{fmt(report.summary.totalRevenue)}</p>
+                  <p className="text-2xl font-bold text-success"><FitFigure>{fmt(report.summary.totalRevenue)}</FitFigure></p>
                   <p className="text-xs text-muted-foreground">{report.summary.reservationCount} reservas</p>
                   {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.totalRevenue)}</p>}
                 </CardContent>
@@ -245,7 +243,7 @@ export default function ProfitLossReport() {
                     <span className="text-xs font-medium">Gastos</span>
                     {prev && <DeltaBadge current={-report.summary.totalExpenses} prev={-prev.totalExpenses} />}
                   </div>
-                  <p className="text-2xl font-bold text-danger">{fmt(report.summary.totalExpenses)}</p>
+                  <p className="text-2xl font-bold text-danger"><FitFigure>{fmt(report.summary.totalExpenses)}</FitFigure></p>
                   <p className="text-xs text-muted-foreground">{conciliatedOnly ? "Solo conciliados" : "Total registrado"}</p>
                   {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.totalExpenses)}</p>}
                 </CardContent>
@@ -259,7 +257,7 @@ export default function ProfitLossReport() {
                     <span className="text-xs font-medium">EBITDA</span>
                     {prev && <DeltaBadge current={ebitda} prev={prev.grossProfit} />}
                   </div>
-                  <p className={`text-2xl font-bold ${ebitda >= 0 ? "text-info" : "text-danger"}`}>{fmt(ebitda)}</p>
+                  <p className={`text-2xl font-bold ${ebitda >= 0 ? "text-info" : "text-danger"}`}><FitFigure>{fmt(ebitda)}</FitFigure></p>
                   <p className="text-xs text-muted-foreground">Margen {ebitdaMargin.toFixed(1)}%</p>
                   {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.grossProfit)}</p>}
                 </CardContent>
@@ -361,20 +359,20 @@ export default function ProfitLossReport() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
                       <div className="text-xs text-muted-foreground">EBITDA del ejercicio</div>
-                      <div className="text-xl font-bold text-foreground">{fmt(execQ.data.ebitda)}</div>
+                      <div className="text-xl font-bold text-foreground"><FitFigure>{fmt(execQ.data.ebitda)}</FitFigure></div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">− Impuesto de Sociedades</div>
-                      <div className="text-xl font-bold text-warning">{fmt(execQ.data.corporateTax)}</div>
+                      <div className="text-xl font-bold text-warning"><FitFigure>{fmt(execQ.data.corporateTax)}</FitFigure></div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Carga fiscal total (IVA+IRPF+IS)</div>
-                      <div className="text-xl font-bold text-foreground/70">{fmt(execQ.data.fiscalTotal)}</div>
+                      <div className="text-xl font-bold text-foreground/70"><FitFigure>{fmt(execQ.data.fiscalTotal)}</FitFigure></div>
                     </div>
                     <div className={`rounded-lg px-3 py-1.5 ${execQ.data.netResult >= 0 ? "bg-success/10" : "bg-danger/10"}`}>
                       <div className="text-xs text-muted-foreground">= Resultado neto estimado</div>
                       <div className={`text-xl font-bold ${execQ.data.netResult >= 0 ? "text-success" : "text-danger"}`}>
-                        {fmt(execQ.data.netResult)}
+                        <FitFigure>{fmt(execQ.data.netResult)}</FitFigure>
                       </div>
                     </div>
                   </div>
@@ -395,7 +393,7 @@ export default function ProfitLossReport() {
                       <Wallet className="w-4 h-4" />
                       <span className="text-xs font-medium">Saldo bancario</span>
                     </div>
-                    <p className="text-2xl font-bold text-info">{fmt(cf.currentBalance)}</p>
+                    <p className="text-2xl font-bold text-info"><FitFigure>{fmt(cf.currentBalance)}</FitFigure></p>
                     <p className="text-xs text-muted-foreground">Último mov. {cf.lastBalanceDate}</p>
                   </CardContent>
                 </Card>
@@ -406,7 +404,7 @@ export default function ProfitLossReport() {
                       <ArrowUpRight className="w-4 h-4" />
                       <span className="text-xs font-medium">Ingresos pendientes</span>
                     </div>
-                    <p className="text-2xl font-bold text-success">{fmt(cf.pendingIncome)}</p>
+                    <p className="text-2xl font-bold text-success"><FitFigure>{fmt(cf.pendingIncome)}</FitFigure></p>
                     <p className="text-xs text-muted-foreground">{cf.pendingReservationCount} reservas confirmadas</p>
                   </CardContent>
                 </Card>
@@ -417,7 +415,7 @@ export default function ProfitLossReport() {
                       <AlertTriangle className="w-4 h-4" />
                       <span className="text-xs font-medium">Gastos pendientes</span>
                     </div>
-                    <p className="text-2xl font-bold text-warning">{fmt(cf.pendingExpenses)}</p>
+                    <p className="text-2xl font-bold text-warning"><FitFigure>{fmt(cf.pendingExpenses)}</FitFigure></p>
                     <p className="text-xs text-muted-foreground">Sin pagar (pending/justified)</p>
                   </CardContent>
                 </Card>
@@ -429,7 +427,7 @@ export default function ProfitLossReport() {
                       <span className="text-xs font-medium">Caja estimada 30d</span>
                     </div>
                     <p className={`text-2xl font-bold ${cf.estimatedBalance >= 0 ? "text-success" : "text-danger"}`}>
-                      {fmt(cf.estimatedBalance)}
+                      <FitFigure>{fmt(cf.estimatedBalance)}</FitFigure>
                     </p>
                     <p className="text-xs text-muted-foreground">Saldo + ingresos − gastos</p>
                   </CardContent>
@@ -457,12 +455,12 @@ export default function ProfitLossReport() {
                         {report.monthly.map((m) => (
                           <tr key={m.month} className="border-b hover:bg-muted/20">
                             <td className="p-2 font-medium">{m.month}</td>
-                            <td className="p-2 text-right text-success">{fmt(m.revenue)}</td>
-                            <td className="p-2 text-right text-danger">{fmt(m.expenses)}</td>
-                            <td className={`p-2 text-right font-bold ${m.profit >= 0 ? "text-info" : "text-danger"}`}>
+                            <td className="p-2 text-right whitespace-nowrap tabular-nums text-success">{fmt(m.revenue)}</td>
+                            <td className="p-2 text-right whitespace-nowrap tabular-nums text-danger">{fmt(m.expenses)}</td>
+                            <td className={`p-2 text-right whitespace-nowrap tabular-nums font-bold ${m.profit >= 0 ? "text-info" : "text-danger"}`}>
                               {fmt(m.profit)}
                             </td>
-                            <td className="p-2 text-right text-muted-foreground text-xs">
+                            <td className="p-2 text-right whitespace-nowrap tabular-nums text-muted-foreground text-xs">
                               {m.revenue > 0 ? ((m.profit / m.revenue) * 100).toFixed(1) + "%" : "—"}
                             </td>
                           </tr>
@@ -471,10 +469,10 @@ export default function ProfitLossReport() {
                       <tfoot>
                         <tr className="bg-muted/30 font-bold">
                           <td className="p-2">TOTAL</td>
-                          <td className="p-2 text-right text-success">{fmt(report.summary.totalRevenue)}</td>
-                          <td className="p-2 text-right text-danger">{fmt(report.summary.totalExpenses)}</td>
-                          <td className={`p-2 text-right ${ebitda >= 0 ? "text-info" : "text-danger"}`}>{fmt(ebitda)}</td>
-                          <td className="p-2 text-right text-muted-foreground text-xs">{ebitdaMargin.toFixed(1)}%</td>
+                          <td className="p-2 text-right whitespace-nowrap tabular-nums text-success">{fmt(report.summary.totalRevenue)}</td>
+                          <td className="p-2 text-right whitespace-nowrap tabular-nums text-danger">{fmt(report.summary.totalExpenses)}</td>
+                          <td className={`p-2 text-right whitespace-nowrap tabular-nums ${ebitda >= 0 ? "text-info" : "text-danger"}`}>{fmt(ebitda)}</td>
+                          <td className="p-2 text-right whitespace-nowrap tabular-nums text-muted-foreground text-xs">{ebitdaMargin.toFixed(1)}%</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -576,6 +574,7 @@ export default function ProfitLossReport() {
           </>
         )}
       </div>
+    </EconomyShell>
     </AdminLayout>
   );
 }

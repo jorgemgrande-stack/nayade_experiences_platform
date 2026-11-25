@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { PanelLoading } from "@/components/admin/PanelStates";
-import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
+import { FormFooter, MetricCard, PageOnlyTag, EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { transactionDescription } from "@shared/transactionText";
 import { useVocabulary } from "@/lib/vocabulary";
@@ -263,12 +264,12 @@ export default function TransactionsList() {
         return (
           <>
             <span className={`text-sm font-bold ${t.type === "ingreso" ? "text-success" : "text-danger"}`}>
-              {t.type === "ingreso" ? "+" : "-"}€{parseFloat(String(t.amount)).toFixed(2)}
+              {t.type === "ingreso" ? "+" : "−"}{formatEur(parseFloat(String(t.amount)))}
             </span>
             {regime && (
               <div className="mt-0.5 hidden text-xs font-normal text-muted-foreground @5xl:block">
-                {regime === "reav" && reavMargin > 0 && <span>Margen REAV: €{reavMargin.toFixed(2)}</span>}
-                {regime !== "reav" && taxBase > 0 && <span>Base: €{taxBase.toFixed(2)} · IVA: €{taxAmount.toFixed(2)}</span>}
+                {regime === "reav" && reavMargin > 0 && <span>Margen REAV: {formatEur(reavMargin)}</span>}
+                {regime !== "reav" && taxBase > 0 && <span>Base: {formatEur(taxBase)} · IVA: {formatEur(taxAmount)}</span>}
               </div>
             )}
           </>
@@ -286,24 +287,21 @@ export default function TransactionsList() {
   ];
 
   return (
-    <AdminLayout title="Transacciones">
-      <PanelPageHeader
-        icon={<Receipt />}
-        title="Transacciones"
+    <AdminLayout>
+      <EconomyShell screen="transactions"
         description={`${total} registros totales · página ${page + 1} de ${Math.max(1, totalPages)}`}
-        actions={
+        action={
           <Button variant="outline" onClick={exportCSV} className="gap-2">
             <Download className="w-4 h-4" /> Exportar CSV
           </Button>
-        }
-      />
+        }>
 
       <div className="space-y-5">
         <EconomySummary>
-          <MetricCard icon={<Receipt />} tone={totalIngresos - totalGastos >= 0 ? "success" : "danger"} label="Balance neto (página)" value={`€${(totalIngresos - totalGastos).toFixed(2)}`} detail="ingresos − gastos y reembolsos" />
-          <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos (página)" value={`€${totalIngresos.toFixed(2)}`} detail="solo completados" />
-          <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos/Reembolsos" value={`€${totalGastos.toFixed(2)}`} detail="solo completados" />
-          <MetricCard icon={<Clock />} tone={pendientes > 0 ? "warning" : "neutral"} label="Pendientes (página)" value={pendientes} detail={`de ${txList.length} mostradas`} />
+          <MetricCard icon={<Receipt />} tone={totalIngresos - totalGastos >= 0 ? "success" : "danger"} label="Balance neto" value={formatEur(totalIngresos - totalGastos)} detail={<>ingresos − gastos y reembolsos <PageOnlyTag /></>} />
+          <MetricCard icon={<TrendingUp />} tone="success" label="Ingresos" value={formatEur(totalIngresos)} detail={<>solo completados <PageOnlyTag /></>} />
+          <MetricCard icon={<TrendingDown />} tone="danger" label="Gastos/Reembolsos" value={formatEur(totalGastos)} detail={<>solo completados <PageOnlyTag /></>} />
+          <MetricCard icon={<Clock />} tone={pendientes > 0 ? "warning" : "neutral"} label="Pendientes" value={pendientes} detail={<>de {txList.length} mostradas <PageOnlyTag /></>} />
         </EconomySummary>
 
         <EconomyFilterBar
@@ -429,12 +427,12 @@ export default function TransactionsList() {
                   ["Descripción", transactionDescription(txDetail.description) ?? "—"],
                 ]],
                 ["Importes y fiscalidad", [
-                  ["Importe", `€${parseFloat(String(txDetail.amount)).toFixed(2)}`],
+                  ["Importe", formatEur(parseFloat(String(txDetail.amount)))],
                   ["Método de pago", txDetail.paymentMethod ?? "—"],
                   ["Régimen fiscal", (txDetail as any).fiscalRegime ?? "—"],
-                  ["Base imponible", (txDetail as any).taxBase ? `€${parseFloat(String((txDetail as any).taxBase)).toFixed(2)}` : "—"],
-                  ["IVA", (txDetail as any).taxAmount ? `€${parseFloat(String((txDetail as any).taxAmount)).toFixed(2)}` : "—"],
-                  ...(voc.showReav ? [["Margen REAV", (txDetail as any).reavMargin ? `€${parseFloat(String((txDetail as any).reavMargin)).toFixed(2)}` : "—"]] : []),
+                  ["Base imponible", (txDetail as any).taxBase ? formatEur(parseFloat(String((txDetail as any).taxBase))) : "—"],
+                  ["IVA", (txDetail as any).taxAmount ? formatEur(parseFloat(String((txDetail as any).taxAmount))) : "—"],
+                  ...(voc.showReav ? [["Margen REAV", (txDetail as any).reavMargin ? formatEur(parseFloat(String((txDetail as any).reavMargin))) : "—"]] : []),
                 ]],
                 ["Origen y referencias", [
                   ["Canal de venta", (txDetail as any).saleChannel ?? "—"],
@@ -460,9 +458,9 @@ export default function TransactionsList() {
           ) : (
             <PanelLoading className="h-32 py-0" />
           )}
-          <DialogFooter>
+          <FormFooter>
             <Button variant="outline" onClick={() => setViewTxId(null)}>Cerrar</Button>
-          </DialogFooter>
+          </FormFooter>
         </DialogContent>
       </Dialog>
 
@@ -485,6 +483,7 @@ export default function TransactionsList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

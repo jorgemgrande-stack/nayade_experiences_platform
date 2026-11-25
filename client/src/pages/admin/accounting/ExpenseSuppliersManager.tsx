@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
 import { toastError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Building2, ArrowLeft } from "lucide-react";
 import { useLocation } from "wouter";
-import { EconomyTable, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { EconomyTable, FormFooter, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
 
 type SupplierForm = {
   name: string; fiscalName: string; vatNumber: string;
@@ -90,18 +90,15 @@ export default function ExpenseSuppliersManager() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-5xl space-y-6 p-6">
-        <PanelPageHeader
-          icon={<Building2 />}
-          title={t("accountingConfig.suppliers.title")}
-          description={t("accountingConfig.suppliers.description", { count: items.length })}
-          actions={
+      <EconomyShell screen="suppliers"
+        description={t("accountingConfig.suppliers.description", { count: items.length })}
+        action={
             <>
               <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")} className="gap-1.5"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.common.backToExpenses")}</Button>
               <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.suppliers.new")}</Button>
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
 
         <EconomyTable
           rows={items}
@@ -150,13 +147,14 @@ export default function ExpenseSuppliersManager() {
                 <Input value={form.iban} onChange={(e) => setForm({ ...form, iban: e.target.value })} placeholder="ES00 0000 0000 00 0000000000" className="tabular-nums" autoComplete="off" />
               </FormField>
             </FormSection>
-            <DialogFooter className="gap-2 sm:gap-2">
+            <FormFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{t("common.cancel")}</Button>
               <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>{editingId ? t("common.save") : t("common.create")}</Button>
-            </DialogFooter>
+            </FormFooter>
           </form>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

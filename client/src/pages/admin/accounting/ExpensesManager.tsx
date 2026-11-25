@@ -6,9 +6,10 @@ import { toast } from "sonner";
 import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { MetricCard } from "@/components/admin/PanelVisual";
-import { EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { formatEur } from "@/lib/money";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { FormFooter, MetricCard, PageOnlyTag, EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormField, FormSection, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -624,7 +625,7 @@ export default function ExpensesManager() {
       align: "right",
       num: true,
       mobile: "amount",
-      cell: (e) => <span className="font-semibold text-danger">{parseFloat(e.amount).toFixed(2)} €</span>,
+      cell: (e) => <span className="font-semibold text-danger">{formatEur(parseFloat(e.amount))}</span>,
     },
     {
       key: "iva",
@@ -637,7 +638,7 @@ export default function ExpensesManager() {
         const rate = (e as any).taxRate != null && (e as any).taxRate !== "" ? parseFloat((e as any).taxRate) : 21;
         const isHr = typeof (e as any).source === "string" && (e as any).source.startsWith("hr_");
         if (isHr || iva === 0) return <span className="text-xs text-muted-foreground">— sin IVA</span>;
-        return <span className="text-xs font-medium text-success" title={`Tipo ${rate}%`}>{iva.toFixed(2)} €</span>;
+        return <span className="text-xs font-medium text-success" title={`Tipo ${rate}%`}>{formatEur(iva)}</span>;
       },
     },
     {
@@ -663,13 +664,9 @@ export default function ExpensesManager() {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <PanelPageHeader
-          icon={<TrendingDown />}
-          title="Gastos"
-          description={<>{total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>{" · "}IVA soportado: <strong className="text-success">{totalIvaSoportado.toFixed(2)} €</strong></>}
-          actions={
+      <EconomyShell screen="expenses"
+        description={<>{total} gastos · Total: <strong>{formatEur(totalAmount)}</strong>{" · "}IVA soportado: <strong className="text-success">{formatEur(totalIvaSoportado)}</strong> <PageOnlyTag /></>}
+        action={
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -715,12 +712,12 @@ export default function ExpensesManager() {
                 <Plus className="w-4 h-4" /> Nuevo gasto
               </Button>
             </>
-          }
-        />
+          }>
+      <div className="space-y-6">
 
         {/* Resumen */}
         <EconomySummary>
-          <MetricCard icon={<TrendingDown />} tone="danger" label="Total periodo" value={`${totalAmount.toFixed(2)} €`} detail={`${filtered.length} gastos · IVA soportado ${totalIvaSoportado.toFixed(2)} €`} />
+          <MetricCard icon={<TrendingDown />} tone="danger" label="Total periodo" value={`${formatEur(totalAmount)}`} detail={<>{filtered.length} gastos · IVA soportado {formatEur(totalIvaSoportado)} <PageOnlyTag /></>} />
           {(["pending", "justified", "accounted", "conciliado"] as const).map((s) => {
             const rowsOf = filtered.filter((e) => e.status === s);
             const amt = rowsOf.reduce((sum, e) => sum + parseFloat(e.amount), 0);
@@ -730,8 +727,8 @@ export default function ExpensesManager() {
                 icon={s === "pending" ? <Clock /> : s === "justified" ? <FileText /> : s === "accounted" ? <Calculator /> : <LinkIcon />}
                 tone={STATUS_TONES[s]}
                 label={STATUS_LABELS[s]}
-                value={`${amt.toFixed(2)} €`}
-                detail={`${rowsOf.length} gastos`}
+                value={`${formatEur(amt)}`}
+                detail={<>{rowsOf.length} gastos <PageOnlyTag /></>}
                 active={filterStatus === s}
                 onClick={() => setFilterStatus(filterStatus === s ? "all" : s)}
               />
@@ -755,7 +752,7 @@ export default function ExpensesManager() {
                   <div>
                     <div className="text-xs text-muted-foreground">Este mes</div>
                     <div className="font-semibold text-warning">
-                      {distortionQ.data.month_.amount.toFixed(2)} €
+                      {formatEur(distortionQ.data.month_.amount)}
                       <span className="text-xs text-muted-foreground font-normal ml-1">
                         ({distortionQ.data.month_.count})
                       </span>
@@ -764,7 +761,7 @@ export default function ExpensesManager() {
                   <div>
                     <div className="text-xs text-muted-foreground">Este año</div>
                     <div className="font-semibold text-warning">
-                      {distortionQ.data.year_.amount.toFixed(2)} €
+                      {formatEur(distortionQ.data.year_.amount)}
                       <span className="text-xs text-muted-foreground font-normal ml-1">
                         ({distortionQ.data.year_.count})
                       </span>
@@ -833,7 +830,7 @@ export default function ExpensesManager() {
                         <tr key={m.id} className="border-b border-border hover:bg-info/5">
                           <td className="py-2 px-2 whitespace-nowrap text-foreground text-xs">{m.fecha}</td>
                           <td className="py-2 px-2 text-right font-semibold text-danger text-xs whitespace-nowrap">
-                            {Math.abs(parseFloat(m.importe)).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €
+                            {formatEur(Math.abs(parseFloat(m.importe)))}
                           </td>
                           <td className="py-2 px-2 text-muted-foreground text-xs max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap" title={`${m.movimiento ?? ""} ${m.masDatos ?? ""}`.trim()}>
                             {(m.movimiento ?? m.masDatos ?? "—").slice(0, 60)}
@@ -996,7 +993,7 @@ export default function ExpensesManager() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar gasto" : "Nuevo gasto"}</DialogTitle>
           </DialogHeader>
@@ -1140,15 +1137,15 @@ export default function ExpensesManager() {
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div className="bg-background rounded px-2 py-1.5">
                       <div className="text-muted-foreground">Base imponible</div>
-                      <div className="font-semibold">{base.toFixed(2)} €</div>
+                      <div className="font-semibold">{formatEur(base)}</div>
                     </div>
                     <div className="bg-background rounded px-2 py-1.5">
                       <div className="text-muted-foreground">Cuota IVA</div>
-                      <div className="font-semibold">{cuota.toFixed(2)} €</div>
+                      <div className="font-semibold">{formatEur(cuota)}</div>
                     </div>
                     <div className="bg-background rounded px-2 py-1.5">
                       <div className="text-muted-foreground">IVA deducible</div>
-                      <div className="font-semibold text-success">{(cuota * ded / 100).toFixed(2)} €</div>
+                      <div className="font-semibold text-success">{formatEur((cuota * ded / 100))}</div>
                     </div>
                   </div>
                 );
@@ -1311,12 +1308,12 @@ export default function ExpensesManager() {
 
             </FormSection>
 
-            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <FormFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending}>
                 {editingId ? "Guardar cambios" : "Crear gasto"}
               </Button>
-            </div>
+            </FormFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -1344,7 +1341,7 @@ export default function ExpensesManager() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Importe:</span>
                     <span className="text-danger font-bold">
-                      {Math.abs(parseFloat(mov.importe)).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €
+                      {formatEur(Math.abs(parseFloat(mov.importe)))}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -1443,7 +1440,7 @@ export default function ExpensesManager() {
 
       {/* Email ingestion logs modal */}
       <Dialog open={emailLogsOpen} onOpenChange={setEmailLogsOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-card border-border text-foreground">
+        <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[80vh] overflow-y-auto bg-card border-border text-foreground">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Mail className="w-4 h-4 text-info" />
@@ -1474,7 +1471,7 @@ export default function ExpensesManager() {
                         </span>
                         {log.amountDetected && (
                           <span className="text-xs font-semibold text-success">
-                            {parseFloat(String(log.amountDetected)).toFixed(2)} €
+                            {formatEur(parseFloat(String(log.amountDetected)))}
                           </span>
                         )}
                         {log.attachmentsCount !== null && log.attachmentsCount > 0 && (
@@ -1630,6 +1627,7 @@ export default function ExpensesManager() {
           />
         </div>
       )}
+    </EconomyShell>
     </AdminLayout>
   );
 }
