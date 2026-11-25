@@ -79,7 +79,7 @@ describe("autocompletado de credenciales: fuentes", () => {
 
   it("encuentra los campos de credenciales del panel (la guarda no está vacía)", () => {
     const rels = new Set(found.map((f) => f.rel));
-    for (const r of ["pages/admin/settings/EmailAccountsSettings.tsx", "pages/admin/settings/Integrations.tsx", "pages/admin/settings/PostmarkSettings.tsx", "pages/admin/commercial/VapiAgente.tsx", "pages/admin/commercial/WhatsAppGHLInbox.tsx"]) {
+    for (const r of ["pages/admin/settings/EmailAccountsSettings.tsx", "pages/admin/settings/Integrations.tsx", "pages/admin/settings/PostmarkSettings.tsx", "pages/admin/commercial/VapiAgenteParts.tsx", "pages/admin/commercial/WhatsAppGHLInboxParts.tsx"]) {
       expect(rels.has(r), r).toBe(true);
     }
   });
@@ -104,8 +104,8 @@ describe("autocompletado de credenciales: fuentes", () => {
     expect(vapi).toMatch(/\[credSecret, setCredSecret\] = useState\(""\)/);
     expect(ghl).toMatch(/\[credToken, setCredToken\] = useState\(""\)/);
     expect(ghl).toMatch(/\[credSecret, setCredSecret\] = useState\(""\)/);
-    expect(vapi).toMatch(/type="password"\s*\n\s*\{\.\.\.serviceSecretProps\("vapi-webhook-secreto"\)\}/);
-    expect(ghl).toMatch(/type="password"\s*\n\s*\{\.\.\.serviceSecretProps\("ghl-inbox-webhook-secreto"\)\}/);
+    expect(read("pages/admin/commercial/VapiAgenteParts.tsx")).toMatch(/type="password"\s*\n\s*\{\.\.\.serviceSecretProps\("vapi-webhook-secreto"\)\}/);
+    expect(read("pages/admin/commercial/WhatsAppGHLInboxParts.tsx")).toMatch(/type="password"\s*\n\s*\{\.\.\.serviceSecretProps\("ghl-inbox-webhook-secreto"\)\}/);
   });
 
   it("las excepciones apuntan a ficheros que existen", () => {
