@@ -1,0 +1,45 @@
+import type { Mirror } from "../../core";
+import type es from "../es/financeSync";
+
+/** Inbetriebnahme von Finance Sync (Bank, Kartenterminal, Beleg-Postfach und Abgleich). Die Schritte und ihre Texte liefert der Server. */
+export default {
+  title: "Finance Sync einrichten",
+  description: "Verbinde deine Bank und dein Kartenterminal in wenigen Minuten, ohne auf das Einrichtungsteam zu warten. Jeder Schritt wird automatisch abgehakt, sobald die Plattform die Daten sieht.",
+  loadError: "Die Einrichtung konnte nicht geladen werden",
+  ready: "Finance Sync ist bereit",
+  notReady: "Zum Start fehlt noch etwas",
+  readyHelp: "Du hast Bank und Kartenterminal verbunden. Prüfe die vorgeschlagenen Abgleiche, wann du möchtest.",
+  progress: "{completed} von {total} nötigen Schritten",
+  formatsAria: "Unterstützte Formate",
+  status: {
+    done: "Erledigt",
+    todo: "Offen",
+    optional: "Optional",
+    blocked: "Braucht die vorherigen Schritte",
+    attention: "Prüfen",
+  },
+  mailbox: {
+    title: "Beleg-Postfach des Kartenterminals",
+    help: "Das Postfach, in dem deine Bank dir die Kopie jedes Belegs schickt. Es werden nur die E-Mails des angegebenen Absenders gelesen; sie werden weder gelöscht noch verschoben. Das Passwort wird verschlüsselt gespeichert und nicht mehr angezeigt.",
+    reviewErrors: "Prüfe die rot markierten Angaben",
+    retypePassword: "Du hast die Verbindungsdaten geändert: Gib das Passwort des Postfachs erneut ein.",
+    saved: "Postfach gespeichert. Klicke jetzt auf «Verbindung prüfen».",
+    savedIngestionOff: "Postfach gespeichert. Das automatische Lesen wurde ausgeschaltet: Prüfe die Verbindung und schalte es wieder ein.",
+    saveFailed: "Speichern war nicht möglich",
+    defaultSender: "Wenn du die Absenderadresse der Belege leer lässt, wird die von Comercia Global Payments verwendet.",
+    saveFirst: "Speichere zuerst die Änderungen",
+    test: "Verbindung prüfen",
+    testing: "Wird geprüft…",
+    testFailed: "Die Prüfung war nicht möglich",
+    autoTitle: "Automatisches Lesen alle 5 Minuten",
+    autoOn: "Für dein Unternehmen eingeschaltet: Neue Belege werden zu Terminal-Vorgängen.",
+    autoOff: "Ausgeschaltet. Schalte es ein, damit die Belege von selbst gelesen werden.",
+    autoNeedsTest: "Du kannst es einschalten, sobald die Verbindung des Postfachs geprüft ist.",
+    autoTurnedOff: "Automatisches Lesen ausgeschaltet",
+    autoTurnedOn: "Automatisches Lesen eingeschaltet",
+    toggleFailed: "Die Änderung war nicht möglich",
+    turnOff: "Ausschalten",
+    turnOn: "Einschalten",
+    unavailable: "In dieser Installation richtet das technische Team das Beleg-Postfach ein. Bis dahin kannst du die Excel-Datei mit den Vorgängen des Kartenterminals importieren.",
+  },
+} satisfies Mirror<typeof es>;

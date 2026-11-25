@@ -48,23 +48,6 @@
     "coloresFijos": 1,
     "geometriaAjena": 1
   },
-  "pages/admin/accounting/CostCentersManager.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/accounting/ExpenseCategoriesManager.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/accounting/ExpenseSuppliersManager.tsx": {
-    "coloresFijos": 1
-  },
-  "pages/admin/accounting/FinanceSyncSetup.tsx": {
-    "coloresFijos": 7,
-    "geometriaAjena": 4
-  },
-  "pages/admin/accounting/RecurringExpensesManager.tsx": {
-    "coloresFijos": 6,
-    "textoMinusculo": 3
-  },
   "pages/admin/commercial/CommercialFollowupDashboard.tsx": {
     "coloresFijos": 44,
     "textoMinusculo": 11
@@ -186,35 +169,6 @@
   },
   "pages/admin/crm/tabs/ReservationsTab.tsx": {
     "hexEnClases": 3
-  },
-  "pages/admin/gestoria/GestoriaAplazamientos.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaCalendario.tsx": {
-    "coloresFijos": 2,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaConfiguracion.tsx": {
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaDashboard.tsx": {
-    "coloresFijos": 6,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaExpedientes.tsx": {
-    "coloresFijos": 1,
-    "textoMinusculo": 1
-  },
-  "pages/admin/gestoria/GestoriaIVA.tsx": {
-    "coloresFijos": 2
-  },
-  "pages/admin/gestoria/GestoriaLaboral.tsx": {
-    "coloresFijos": 4
-  },
-  "pages/admin/gestoria/GestoriaSociedades.tsx": {
-    "coloresFijos": 3,
-    "textoMinusculo": 1
   },
   "pages/admin/help/SupportTicketsPage.tsx": {
     "coloresFijos": 4,
