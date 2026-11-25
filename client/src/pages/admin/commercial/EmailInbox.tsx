@@ -156,7 +156,7 @@ function ComposeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end p-6 pointer-events-none">
-      <div className="pointer-events-auto w-[560px] max-h-[80vh] bg-background border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="pointer-events-auto w-[560px] max-h-[80vh] bg-background border border-border rounded-xl shadow-md flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-muted/40 border-b border-border shrink-0">
           <span className="text-sm font-medium">
@@ -214,7 +214,7 @@ function ComposeModal({
               value={body}
               onChange={e => setBody(e.target.value)}
               placeholder="Escribe tu mensaje..."
-              className="w-full h-40 text-sm bg-background border border-border rounded p-2 resize-none focus:outline-none focus:ring-1 focus:ring-orange-500"
+              className="w-full h-40 text-sm bg-background border border-border rounded p-2 resize-none focus:outline-none focus:ring-1 focus:ring-warning"
             />
           </div>
         </div>
@@ -222,7 +222,7 @@ function ComposeModal({
         <div className="px-4 py-3 border-t border-border flex justify-end gap-2 shrink-0">
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" onClick={handleSend} disabled={sending}
-            className="bg-orange-500 hover:bg-orange-600 text-white gap-1.5">
+            className="bg-warning hover:bg-warning text-background gap-1.5">
             {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             Enviar
           </Button>
@@ -274,7 +274,7 @@ function EmailDetail({
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+        <Loader2 className="w-6 h-6 animate-spin text-warning" />
       </div>
     );
   }
@@ -303,7 +303,7 @@ function EmailDetail({
             <Reply className="w-3.5 h-3.5" /> Responder
           </Button>
           {!email.isSent && !email.isAnswered && (
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-success hover:text-success"
               title="Marcar como sin respuesta pendiente"
               onClick={() => onMarkAnswered(email.id, true)}>
               <CheckCheck className="w-3.5 h-3.5" />
@@ -321,7 +321,7 @@ function EmailDetail({
               <Inbox className="w-3.5 h-3.5" /> Mover a Recibidos
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-red-400 hover:text-red-300"
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-danger hover:text-danger"
             onClick={() => onDelete(email.id)}>
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
@@ -333,7 +333,7 @@ function EmailDetail({
         <div className="px-5 pt-5 pb-3 border-b border-border/50">
           <h2 className="text-base font-semibold leading-snug mb-3">{email.subject || "(Sin asunto)"}</h2>
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-xs font-semibold shrink-0">
+            <div className="w-8 h-8 rounded-full bg-warning/20 text-warning flex items-center justify-center text-xs font-semibold shrink-0">
               {initials(email.fromName, email.fromEmail)}
             </div>
             <div className="flex-1 min-w-0">
@@ -355,8 +355,8 @@ function EmailDetail({
           <div className="px-5 py-3 border-b border-border/50 flex flex-wrap gap-2">
             {(email.attachmentsMeta ?? []).map((att, i) => (
               <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/40 border border-border/60 text-xs text-foreground/70">
-                <Paperclip className="w-3 h-3 text-orange-400 shrink-0" />
-                <span className="max-w-[160px] truncate">{att.filename}</span>
+                <Paperclip className="w-3 h-3 text-warning shrink-0" />
+                <span className="max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">{att.filename}</span>
                 <span className="text-foreground/30 shrink-0">
                   {att.size > 1024 * 1024
                     ? `${(att.size / 1024 / 1024).toFixed(1)} MB`
@@ -400,13 +400,13 @@ function EmailDetail({
         {/* CRM context */}
         {(email.crmLead || email.crmClient || email.linkedQuoteId || email.linkedReservationId) && (
           <div className="mx-5 my-4 p-3 rounded-lg bg-muted/30 border border-border/50 text-xs space-y-2">
-            <div className="text-foreground/50 font-medium uppercase tracking-wide text-[10px]">Contexto CRM</div>
+            <div className="text-foreground/50 font-medium uppercase tracking-wide text-xs">Contexto CRM</div>
             {email.crmLead && (
               <div className="flex items-center gap-2">
-                <User className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <User className="w-3.5 h-3.5 text-info shrink-0" />
                 <span className="text-foreground/70">Lead:</span>
                 <a href={`/admin/crm?tab=leads&id=${email.crmLead.id}`}
-                  className="text-sky-400 hover:underline flex items-center gap-0.5">
+                  className="text-info hover:underline flex items-center gap-0.5">
                   {email.crmLead.name}
                   <ExternalLink className="w-2.5 h-2.5" />
                 </a>
@@ -414,10 +414,10 @@ function EmailDetail({
             )}
             {email.crmClient && (
               <div className="flex items-center gap-2">
-                <User className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                <User className="w-3.5 h-3.5 text-success shrink-0" />
                 <span className="text-foreground/70">Cliente:</span>
                 <a href={`/admin/crm/clientes/${email.crmClient.id}`}
-                  className="text-green-400 hover:underline flex items-center gap-0.5">
+                  className="text-success hover:underline flex items-center gap-0.5">
                   {email.crmClient.name}
                   <ExternalLink className="w-2.5 h-2.5" />
                 </a>
@@ -427,14 +427,14 @@ function EmailDetail({
               <div className="flex items-center gap-2">
                 <span className="text-foreground/70">Presupuesto:</span>
                 <a href={`/admin/crm?tab=quotes&id=${email.linkedQuoteId}`}
-                  className="text-orange-400 hover:underline">#{email.linkedQuoteId}</a>
+                  className="text-warning hover:underline">#{email.linkedQuoteId}</a>
               </div>
             )}
             {email.linkedReservationId && (
               <div className="flex items-center gap-2">
                 <span className="text-foreground/70">Reserva:</span>
                 <a href={`/admin/crm?tab=reservations&id=${email.linkedReservationId}`}
-                  className="text-orange-400 hover:underline">#{email.linkedReservationId}</a>
+                  className="text-warning hover:underline">#{email.linkedReservationId}</a>
               </div>
             )}
           </div>
@@ -490,7 +490,7 @@ function ImapFolderItem({
     <div
       className={cn(
         "group flex items-center gap-1 px-3 py-1.5 rounded-md mx-1 transition-colors cursor-pointer",
-        isSelected ? "bg-orange-500/15 text-orange-400" : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
+        isSelected ? "bg-warning/15 text-warning" : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
       )}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => { setShowActions(false); }}
@@ -511,10 +511,10 @@ function ImapFolderItem({
           }}
           onBlur={commitRename}
           onClick={e => e.stopPropagation()}
-          className="flex-1 bg-transparent border-b border-orange-500 text-xs outline-none min-w-0"
+          className="flex-1 bg-transparent border-b border-warning text-xs outline-none min-w-0"
         />
       ) : (
-        <span className="flex-1 text-xs truncate">{name}</span>
+        <span className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">{name}</span>
       )}
 
       {showActions && !editMode && (
@@ -529,7 +529,7 @@ function ImapFolderItem({
           <button
             title="Eliminar"
             onClick={onDelete}
-            className="p-0.5 text-foreground/30 hover:text-red-400"
+            className="p-0.5 text-foreground/30 hover:text-danger"
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -736,7 +736,7 @@ export default function EmailInbox() {
           <div className="p-3 border-b border-border">
             <Button
               size="sm"
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white gap-1.5 h-8 text-xs"
+              className="w-full bg-warning hover:bg-warning text-background gap-1.5 h-8 text-xs"
               onClick={() => { setReplyEmail(null); setComposeOpen(true); }}
             >
               <Plus className="w-3.5 h-3.5" /> Nuevo email
@@ -772,9 +772,9 @@ export default function EmailInbox() {
                 className={cn(
                   "w-full flex items-center justify-between px-3 py-2 text-sm rounded-md mx-1 transition-colors",
                   !imapFolder && folder === key
-                    ? "bg-orange-500/15 text-orange-400"
+                    ? "bg-warning/15 text-warning"
                     : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
-                  dropTarget === key && "ring-1 ring-orange-400 bg-orange-500/10",
+                  dropTarget === key && "ring-1 ring-warning bg-warning/10",
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -786,13 +786,13 @@ export default function EmailInbox() {
                     <button
                       title="Limpiar pendientes"
                       onClick={e => { e.stopPropagation(); bulkMarkAnsweredMut.mutate({ accountId }); }}
-                      className="opacity-0 group-hover:opacity-100 text-foreground/30 hover:text-emerald-400 p-0.5"
+                      className="opacity-0 group-hover:opacity-100 text-foreground/30 hover:text-success p-0.5"
                     >
                       <CheckCheck className="w-3 h-3" />
                     </button>
                   )}
                   {!!count && (
-                    <span className="text-[10px] bg-orange-500 text-white rounded-full px-1.5 py-0.5 font-medium">
+                    <span className="text-xs bg-warning text-background rounded-full px-1.5 py-0.5 font-medium">
                       {count}
                     </span>
                   )}
@@ -810,9 +810,9 @@ export default function EmailInbox() {
                 className={cn(
                   "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md mx-1 transition-colors",
                   imapFolder === spamImapFolder.path
-                    ? "bg-orange-500/15 text-orange-400"
+                    ? "bg-warning/15 text-warning"
                     : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
-                  dropTarget === "__spam__" && "ring-1 ring-orange-400 bg-orange-500/10",
+                  dropTarget === "__spam__" && "ring-1 ring-warning bg-warning/10",
                 )}
               >
                 <ShieldAlert className="w-4 h-4 shrink-0" />
@@ -824,11 +824,11 @@ export default function EmailInbox() {
             {(customFolders.length > 0 || folderAccountId) && (
               <div className="mt-2 pt-2 border-t border-border/50">
                 <div className="flex items-center justify-between px-3 mb-1">
-                  <span className="text-[10px] text-foreground/30 uppercase tracking-wider">Mis carpetas</span>
+                  <span className="text-xs text-foreground/30 uppercase tracking-wider">Mis carpetas</span>
                   <button
                     title="Nueva carpeta"
                     onClick={() => setShowNewFolder(v => !v)}
-                    className="text-foreground/30 hover:text-orange-400"
+                    className="text-foreground/30 hover:text-warning"
                   >
                     <FolderPlus className="w-3.5 h-3.5" />
                   </button>
@@ -846,12 +846,12 @@ export default function EmailInbox() {
                         if (e.key === "Escape") { setShowNewFolder(false); setNewFolderInput(""); }
                       }}
                       placeholder="Nombre carpeta"
-                      className="flex-1 h-6 text-xs bg-background border border-border rounded px-1.5 outline-none focus:border-orange-500"
+                      className="flex-1 h-6 text-xs bg-background border border-border rounded px-1.5 outline-none focus:border-warning"
                     />
                     <button
                       onClick={handleCreateFolder}
                       disabled={!newFolderInput.trim() || createFolderMut.isPending}
-                      className="text-orange-400 hover:text-orange-300 disabled:opacity-40"
+                      className="text-warning hover:text-warning disabled:opacity-40"
                     >
                       <Check className="w-3.5 h-3.5" />
                     </button>
@@ -870,7 +870,7 @@ export default function EmailInbox() {
                     onDragOver={e => { e.preventDefault(); setDropTarget(f.path); }}
                     onDragLeave={() => setDropTarget(null)}
                     onDrop={e => { e.preventDefault(); if (dragEmailId) handleDrop(f.path, dragEmailId); }}
-                    className={cn(dropTarget === f.path && "ring-1 ring-inset ring-orange-400 rounded-md mx-1")}
+                    className={cn(dropTarget === f.path && "ring-1 ring-inset ring-warning rounded-md mx-1")}
                   >
                     <ImapFolderItem
                       path={f.path}
@@ -931,7 +931,7 @@ export default function EmailInbox() {
                   if (e.key === "Enter") { setSearch(searchInput); setPage(0); }
                   if (e.key === "Escape") { setSearchInput(""); setSearch(""); setPage(0); }
                 }}
-                className="w-full h-7 pl-8 pr-2 text-xs bg-muted/30 border border-border rounded focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="w-full h-7 pl-8 pr-2 text-xs bg-muted/30 border border-border rounded focus:outline-none focus:ring-1 focus:ring-warning"
               />
             </div>
             <button
@@ -939,7 +939,7 @@ export default function EmailInbox() {
               className={cn(
                 "text-xs px-2 py-1 rounded border transition-colors",
                 onlyUnread
-                  ? "border-orange-500 text-orange-400 bg-orange-500/10"
+                  ? "border-warning text-warning bg-warning/10"
                   : "border-border text-foreground/40 hover:border-foreground/30",
               )}
             >
@@ -951,10 +951,10 @@ export default function EmailInbox() {
           <div className="flex-1 overflow-y-auto">
             {emails.isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
+                <Loader2 className="w-5 h-5 animate-spin text-warning" />
               </div>
             ) : emails.isError ? (
-              <div className="flex flex-col items-center justify-center py-16 text-red-400/70 gap-1 px-4 text-center">
+              <div className="flex flex-col items-center justify-center py-16 text-danger/70 gap-1 px-4 text-center">
                 <span className="text-sm font-medium">Error al cargar correos</span>
                 <span className="text-xs text-foreground/40">{(emails.error as any)?.message ?? "Error desconocido"}</span>
               </div>
@@ -974,18 +974,18 @@ export default function EmailInbox() {
                   className={cn(
                     "w-full text-left px-3 py-3 border-b border-border/50 transition-colors cursor-grab active:cursor-grabbing",
                     selectedId === email.id
-                      ? "bg-orange-500/10 border-l-2 border-l-orange-500"
+                      ? "bg-warning/10 border-l-2 border-l-orange-500"
                       : "hover:bg-muted/30",
-                    !email.isRead && "bg-sky-500/5",
+                    !email.isRead && "bg-info/5",
                     dragEmailId === email.id && "opacity-50",
                   )}
                 >
                   <div className="flex items-start gap-2.5">
                     <div className={cn(
-                      "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 mt-0.5",
+                      "w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5",
                       email.isSent
-                        ? "bg-orange-500/15 text-orange-400"
-                        : "bg-sky-500/15 text-sky-400",
+                        ? "bg-warning/15 text-warning"
+                        : "bg-info/15 text-info",
                     )}>
                       {email.isSent
                         ? initials(null, email.toEmails[0] ?? "")
@@ -994,31 +994,31 @@ export default function EmailInbox() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-1 mb-0.5">
                         <span className={cn(
-                          "text-xs truncate",
+                          "text-xs overflow-hidden text-ellipsis whitespace-nowrap",
                           !email.isRead ? "font-semibold text-foreground" : "text-foreground/70",
                         )}>
                           {email.isSent
                             ? `→ ${email.toEmails[0] ?? "—"}`
                             : (email.fromName || email.fromEmail)}
                         </span>
-                        <span className="text-[10px] text-foreground/35 shrink-0">
+                        <span className="text-xs text-foreground/35 shrink-0">
                           {formatDate(email.sentAt)}
                         </span>
                       </div>
                       <div className={cn(
-                        "text-xs truncate",
+                        "text-xs overflow-hidden text-ellipsis whitespace-nowrap",
                         !email.isRead ? "font-medium text-foreground/90" : "text-foreground/60",
                       )}>
                         {email.subject || "(Sin asunto)"}
                       </div>
                       {email.snippet && (
-                        <div className="text-[11px] text-foreground/35 truncate mt-0.5">
+                        <div className="text-xs text-foreground/35 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">
                           {email.snippet}
                         </div>
                       )}
                     </div>
                     {!email.isRead && (
-                      <div className="w-2 h-2 rounded-full bg-sky-400 shrink-0 mt-1.5" />
+                      <div className="w-2 h-2 rounded-full bg-info shrink-0 mt-1.5" />
                     )}
                   </div>
                 </button>

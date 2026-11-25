@@ -75,7 +75,7 @@ function Bubble({ m }: { m: Msg }) {
   const mine = m.role === "user";
   return (
     <div className={mine ? "flex justify-end" : "flex justify-start"}>
-      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${mine ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground"}`}>
+      <div className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm ${mine ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground"}`}>
         <p className="whitespace-pre-wrap break-words">{m.content}</p>
         {!mine && <ToolBadges tools={m.tools} />}
         {!mine && (
@@ -385,7 +385,7 @@ export default function Copilot() {
         {status.data && (
           <>
             {!status.data.aiAvailable && (
-              <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm text-foreground">
+              <div role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-foreground">
                 Copilot no está disponible: tu empresa no tiene la inteligencia artificial configurada en este momento. Las consultas rápidas y el historial siguen funcionando.
               </div>
             )}

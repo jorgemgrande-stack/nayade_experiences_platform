@@ -351,7 +351,7 @@ function Templates({ templates }: { templates: Array<{ key: string; title: strin
           <p className="font-semibold text-foreground">{t.title}</p>
           <p className="text-sm text-muted-foreground">{t.summary}</p>
           <p className="text-xs text-muted-foreground">Cuando: {triggerOf(t.trigger).label}</p>
-          {t.warning && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">{t.warning}</p>}
+          {t.warning && <p className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs text-foreground">{t.warning}</p>}
           <div className="flex items-center justify-between gap-2">
             {t.used ? <Badge variant="secondary">Ya la tienes</Badge> : <span />}
             <Button size="sm" variant="outline" disabled={create.isPending} onClick={() => create.mutate({ key: t.key })}>Crear desde la plantilla</Button>
@@ -424,7 +424,7 @@ export default function Automatizaciones() {
         <PanelPageHeader icon={<Workflow />} title="Automatizaciones" description="Reglas propias para que las tareas repetitivas no se olviden: cuando pasa algo en tu negocio, el sistema envía el correo, crea la tarea, avisa al equipo o mueve la oportunidad, con los retardos que elijas." />
         {q.isLoading ? <PanelLoading /> : q.error ? <PanelError error={q.error} onRetry={() => q.refetch()} /> : (
           <>
-            {!q.data!.mail.ready && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">Los pasos de correo no saldrán todavía: {q.data!.mail.message ?? "el correo de tu empresa no está disponible."}</p>}
+            {!q.data!.mail.ready && <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">Los pasos de correo no saldrán todavía: {q.data!.mail.message ?? "el correo de tu empresa no está disponible."}</p>}
             <p className="text-xs text-muted-foreground">Hoy: {q.data!.today.used} de {q.data!.today.cap} acciones como máximo de toda la empresa.</p>
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="flex-wrap">

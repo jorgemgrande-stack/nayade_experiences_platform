@@ -41,10 +41,10 @@ interface Entry {
 }
 
 const STATUS: Record<Status, { key: string; tone: string }> = {
-  open: { key: "open", tone: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-200" },
-  in_progress: { key: "in_progress", tone: "bg-indigo-100 text-indigo-900 dark:bg-indigo-500/15 dark:text-indigo-200" },
-  waiting_customer: { key: "waiting_customer", tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
-  resolved: { key: "resolved", tone: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200" },
+  open: { key: "open", tone: "bg-info/10 text-info dark:bg-info/15 " },
+  in_progress: { key: "in_progress", tone: "bg-info/10 text-info dark:bg-info/15 " },
+  waiting_customer: { key: "waiting_customer", tone: "bg-warning/10 text-warning dark:bg-warning/15 " },
+  resolved: { key: "resolved", tone: "bg-success/10 text-success dark:bg-success/15 " },
   closed: { key: "closed", tone: "bg-muted text-muted-foreground" },
 };
 const CATEGORY_VALUES = ["general", "technical", "billing", "account", "data"] as const;
@@ -98,7 +98,7 @@ function NewTicketForm({ onCreated }: { onCreated: (id: number) => void }) {
   const valid = title.trim().length >= 3 && description.trim().length >= 10;
   return (
     <form
-      className="rounded-2xl border border-border bg-card p-5 space-y-3"
+      className="rounded-xl border border-border bg-card p-5 space-y-3"
       aria-labelledby="soporte-nueva"
       onSubmit={(e) => {
         e.preventDefault();
@@ -163,7 +163,7 @@ function TicketDetail({ id }: { id: number }) {
 
           <ol className="space-y-3" aria-label={t("help.support.history")}>
             {data.timeline.map((e, i) => (
-              <li key={i} className={cn("rounded-2xl p-4 text-sm", e.author === "customer" ? "bg-primary/5 border border-primary/15 sm:ml-10" : "bg-card border border-border sm:mr-10")}>
+              <li key={i} className={cn("rounded-xl p-4 text-sm", e.author === "customer" ? "bg-primary/5 border border-primary/15 sm:ml-10" : "bg-card border border-border sm:mr-10")}>
                 <p className="text-xs text-muted-foreground mb-1">
                   {e.author === "customer" ? t("help.support.authorCustomer") : t("help.support.authorSupport")} · {when(e.at)}
                 </p>
@@ -191,7 +191,7 @@ function TicketDetail({ id }: { id: number }) {
 
           {data.ticket.status === "resolved" && (
             <form
-              className="rounded-2xl border border-dashed border-border p-4 space-y-2"
+              className="rounded-xl border border-dashed border-border p-4 space-y-2"
               onSubmit={(ev) => {
                 ev.preventDefault();
                 if (reason.trim().length >= 3) reopen.mutate({ id, reason: reason.trim() });
@@ -240,7 +240,7 @@ export default function SupportTicketsPage() {
             />
 
             {available.isSuccess && !available.data && (
-              <section className="rounded-2xl border border-border bg-card p-5 flex gap-3">
+              <section className="rounded-xl border border-border bg-card p-5 flex gap-3">
                 <LifeBuoy className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
                   {tr("help.support.unavailable").split(/(<link>.*?<\/link>)/g).map((part, i) =>
@@ -257,12 +257,12 @@ export default function SupportTicketsPage() {
             {list.isSuccess && tickets.length === 0 && !creating && <PanelEmpty icon={<LifeBuoy />} title={tr("help.support.empty")} />}
 
             {tickets.length > 0 && (
-              <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
+              <ul className="divide-y divide-border rounded-xl border border-border bg-card">
                 {tickets.map((tk) => (
                   <li key={tk.id}>
                     <Link href={`/admin/soporte/${tk.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       <span className="flex-1 min-w-0">
-                        <span className="block font-medium text-foreground truncate">{tk.title}</span>
+                        <span className="block font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{tk.title}</span>
                         <span className="block text-xs text-muted-foreground">{tr("help.support.updated", { id: tk.id, category: categoryLabel(tk.category), date: when(tk.updatedAt) })}</span>
                       </span>
                       <StatusBadge s={tk.status} />
