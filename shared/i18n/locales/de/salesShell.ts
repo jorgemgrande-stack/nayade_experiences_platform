@@ -12,4 +12,7 @@ export default {
   shopChannel: "Webshop",
   storeOrdersHint: "Bestellungen aus deinem Online-Shop",
   summaryLabel: "Übersicht",
+  panorama: "Überblick",
+  panoramaTitle: "Gesamtüberblick",
+  panoramaHint: "Trichter, Angebote, Bestellungen, Stornos und Zahlungen des gesamten Unternehmens. Die Daten dieser Seite stehen in ihrer Übersicht.",
 } satisfies Mirror<typeof es>;

@@ -1,11 +1,10 @@
 import AdminLayout from "@/components/AdminLayout";
-import { useI18n } from "@/i18n/I18nProvider";
 import ProposalsManager from "./ProposalsManager";
 
+// El nombre de la pantalla («Propuestas comerciales») lo da el h1 del propio listado: sin título duplicado en la barra superior.
 export default function ProposalsPage() {
-  const { t } = useI18n();
   return (
-    <AdminLayout title={t("crmProposals.pageTitle")}>
+    <AdminLayout>
       <ProposalsManager />
     </AdminLayout>
   );

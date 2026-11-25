@@ -11,9 +11,10 @@
  *     <CrmTable … /> o <CompactEmpty title="…" action={<Button/>} />
  *   </SalesFamilyShell>
  */
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
@@ -71,8 +72,10 @@ export function useScrollFade<T extends HTMLElement>(watch: string) {
  * pantalla; sin él son enlaces a las rutas existentes. Los contadores comparten consulta (y caché) con el CRM y aportan
  * lo que el menú lateral no da: cuántos hay en cada paso y qué requiere atención (anulaciones pendientes).
  */
-export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey; onSelect?: (key: SalesTabKey) => void; className?: string }) {
-  const { t } = useI18n();
+type SalesTabItem = { key: SalesTabKey; label: string; count?: number; attention?: boolean };
+
+/** Pestañas visibles de la familia (con sus contadores): las usan las pestañas de escritorio y el selector móvil. */
+function useSalesTabs(): SalesTabItem[] {
   const voc = useVocabulary();
   const panelSub = usePanelSubscription();
   const visible = useMemo(
@@ -84,7 +87,7 @@ export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey
   const { data: quote } = trpc.crm.quotes.counters.useQuery();
   const { data: order } = trpc.crm.reservations.counters.useQuery();
   const { data: anul } = trpc.cancellations.getCounters.useQuery(undefined, { refetchInterval: 60000 });
-  const tabs: Array<{ key: SalesTabKey; label: string; count?: number; attention?: boolean }> = [
+  const tabs: SalesTabItem[] = [
     { key: "leads", label: voc.leads, count: lead?.total },
     { key: "quotes", label: voc.quotes, count: quote?.enviado },
     { key: "reservations", label: voc.orders, count: order?.confirmadas },
@@ -93,11 +96,17 @@ export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey
     { key: "pagos_pendientes", label: voc.pendingPayments },
     { key: "bonos", label: voc.coupons },
   ];
-  const scroll = useScrollFade<HTMLElement>(`${active}-${visible.length}`);
+  return tabs.filter((x) => visible.includes(x.key));
+}
+
+export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey; onSelect?: (key: SalesTabKey) => void; className?: string }) {
+  const { t } = useI18n();
+  const tabs = useSalesTabs();
+  const scroll = useScrollFade<HTMLElement>(`${active}-${tabs.length}`);
   return (
     <nav ref={scroll.ref} onScroll={scroll.onScroll} aria-label={t("salesShell.navLabel")} style={scroll.style} className={cn(SCROLL_NAV, className)}>
       <div className="inline-flex min-w-max gap-0.5 rounded-xl border border-border bg-card/80 p-1 shadow-sm max-sm:shadow-none">
-        {tabs.filter((x) => visible.includes(x.key)).map(({ key, label, count, attention }) => {
+        {tabs.map(({ key, label, count, attention }) => {
           const on = active === key;
           const showCount = count !== undefined && count > 0;
           const body = (
@@ -136,34 +145,80 @@ export function SalesTabs({ active, onSelect, className }: { active: SalesTabKey
  * En móvil la acción principal no ocupa una fila propia: si la pantalla tiene barra de herramientas con filtros, la acción
  * se coloca allí, a la derecha del botón «Filtros» (la barra la «reclama» y la cabecera la oculta por debajo de 640 px).
  */
+
 const ShellActionContext = createContext<{ action: ReactNode; claim: (on: boolean) => void } | null>(null);
 
-export function SalesFamilyShell({ active, onSelect, action, headerExtra, children, className }: {
+export function SalesFamilyShell({ active, onSelect, action, headerExtra, title, children, className }: {
   active: SalesTabKey;
   onSelect?: (key: SalesTabKey) => void;
   /** Acción principal de la pantalla («Nuevo presupuesto»…). */
   action?: ReactNode;
-  /** Controles secundarios junto a la acción (p. ej. el botón de más indicadores). */
+  /** Controles secundarios junto a la acción (p. ej. el botón del panorama general). */
   headerExtra?: ReactNode;
+  /** Nombre de la pantalla (si no es el de la pestaña activa, p. ej. «Pedidos de la tienda»). */
+  title?: string;
   children: ReactNode;
   className?: string;
 }) {
+  const tabs = useSalesTabs();
+  const current = tabs.find((x) => x.key === active);
+  const heading = title ?? current?.label ?? "";
   const [claimed, setClaimed] = useState(false);
   const ctx = useMemo(() => ({ action, claim: setClaimed }), [action]);
   return (
     <ShellActionContext.Provider value={ctx}>
-    <div data-sales-shell="" className={cn("space-y-3 px-4 pb-8 pt-1.5 sm:px-6 sm:pt-2", className)}>
-      {/* Móvil: fila de pestañas (con su botón de indicadores, si lo hay) y la acción en la barra de herramientas. Desde 640 px, una sola fila: pestañas y, a la derecha, la acción. */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-        <div className="flex min-w-0 items-center gap-1 sm:flex-1">
-          <SalesTabs active={active} onSelect={onSelect} className="min-w-0 flex-1" />
-          {headerExtra && <div className="flex shrink-0 items-center">{headerExtra}</div>}
-        </div>
+    <div data-sales-shell="" className={cn("space-y-3 px-4 pb-8 pt-2 sm:px-6 sm:pt-3", className)}>
+      {/* Escritorio: nombre de la pantalla + acción en una fila y, debajo, las pestañas del flujo completas. Móvil: una sola fila con el nombre (que abre el selector de secciones) y la acción. */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <h1 className="hidden min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xl font-semibold tracking-tight text-foreground sm:block">{heading}</h1>
+        <SalesSectionMenu tabs={tabs} active={active} heading={heading} onSelect={onSelect} className="min-w-0 flex-1 sm:hidden" />
+        {headerExtra && <div className="flex shrink-0 items-center">{headerExtra}</div>}
         {action && <div className={cn("shrink-0 items-center justify-end gap-2", claimed ? "hidden sm:flex" : "flex")}>{action}</div>}
       </div>
+      <SalesTabs active={active} onSelect={onSelect} className="hidden sm:block" />
       {children}
     </div>
     </ShellActionContext.Provider>
+  );
+}
+
+/** Móvil: el nombre de la pantalla es el selector del resto de secciones (con sus contadores), en lugar de pestañas que se salen. */
+function SalesSectionMenu({ tabs, active, heading, onSelect, className }: { tabs: SalesTabItem[]; active: SalesTabKey; heading: string; onSelect?: (key: SalesTabKey) => void; className?: string }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const pending = tabs.filter((x) => x.attention && (x.count ?? 0) > 0 && x.key !== active).length;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={`${t("salesShell.navLabel")}: ${heading}`} className={cn("inline-flex h-10 items-center gap-1.5 rounded-lg px-1 text-left text-lg font-semibold tracking-tight text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", className)}>
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{heading}</span>
+          {pending > 0 && <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-warning" />}
+          <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden="true" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-1.5">
+        <nav aria-label={t("salesShell.navLabel")} className="flex flex-col gap-0.5">
+          {tabs.map(({ key, label, count, attention }) => {
+            const on = key === active;
+            const body = (
+              <>
+                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
+                {count !== undefined && count > 0 && (
+                  <span className={cn("rounded-full px-1.5 text-xs font-semibold tabular-nums", attention ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground")}>{count}</span>
+                )}
+                {on && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
+              </>
+            );
+            const cls = cn("flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", on ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground");
+            return onSelect ? (
+              <button key={key} type="button" aria-current={on ? "page" : undefined} onClick={() => { onSelect(key); setOpen(false); }} className={cls}>{body}</button>
+            ) : (
+              <Link key={key} href={salesTabHref(key)} aria-current={on ? "page" : undefined} className={cls}>{body}</Link>
+            );
+          })}
+        </nav>
+      </PopoverContent>
+    </Popover>
   );
 }
 

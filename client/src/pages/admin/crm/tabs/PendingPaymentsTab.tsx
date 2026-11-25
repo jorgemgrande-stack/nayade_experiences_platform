@@ -117,8 +117,6 @@ export function PagosPendientesTab() {
           <BStat tone="primary" icon={<Clock />} label={t("crmShared.porCobrar")} value={money(sumCents(openRows))} hint={`${openRows.length} · ${t("crmShared.importeAbierto").toLowerCase()}`} />
           <BStat tone="danger" icon={<AlertTriangle />} label={t("crmShared.vencidos")} value={overdueRows.length} hint={money(sumCents(overdueRows))} />
           <BStat tone="warning" icon={<Calendar />} label={t("crmShared.vencenSemana")} value={soonRows.length} hint={money(sumCents(soonRows))} />
-          <BStat tone="success" icon={<CheckCircle />} label={t("crmPayments.confirmado")} value={allRows.filter((r) => ["confirmed", "paid"].includes(r.status as string)).length}
-            onClick={() => setFilterStatus(filterStatus === "confirmed" ? "all" : "confirmed")} active={filterStatus === "confirmed"} />
         </BSummary>
       )}
 
@@ -140,7 +138,7 @@ export function PagosPendientesTab() {
         chips={chips}
         onClear={clearAll}
         summary={t("crmPayments.registro", { total })}
-        actions={<Button type="button" variant="outline" onClick={() => refetch()} className="gap-1.5"><RefreshCw className="h-4 w-4" aria-hidden="true" />{t("crmCancellations.actualizar")}</Button>}
+        actions={<Button type="button" variant="outline" onClick={() => refetch()} aria-label={t("crmCancellations.actualizar")} title={t("crmCancellations.actualizar")} className="px-2.5"><RefreshCw className="h-4 w-4" aria-hidden="true" /></Button>}
       />
 
       <BTable

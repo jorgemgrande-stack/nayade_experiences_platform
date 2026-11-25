@@ -330,7 +330,7 @@ export function QuoteEditModal({
         </div>
         </CrmFormSection>
       </div>
-      <DialogFooter>
+      <DialogFooter className="sticky bottom-0 z-10 -mx-6 -mb-6 border-t border-border bg-card px-6 py-3">
         <Button variant="ghost" size="sm" onClick={onClose}>{t("crmQuotes.cancelar")}</Button>
         <Button
           size="sm"

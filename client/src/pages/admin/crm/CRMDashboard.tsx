@@ -8,6 +8,7 @@ import { useVocabulary, visibleCrmTabs } from "@/lib/vocabulary";
 import { errorToastMessage } from "@/lib/errorMessage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { BarChart3, Users, FileText, CalendarCheck, Calendar, Search, Plus, Send, CheckCircle, XCircle, Clock, Star, AlertTriangle, Filter, Banknote, Receipt, CreditCard, ExternalLink, FilePlus, Gift, AlertCircle, Archive, X, ChevronDown, ChevronUp, Download } from "lucide-react";
@@ -262,10 +263,11 @@ export default function CRMDashboard() {
       <Button onClick={() => setNewInvoiceOpen(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmInvoices.nuevaFactura")}</Button>
     </>
   ) : undefined;
-  const kpiLabel = kpisExpanded ? t("salesShell.lessIndicators") : t("salesShell.moreIndicators");
+  const shellTitle = tab === "reservations" ? t("salesShell.allOrders") : undefined;
   const kpiToggle = (
-    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0" onClick={toggleKpis} aria-expanded={kpisExpanded} aria-label={kpiLabel} title={kpiLabel}>
+    <Button type="button" variant="ghost" size="sm" className="h-9 shrink-0 gap-1.5 px-2 text-muted-foreground" onClick={toggleKpis} aria-expanded={kpisExpanded} aria-label={t("salesShell.panoramaTitle")} title={t("salesShell.panoramaTitle")}>
       <BarChart3 className="h-4 w-4" aria-hidden="true" />
+      <span className="max-sm:sr-only">{t("salesShell.panorama")}</span>
     </Button>
   );
   const resStatusLabels: Record<string, string> = { paid: t("crmReservations.pagada"), pending_payment: t("crmReservations.pendientePago"), cancelled: t("crmReservations.cancelada") };
@@ -343,8 +345,8 @@ export default function CRMDashboard() {
   return (
     <AdminLayout title={voc.crmTitle}>
       <div className="flex min-h-screen flex-col bg-background text-foreground">
-        <SalesFamilyShell active={tab} onSelect={handleTabChange} action={actionNode} headerExtra={stripItems.length > 0 ? undefined : kpiToggle}>
-        {stripItems.length > 0 && <SummaryStrip items={stripItems} trailing={kpiToggle} />}
+        <SalesFamilyShell active={tab} onSelect={handleTabChange} action={actionNode} headerExtra={kpiToggle} title={shellTitle}>
+        {stripItems.length > 0 && <SummaryStrip items={stripItems} />}
 
 
         {/* ── Alertas de pagos fraccionados urgentes ── */}
@@ -376,8 +378,13 @@ export default function CRMDashboard() {
         })()}
 
         {/* Top KPI strip — dos grupos diferenciados */}
-        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${kpisExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"}`}>
-        <div className="py-1 space-y-4">
+        <Sheet open={kpisExpanded} onOpenChange={setKpisExpanded}>
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-4xl">
+        <SheetHeader className="shrink-0 border-b border-border pb-3">
+          <SheetTitle>{t("salesShell.panoramaTitle")}</SheetTitle>
+          <SheetDescription>{t("salesShell.panoramaHint")}</SheetDescription>
+        </SheetHeader>
+        <div className="shrink-0 space-y-4 p-4">
 
           {/* Grupo 1: Pipeline de Oportunidades */}
           <div>
@@ -803,7 +810,8 @@ export default function CRMDashboard() {
             </div>
           </div>
         )}
-        </div>{/* /KPI colapsable */}
+        </SheetContent>
+        </Sheet>{/* /Panorama general */}
 
         {/* ── Banner auditoría reservas sin factura / sin REAV ─────────────── */}
         {auditData && (auditData.sinFacturaCount > 0 || auditData.sinReavCount > 0) && (

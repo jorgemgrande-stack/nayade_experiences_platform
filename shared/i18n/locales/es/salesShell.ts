@@ -10,4 +10,7 @@ export default {
   shopChannel: "Tienda web",
   storeOrdersHint: "Pedidos hechos en tu tienda online",
   summaryLabel: "Resumen",
+  panorama: "Panorama",
+  panoramaTitle: "Panorama general",
+  panoramaHint: "Embudo, presupuestos, pedidos, anulaciones y cobros de toda la empresa. Los datos de esta pantalla están en su resumen.",
 };

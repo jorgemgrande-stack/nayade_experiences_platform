@@ -21,7 +21,7 @@ import {
   History, ChevronRight, RefreshCw, TrendingUp,
   Users, Clock, AlertTriangle, Ban, Target, ArrowRight,
   Bot, Bell, BellOff, Volume2, VolumeX, Mail, MailOpen, SendHorizonal,
-  Map, Zap, ClipboardCheck, Search, MoreHorizontal,
+  Map, Zap, ClipboardCheck, Search, MoreHorizontal, Check, ChevronDown,
 } from "lucide-react";
 import { NOTIF_POPUP_KEY, NOTIF_SOUND_KEY } from "@/components/WhatsAppNotification";
 import CommunicationsMap from "./CommunicationsMap";
@@ -31,7 +31,8 @@ import TemplateRulesTab from "./TemplateRulesTab";
 import PendingJobsTab from "./PendingJobsTab";
 import { toastError } from "@/lib/errorMessage";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
-import { CompactEmpty, SummaryStrip, ToolbarRow, SCROLL_NAV, TAB_BASE, TAB_ON, TAB_OFF, useScrollFade } from "@/components/admin/SalesFamilyShell";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CompactEmpty, ToolbarRow, SCROLL_NAV, TAB_BASE, TAB_ON, TAB_OFF, useScrollFade } from "@/components/admin/SalesFamilyShell";
 import { cn } from "@/lib/utils";
 import { PanelDataList, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -187,6 +188,27 @@ function PrefSwitch({ checked, onChange, label, icon }: { checked: boolean; onCh
   );
 }
 
+const MINI_DOT: Record<Tone, string> = { success: "bg-success", warning: "bg-warning", danger: "bg-danger", info: "bg-info", brand: "bg-primary", neutral: "bg-muted-foreground/50" };
+
+/** Cifra secundaria del panel: pequeña y en gris; con valor cero se atenúa y el punto de color solo aparece si significa algo. */
+function MiniStat({ label, value, tone, onClick }: { label: string; value: number; tone?: Tone; onClick?: () => void }) {
+  const body = (
+    <>
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        {tone && value > 0 && <span aria-hidden="true" className={cn("h-1.5 w-1.5 shrink-0 rounded-full", MINI_DOT[tone])} />}
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
+      </span>
+      <span className="text-sm font-semibold tabular-nums text-foreground">{value}</span>
+    </>
+  );
+  const cls = cn(
+    "flex min-h-10 min-w-0 items-center justify-between gap-2 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-left",
+    value === 0 && "opacity-60",
+    onClick && "transition hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  );
+  return onClick ? <button type="button" onClick={onClick} className={cls}>{body}</button> : <div className={cls}>{body}</div>;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CommercialFollowupDashboard() {
@@ -307,17 +329,19 @@ export default function CommercialFollowupDashboard() {
   // ─── Tab Navigation ───────────────────────────────────────────────────────
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "dashboard", label: t("crmFollowup.tab.dashboard"), icon: BarChart3 },
-    { id: "open", label: t("crmFollowup.tab.open"), icon: List },
-    { id: "history", label: t("crmFollowup.tab.history"), icon: History },
-    { id: "mapa", label: t("crmFollowup.tab.mapa"), icon: Map },
-    { id: "plantillas", label: t("crmFollowup.tab.plantillas"), icon: Settings },
-    { id: "cola", label: t("crmFollowup.tab.cola"), icon: Bell },
-    { id: "automatizaciones", label: t("crmFollowup.tab.automatizaciones"), icon: Zap },
-    { id: "auditoria", label: t("crmFollowup.tab.auditoria"), icon: ClipboardCheck },
+    { id: "dashboard", label: t("crmFollowup.tabShort.dashboard"), icon: BarChart3 },
+    { id: "open", label: t("crmFollowup.tabShort.open"), icon: List },
+    { id: "history", label: t("crmFollowup.tabShort.history"), icon: History },
+    { id: "mapa", label: t("crmFollowup.tabShort.mapa"), icon: Map },
+    { id: "plantillas", label: t("crmFollowup.tabShort.plantillas"), icon: Settings },
+    { id: "cola", label: t("crmFollowup.tabShort.cola"), icon: Bell },
+    { id: "automatizaciones", label: t("crmFollowup.tabShort.automatizaciones"), icon: Zap },
+    { id: "auditoria", label: t("crmFollowup.tabShort.auditoria"), icon: ClipboardCheck },
   ];
 
   const kpis = dashboard?.kpis;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const activeTab = tabs.find(x => x.id === tab) ?? tabs[0];
   const tabScroll = useScrollFade<HTMLDivElement>(tab);
   const [, setLocation] = useLocation();
   const quoteColumns = useQuoteColumns(handleAction, true);
@@ -356,29 +380,56 @@ export default function CommercialFollowupDashboard() {
   return (
     <AdminLayout>
       <div className="mx-auto w-full min-w-0 max-w-7xl px-4 pb-6 pt-3">
-        {/* Cabecera compacta: título y actualizar en una fila; el subtítulo solo en pantallas anchas */}
+        {/* Cabecera: el mismo nombre que el menú y la acción de actualizar en la misma fila */}
         <header className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:h-4 [&_svg]:w-4"><Target /></span>
-            <div className="min-w-0">
-              <h1 className="overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold leading-tight text-foreground">{t("crmFollowup.title")}</h1>
-              <p className="hidden overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground lg:block">{t("crmFollowup.subtitle")}</p>
-            </div>
+          <div className="min-w-0">
+            <h1 className="overflow-hidden text-ellipsis whitespace-nowrap text-xl font-semibold tracking-tight text-foreground">{t("crmFollowup.title")}</h1>
+            <p className="hidden overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground lg:block">{t("crmFollowup.subtitle")}</p>
           </div>
-          <Button type="button" variant="outline" size="icon" className="shrink-0" aria-label={t("panelStates.retry")} onClick={() => { refetchDash(); refetchOpen(); }}>
+          <Button type="button" variant="outline" size="sm" className="h-10 shrink-0 gap-1.5 sm:h-9" aria-label={t("crmFollowup.refresh")} onClick={() => { refetchDash(); refetchOpen(); }}>
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            <span className="max-sm:sr-only">{t("crmFollowup.refresh")}</span>
           </Button>
         </header>
-        <WorkplaceLocks place="crm" className="mb-3" />
 
-        {/* Pestañas: pastillas con desplazamiento suave y desvanecido; la activa va con el color de la marca y «Abiertos» avisa de lo que pide atención */}
-        <div className="mb-4 flex min-w-0">
+        {/* Móvil: selector compacto con la sección activa */}
+        <div className="mb-3 sm:hidden">
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" aria-label={`${t("crmFollowup.tabsLabel")}: ${activeTab.label}`} className="inline-flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="flex min-w-0 items-center gap-2">
+                  <activeTab.icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap">{activeTab.label}</span>
+                </span>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", menuOpen && "rotate-180")} aria-hidden="true" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[min(18rem,calc(100vw-2rem))] p-1.5">
+              <nav aria-label={t("crmFollowup.tabsLabel")} className="flex flex-col gap-0.5">
+                {tabs.map(tb => (
+                  <button key={tb.id} type="button" aria-current={tab === tb.id ? "page" : undefined} onClick={() => { setTab(tb.id); setMenuOpen(false); }}
+                    className={cn("flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", tab === tb.id ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground")}>
+                    <tb.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">{t(`crmFollowup.tab.${tb.id}`)}</span>
+                    {tb.id === "open" && (kpis?.needsAttention ?? 0) > 0 && (
+                      <span className="rounded-full bg-warning/15 px-1.5 text-xs font-semibold tabular-nums text-warning">{kpis?.needsAttention}</span>
+                    )}
+                    {tab === tb.id && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
+                  </button>
+                ))}
+              </nav>
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {/* Pestañas desde 640 px: caben las ocho en escritorio; si no, desplazamiento con desvanecido y la activa a la vista */}
+        <div className="mb-4 hidden min-w-0 sm:flex">
           <div ref={tabScroll.ref} onScroll={tabScroll.onScroll} style={tabScroll.style} className={`${SCROLL_NAV} flex-1`}>
             <div role="tablist" aria-label={t("crmFollowup.tabsLabel")} className="inline-flex min-w-max gap-0.5 rounded-xl border border-border bg-card/80 p-1 shadow-sm">
               {tabs.map(tb => (
                 <button key={tb.id} type="button" role="tab" aria-selected={tab === tb.id} data-active={tab === tb.id} onClick={() => setTab(tb.id)}
-                  className={cn(TAB_BASE, tab === tb.id ? TAB_ON : TAB_OFF)}>
-                  <tb.icon className="h-4 w-4" aria-hidden="true" />
+                  title={t(`crmFollowup.tab.${tb.id}`)} className={cn(TAB_BASE, "px-2 lg:px-2.5", tab === tb.id ? TAB_ON : TAB_OFF)}>
+                  <tb.icon className="hidden h-4 w-4 lg:block" aria-hidden="true" />
                   {tb.label}
                   {tb.id === "open" && (kpis?.needsAttention ?? 0) > 0 && (
                     <span title={t("crmFollowup.kpi.needsAttention")} className="rounded-full bg-warning/15 px-1.5 text-xs font-semibold tabular-nums text-warning">{kpis?.needsAttention}</span>
@@ -398,41 +449,58 @@ export default function CommercialFollowupDashboard() {
               <PanelLoading />
             ) : (
               <>
-                {/* Presupuestos: lo que pide atención (clave) y cómo está el resto; las primeras cifras filtran la lista de abiertos */}
+                {/* Lectura principal: lo que necesita seguimiento, con la cifra grande de la marca, y justo debajo la lista (o su vacío) */}
+                <section aria-labelledby="seg-attention" className="space-y-3">
+                  <button type="button" onClick={() => setTab("open")} aria-label={`${t("crmFollowup.kpi.needsAttention")}: ${kpis?.needsAttention ?? 0}`}
+                    className="relative block w-full overflow-hidden rounded-xl border border-border bg-card px-5 py-4 text-left shadow-sm transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary/[0.14] via-primary/[0.04] to-transparent" />
+                    <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/60 via-primary/15 to-transparent" />
+                    <span className="relative flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                        <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", (kpis?.needsAttention ?? 0) > 0 ? "bg-warning" : "bg-success")} />
+                        {t("crmFollowup.kpi.needsAttention")}
+                      </span>
+                      <span className="text-4xl font-semibold leading-none tabular-nums text-brand-strong">{kpis?.needsAttention ?? 0}</span>
+                      <span className="text-xs text-muted-foreground">{t("crmFollowup.kpi.activeQuotes")}</span>
+                    </span>
+                  </button>
+                  <h2 id="seg-attention" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
+                    {t("crmFollowup.attention.title")}
+                  </h2>
+                  {attention.length === 0 ? (
+                    <CompactEmpty icon={<CheckCircle2 />} title={t("crmFollowup.attention.empty")} description={t("crmFollowup.attention.emptyHint")} />
+                  ) : (
+                    <PanelDataList rows={attention} columns={quoteColumns} rowKey={(q) => q.id} caption={t("crmFollowup.attention.title")} tableFrom="lg" />
+                  )}
+                </section>
+
+                {/* Resto de presupuestos: cifras pequeñas; las tres primeras filtran la lista de abiertos */}
                 <section aria-labelledby="seg-quotes" className="space-y-2">
                   <h2 id="seg-quotes" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("crmFollowup.section.quotes")}</h2>
-                  <div className="grid gap-2">
-                    <SummaryStrip label={t("crmFollowup.section.quotes")} items={[
-                      { key: "attention", label: t("crmFollowup.kpi.needsAttention"), value: kpis?.needsAttention ?? 0, detail: t("crmFollowup.kpi.activeQuotes"), primary: true, tone: (kpis?.needsAttention ?? 0) > 0 ? "warning" : "success", onClick: () => setTab("open") },
-                      { key: "notViewed", label: t("crmFollowup.kpi.notViewed"), value: kpis?.notViewed ?? 0, tone: "neutral", onClick: () => goOpen("all", "no") },
-                      { key: "viewed", label: t("crmFollowup.kpi.viewedUnpaid"), value: kpis?.viewed ?? 0, tone: "info", onClick: () => goOpen("all", "yes") },
-                      { key: "paused", label: t("crmFollowup.kpi.paused"), value: kpis?.paused ?? 0, tone: "warning", onClick: () => goOpen("paused", "all") },
-                    ]} />
-                    <SummaryStrip label={t("crmFollowup.section.quotes")} items={[
-                      { key: "sent", label: t("crmFollowup.kpi.sentToday"), value: kpis?.sentToday ?? 0, detail: t("crmFollowup.kpi.autoReminders"), tone: "brand" },
-                      { key: "cold", label: t("crmFollowup.kpi.cold"), value: kpis?.cold ?? 0, tone: "neutral" },
-                      { key: "converted", label: t("crmFollowup.kpi.converted"), value: kpis?.converted ?? 0, tone: "success" },
-                      { key: "lost", label: t("crmFollowup.kpi.lost"), value: kpis?.lost ?? 0, tone: "danger" },
-                    ]} />
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    <MiniStat label={t("crmFollowup.kpi.notViewed")} value={kpis?.notViewed ?? 0} onClick={() => goOpen("all", "no")} />
+                    <MiniStat label={t("crmFollowup.kpi.viewedUnpaid")} value={kpis?.viewed ?? 0} tone="info" onClick={() => goOpen("all", "yes")} />
+                    <MiniStat label={t("crmFollowup.kpi.paused")} value={kpis?.paused ?? 0} tone="warning" onClick={() => goOpen("paused", "all")} />
+                    <MiniStat label={t("crmFollowup.kpi.sentToday")} value={kpis?.sentToday ?? 0} tone="brand" />
+                    <MiniStat label={t("crmFollowup.kpi.cold")} value={kpis?.cold ?? 0} />
+                    <MiniStat label={t("crmFollowup.kpi.converted")} value={kpis?.converted ?? 0} tone="success" />
+                    <MiniStat label={t("crmFollowup.kpi.lost")} value={kpis?.lost ?? 0} tone="danger" />
                   </div>
                 </section>
 
                 {/* Canales de entrada: WhatsApp y llamadas solo con su módulo contratado */}
                 <section aria-labelledby="seg-channels" className="space-y-2">
                   <h2 id="seg-channels" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("crmFollowup.section.channels")}</h2>
-                  <SummaryStrip label={t("crmFollowup.section.channels")} items={[
-                    ...(hasWhatsApp ? [
-                      { key: "wa1", label: t("crmFollowup.kpi.whatsappToday"), value: whatsappStats?.conversations?.newToday ?? 0, tone: "success" as const },
-                      { key: "wa2", label: t("crmFollowup.kpi.whatsappUnread"), value: whatsappStats?.conversations?.unread ?? 0, tone: "info" as const },
-                    ] : []),
-                    ...(hasVoice ? [
-                      { key: "vo1", label: t("crmFollowup.kpi.callsToday"), value: vapiStats?.today ?? 0, tone: "brand" as const },
-                      { key: "vo2", label: t("crmFollowup.kpi.callsUnreviewed"), value: vapiStats?.unreviewed ?? 0, tone: "warning" as const },
-                    ] : []),
-                    { key: "em1", label: t("crmFollowup.kpi.emailsToday"), value: emailStats?.receivedToday ?? 0, tone: "info" as const, onClick: () => setLocation("/admin/atencion-comercial/email") },
-                    { key: "em2", label: t("crmFollowup.kpi.emailsUnread"), value: emailStats?.unreadInbox ?? 0, tone: "warning" as const, onClick: () => setLocation("/admin/atencion-comercial/email") },
-                    { key: "em3", label: t("crmFollowup.kpi.emailsSent"), value: emailStats?.sent ?? 0, tone: "info" as const, onClick: () => setLocation("/admin/atencion-comercial/email?folder=sent") },
-                  ]} />
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {hasWhatsApp && <MiniStat label={t("crmFollowup.kpi.whatsappToday")} value={whatsappStats?.conversations?.newToday ?? 0} tone="success" />}
+                    {hasWhatsApp && <MiniStat label={t("crmFollowup.kpi.whatsappUnread")} value={whatsappStats?.conversations?.unread ?? 0} tone="info" />}
+                    {hasVoice && <MiniStat label={t("crmFollowup.kpi.callsToday")} value={vapiStats?.today ?? 0} tone="brand" />}
+                    {hasVoice && <MiniStat label={t("crmFollowup.kpi.callsUnreviewed")} value={vapiStats?.unreviewed ?? 0} tone="warning" />}
+                    <MiniStat label={t("crmFollowup.kpi.emailsToday")} value={emailStats?.receivedToday ?? 0} tone="info" onClick={() => setLocation("/admin/atencion-comercial/email")} />
+                    <MiniStat label={t("crmFollowup.kpi.emailsUnread")} value={emailStats?.unreadInbox ?? 0} tone="warning" onClick={() => setLocation("/admin/atencion-comercial/email")} />
+                    <MiniStat label={t("crmFollowup.kpi.emailsSent")} value={emailStats?.sent ?? 0} tone="info" onClick={() => setLocation("/admin/atencion-comercial/email?folder=sent")} />
+                  </div>
                 </section>
 
                 {/* Avisos de WhatsApp en este navegador */}
@@ -450,20 +518,6 @@ export default function CommercialFollowupDashboard() {
                   </section>
                 )}
 
-                {/* Presupuestos que piden atención */}
-                <section aria-labelledby="seg-attention" className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 id="seg-attention" className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
-                      {t("crmFollowup.attention.title")}
-                    </h2>
-                  </div>
-                  {attention.length === 0 ? (
-                    <CompactEmpty icon={<CheckCircle2 />} title={t("crmFollowup.attention.empty")} description={t("crmFollowup.attention.emptyHint")} />
-                  ) : (
-                    <PanelDataList rows={attention} columns={quoteColumns} rowKey={(q) => q.id} caption={t("crmFollowup.attention.title")} tableFrom="lg" />
-                  )}
-                </section>
               </>
             )}
           </div>
@@ -542,6 +596,9 @@ export default function CommercialFollowupDashboard() {
 
         {/* ── TAB: AUDITORÍA ───────────────────────────────────────────────── */}
         {tab === "auditoria" && <EmailAuditTab />}
+
+        {/* Promoción secundaria: siempre después del contenido útil */}
+        <WorkplaceLocks place="crm" className="mt-6" />
       </div>
 
       {/* ── Modal: Recordatorio manual ─────────────────────────────────────── */}

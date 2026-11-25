@@ -500,7 +500,7 @@ export function QuoteBuilderModal({
         )}
       </div>
 
-      <DialogFooter className="gap-2 flex-wrap">
+      <DialogFooter className="gap-2 flex-wrap sticky bottom-0 z-10 -mx-6 -mb-6 border-t border-border bg-card px-6 py-3">
         <Button variant="ghost" size="sm" onClick={onClose}>{t("crmQuotes.cancelar")}</Button>
         <Button
           variant="outline"

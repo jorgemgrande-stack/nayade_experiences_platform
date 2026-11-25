@@ -13,6 +13,8 @@ import CreditNoteDialog from "../CreditNoteDialog";
 import GestoriaExportDialog from "../GestoriaExportDialog";
 import { Calendar, Plus, Eye, Send, CheckCircle, AlertTriangle, Download, RefreshCw, FileDown, Receipt, CreditCard, RotateCcw, Ban, Paperclip, FilePlus, FileText, Landmark, Banknote, HelpCircle } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EUR2, Tab, PAGE_SIZE } from "../shared/crmCommon";
 import { BPill, BMoney, BStat, BSummary, BFilterBar, BFilterField, BTable, BRowActions, BPager, type BChip, type BColumn, type BTone, type BAction } from "../shared/ui/bCrmUi";
 
@@ -311,22 +313,28 @@ export function InvoicesTab({ ctrl, tab }: { ctrl: InvoicesController; tab: Tab 
                   </SelectContent>
                 </Select>
               </BFilterField>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" className={cn("h-9 w-full justify-start gap-2 font-normal sm:w-auto", (invoiceDateFrom || invoiceDateTo) && "border-primary/40 bg-primary/10")} aria-label={t("crmInvoices.periodo")}>
+                    <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">{invoiceDateFrom || invoiceDateTo ? `${invoiceDateFrom || "…"} → ${invoiceDateTo || "…"}` : t("crmInvoices.periodo").replace(/:s*$/, "")}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[min(92vw,22rem)] space-y-3 p-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {quick.map(({ label, fn }) => (
+                      <Button key={label} type="button" variant="outline" size="sm" className="h-8 px-2.5 text-xs" onClick={fn}>{label}</Button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input type="date" value={invoiceDateFrom} onChange={(e) => setInvoiceDateFrom(e.target.value)} className="h-9 w-36" aria-label={t("crmInvoices.periodo")} />
+                    <span className="text-xs text-muted-foreground" aria-hidden="true">→</span>
+                    <Input type="date" value={invoiceDateTo} onChange={(e) => setInvoiceDateTo(e.target.value)} className="h-9 w-36" aria-label={t("crmInvoices.periodo")} />
+                  </div>
+                  {(invoiceDateFrom || invoiceDateTo) && <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground" onClick={() => setRange("", "")}>{t("crmOpps.limpiarFiltros")}</Button>}
+                </PopoverContent>
+              </Popover>
             </>
-          )}
-          more={(
-            <div className="space-y-3 sm:col-span-2 lg:col-span-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Calendar className="h-3.5 w-3.5" aria-hidden="true" />{t("crmInvoices.periodo")}</span>
-                {quick.map(({ label, fn }) => (
-                  <Button key={label} type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={fn}>{label}</Button>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input type="date" value={invoiceDateFrom} onChange={(e) => setInvoiceDateFrom(e.target.value)} className="w-40" aria-label={t("crmInvoices.periodo")} />
-                <span className="text-xs text-muted-foreground" aria-hidden="true">→</span>
-                <Input type="date" value={invoiceDateTo} onChange={(e) => setInvoiceDateTo(e.target.value)} className="w-40" aria-label={t("crmInvoices.periodo")} />
-              </div>
-            </div>
           )}
           chips={chips}
           onClear={clearAll}

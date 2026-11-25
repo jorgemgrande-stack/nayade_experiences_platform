@@ -22,7 +22,12 @@ export default {
     dashboard: "Panel", open: "Presupuestos abiertos", history: "Historial", mapa: "Mapa de emails", plantillas: "Plantillas",
     cola: "Cola de envíos", automatizaciones: "Automatizaciones", auditoria: "Auditoría",
   },
-  title: "Atención Comercial",
+  title: "Seguimiento comercial",
+  refresh: "Actualizar",
+  tabShort: {
+    dashboard: "Panel", open: "Abiertos", history: "Historial", mapa: "Emails", plantillas: "Plantillas",
+    cola: "Cola", automatizaciones: "Automatiz.", auditoria: "Auditoría",
+  },
   subtitle: "Seguimiento de presupuestos no convertidos",
   loadError: "No se ha podido cargar el seguimiento comercial",
   tabsLabel: "Secciones de atención comercial",
