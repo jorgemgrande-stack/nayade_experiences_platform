@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { incidentErrorText, recordFiscalIncident } from "./crm/fiscalIncidents";
+import { incidentErrorText, recordFiscalIncident } from "./fiscalIncidents";
 
 describe("Incidencias fiscales (registro)", () => {
   it("el texto del error es corto, de una línea y sin trazas", () => {

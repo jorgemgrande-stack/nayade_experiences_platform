@@ -10,7 +10,7 @@
  * en el router del CRM, con las mismas garantías atómicas que el cobro.
  */
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { crmActivityLog, quotes, reservations } from "../../drizzle/schema";
+import { crmActivityLog, quotes, reservations } from "../drizzle/schema";
 
 export const FISCAL_INCIDENT_ACTIONS = [
   "payment_confirmed_without_invoice",

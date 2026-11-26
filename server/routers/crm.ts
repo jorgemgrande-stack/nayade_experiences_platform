@@ -4,7 +4,7 @@
  */
 
 
-import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, getOpenFiscalIncident, markFiscalIncidentResolved } from "../crm/fiscalIncidents";
+import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, getOpenFiscalIncident, markFiscalIncidentResolved } from "../fiscalIncidents";
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { brandSetting, companyName, formatLegalAddress } from "../tenantBrand";

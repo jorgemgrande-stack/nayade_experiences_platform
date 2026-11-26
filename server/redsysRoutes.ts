@@ -31,7 +31,7 @@ class QuoteAlreadyInvoiced extends Error {}
 import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
-import { recordFiscalIncident, incidentErrorText } from "./crm/fiscalIncidents";
+import { recordFiscalIncident, incidentErrorText } from "./fiscalIncidents";
 import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
