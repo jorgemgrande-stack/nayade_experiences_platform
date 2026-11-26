@@ -3,6 +3,7 @@ import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { EconomyShell } from "@/components/admin/EconomyShell";
 import { formatEur } from "@/lib/money";
+import { isValidIsoDate } from "@/lib/isoDate";
 import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { MetricCard, PageOnlyTag, EconomyFilterBar, EconomySummary, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn, type FilterChip, type RowAction } from "./shared/EconomyUi";
 import { toast } from "sonner";
@@ -408,8 +409,11 @@ export default function CardTerminalOperationsManager() {
                 <DropdownMenuItem
                   onSelect={() => {
                     const date = prompt("Fecha a reprocesar (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
-                    if (date && /^d{4}-d{2}-d{2}$/.test(date)) {
-                      resetLogsMut.mutate({ date });
+                    if (date === null) return;
+                    if (isValidIsoDate(date.trim())) {
+                      resetLogsMut.mutate({ date: date.trim() });
+                    } else {
+                      toast.error("Fecha no válida. Usa el formato AAAA-MM-DD (por ejemplo 2026-11-25).");
                     }
                   }}
                 >
