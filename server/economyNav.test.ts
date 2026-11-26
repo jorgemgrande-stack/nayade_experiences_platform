@@ -11,9 +11,9 @@ const ctx = (o: Partial<EconomyNavContext>): EconomyNavContext => ({ role: "admi
 const ids = (c: EconomyNavContext) => visibleEconomyScreens(c).map((s) => s.id);
 
 describe("estructura de Economía", () => {
-  it("17 pantallas, cada una con su ruta de siempre y un grupo", () => {
-    expect(ECONOMY_SCREENS).toHaveLength(17);
-    expect(new Set(ECONOMY_SCREENS.map((s) => s.href)).size).toBe(17);
+  it("16 pantallas, cada una con su ruta de siempre y un grupo", () => {
+    expect(ECONOMY_SCREENS).toHaveLength(16);
+    expect(new Set(ECONOMY_SCREENS.map((s) => s.href)).size).toBe(16);
     for (const s of ECONOMY_SCREENS) {
       expect(s.href.startsWith("/admin/contabilidad/")).toBe(true);
       expect(ECONOMY_GROUPS).toContain(s.group);
@@ -24,9 +24,18 @@ describe("estructura de Economía", () => {
     const v = visibleEconomyScreens(ctx({}));
     expect(groupScreens("today", v).map((s) => s.id)).toEqual(["summary", "daily"]);
     expect(groupScreens("movements", v).map((s) => s.id)).toEqual(["transactions", "expenses", "cash", "bank"]);
-    expect(groupScreens("pos", v).map((s) => s.id)).toEqual(["pos", "batches", "conciliation"]);
+    expect(groupScreens("pos", v).map((s) => s.id)).toEqual(["pos", "batches"]);
     expect(groupScreens("results", v).map((s) => s.id)).toEqual(["profitLoss", "reports", "general", "financeSync"]);
     expect(subScreens("expenses", v).map((s) => s.id)).toEqual(["expenses", "recurring", "suppliers", "categories", "costCenters"]);
+  });
+  it("«Conciliación TPV» ya no es una pantalla aparte (es la cabecera de Remesas) pero su ruta sigue respondiendo", async () => {
+    const { readFileSync } = await import("node:fs");
+    expect(ECONOMY_SCREENS.map((s) => s.id as string)).not.toContain("conciliation");
+    const app = readFileSync("client/src/App.tsx", "utf8");
+    expect(app).toContain('path="/admin/contabilidad/conciliacion-tpv"');
+    const redirect = readFileSync("client/src/pages/admin/accounting/CardTerminalConciliationDashboard.tsx", "utf8");
+    expect(redirect).toContain("/admin/contabilidad/remesas-tpv");
+    expect(redirect).toContain("window.location.search");
   });
   it("las pantallas existen en el árbol de rutas del cliente", async () => {
     const { readFileSync } = await import("node:fs");
@@ -36,12 +45,12 @@ describe("estructura de Economía", () => {
 });
 
 describe("visibilidad = la del menú lateral", () => {
-  it("con todas las capacidades, administración ve las 17", () => {
-    expect(ids(ctx({}))).toHaveLength(17);
+  it("con todas las capacidades, administración ve las 16", () => {
+    expect(ids(ctx({}))).toHaveLength(16);
   });
   it("sin la capacidad de bancos y TPV no aparecen Bancos, TPV ni Finance Sync", () => {
     const v = ids(ctx({ capabilityState: caps("bill-reports", "purchasing-basic", "reports-advanced", "bill-cash", "accounting-general") }));
-    for (const hidden of ["bank", "pos", "batches", "conciliation", "financeSync"]) expect(v).not.toContain(hidden);
+    for (const hidden of ["bank", "pos", "batches", "financeSync"]) expect(v).not.toContain(hidden);
     expect(v).toContain("summary");
     expect(v).toContain("general");
   });
@@ -58,7 +67,7 @@ describe("visibilidad = la del menú lateral", () => {
     expect(ids(ctx({ capabilityState: ro }))).toContain("summary");
   });
   it("el menú de siempre (Náyade) muestra todo a administración", () => {
-    expect(ids(ctx({ mode: "legacy", capabilityState: () => "active" }))).toHaveLength(17);
+    expect(ids(ctx({ mode: "legacy", capabilityState: () => "active" }))).toHaveLength(16);
   });
   it("solo administración; el rol controler ve únicamente el Control diario", () => {
     expect(ids(ctx({ role: "controler", mode: "legacy" }))).toEqual(["daily"]);
