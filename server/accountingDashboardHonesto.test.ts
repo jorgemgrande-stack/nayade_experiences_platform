@@ -46,7 +46,8 @@ describe("contabilidad del panel de empresa", () => {
     expect(src).toContain('sub.can("bank-import-pos")');
     expect(src).toContain("{canTax && (");
     expect(src).toContain("{canBank && (");
-    expect(callOf(reports, "bankMovements.getCashflowForecast")).toContain("enabled: canBank");
+    // La previsión de tesorería vive solo en el Resumen (E5): Informes de ventas ya no la repite ni la consulta
+    expect(reports).not.toContain("getCashflowForecast");
     expect(reports).not.toContain('title="Informes BI"');
   });
 });

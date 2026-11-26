@@ -63,3 +63,19 @@ export function formatEurCents(cents: number | string | null | undefined, opts: 
 export function formatAmount(value: number | string | null | undefined, opts: MoneyOptions = {}): string {
   return formatEur(value, opts).replace(`${NBSP}€`, "");
 }
+
+/** Porcentaje con el formato del idioma («12,5 %»): hasta `maxDecimals` decimales, sin ceros sobrantes. Solo presentación. */
+export function formatPercent(value: number | null | undefined, opts: { locale?: MoneyLocale; maxDecimals?: number } = {}): string {
+  const n = toAmount(value) ?? 0;
+  const max = opts.maxDecimals ?? 1;
+  const abs = new Intl.NumberFormat(TAG[opts.locale ?? "es"], { minimumFractionDigits: 0, maximumFractionDigits: max, useGrouping: "always" }).format(Math.abs(n));
+  const isZero = /^[0.,\s]*$/.test(abs);
+  return `${n < 0 && !isZero ? MINUS : ""}${abs}${NBSP}%`;
+}
+
+/** Importe abreviado para los ejes de los gráficos («1,2 M €», «220 mil €»): una sola línea, sin cambiar el valor del dato. */
+export function formatAxisEur(value: number | null | undefined, opts: { locale?: MoneyLocale } = {}): string {
+  const n = toAmount(value) ?? 0;
+  const text = new Intl.NumberFormat(TAG[opts.locale ?? "es"], { notation: "compact", maximumFractionDigits: 1 }).format(n).replace("-", MINUS);
+  return `${text}${NBSP}€`;
+}
