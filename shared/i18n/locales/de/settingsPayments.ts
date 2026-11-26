@@ -23,6 +23,7 @@ export default {
   canPayout: "Kann Auszahlungen erhalten",
   lastEvent: "Letzte gültige Benachrichtigung von Stripe",
   noEventYet: "Noch keine eingegangen",
+  noEventChecked: "Noch keine (Status geprüft am {date})",
   yes: "Ja",
   no: "Nein",
   requirementsDue: "Stripe verlangt noch {n, plural, one {# Angabe} other {# Angaben}}, um die Verifizierung abzuschließen. Setze die Einrichtung fort, um sie zu senden.",
@@ -64,5 +65,6 @@ export default {
     confirmClear: "Die Daten von „{title}“ entfernen? Die Integration wird deaktiviert.",
     clearedToast: "{title}: deaktiviert",
     clear: "Daten entfernen",
+    noChanges: "Keine ausstehenden Änderungen",
   },
 } satisfies Mirror<typeof es>;

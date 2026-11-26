@@ -97,7 +97,10 @@ describe("guarda tRPC de learning: gradual", () => {
     process.env[LEARNING_ENFORCE_ENV] = "1";
     const s = await setup(true);
     expect(await s.call("/api/trpc/learning.my.courses", "quantum")).toBe(200);
-    expect(await s.call("/api/trpc/learning.my.courses", "otra")).toBe(403);
+    // Derecho adquirido del alumno: el aula sigue abierta; la administración y la venta de ampliaciones, no
+    expect(await s.call("/api/trpc/learning.my.courses", "otra")).toBe(200);
+    expect(await s.call("/api/trpc/learning.admin.enrollments", "otra")).toBe(403);
+    expect(await s.call("/api/trpc/learning.my.startExtension", "otra")).toBe(403);
     expect(await s.call("/api/trpc/auth.me", "otra")).toBe(200);
     await s.close();
   });
@@ -138,7 +141,9 @@ describe("guarda Express de learning (/api/learning/*, vista previa incluida)", 
   it("con LEARNING_LICENSE_ENFORCED=1: recursos, vista previa y subida exigen la licencia; el resto del Core no se toca", async () => {
     process.env[LEARNING_ENFORCE_ENV] = "1";
     const s = await setup(true);
-    for (const p of ["/api/learning/resource/1", "/api/learning/preview/resource/1", "/api/learning/upload/1"]) {
+    // El recurso del alumno (derecho adquirido) sigue abierto sin licencia: la ruta comprueba su matrícula
+    expect(await s.call("/api/learning/resource/1", "otra")).toBe(200);
+    for (const p of ["/api/learning/preview/resource/1", "/api/learning/upload/1"]) {
       expect(await s.call(p, "quantum")).toBe(200);
       expect(await s.call(p, "otra")).toBe(403);
     }
@@ -149,7 +154,7 @@ describe("guarda Express de learning (/api/learning/*, vista previa incluida)", 
   it("si la licencia no se puede verificar, se cierra (503)", async () => {
     process.env[LEARNING_ENFORCE_ENV] = "1";
     const s = await setup(true, true);
-    expect(await s.call("/api/learning/resource/1", "quantum")).toBe(503);
+    expect(await s.call("/api/learning/preview/resource/1", "quantum")).toBe(503);
     await s.close();
   });
 });

@@ -110,7 +110,7 @@ export function PlanRequestList({ requests }: { requests: PlanRequestView[] }) {
   if (requests.length === 0) return null;
   const date = (ms: number) => f.date(ms, { day: "numeric", month: "short", year: "numeric" });
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+    <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
       <h3 className="font-semibold text-foreground">{t("subscription.requests.listTitle")}</h3>
       <ul className="mt-3 divide-y divide-border">
         {requests.map((r) => (

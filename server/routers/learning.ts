@@ -11,14 +11,15 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
-import { LearningRuleError, START_MODES, courseOpensFor, evaluateAny } from "../../shared/learning";
+import { LearningRuleError, START_MODES, courseOpensFor, evaluateAny, moduleWindow } from "../../shared/learning";
 import { randomBytes } from "node:crypto";
 import {
-  LearningError, addModules, grantDemo, canAccessModule, enrollmentEvents, enrollmentViews, extendEnrollment, getEnrollment, grantAdmin, grantFromPayment, isMissingLearningSchema,
+  LearningError, activateEnrollment, addModules, extendModuleAccess, grantDemo, canAccessModule, enrollmentEvents, enrollmentViews, extendEnrollment, getEnrollment, grantAdmin, grantFromPayment, isMissingLearningSchema,
   grantTechnical, listEnrollments, listPreviewAccess, listRules, logPreviewAccess, myCourses, previewCourseIndex, previewLessonBlocks, reactivateEnrollment, recordProgress, revokeEnrollment, saveRule, suspendEnrollment,
 } from "../learningDb";
 import { getDb } from "../db";
-import { grantLearningFromEnrollment, grantLearningFromOrder, pendingLearningOrders, sendLearningInvitation } from "../learningFlow";
+import { addQuoteParticipant, confirmQuoteContractedDays, listQuoteParticipants, listQuoteRefundReviews, removeQuoteParticipant, resolveQuoteRefundReview, grantLearningFromEnrollment, grantLearningFromOrder, grantLearningFromQuote, pendingLearningOrders, pendingLearningQuotes, refundOrderSupplement, sendLearningInvitation, sweepLearningGrants } from "../learningFlow";
+import { applyExtensionsForOrder, extendableModules, extensionOffers, prepareExtensionOrder } from "../learningExtensions";
 import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
@@ -64,15 +65,31 @@ const my = router({
       // Un borrador no existe para quien no tiene matrícula técnica (no se revela ni su existencia)
       if (!views.length && String(course.status) === "draft") throw new LearningError("NOT_FOUND", "El curso no existe.");
       if (!views.length) throw new LearningError("FORBIDDEN", "No tienes una matrícula de este curso.");
+      const pendingView = views.find((v) => v.pendingActivationDays != null && v.id != null);
+      const pendingActivation = pendingView ? { enrollmentId: pendingView.id as number, days: Number(pendingView.pendingActivationDays) } : null;
+      const offers = await extensionOffers().catch(() => []);
+      const extendable = offers.length ? await extendableModules(ctx.user.id, input.courseId) : new Map<number, unknown>();
       const modules = await rowsOf(sql`SELECT id, position, title FROM learning_modules WHERE course_id = ${input.courseId} ORDER BY position`);
       const lessons = await rowsOf(sql`SELECT l.id, l.module_id, l.position, l.title FROM learning_lessons l JOIN learning_modules m ON m.id = l.module_id WHERE m.course_id = ${input.courseId} ORDER BY l.position`);
       const done = new Set((await rowsOf(sql`SELECT lesson_id FROM learning_progress WHERE user_id = ${ctx.user.id} AND status = 'completed'`)).map((r) => Number(r.lesson_id)));
       return {
         course: { id: Number(course.id), slug: String(course.slug), title: String(course.title), description: course.description ?? null, language: String(course.language) },
+        /** Ampliaciones del catálogo (días y precio fijados por el servidor). Vacío si la empresa no las ha configurado. */
+        extensionOffers: offers,
+        /** Derecho concedido y pendiente de activar por la persona (días que empezarán al activar); null si no hay. */
+        pendingActivation,
         modules: modules.map((m) => {
-          const unlocked = evaluateAny(views, Number(m.id), now).allowed;
+          const dec = evaluateAny(views, Number(m.id), now);
+          const unlocked = dec.allowed;
+          // Módulo aún no desbloqueado: se informa de la fecha («se desbloquea el …»); nunca de su contenido
+          const unlocksAt = !dec.allowed && dec.reason === "not_started" ? dec.unlocksAt ?? null : null;
+          const win = views.filter((v) => v.moduleIds.includes(Number(m.id))).map((v) => moduleWindow(v, Number(m.id)));
+          const endsAt = win.length ? (win.some((w) => w.endsAt == null) ? null : Math.max(...win.map((w) => w.endsAt as number))) : null;
+          // open: abierto; locked: aún no desbloqueado (con fecha); closed: caducado; not_included: no está en su modalidad
+          const pendingHere = !unlocked && views.some((v) => v.pendingActivationDays != null && v.moduleIds.includes(Number(m.id)));
+          const state: "open" | "locked" | "closed" | "not_included" | "pending_activation" = unlocked ? "open" : pendingHere ? "pending_activation" : unlocksAt != null ? "locked" : win.length ? "closed" : "not_included";
           return {
-            id: Number(m.id), position: Number(m.position), title: String(m.title), unlocked,
+            id: Number(m.id), position: Number(m.position), title: String(m.title), unlocked, unlocksAt, endsAt, state, canExtend: extendable.has(Number(m.id)),
             lessons: lessons.filter((l) => Number(l.module_id) === Number(m.id)).map((l) => ({ id: Number(l.id), position: Number(l.position), title: String(l.title), completed: done.has(Number(l.id)) })),
           };
         }),
@@ -97,6 +114,35 @@ const my = router({
           resource: b.resource_status ? { status: String(b.resource_status), kind: String(b.resource_kind), sizeBytes: b.size_bytes == null ? null : Number(b.size_bytes) } : null,
         })),
       };
+    })),
+
+  /**
+   * «Ampliar este módulo»: crea el pedido de ampliación de un módulo DE ESTA PERSONA y abre el pago. El precio y los días salen del
+   * catálogo del servidor; un módulo que no sea suyo (otra persona, no incluido, revocado) se rechaza. El acceso se amplía solo
+   * cuando el aviso firmado de la pasarela confirma el pago.
+   */
+  /** Activación voluntaria: el alumno inicia los días de un derecho concedido y aún pendiente (solo el titular). */
+  activate: protectedProcedure.input(z.object({ enrollmentId: id })).mutation(({ ctx, input }) => guard(() => activateEnrollment(input.enrollmentId, ctx.user.id))),
+
+  startExtension: protectedProcedure
+    .input(z.object({ courseId: id, moduleId: id, days: z.union([z.literal(30), z.literal(60)]), provider: z.enum(["redsys", "stripe"]).default("redsys") }))
+    .mutation(({ ctx, input }) => guard(async () => {
+      const pay = await import("../paymentsConnect/publicApi");
+      const red = await import("../redsys");
+      if (input.provider === "stripe") {
+        if (!(await pay.stripeAvailableForPublic())) throw new LearningError("BAD_REQUEST", "El pago con Stripe no está disponible en esta empresa.");
+      } else if (!red.isRedsysConfigured()) throw new LearningError("BAD_REQUEST", "El pago online no está configurado en esta empresa.");
+      const o = await prepareExtensionOrder({ userId: ctx.user.id, courseId: input.courseId, moduleId: input.moduleId, days: input.days });
+      if (input.provider === "stripe") {
+        const s = await pay.stripeCheckoutForShopOrder({ merchantOrder: o.merchantOrder, amountCents: o.amountCents, description: o.description.slice(0, 125), email: o.customerEmail });
+        return { merchantOrder: o.merchantOrder, amountCents: o.amountCents, redsysForm: null as null, stripeUrl: s.url };
+      }
+      const { publicBaseUrl } = await import("../_core/productIdentity");
+      const redsysForm = await red.buildRedsysForm({
+        amount: o.amountCents, merchantOrder: o.merchantOrder, productDescription: o.description.slice(0, 125),
+        notifyUrl: `${publicBaseUrl()}/api/redsys/notification`, okUrl: `${publicBaseUrl()}/reserva/ok?order=${o.merchantOrder}`, koUrl: `${publicBaseUrl()}/reserva/error?order=${o.merchantOrder}`, holderName: o.customerName,
+      });
+      return { merchantOrder: o.merchantOrder, amountCents: o.amountCents, redsysForm, stripeUrl: null as null };
     })),
 
   progress: protectedProcedure.input(z.object({ lessonId: id, completed: z.boolean().optional(), lastBlockId: id.nullable().optional() })).mutation(({ ctx, input }) =>
@@ -159,7 +205,9 @@ const admin = router({
     };
   })),
   saveRule: adminProcedure
-    .input(z.object({ id: id.optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean() }))
+    .input(z.object({ id: id.optional(), activationRequired: z.boolean().optional(), minContractedDays: z.number().int().min(1).max(365).nullable().optional(), experienceId: id, variantId: id.nullable(), courseId: id, moduleIds: z.array(id).min(1).max(50), durationDays: z.number().int().min(1).max(3650).nullable(), startMode: z.enum(START_MODES), fixedStart: z.number().int().nullable(), active: z.boolean(),
+      permanent: z.boolean().optional(),
+      moduleSettings: z.array(z.object({ moduleId: id, unlockOffsetDays: z.number().int().min(0).max(3650).nullable().optional(), durationDays: z.number().int().min(1).max(3650).nullable().optional() })).max(50).optional() }))
     .mutation(({ input }) => guard(async () => ({ id: await saveRule({ ...input }, input.id) }))),
 
   /** Concesión administrativa expresamente registrada: motivo obligatorio, autor y huella en el historial. */
@@ -207,6 +255,8 @@ const admin = router({
    * función que ejecuta el cierre automático del pedido). Repetirlo no duplica matrículas ni correos.
    */
   grantForOrder: adminProcedure.input(z.object({ merchantOrder: z.string().trim().min(3).max(30) })).mutation(({ ctx, input }) => guard(() => grantLearningFromOrder(input.merchantOrder, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
+  /** Recuperación manual de las ampliaciones de módulo de un pedido pagado (idempotente; no amplía dos veces). */
+  applyExtensionsForOrder: adminProcedure.input(z.object({ merchantOrder: z.string().trim().min(3).max(30) })).mutation(({ input }) => guard(() => applyExtensionsForOrder(input.merchantOrder))),
   /** Acción EXPRESA de la administración: renueva la invitación de la cuenta (enlace de un solo uso) y envía el correo. */
   sendInvite: adminProcedure.input(z.object({ userId: id })).mutation(({ input }) => guard(async () => {
     const [u] = await rowsOf(sql`SELECT id, name, email FROM users WHERE id = ${input.userId}`);
@@ -283,12 +333,44 @@ const admin = router({
     .input(z.object({ userId: id, courseId: id, moduleIds: z.array(id).min(1).max(50), trigger: z.string().min(3).max(80), minutes: z.number().int().min(1).max(1440).optional() }))
     .mutation(({ ctx, input }) => guard(() => grantDemo({ ...input, actorUserId: ctx.user.id }))),
 
+  /** Presupuestos pagados (retiros sin convocatoria) con regla activa y aún sin derecho; los de duración variable piden confirmar días. */
+  pendingQuotes: adminProcedure.query(() => guard(() => pendingLearningQuotes())),
+  /** Participantes identificados de una reserva (las plazas las fija la reserva confirmada). */
+  quoteParticipants: adminProcedure.input(z.object({ quoteId: id })).query(({ input }) => guard(() => listQuoteParticipants(input.quoteId, true))),
+  /** Identifica a una persona de la reserva; recibe SU derecho (pendiente de activar) cuando el presupuesto está pagado. Idempotente. */
+  addQuoteParticipant: adminProcedure
+    .input(z.object({ quoteId: id, name: z.string().trim().min(1).max(190), email: z.string().trim().min(3).max(190) }))
+    .mutation(({ ctx, input }) => guard(() => addQuoteParticipant(input.quoteId, { name: input.name, email: input.email }, ctx.user.id))),
+  /** Retira a una persona de la reserva y revoca solo su derecho. */
+  removeQuoteParticipant: adminProcedure.input(z.object({ participantId: id, reason })).mutation(({ ctx, input }) => guard(() => removeQuoteParticipant(input.participantId, input.reason, ctx.user.id))),
+  /** Devoluciones parciales de presupuestos pendientes de decidir (con las personas cuyo derecho sigue vigente). */
+  quoteRefundReviews: adminProcedure.query(() => guard(() => listQuoteRefundReviews())),
+  /** Decide una devolución parcial: retira el derecho de las personas indicadas y conserva el de las demás. */
+  resolveQuoteRefundReview: adminProcedure
+    .input(z.object({ quoteId: id, revokeEnrollmentIds: z.array(id).max(50), reason }))
+    .mutation(({ ctx, input }) => guard(() => resolveQuoteRefundReview(input.quoteId, input.revokeEnrollmentIds, input.reason, ctx.user.id))),
+  /** Concede (o reintenta) el derecho de un presupuesto pagado; idempotente. */
+  grantForQuote: adminProcedure.input(z.object({ quoteId: id })).mutation(({ ctx, input }) => guard(() => grantLearningFromQuote(input.quoteId, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
+  /** Confirma los días CONTRATADOS (duración variable, p. ej. «5–6 días») y concede si alcanzan el mínimo de la regla. */
+  confirmContractedDays: adminProcedure.input(z.object({ quoteId: id, days: z.number().int().min(1).max(365), reason })).mutation(({ ctx, input }) => guard(() => confirmQuoteContractedDays(input.quoteId, input.days, input.reason, ctx.user.id))),
+  /** Barrido manual de lo pendiente (presupuestos y pedidos pagados). */
+  sweep: adminProcedure.mutation(() => guard(() => sweepLearningGrants())),
+
+  /** Reembolso de UN suplemento pagado (p. ej. Lifetime Access): retira solo ese derecho, no el del programa. */
+  refundSupplement: adminProcedure
+    .input(z.object({ merchantOrder: z.string().trim().min(3).max(40), group: z.string().trim().min(1).max(64), reason }))
+    .mutation(({ ctx, input }) => guard(() => refundOrderSupplement(input.merchantOrder, input.group, input.reason, ctx.user.id))),
+
   revoke: adminProcedure.input(z.object({ enrollmentId: id, reason })).mutation(({ ctx, input }) => guard(() => revokeEnrollment(input.enrollmentId, input.reason, ctx.user.id))),
   suspend: adminProcedure.input(z.object({ enrollmentId: id, reason })).mutation(({ ctx, input }) => guard(() => suspendEnrollment(input.enrollmentId, input.reason, ctx.user.id))),
   reactivate: adminProcedure.input(z.object({ enrollmentId: id, reason })).mutation(({ ctx, input }) => guard(() => reactivateEnrollment(input.enrollmentId, input.reason, ctx.user.id))),
   extend: adminProcedure.input(z.object({ enrollmentId: id, newEndsAt: z.number().int().nullable(), reason })).mutation(({ ctx, input }) => guard(() => extendEnrollment(input.enrollmentId, input.newEndsAt, input.reason, ctx.user.id))),
   addModules: adminProcedure.input(z.object({ enrollmentId: id, moduleIds: z.array(id).min(1).max(50), reason, paymentRef: z.string().max(190).nullable().optional() }))
     .mutation(({ ctx, input }) => guard(() => addModules(input.enrollmentId, input.moduleIds, input.reason, ctx.user.id, { paymentRef: input.paymentRef ?? null }))),
+  /** Ampliación individual de un módulo (+30/+60 días del catálogo; otra duración, solo administración). Idempotente por pedido+módulo+días. */
+  extendModule: adminProcedure
+    .input(z.object({ enrollmentId: id, moduleId: id, days: z.number().int().min(1).max(365), paymentRef: z.string().max(190).nullable().optional(), orderRef: z.string().max(190).nullable().optional() }))
+    .mutation(({ ctx, input }) => guard(() => extendModuleAccess(input.enrollmentId, input.moduleId, input.days, { paymentRef: input.paymentRef ?? null, orderRef: input.orderRef ?? null }, { userId: ctx.user.id, isAdmin: ctx.user.role === "admin" }))),
   get: adminProcedure.input(z.object({ enrollmentId: id })).query(({ input }) => guard(async () => (await getEnrollment(input.enrollmentId)) ?? (() => { throw new LearningError("NOT_FOUND", "La matrícula no existe."); })())),
   /**
    * Editor de formación (lote 1): borrador, publicación y versiones de la estructura y los textos. Editar NO cambia lo que ven los

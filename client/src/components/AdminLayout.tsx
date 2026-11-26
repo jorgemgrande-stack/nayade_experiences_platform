@@ -641,13 +641,29 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
           </div>
+          {/* Firma de la plataforma: el tenant es lo principal; Elephant Core aparece como proveedor tecnológico (discreta, sin enlace). */}
+          <div
+            data-platform-signature=""
+            role="note"
+            aria-label={t("shell.brand.platformLabel")}
+            title={showLabels ? undefined : t("shell.brand.platformLabel")}
+            className={cn("mt-3 flex items-center gap-2 border-t border-sidebar-border/60 pt-2.5", !showLabels && "justify-center")}
+          >
+            <img src="/brand/elephant-mark.png" alt="" width={20} height={16} className="h-4 w-5 shrink-0 object-contain opacity-90" draggable={false} />
+            {showLabels && (
+              <p className="min-w-0 leading-tight">
+                <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-medium text-sidebar-foreground/70">{t("shell.brand.poweredBy")}</span>
+                <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-sidebar-foreground/50">{t("shell.brand.byBigElephant")}</span>
+              </p>
+            )}
+          </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <div className={cn("flex-1 flex flex-col transition-all duration-300 min-w-0", sidebarOpen ? "lg:ml-64" : "lg:ml-16")}>
         {/* Top Bar */}
-        <header className="h-16 bg-card border-b border-border flex items-center px-4 sm:px-6 gap-3 sticky top-0 z-30">
+        <header className="h-16 bg-card border-b border-border flex items-center px-3 sm:px-6 gap-2 sm:gap-3 sticky top-0 z-30 min-w-0">
           {/* Hamburguesa — solo en móvil */}
           <button
             ref={menuButtonRef}
@@ -663,14 +679,17 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {title && (
             <h1 className="font-display font-semibold text-base sm:text-lg text-foreground overflow-hidden text-ellipsis whitespace-nowrap min-w-0">{title}</h1>
           )}
-          <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Acciones: desde xl con etiqueta; por debajo, solo icono (aria-label y title) para no desbordar entre 640 y 1280 px */}
+          <div className="ml-auto flex items-center gap-1 sm:gap-2 xl:gap-3 shrink-0">
             {/* Prueba gratuita: días restantes (dato del servidor) */}
             {/* Terminada la prueba no se repite aquí: lo dice el aviso único de recuperación */}
             {isTaskNav && trialInfo && trialInfo.daysLeft > 0 && userRole === "admin" && (
               <Link
                 href="/admin/suscripcion"
+                title={t("shell.trial", { days: trialInfo.daysLeft })}
+                aria-label={t("shell.trial", { days: trialInfo.daysLeft })}
                 className={cn(
-                  "hidden sm:inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+                  "hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 xl:px-3 py-1 text-xs font-medium whitespace-nowrap",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   trialInfo.daysLeft <= 3
                     ? "border-amber-500/60 bg-amber-500/10 text-amber-800 dark:text-amber-300"
@@ -678,7 +697,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 )}
               >
                 <Rocket className="w-3.5 h-3.5" aria-hidden="true" />
-                {t("shell.trial", { days: trialInfo.daysLeft })}
+                <span className="hidden xl:inline">{t("shell.trial", { days: trialInfo.daysLeft })}</span>
+                <span className="xl:hidden" aria-hidden="true">{trialInfo.daysLeft}</span>
               </Link>
             )}
             {maintenanceMode && <MaintenanceModeControl mode={maintenanceMode} />}
@@ -824,9 +844,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             {isTaskNav && (
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-9 px-2 sm:px-3 text-xs gap-1.5" aria-label={contextHelp ? t("shell.help.onScreen", { title: contextHelp.title }) : t("shell.help.button")}>
+                  <Button variant="ghost" size="sm" className="h-9 px-2 xl:px-3 text-xs gap-1.5" title={t("shell.help.button")} aria-label={contextHelp ? t("shell.help.onScreen", { title: contextHelp.title }) : t("shell.help.button")}>
                     <HelpCircle className="w-4 h-4" aria-hidden="true" />
-                    <span className="hidden sm:inline">{t("shell.help.button")}</span>
+                    <span className="hidden xl:inline">{t("shell.help.button")}</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-4">
@@ -848,11 +868,11 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               </Popover>
             )}
             {userRole !== "adminrest" && (
-              <Link href="/" target="_blank">
-                <Button variant="outline" size="sm" className="text-xs hidden sm:inline-flex">
+              <Link href="/" target="_blank" title={t("shell.viewSite")} aria-label={t("shell.viewSite")}>
+                <Button variant="outline" size="sm" className="text-xs hidden xl:inline-flex whitespace-nowrap" tabIndex={-1}>
                   {t("shell.viewSite")}
                 </Button>
-                <Button variant="ghost" size="icon" className="sm:hidden w-9 h-9" title={t("shell.viewSite")}>
+                <Button variant="ghost" size="icon" className="xl:hidden w-9 h-9" tabIndex={-1} aria-hidden="true">
                   <ExternalLink className="w-4 h-4" />
                 </Button>
               </Link>
@@ -861,7 +881,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main id="contenido-principal" tabIndex={-1} className="flex-1 p-4 sm:p-6 overflow-auto focus:outline-none">
+        <main id="contenido-principal" tabIndex={-1} className="flex-1 p-4 sm:p-6 overflow-auto sm:[scrollbar-gutter:stable] focus:outline-none">
           {isTaskNav && <SubscriptionRecoveryBanner role={userRole} />}
           {children}
         </main>

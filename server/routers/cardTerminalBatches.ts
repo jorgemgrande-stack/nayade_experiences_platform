@@ -14,6 +14,7 @@ import {
 import { runMatchingJob } from "../services/cardTerminalMatchingService";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { listBatchesPage, summarizeBatches } from "../cardTerminalQuery";
 
 const pool = legacyPool();
 const db = legacyDb();
@@ -24,6 +25,15 @@ const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   }
   await assertModuleEnabled("card_terminal_batches_enabled");
   return next({ ctx });
+});
+
+const batchPageInput = z.object({
+  fromDate: z.string().optional(),
+  toDate: z.string().optional(),
+  status: z.enum(["pending", "suggested", "auto_ready", "reconciled", "difference", "ignored", "review_required"]).optional(),
+  terminalCode: z.string().optional(),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(200).default(50),
 });
 
 function offsetDate(dateStr: string, days: number): string {
@@ -160,6 +170,19 @@ export const cardTerminalBatchesRouter = router({
         .limit(input.limit)
         .offset(input.offset);
     }),
+
+  /** Página de remesas del filtro y su total (el filtro completo, no la página). Solo lectura. */
+  listPage: adminProc
+    .input(batchPageInput)
+    .query(async ({ input }) => {
+      const { rows, total } = await listBatchesPage(db, input);
+      return { data: rows, total };
+    }),
+
+  /** Neto, reparto por estado y estado de la conciliación del filtro COMPLETO (periodo explícito). Solo lectura. */
+  summary: adminProc
+    .input(batchPageInput.omit({ page: true, pageSize: true }))
+    .query(async ({ input }) => summarizeBatches(db, input)),
 
   getById: adminProc
     .input(z.object({ id: z.number() }))

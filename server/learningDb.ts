@@ -14,7 +14,8 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   DAY_MS, DEMO_MS, LearningRuleError, adminKey, assertPaymentConfirmed, assertReason, computeWindow, demoKey, evaluateAny, matchRules,
-  courseOpensFor, isTechnicalGrant, mergeModules, mimeMatchesKind, paymentKey, progressPercent, technicalReason, TECHNICAL_MAX_DAYS, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
+  courseOpensFor, isTechnicalGrant, mergeModules, activationWindow, matchExactRules, mimeMatchesKind, paymentKey, progressPercent, technicalReason, TECHNICAL_MAX_DAYS, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
+  MODULE_EXTENSION_DAYS, computeModuleWindows, effectiveEnrollmentStatus, evaluateAccess, extendedEnd, extensionKey, modulesWithoutDuration, moduleWindow, windowsFromRows, type ModuleSchedule, type ModuleWindow,
 } from "../shared/learning";
 
 export class LearningError extends Error {
@@ -81,6 +82,32 @@ async function modulesOf(exec: Exec, enrollmentIds: number[], lock = false): Pro
   return out;
 }
 
+/** Empresa sin la migración 0089 (columnas por módulo): se comporta como hasta ahora (una sola ventana). */
+function isMissingColumn(e: unknown): boolean {
+  for (let x: any = e, depth = 0; x && depth < 5; x = x.cause, depth++) if (x?.errno === 1054 || x?.code === "ER_BAD_FIELD_ERROR") return true;
+  return false;
+}
+
+/** Ventanas propias por módulo de varias matrículas (enrollmentId → moduleId → ventana). Vacío si no hay ninguna o no existe la migración. */
+async function windowsOf(exec: Exec, enrollmentIds: number[]): Promise<Map<number, Record<number, ModuleWindow>>> {
+  const out = new Map<number, Record<number, ModuleWindow>>();
+  if (!enrollmentIds.length) return out;
+  let list: Array<Record<string, any>> = [];
+  try {
+    list = await rows(exec, sql`SELECT enrollment_id, module_id, starts_at, ends_at FROM learning_enrollment_modules WHERE enrollment_id IN (${sql.join(enrollmentIds.map((i) => sql`${i}`), sql`, `)}) AND (starts_at IS NOT NULL OR ends_at IS NOT NULL)`);
+  } catch (e) {
+    if (isMissingColumn(e)) return out;
+    throw e;
+  }
+  const grouped = new Map<number, Array<{ moduleId: number; startsAt: number | null; endsAt: number | null }>>();
+  for (const r of list) grouped.set(n(r.enrollment_id), [...(grouped.get(n(r.enrollment_id)) ?? []), { moduleId: n(r.module_id), startsAt: r.starts_at == null ? null : n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at) }]);
+  Array.from(grouped.entries()).forEach(([id, l]) => {
+    const w = windowsFromRows(l);
+    if (w) out.set(id, w);
+  });
+  return out;
+}
+
 async function event(exec: Exec, enrollmentId: number, type: string, actorUserId: number | null, detail: Record<string, unknown>, now = Date.now()) {
   await run(exec, sql`INSERT INTO learning_access_events (enrollment_id, type, actor_user_id, detail, created_at) VALUES (${enrollmentId}, ${type}, ${actorUserId}, ${JSON.stringify(detail)}, ${now})`);
 }
@@ -90,12 +117,18 @@ async function event(exec: Exec, enrollmentId: number, type: string, actorUserId
 export async function listRules(exec?: Exec): Promise<AccessRule[]> {
   const e = exec ?? (await db());
   const list = await rows(e, sql`SELECT * FROM learning_access_rules ORDER BY id`);
-  const mods = await rows(e, sql`SELECT rule_id, module_id FROM learning_access_rule_modules ORDER BY module_id`);
-  return list.map((r) => ({
-    id: n(r.id), experienceId: n(r.experience_id), variantId: r.variant_id == null ? null : n(r.variant_id), courseId: n(r.course_id),
-    moduleIds: mods.filter((m) => n(m.rule_id) === n(r.id)).map((m) => n(m.module_id)), durationDays: r.duration_days == null ? null : n(r.duration_days),
-    startMode: r.start_mode as StartMode, fixedStart: r.fixed_start == null ? null : n(r.fixed_start), active: !!n(r.active),
-  }));
+  const mods = await rows(e, sql`SELECT * FROM learning_access_rule_modules ORDER BY module_id`);
+  return list.map((r) => {
+    const own = mods.filter((m) => n(m.rule_id) === n(r.id));
+    const moduleSchedule: Record<number, ModuleSchedule> = {};
+    for (const m of own) if (m.unlock_offset_days != null || m.duration_days != null) moduleSchedule[n(m.module_id)] = { unlockOffsetDays: m.unlock_offset_days == null ? null : n(m.unlock_offset_days), durationDays: m.duration_days == null ? null : n(m.duration_days) };
+    return {
+      id: n(r.id), experienceId: n(r.experience_id), variantId: r.variant_id == null ? null : n(r.variant_id), courseId: n(r.course_id),
+      moduleIds: own.map((m) => n(m.module_id)), durationDays: r.duration_days == null ? null : n(r.duration_days),
+      startMode: r.start_mode as StartMode, fixedStart: r.fixed_start == null ? null : n(r.fixed_start), active: !!n(r.active),
+      permanent: !!n(r.permanent), activationRequired: !!n(r.activation_required), minContractedDays: r.min_contracted_days == null ? null : n(r.min_contracted_days), ...(Object.keys(moduleSchedule).length ? { moduleSchedule } : {}),
+    };
+  });
 }
 
 export interface RuleInput {
@@ -107,36 +140,88 @@ export interface RuleInput {
   startMode: StartMode;
   fixedStart: number | null;
   active: boolean;
+  /** Acceso sin caducidad declarado de forma expresa (solo así se activa una regla con módulos sin duración). */
+  permanent?: boolean;
+  /** Derecho pendiente de activar: la duración de la regla se cuenta desde que el alumno lo activa (exige duración y no admite desbloqueo progresivo). */
+  activationRequired?: boolean;
+  /** Solo concede si la duración contratada confirmada es de al menos estos días (null = sin condición). */
+  minContractedDays?: number | null;
+  /** Desbloqueo progresivo y duración propia por módulo (los módulos sin entrada: desde el primer día y duración de la regla). */
+  moduleSettings?: Array<{ moduleId: number; unlockOffsetDays?: number | null; durationDays?: number | null }>;
 }
 
 export async function saveRule(input: RuleInput, id?: number): Promise<number> {
   if (!input.moduleIds.length) throw new LearningError("BAD_REQUEST", "La regla debe abrir al menos un módulo.");
   if (input.startMode === "fixed_date" && input.fixedStart == null) throw new LearningError("BAD_REQUEST", "Indica la fecha de inicio.");
+  const schedule: Record<number, ModuleSchedule> = {};
+  for (const s of input.moduleSettings ?? []) {
+    if (!input.moduleIds.includes(s.moduleId)) throw new LearningError("BAD_REQUEST", "Un ajuste por módulo se refiere a un módulo que la regla no abre.");
+    for (const v of [s.unlockOffsetDays, s.durationDays]) if (v != null && (!Number.isInteger(v) || v < 0 || v > 3650)) throw new LearningError("BAD_REQUEST", "Los días de desbloqueo y de duración deben ser enteros entre 0 y 3650.");
+    if (s.durationDays === 0) throw new LearningError("BAD_REQUEST", "La duración de un módulo debe ser de al menos 1 día (o vacía para heredar la de la regla).");
+    schedule[s.moduleId] = { unlockOffsetDays: s.unlockOffsetDays ?? null, durationDays: s.durationDays ?? null };
+  }
+  // Activación segura: no se activa una regla con algún módulo sin duración (ni propia ni heredada) salvo que declare «permanent»
+  if (input.activationRequired) {
+    if (input.durationDays == null || input.durationDays < 1) throw new LearningError("BAD_REQUEST", "La activación voluntaria necesita los días de acceso que empezarán al activar.");
+    if (input.startMode !== "on_grant") throw new LearningError("BAD_REQUEST", "La activación voluntaria no se combina con una fecha fija de inicio.");
+    if (Object.values(schedule).some((s) => (s.unlockOffsetDays ?? 0) > 0)) throw new LearningError("BAD_REQUEST", "La activación voluntaria no admite desbloqueo progresivo de módulos.");
+  }
+  if (input.minContractedDays != null && (!Number.isInteger(input.minContractedDays) || input.minContractedDays < 1 || input.minContractedDays > 365)) throw new LearningError("BAD_REQUEST", "Los días mínimos contratados deben ser un entero entre 1 y 365.");
+  const assertActivable = (permanent: boolean, sched: Record<number, ModuleSchedule>) => {
+    if (!input.active || permanent) return;
+    const missing = modulesWithoutDuration({ durationDays: input.durationDays, moduleSchedule: sched, moduleIds: input.moduleIds });
+    if (missing.length) throw new LearningError("BAD_REQUEST", `No se puede activar la regla: ${missing.length === 1 ? "un módulo no tiene" : `${missing.length} módulos no tienen`} duración de acceso definida (ni propia ni heredada). Indica la duración o declara expresamente el acceso sin caducidad.`);
+  };
+  if (!id) assertActivable(!!input.permanent, schedule);
   const d = await db();
   const now = Date.now();
   return d.transaction(async (tx) => {
     const mods = await rows(tx, sql`SELECT id FROM learning_modules WHERE course_id = ${input.courseId} AND id IN (${sql.join(input.moduleIds.map((m) => sql`${m}`), sql`, `)})`);
     if (mods.length !== new Set(input.moduleIds).size) throw new LearningError("BAD_REQUEST", "Algún módulo no pertenece al curso.");
     const wanted = Array.from(new Set(input.moduleIds)).sort((x, y) => x - y);
-    const insertRule = async () => {
+    const insertRule = async (activation: boolean, minDays: number | null) => {
       const rid = (await run(tx, sql`INSERT INTO learning_access_rules (experience_id, variant_id, course_id, duration_days, start_mode, fixed_start, active, created_at, updated_at)
         VALUES (${input.experienceId}, ${input.variantId}, ${input.courseId}, ${input.durationDays}, ${input.startMode}, ${input.fixedStart}, ${input.active ? 1 : 0}, ${now}, ${now})`)).insertId;
-      for (const m of wanted) await run(tx, sql`INSERT INTO learning_access_rule_modules (rule_id, module_id) VALUES (${rid}, ${m})`);
+      for (const m of wanted) {
+        const s = schedule[m];
+        if (s) await run(tx, sql`INSERT INTO learning_access_rule_modules (rule_id, module_id, unlock_offset_days, duration_days) VALUES (${rid}, ${m}, ${s.unlockOffsetDays}, ${s.durationDays})`);
+        else await run(tx, sql`INSERT INTO learning_access_rule_modules (rule_id, module_id) VALUES (${rid}, ${m})`);
+      }
+      if (input.permanent) await run(tx, sql`UPDATE learning_access_rules SET permanent = 1 WHERE id = ${rid}`);
+      if (activation) await run(tx, sql`UPDATE learning_access_rules SET activation_required = 1 WHERE id = ${rid}`);
+      if (minDays != null) await run(tx, sql`UPDATE learning_access_rules SET min_contracted_days = ${minDays} WHERE id = ${rid}`);
       return rid;
     };
-    if (!id) return insertRule();
+    if (!id) return insertRule(!!input.activationRequired, input.minContractedDays ?? null);
     const [cur] = await rows(tx, sql`SELECT * FROM learning_access_rules WHERE id = ${id} FOR UPDATE`);
     if (!cur) throw new LearningError("NOT_FOUND", "La regla no existe.");
     const curMods = (await rows(tx, sql`SELECT module_id FROM learning_access_rule_modules WHERE rule_id = ${id} ORDER BY module_id`)).map((r) => n(r.module_id));
     const sameShape = n(cur.experience_id) === input.experienceId && (cur.variant_id == null ? null : n(cur.variant_id)) === input.variantId && n(cur.course_id) === input.courseId && curMods.length === wanted.length && curMods.every((m, i) => m === wanted[i]);
     if (sameShape) {
+      // Lo que la llamada no trae se conserva de la regla guardada (activar/desactivar no borra el calendario ni «permanent»)
+      let effSchedule = schedule;
+      if (input.moduleSettings === undefined) {
+        const stored = await rows(tx, sql`SELECT * FROM learning_access_rule_modules WHERE rule_id = ${id}`);
+        effSchedule = {};
+        for (const m of stored) if (m.unlock_offset_days != null || m.duration_days != null) effSchedule[n(m.module_id)] = { unlockOffsetDays: m.unlock_offset_days == null ? null : n(m.unlock_offset_days), durationDays: m.duration_days == null ? null : n(m.duration_days) };
+      }
+      const effPermanent = input.permanent !== undefined ? input.permanent : !!n(cur.permanent);
+      assertActivable(effPermanent, effSchedule);
       await run(tx, sql`UPDATE learning_access_rules SET duration_days = ${input.durationDays}, start_mode = ${input.startMode}, fixed_start = ${input.fixedStart}, active = ${input.active ? 1 : 0}, updated_at = ${now} WHERE id = ${id}`);
+      if (input.activationRequired !== undefined) await run(tx, sql`UPDATE learning_access_rules SET activation_required = ${input.activationRequired ? 1 : 0} WHERE id = ${id}`);
+      if (input.minContractedDays !== undefined) await run(tx, sql`UPDATE learning_access_rules SET min_contracted_days = ${input.minContractedDays} WHERE id = ${id}`);
+      if (input.moduleSettings !== undefined || input.permanent !== undefined) {
+        await run(tx, sql`UPDATE learning_access_rules SET permanent = ${effPermanent ? 1 : 0} WHERE id = ${id}`);
+        if (input.moduleSettings !== undefined) await run(tx, sql`UPDATE learning_access_rule_modules SET unlock_offset_days = NULL, duration_days = NULL WHERE rule_id = ${id}`);
+        for (const [m, s] of Object.entries(input.moduleSettings !== undefined ? schedule : {})) await run(tx, sql`UPDATE learning_access_rule_modules SET unlock_offset_days = ${s.unlockOffsetDays}, duration_days = ${s.durationDays} WHERE rule_id = ${id} AND module_id = ${Number(m)}`);
+      }
       return id;
     }
     // Cambiar producto, variante, curso o módulos crea una VERSIÓN nueva: la anterior se desactiva y se conserva (las
     // matrículas ya concedidas guardan la regla con la que nacieron; nada se borra)
+    assertActivable(!!input.permanent, schedule);
     await run(tx, sql`UPDATE learning_access_rules SET active = 0, updated_at = ${now} WHERE id = ${id}`);
-    return insertRule();
+    return insertRule(input.activationRequired ?? !!n(cur.activation_required), input.minContractedDays !== undefined ? input.minContractedDays : cur.min_contracted_days == null ? null : n(cur.min_contracted_days));
   });
 }
 
@@ -160,6 +245,10 @@ interface GrantCore {
   reason?: string | null;
   actorUserId: number | null;
   idempotencyKey: string;
+  /** Ventanas propias por módulo (desbloqueo progresivo / duración propia). Sin entrada, el módulo hereda la de la matrícula. */
+  moduleWindows?: Record<number, ModuleWindow>;
+  /** Derecho pendiente de activar: días que empezarán a contar cuando el alumno lo active. */
+  pendingActivationDays?: number | null;
 }
 
 /**
@@ -181,8 +270,13 @@ async function grantCore(exec: Exec, g: GrantCore, now: number): Promise<{ enrol
   // Con CLIENT_FOUND_ROWS `affectedRows` es 1 también cuando la fila ya existía: solo `insertId` distingue «insertada ahora»
   const created = ins.insertId > 0 && ins.insertId === id;
   if (created) {
-    for (const m of Array.from(new Set(g.moduleIds))) await run(exec, sql`INSERT IGNORE INTO learning_enrollment_modules (enrollment_id, module_id) VALUES (${id}, ${m})`);
-    await event(exec, id, "granted", g.actorUserId, { source: g.source, startsAt: g.startsAt, endsAt: g.endsAt, moduleIds: g.moduleIds, paymentRef: g.paymentRef ?? null, reason: g.reason ?? null, variantId: g.variantId ?? null }, now);
+    for (const m of Array.from(new Set(g.moduleIds))) {
+      const w = g.moduleWindows?.[m];
+      if (w) await run(exec, sql`INSERT IGNORE INTO learning_enrollment_modules (enrollment_id, module_id, starts_at, ends_at) VALUES (${id}, ${m}, ${w.startsAt}, ${w.endsAt})`);
+      else await run(exec, sql`INSERT IGNORE INTO learning_enrollment_modules (enrollment_id, module_id) VALUES (${id}, ${m})`);
+    }
+    if (g.pendingActivationDays) await run(exec, sql`UPDATE learning_enrollments SET pending_activation_days = ${g.pendingActivationDays} WHERE id = ${id}`);
+    await event(exec, id, "granted", g.actorUserId, { pendingActivationDays: g.pendingActivationDays ?? null, source: g.source, startsAt: g.startsAt, endsAt: g.endsAt, moduleIds: g.moduleIds, paymentRef: g.paymentRef ?? null, reason: g.reason ?? null, variantId: g.variantId ?? null, ...(g.moduleWindows && Object.keys(g.moduleWindows).length ? { moduleWindows: g.moduleWindows } : {}) }, now);
   }
   const mods2 = await modulesOf(exec, [id], true);
   return { enrollment: mapEnrollment(row, mods2.get(id) ?? []), created };
@@ -215,31 +309,45 @@ export interface PaymentGrantInput {
   payment: Partial<PaymentEvidence> | null;
   actorUserId: number | null;
   now?: number;
+  /** Suplemento pagado: solo la regla de ESTA variante (nunca las genéricas del producto). */
+  exactVariantOnly?: boolean;
+  /** Duración CONTRATADA confirmada (días): las reglas con `minContractedDays` solo conceden si es suficiente; sin dato, no conceden. */
+  contractedDays?: number | null;
 }
 
 /**
  * Libera el acceso de una compra con PAGO CONFIRMADO según las reglas de catálogo. Sin pago verificado lanza
  * PAYMENT_NOT_CONFIRMED. Sin regla para la variante (p. ej. RECONNECT LIVE) no crea nada.
  */
-export async function grantFromPayment(input: PaymentGrantInput): Promise<{ granted: Array<{ enrollment: EnrollmentRow; created: boolean }>; rules: number }> {
+export async function grantFromPayment(input: PaymentGrantInput): Promise<{ granted: Array<{ enrollment: EnrollmentRow; created: boolean }>; rules: number; blockedByTerms: number }> {
   const pay = assertPaymentConfirmed(input.payment);
   const now = input.now ?? Date.now();
   const d = await db();
   return withRetry(() => d.transaction(async (tx) => {
-    const rules = matchRules(await listRules(tx), input.experienceId, input.variantId);
+    const all = await listRules(tx);
+    const matched = input.exactVariantOnly ? matchExactRules(all, input.experienceId, input.variantId) : matchRules(all, input.experienceId, input.variantId);
+    // Duración variable (p. ej. «5–6 días»): nunca se concede por una duración no confirmada o insuficiente
+    const rules = matched.filter((r) => !r.minContractedDays || (input.contractedDays != null && input.contractedDays >= r.minContractedDays));
+    const blockedByTerms = matched.length - rules.length;
     const granted: Array<{ enrollment: EnrollmentRow; created: boolean }> = [];
     for (const rule of rules) {
-      const w = computeWindow({ startMode: rule.startMode, fixedStart: rule.fixedStart, durationDays: rule.durationDays, grantedAt: now });
+      // Derecho PENDIENTE DE ACTIVAR: sin ventana ni fecha automática; los días arrancan cuando el alumno lo activa
+      const pending = rule.activationRequired && rule.durationDays != null && rule.durationDays > 0 ? Math.round(rule.durationDays) : null;
+      const w = pending != null ? { startsAt: now, endsAt: null as number | null } : computeWindow({ startMode: rule.startMode, fixedStart: rule.fixedStart, durationDays: rule.durationDays, grantedAt: now });
+      // Desbloqueo progresivo y duración por módulo: sin calendario en la regla, `windows` queda vacío y todo es como siempre
+      const mw = pending != null ? { windows: {} as Record<number, ModuleWindow>, enrollmentEndsAt: null as number | null } : computeModuleWindows(rule, w);
+      const hasWindows = Object.keys(mw.windows).length > 0;
       granted.push(
         await grantCore(tx, {
-          userId: input.userId, clientId: input.clientId, courseId: rule.courseId, moduleIds: rule.moduleIds, source: "payment", startsAt: w.startsAt, endsAt: w.endsAt,
+          userId: input.userId, clientId: input.clientId, courseId: rule.courseId, moduleIds: rule.moduleIds, source: "payment", startsAt: w.startsAt, endsAt: hasWindows ? mw.enrollmentEndsAt : w.endsAt,
+          moduleWindows: hasWindows ? mw.windows : undefined, pendingActivationDays: pending,
           experienceId: input.experienceId, variantId: input.variantId, enrollmentId: input.enrollmentId ?? null, orderId: input.orderId ?? null, quoteId: input.quoteId ?? null,
           paymentRef: pay.reference, paymentAmountCents: pay.amountCents, actorUserId: input.actorUserId,
           idempotencyKey: paymentKey({ operationKind: input.operation.kind, operationId: input.operation.id, ruleId: rule.id, userId: input.userId }),
         }, now),
       );
     }
-    return { granted, rules: rules.length };
+    return { granted, rules: rules.length, blockedByTerms };
   }));
 }
 
@@ -297,6 +405,12 @@ async function lockEnrollment(tx: Exec, id: number): Promise<Record<string, any>
   return r;
 }
 
+/** Anota un hecho en el historial de una matrícula (p. ej. «devolución parcial por revisar»). */
+export async function logEnrollmentEvent(enrollmentId: number, type: string, detail: Record<string, unknown>, actorUserId: number | null = null, now = Date.now()): Promise<void> {
+  const d = await db();
+  await event(d, enrollmentId, type, actorUserId, detail, now);
+}
+
 export async function revokeEnrollment(id: number, reason: string, actorUserId: number, now = Date.now()): Promise<EnrollmentRow> {
   const why = assertReason(reason);
   const d = await db();
@@ -348,6 +462,12 @@ export async function extendEnrollment(id: number, newEndsAt: number | null, rea
     if (newEndsAt != null && newEndsAt <= now) throw new LearningError("BAD_REQUEST", "La nueva fecha de fin debe ser futura.");
     const previous = r.ends_at == null ? null : n(r.ends_at);
     await run(tx, sql`UPDATE learning_enrollments SET ends_at = ${newEndsAt}, status = ${r.status === "expired" ? "active" : r.status}, updated_at = ${now} WHERE id = ${id}`);
+    // Prórroga de TODA la matrícula: los módulos con fin propio pasan a terminar en la nueva fecha (la ampliación individual es extendModuleAccess)
+    try {
+      await run(tx, sql`UPDATE learning_enrollment_modules SET ends_at = ${newEndsAt} WHERE enrollment_id = ${id} AND ends_at IS NOT NULL`);
+    } catch (e) {
+      if (!isMissingColumn(e)) throw e;
+    }
     await event(tx, id, "extended", actorUserId, { reason: why, previousEndsAt: previous, newEndsAt, previousStatus: r.status }, now);
     return (await getEnrollment(id, tx))!;
   });
@@ -369,11 +489,119 @@ export async function addModules(id: number, moduleIds: number[], reason: string
   });
 }
 
+export interface ExtendModuleResult {
+  /** false = la misma ampliación (pedido + módulo + días) ya estaba aplicada: no se ha vuelto a aplicar. */
+  applied: boolean;
+  enrollmentId: number;
+  moduleId: number;
+  days: number;
+  previousEndsAt: number | null;
+  newEndsAt: number;
+}
+
+/**
+ * Ampliación INDIVIDUAL de un módulo (+30 o +60 días; el precio lo fija el catálogo, no este código).
+ *  - Parte de max(fin actual del módulo, ahora): ampliar a tiempo no pierde días y ampliar tarde no regala los vencidos.
+ *  - Idempotente por (referencia de pedido o pago + módulo + días): una clave no se aplica dos veces (devuelve applied=false).
+ *    La misma referencia sobre OTRA matrícula se rechaza.
+ *  - Rechaza módulos que la matrícula no incluye, matrículas revocadas o suspendidas, módulos sin caducidad y días distintos de 30/60
+ *    (salvo actor administrador, entre 1 y 365).
+ *  - Deja un registro inmutable (learning_module_extensions + evento «module_extended»). No toca el progreso.
+ */
+export async function extendModuleAccess(
+  enrollmentId: number,
+  moduleId: number,
+  days: number,
+  evidence: { paymentRef?: string | null; orderRef?: string | null },
+  actor: { userId: number | null; isAdmin?: boolean },
+  now = Date.now(),
+): Promise<ExtendModuleResult> {
+  if (!Number.isInteger(days) || days <= 0) throw new LearningError("BAD_REQUEST", "Los días de ampliación deben ser un número entero positivo.");
+  if (!(MODULE_EXTENSION_DAYS as readonly number[]).includes(days)) {
+    if (!actor.isAdmin) throw new LearningError("FORBIDDEN", "Solo se amplían 30 o 60 días; otra duración exige permiso de administración.");
+    if (days > 365) throw new LearningError("BAD_REQUEST", "Una ampliación no puede superar 365 días.");
+  }
+  const paymentRef = (evidence.paymentRef ?? "").trim().slice(0, 190) || null;
+  const orderRef = (evidence.orderRef ?? "").trim().slice(0, 190) || null;
+  const ref = orderRef ?? paymentRef;
+  if (!ref) throw new LearningError("BAD_REQUEST", "La ampliación necesita la referencia del pedido o del pago.");
+  const key = extensionKey({ ref, moduleId, days });
+  const d = await db();
+  return withRetry(() => d.transaction(async (tx) => {
+    const r = await lockEnrollment(tx, enrollmentId);
+    const [prior] = await rows(tx, sql`SELECT * FROM learning_module_extensions WHERE idempotency_key = ${key} LIMIT 1`);
+    if (prior) {
+      if (n(prior.enrollment_id) !== enrollmentId) throw new LearningError("CONFLICT", "Esa referencia de pedido ya se aplicó a otra matrícula.");
+      return { applied: false, enrollmentId, moduleId, days, previousEndsAt: prior.previous_ends_at == null ? null : n(prior.previous_ends_at), newEndsAt: n(prior.new_ends_at) };
+    }
+    if (r.status === "revoked" || r.status === "suspended") throw new LearningError("CONFLICT", "No se amplía una matrícula " + (r.status === "revoked" ? "revocada" : "suspendida") + ".");
+    const [mod] = await rows(tx, sql`SELECT starts_at, ends_at FROM learning_enrollment_modules WHERE enrollment_id = ${enrollmentId} AND module_id = ${moduleId} FOR UPDATE`);
+    if (!mod) throw new LearningError("BAD_REQUEST", "La matrícula no incluye ese módulo.");
+    const enrEnd = r.ends_at == null ? null : n(r.ends_at);
+    const current = mod.ends_at != null ? n(mod.ends_at) : enrEnd;
+    if (current == null) throw new LearningError("CONFLICT", "Ese módulo no caduca: no hay nada que ampliar.");
+    const next = extendedEnd(current, now, days);
+    // Los demás módulos sin fin propio dejan de depender del fin de la matrícula (que se va a mover): conservan el que tenían
+    if (enrEnd != null) await run(tx, sql`UPDATE learning_enrollment_modules SET ends_at = ${enrEnd} WHERE enrollment_id = ${enrollmentId} AND module_id <> ${moduleId} AND ends_at IS NULL`);
+    await run(tx, sql`UPDATE learning_enrollment_modules SET ends_at = ${next} WHERE enrollment_id = ${enrollmentId} AND module_id = ${moduleId}`);
+    const newEnrEnd = enrEnd == null ? null : Math.max(enrEnd, next);
+    const reopened = r.status === "expired";
+    await run(tx, sql`UPDATE learning_enrollments SET ends_at = ${newEnrEnd}, status = ${reopened ? "active" : r.status}, updated_at = ${now} WHERE id = ${enrollmentId}`);
+    await run(tx, sql`INSERT INTO learning_module_extensions (idempotency_key, enrollment_id, module_id, days, previous_ends_at, new_ends_at, payment_ref, order_ref, actor_user_id, created_at)
+      VALUES (${key}, ${enrollmentId}, ${moduleId}, ${days}, ${current}, ${next}, ${paymentRef}, ${orderRef}, ${actor.userId}, ${now})`);
+    await event(tx, enrollmentId, "module_extended", actor.userId, { moduleId, days, previousEndsAt: current, newEndsAt: next, paymentRef, orderRef, reopened, key }, now);
+    return { applied: true, enrollmentId, moduleId, days, previousEndsAt: current, newEndsAt: next };
+  }));
+}
+
+export interface ActivateResult {
+  /** true = esta llamada la activó; false = ya estaba activada (repetir no cambia nada) */
+  activated: boolean;
+  enrollmentId: number;
+  startsAt: number;
+  endsAt: number;
+}
+
+/**
+ * ACTIVACIÓN VOLUNTARIA: el alumno inicia él mismo los días de un derecho concedido «pendiente de activar» (p. ej. el Módulo 1 incluido
+ * en los retiros). Los días empiezan en el instante exacto de la activación; no hay fecha automática ni vencimiento previo.
+ *  - Solo el titular de la matrícula puede activarla (otro alumno o empresa recibe FORBIDDEN / no la ve).
+ *  - Una matrícula revocada o suspendida no se activa.
+ *  - Idempotente y a prueba de dobles clics: la matrícula se bloquea y solo cambia mientras sigue pendiente; la segunda
+ *    llamada devuelve la ventana ya fijada sin moverla.
+ *  - Conserva historial (evento «activated») y progreso (no toca nada más).
+ */
+export async function activateEnrollment(enrollmentId: number, userId: number, now = Date.now()): Promise<ActivateResult> {
+  const d = await db();
+  return withRetry(() => d.transaction(async (tx) => {
+    const r = await lockEnrollment(tx, enrollmentId);
+    if (n(r.user_id) !== userId) throw new LearningError("FORBIDDEN", "Esta matrícula no es tuya.");
+    if (r.status === "revoked" || r.status === "suspended") throw new LearningError("CONFLICT", "Esta matrícula está " + (r.status === "revoked" ? "revocada" : "suspendida") + ": no se puede activar.");
+    const days = r.pending_activation_days == null ? null : n(r.pending_activation_days);
+    if (days == null) {
+      if (r.activated_at == null) throw new LearningError("BAD_REQUEST", "Esta matrícula no necesita activación.");
+      return { activated: false, enrollmentId, startsAt: n(r.starts_at), endsAt: n(r.ends_at) };
+    }
+    const w = activationWindow(days, now);
+    await run(tx, sql`UPDATE learning_enrollments SET starts_at = ${w.startsAt}, ends_at = ${w.endsAt}, pending_activation_days = NULL, activated_at = ${now}, updated_at = ${now} WHERE id = ${enrollmentId} AND pending_activation_days IS NOT NULL`);
+    await event(tx, enrollmentId, "activated", userId, { days, startsAt: w.startsAt, endsAt: w.endsAt }, now);
+    return { activated: true, enrollmentId, startsAt: w.startsAt, endsAt: w.endsAt };
+  }));
+}
+
 /** Tarea programada: pasa a `expired` las matrículas activas vencidas y lo registra. Idempotente. */
 export async function expireDue(now = Date.now()): Promise<number> {
   const d = await db();
   return d.transaction(async (tx) => {
-    const due = await rows(tx, sql`SELECT id FROM learning_enrollments WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= ${now} FOR UPDATE`);
+    let due: Array<Record<string, any>>;
+    try {
+      // Con ventanas por módulo, la matrícula caduca cuando se acaba su último módulo: si alguno sigue vigente (fin propio futuro o sin fin) no se toca
+      due = await rows(tx, sql`SELECT e.id FROM learning_enrollments e WHERE e.status = 'active' AND e.ends_at IS NOT NULL AND e.ends_at <= ${now}
+        AND NOT EXISTS (SELECT 1 FROM learning_enrollment_modules m WHERE m.enrollment_id = e.id AND m.ends_at IS NOT NULL AND m.ends_at > ${now}) FOR UPDATE`);
+    } catch (e) {
+      if (!isMissingColumn(e)) throw e;
+      due = await rows(tx, sql`SELECT id FROM learning_enrollments WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= ${now} FOR UPDATE`);
+    }
     for (const r of due) {
       await run(tx, sql`UPDATE learning_enrollments SET status = 'expired', updated_at = ${now} WHERE id = ${n(r.id)} AND status = 'active'`);
       await event(tx, n(r.id), "expired", null, { at: now }, now);
@@ -411,7 +639,8 @@ export async function enrollmentViews(userId: number, courseId: number, exec?: E
   const e = exec ?? (await db());
   const list = await rows(e, sql`SELECT * FROM learning_enrollments WHERE user_id = ${userId} AND course_id = ${courseId}`);
   const mods = await modulesOf(e, list.map((r) => n(r.id)));
-  return list.map((r) => ({ status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [], technical: isTechnicalGrant(String(r.source), r.grant_reason) }));
+  const wins = await windowsOf(e, list.map((r) => n(r.id)));
+  return list.map((r) => ({ id: n(r.id), pendingActivationDays: r.pending_activation_days == null ? null : n(r.pending_activation_days), status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [], moduleWindows: wins.get(n(r.id)), technical: isTechnicalGrant(String(r.source), r.grant_reason) }));
 }
 
 export interface BlockLocation {
@@ -449,15 +678,26 @@ export async function canAccessBlock(userId: number | null, blockId: number, now
 
 // ─── Aula del alumno ──────────────────────────────────────────────────────────────────────────────────────────────
 
+export interface MyModuleState {
+  moduleId: number;
+  state: "open" | "locked" | "closed" | "pending_activation";
+  unlocksAt: number | null;
+  endsAt: number | null;
+}
+
 export interface MyCourse {
   courseId: number;
   slug: string;
   title: string;
-  status: "active" | "scheduled" | "expired" | "suspended" | "revoked";
+  status: "active" | "scheduled" | "expired" | "suspended" | "revoked" | "pending_activation";
+  /** Matrícula pendiente de activar por el alumno (para el botón del aula): id y días que empezarán al activar. */
+  pendingActivation?: { enrollmentId: number; days: number } | null;
   startsAt: number;
   endsAt: number | null;
   source: string;
   moduleIds: number[];
+  /** Estado de cada módulo incluido: abierto, aún no desbloqueado (con fecha) o cerrado (caducado). */
+  modules: MyModuleState[];
   totalLessons: number;
   completedLessons: number;
   percent: number;
@@ -469,17 +709,26 @@ export async function myCourses(userId: number, now = Date.now()): Promise<MyCou
   const d = await db();
   const enrollments = (await rows(d, sql`SELECT e.*, c.slug, c.title, c.status AS course_status FROM learning_enrollments e JOIN learning_courses c ON c.id = e.course_id WHERE e.user_id = ${userId} AND c.status IN ('published', 'draft') ORDER BY e.id DESC`)).filter((r) => courseOpensFor(String(r.course_status), isTechnicalGrant(String(r.source), r.grant_reason)));
   const mods = await modulesOf(d, enrollments.map((r) => n(r.id)));
+  const wins = await windowsOf(d, enrollments.map((r) => n(r.id)));
   const byCourse = new Map<number, MyCourse>();
   for (const r of enrollments) {
     const cid = n(r.course_id);
     const ids = mods.get(n(r.id)) ?? [];
-    const view: EnrollmentView = { status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: ids };
-    const eff = view.status !== "active" ? view.status : now < view.startsAt ? "scheduled" : view.endsAt != null && now >= view.endsAt ? "expired" : "active";
+    const view: EnrollmentView = { id: n(r.id), pendingActivationDays: r.pending_activation_days == null ? null : n(r.pending_activation_days), status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: ids, moduleWindows: wins.get(n(r.id)) };
+    const eff = effectiveEnrollmentStatus(view, now);
+    const modStates = ids.map((m) => { const dec = evaluateAccess(view, m, now); return { moduleId: m, state: (dec.allowed ? "open" : dec.reason === "pending_activation" ? "pending_activation" : dec.reason === "not_started" ? "locked" : "closed") as MyModuleState["state"], unlocksAt: !dec.allowed && dec.reason === "not_started" ? dec.unlocksAt ?? null : null, endsAt: moduleWindow(view, m).endsAt }; });
     const prev = byCourse.get(cid);
-    const rank = { active: 4, scheduled: 3, expired: 2, suspended: 1, revoked: 0 } as const;
-    if (!prev) byCourse.set(cid, { courseId: cid, slug: r.slug, title: r.title, status: eff, startsAt: view.startsAt, endsAt: view.endsAt, source: r.source, moduleIds: ids, totalLessons: 0, completedLessons: 0, percent: 0, lastLessonId: null });
+    const rank = { active: 4, scheduled: 3, pending_activation: 3, expired: 2, suspended: 1, revoked: 0 } as const;
+    const pendingNow = eff === "pending_activation" && view.id != null ? { enrollmentId: view.id, days: Number(view.pendingActivationDays) } : null;
+    if (!prev) byCourse.set(cid, { courseId: cid, slug: r.slug, title: r.title, status: eff, startsAt: view.startsAt, endsAt: view.endsAt, source: r.source, moduleIds: ids, modules: modStates, totalLessons: 0, completedLessons: 0, percent: 0, lastLessonId: null, pendingActivation: pendingNow });
     else {
       prev.moduleIds = mergeModules(prev.moduleIds, ids);
+      for (const ms of modStates) {
+        const cur = prev.modules.find((x) => x.moduleId === ms.moduleId);
+        if (!cur) prev.modules.push(ms);
+        else if (ms.state === "open" || (ms.state === "locked" && (cur.state === "closed" || cur.state === "pending_activation")) || (ms.state === "pending_activation" && cur.state === "closed")) Object.assign(cur, ms);
+      }
+      if (pendingNow && !prev.pendingActivation) prev.pendingActivation = pendingNow;
       if (rank[eff] > rank[prev.status]) Object.assign(prev, { status: eff, startsAt: view.startsAt, endsAt: view.endsAt, source: r.source });
       else if (eff === prev.status && view.endsAt !== null && (prev.endsAt === null || view.endsAt > prev.endsAt)) prev.endsAt = view.endsAt;
     }
@@ -517,7 +766,7 @@ export async function recordProgress(userId: number, lessonId: number, p: { comp
 
 export type ResourceAuthorization =
   | { allowed: true; enrollmentId: number; resourceId: number; objectId: string; kind: "video" | "audio" | "pdf" | "document" | "image"; originalName: string | null }
-  | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted" | "not_available" };
+  | { allowed: false; reason: "no_enrollment" | "inactive" | "not_started" | "expired" | "module_not_granted" | "pending_activation" | "not_available" };
 
 /**
  * ¿Puede este usuario abrir este recurso ahora? Hace falta que el recurso esté VERIFICADO (con fichero real), que lo use
@@ -535,9 +784,10 @@ export async function authorizeResource(userId: number | null, resourceId: numbe
   for (const u of uses) {
     const list = await rows(d, sql`SELECT * FROM learning_enrollments WHERE user_id = ${userId} AND course_id = ${n(u.course_id)} ORDER BY id`);
     const mods = await modulesOf(d, list.map((r) => n(r.id)));
+    const wins = await windowsOf(d, list.map((r) => n(r.id)));
     for (const r of list) {
       if (!courseOpensFor(String(u.course_status), isTechnicalGrant(String(r.source), r.grant_reason))) continue;
-      const view: EnrollmentView = { status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [] };
+      const view: EnrollmentView = { pendingActivationDays: r.pending_activation_days == null ? null : n(r.pending_activation_days), status: r.status, startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), moduleIds: mods.get(n(r.id)) ?? [], moduleWindows: wins.get(n(r.id)) };
       const dec = evaluateAny([view], n(u.module_id), now);
       if (dec.allowed) return { allowed: true, enrollmentId: n(r.id), resourceId, objectId: String(res.stored_object_id), kind: res.kind, originalName: res.original_name ?? null };
       last = { allowed: false, reason: dec.reason };

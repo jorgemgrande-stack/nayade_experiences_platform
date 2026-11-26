@@ -112,6 +112,32 @@ export const subscriptionRouter = router({
     if (String(ctx.user.role) !== "admin" || getTenantMode() !== "multi" || !commerceClientFromEnv()) return null;
     return (await reach((c, t) => c.plan(t))) as TenantPlanSummary;
   }),
+  /**
+   * Centro de suscripción, pagos y facturas de ESTA empresa (solo lectura). Solo la administración. El tenant sale de la
+   * sesión: el panel nunca elige qué empresa o qué cliente de Stripe se consulta. `null` sin canal con el plano de control.
+   */
+  billingCenter: protectedProcedure.query(async ({ ctx }) => {
+    if (String(ctx.user.role) !== "admin" || getTenantMode() !== "multi" || !commerceClientFromEnv()) return null;
+    const center = await reach(async (c, t) => (c.billingCenter ? c.billingCenter(t) : null));
+    // Plan con el que prueba la plataforma (el de la licencia vigente), distinto del plan contratado: solo mientras dura la prueba
+    if (center?.trial) {
+      try {
+        const access = getCapabilityAccess();
+        const ov = buildSubscriptionOverview({ mode: "multi", enforcing: access.enforcing(), grants: await access.list(), now: access.currentTime() });
+        if (ov.state === "trial" && ov.plan?.name) return { ...center, trial: { ...center.trial, planName: ov.plan.name } };
+      } catch {
+        /* sin licencia legible: el centro se muestra sin el plan de prueba */
+      }
+    }
+    return center;
+  }),
+  /** Enlaces oficiales (PDF de Stripe o documento del sistema) de UNA factura de la propia empresa. */
+  billingInvoiceLinks: protectedProcedure.input(z.object({ id: z.string().regex(/^(stripe|crm):[A-Za-z0-9_-]{1,80}$/) }).strict()).mutation(({ ctx, input }) =>
+    commerce(String(ctx.user.role), async (c, t) => {
+      if (!c.billingInvoiceLinks) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No disponible" });
+      return c.billingInvoiceLinks(t, input.id);
+    }, "Solo la administración de la empresa puede ver las facturas"),
+  ),
   invoiceDocument: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ ctx, input }) =>
     commerce(String(ctx.user.role), (c, t) => c.invoiceDocument(t, input.id), "Solo la administración de la empresa puede ver las facturas"),
   ),

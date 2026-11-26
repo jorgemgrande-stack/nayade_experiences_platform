@@ -88,7 +88,7 @@ export default function Bonos() {
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
             {active.map((p) => (
-              <li key={p.id} className="flex min-w-0 flex-col gap-2 rounded-2xl border border-border bg-card p-4">
+              <li key={p.id} className="flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between gap-2">
                   <h2 className="min-w-0 break-words font-bold text-foreground">{p.name}</h2>
                   <span className="shrink-0 font-semibold tabular-nums text-foreground">{formatEur(p.price)}</span>

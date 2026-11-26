@@ -8,7 +8,7 @@ function fixture(o: { terms?: unknown[]; company?: Record<string, unknown>; cont
   const company: Record<string, unknown> = { id: 9, name: "Several Energy", tenantId: null, ...(o.company ?? {}) };
   const sub = o.sub === null ? null : { id: 3, companyId: 9, tenantId: null as string | null, version: 1, status: "active", ...(o.sub ?? {}) };
   const log: Array<{ kind: string; syncResult: string }> = [];
-  const events: Array<{ kind: string; createdAt: number; id: number }> = [];
+  const events: Array<{ kind: string; createdAt: number; id: number; after?: unknown }> = [];
   const activate = vi.fn(async () => {
     if (o.activateFails) throw new Error("El alta no se completó (dns): reintentar");
     return { tenantId: "several-energy" };
@@ -18,7 +18,7 @@ function fixture(o: { terms?: unknown[]; company?: Record<string, unknown>; cont
   const afterChange = vi.fn(async () => undefined);
   const deps: PlatformActivationDeps = {
     subscriptions: { get: async () => sub, linkTenant },
-    terms: { list: async () => (o.terms ?? [terms()]) as never, get: async () => null, events: async () => events.slice(), log: async (_id: number, e: Record<string, unknown>) => void (log.push({ kind: String(e.kind), syncResult: String(e.syncResult) }), events.push({ kind: String(e.kind), createdAt: 1_000, id: events.length + 1 })) },
+    terms: { list: async () => (o.terms ?? [terms()]) as never, get: async () => null, events: async () => events.slice(), log: async (_id: number, e: Record<string, unknown>) => void (log.push({ kind: String(e.kind), syncResult: String(e.syncResult) }), events.push({ kind: String(e.kind), createdAt: 1_000, id: events.length + 1, after: e.after })) },
     crmStore: { get: async (e: string) => (e === "companies" ? company : { id: 13, modules: [], planId: null }), list: async () => (o.contacts ?? [{ id: 1, email: "admin@cliente.test", isPrimary: true, status: "active" }]) as never, update },
     platform: { activate },
     afterChange,
@@ -69,6 +69,16 @@ describe("alta de la plataforma tras el pago", () => {
     expect(r.status === "failed" && r.reason).toMatch(/contacto activo con correo/);
     expect(f.activate).not.toHaveBeenCalled();
     expect(f.log).toEqual([{ kind: "platform_activation_failed", syncResult: "failed" }]);
+  });
+
+  it("el barrido automático no repite el aviso de contacto ausente; el reintento del operador sí lo registra", async () => {
+    const f = fixture({ contacts: [] });
+    await activatePlatformAfterPayment(f.deps, 3);
+    await activatePlatformAfterPayment(f.deps, 3);
+    await activatePlatformAfterPayment(f.deps, 3);
+    expect(f.log).toHaveLength(1);
+    await activatePlatformAfterPayment(f.deps, 3, "operator:jorge");
+    expect(f.log).toHaveLength(2);
   });
 
   it("un fallo del aprovisionamiento no lanza, queda registrado y el reintento lo completa", async () => {

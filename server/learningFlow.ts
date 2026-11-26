@@ -15,15 +15,31 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { getSystemSetting } from "./config";
-import { matchRules, LearningRuleError } from "../shared/learning";
-import { isQuotePaid } from "../shared/enrollmentCommerce";
+import { matchRules, matchExactRules, LearningRuleError } from "../shared/learning";
+import { effectiveQuoteStatus, isQuotePaid } from "../shared/enrollmentCommerce";
 import { listRules, grantFromPayment, isMissingLearningSchema } from "./learningDb";
+import { paidOrderSupplements, linkSupplementEnrollment, markSupplementRefunded, markOrderSupplementsRefunded, isMissingSupplementSchema } from "./orderSupplements";
 import { readLinkedQuotes } from "./enrollmentCommerceDb";
 import { ensureAccount } from "./communitiesDb";
 import { sendEmail } from "./mailer";
 import { buildNoticeHtml } from "./emailTemplates";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { companyName } from "./tenantBrand";
+import { siteUiText, fillUiText } from "../shared/siteUiText";
+import { resolveBuyerLocale } from "./checkoutExtrasDb";
+
+/** Idioma del pedido (el de la web en que compró); sin él, el principal de la empresa. */
+async function orderLocale(merchantOrder: string): Promise<string> {
+  try {
+    const d = await getDb();
+    if (!d) return resolveBuyerLocale(null);
+    const [rows] = (await d.execute(sql`SELECT changes_log FROM reservations WHERE merchant_order = ${merchantOrder} ORDER BY id LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    const raw = rows?.[0]?.changes_log;
+    return resolveBuyerLocale(typeof raw === "string" ? JSON.parse(raw) : raw);
+  } catch {
+    return resolveBuyerLocale(null);
+  }
+}
 
 export type FlowResult =
   | { status: "skipped"; reason: "not_found" | "not_confirmed" | "no_rule" | "payment_not_confirmed" | "no_schema" }
@@ -32,21 +48,24 @@ export type FlowResult =
 const activationPath = (token: string) => `/mi-formacion/activar?token=${encodeURIComponent(token)}`;
 
 /** Envía la invitación de acceso al aula (solo se llama por decisión expresa o con el ajuste activado). */
-export async function sendLearningInvitation(invite: { userId: number; name: string; email: string; token: string }, courseTitle?: string): Promise<boolean> {
+export async function sendLearningInvitation(invite: { userId: number; name: string; email: string; token: string }, courseTitle?: string, locale?: string): Promise<boolean> {
   const base = publicBaseUrl();
   const company = companyName();
+  const lang = locale ?? (await resolveBuyerLocale(null));
+  const ui = siteUiText(lang);
   return sendEmail({
     to: invite.email,
-    subject: courseTitle ? `Acceso a tu curso «${courseTitle}»` : "Acceso a tu formación",
+    subject: courseTitle ? fillUiText(ui.emLearnInviteSubjectCourse, { course: courseTitle }) : ui.emLearnInviteSubject,
     category: "user_invite",
     idempotencyKey: `learning-invite:${invite.userId}:${invite.token.slice(0, 12)}`,
     html: buildNoticeHtml({
-      badge: "Formación",
-      title: courseTitle ? `Ya puedes acceder a «${courseTitle}»` : "Ya puedes acceder a tu formación",
+      badge: ui.emLearnBadge,
+      locale: lang,
+      title: courseTitle ? fillUiText(ui.emLearnInviteTitleCourse, { course: courseTitle }) : ui.emLearnInviteTitle,
       greetingName: invite.name,
-      paragraphs: [`${company} te ha dado acceso a su formación digital. Crea tu contraseña para entrar en tu aula privada.`],
-      cta: { label: "Crear mi contraseña y entrar", url: `${base}${activationPath(invite.token)}` },
-      note: "El enlace es personal, caduca en 7 días y solo puede usarse una vez. Si no esperabas esta invitación, ignora este mensaje.",
+      paragraphs: [fillUiText(ui.emLearnInviteText, { company })],
+      cta: { label: ui.emLearnInviteCta, url: `${base}${activationPath(invite.token)}` },
+      note: ui.emLearnInviteNote,
     }),
   }).catch(() => false);
 }
@@ -112,18 +131,21 @@ const readOrderLines = async (merchantOrder: string) => {
 export async function sendLearningAccessNotice(to: { userId: number; name: string; email: string }, merchantOrder: string): Promise<boolean> {
   const base = publicBaseUrl();
   const company = companyName();
+  const lang = await orderLocale(merchantOrder);
+  const ui = siteUiText(lang);
   return sendEmail({
     to: to.email,
-    subject: "Ya tienes acceso a tu formación",
+    subject: ui.emLearnAccessSubject,
     category: "user_invite",
     idempotencyKey: `learning-access:${to.userId}:${merchantOrder}`,
     html: buildNoticeHtml({
-      badge: "Formación",
-      title: "Ya puedes acceder a tu formación",
+      badge: ui.emLearnBadge,
+      locale: lang,
+      title: ui.emLearnInviteTitle,
       greetingName: to.name,
-      paragraphs: [`Hemos confirmado tu pago y ${company} ha activado el acceso a los contenidos que has contratado.`],
-      cta: { label: "Entrar en mi aula", url: `${base}/mi-formacion` },
-      note: "Entra con tu cuenta habitual. Si no reconoces esta compra, responde a este correo.",
+      paragraphs: [fillUiText(ui.emLearnAccessText, { company })],
+      cta: { label: ui.emLearnAccessCta, url: `${base}/mi-formacion` },
+      note: ui.emLearnAccessNote,
     }),
   }).catch(() => false);
 }
@@ -139,7 +161,7 @@ export async function sendLearningAccessNotice(to: { userId: number; name: strin
  *  - NUNCA lanza: el cierre del pedido (factura, correo de pedido) no puede romperse por el LMS. El correo de acceso solo sale
  *    con el ajuste `learning_invite_emails` = true (la empresa lo enciende al abrir la venta).
  */
-export async function grantLearningFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<OrderFlowResult> {
+async function grantMainLearningFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<OrderFlowResult> {
   try {
     const lines = await readOrderLines(merchantOrder);
     if (!lines || !lines.length) return { status: "skipped", reason: "no_paid_lines" };
@@ -152,7 +174,7 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     const email = String(first.customer_email ?? "").trim();
     if (!email) return { status: "skipped", reason: "no_email" };
     // ¿Ya está todo concedido? Entonces no se hace nada más.
-    const [done] = (await d.execute(sql`SELECT order_id, user_id FROM learning_enrollments WHERE source = 'payment' AND order_id IN (${sql.join(matched.map((l) => sql`${Number(l.id)}`), sql`, `)})`)) as unknown as [Array<Record<string, any>>];
+    const [done] = (await d.execute(sql`SELECT order_id, user_id FROM learning_enrollments WHERE source = 'payment' AND idempotency_key NOT LIKE 'pay:order-supplement:%' AND order_id IN (${sql.join(matched.map((l) => sql`${Number(l.id)}`), sql`, `)})`)) as unknown as [Array<Record<string, any>>];
     const doneIds = new Set(done.map((r) => Number(r.order_id)));
     const pending = matched.filter((l) => !doneIds.has(Number(l.id)));
     if (!pending.length) {
@@ -191,7 +213,7 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     if (created > 0 && earlier == null) {
       const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
       if (!auto) notified = "pending";
-      else if (acc.invite) notified = (await sendLearningInvitation(acc.invite)) ? "invitation" : "pending";
+      else if (acc.invite) notified = (await sendLearningInvitation(acc.invite, undefined, await orderLocale(merchantOrder))) ? "invitation" : "pending";
       else notified = (await sendLearningAccessNotice({ userId: acc.userId, name: String(first.customer_name || email), email }, merchantOrder)) ? "access" : "pending";
     }
     return { status: "granted", created, existing: matched.length - pending.length, userId: acc.userId, notified, failed };
@@ -202,6 +224,500 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
     await recordOrderGrantFailure(merchantOrder, code);
     return { status: "skipped", reason: "error" };
   }
+}
+
+/**
+ * Suplementos PAGADOS de un pedido → derecho propio (p. ej. Lifetime Access de RECONNECT: acceso permanente a los tres módulos).
+ *  - Solo casa con la regla de ESA variante-suplemento (nunca con reglas genéricas): sin regla activa no concede nada.
+ *  - Una matrícula APARTE de la del programa (clave pay:order-supplement:<línea>:r<regla>:u<usuario>): conceder el suplemento
+ *    dos veces es imposible, y reembolsarlo (refundOrderSupplement) solo retira esa matrícula, nunca la del programa.
+ *  - Con pedido completo reembolsado, la matrícula del suplemento comparte order_id y se revoca con las demás.
+ *  - Nunca lanza: un fallo se registra en el historial del pedido (igual que el programa) y se reintenta.
+ */
+export async function grantSupplementsFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<{ created: number; existing: number; failed: number; userId: number | null }> {
+  const none = { created: 0, existing: 0, failed: 0, userId: null as number | null };
+  try {
+    const supps = await paidOrderSupplements(merchantOrder);
+    if (!supps.length) return none;
+    const rules = await listRules();
+    const todo = supps.filter((s) => matchExactRules(rules, s.productId, s.variantId).length > 0);
+    if (!todo.length) return none;
+    const email = String(todo[0].customerEmail ?? "").trim();
+    if (!email) return none;
+    const d = await getDb();
+    if (!d) return none;
+    // La cuenta ya existe casi siempre (la creó la matrícula del programa): se reutiliza SIN rotar su invitación
+    const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    const userId = u?.[0] ? Number(u[0].id) : (await ensureAccount(String(todo[0].customerName || email), email)).userId;
+    let created = 0;
+    let existing = 0;
+    let failed = 0;
+    for (const s of todo) {
+      try {
+        const res = await grantFromPayment({
+          userId, clientId: null, experienceId: s.productId, variantId: s.variantId, operation: { kind: "order-supplement", id: s.id }, orderId: s.reservationId,
+          payment: { reference: `pedido:${merchantOrder}:${s.group}`, amountCents: s.totalCents, verifiedBy: actor.name || "sistema (pasarela)" }, actorUserId: actor.id, now, exactVariantOnly: true,
+        });
+        for (const g of res.granted) (g.created ? created++ : existing++);
+        const first = res.granted[0];
+        if (first && s.enrollmentId == null) await linkSupplementEnrollment(s.id, first.enrollment.id);
+      } catch (e) {
+        failed++;
+        const code = e instanceof LearningRuleError ? e.code : e instanceof Error ? e.name : "error";
+        console.error(JSON.stringify({ ctx: "Learning", event: "grant_supplement_failed", merchantOrder, group: s.group, error: code, detail: e instanceof Error ? e.message.slice(0, 160) : undefined }));
+        await recordOrderGrantFailure(merchantOrder, `suplemento:${code}`);
+      }
+    }
+    return { created, existing, failed, userId };
+  } catch (e) {
+    if (isMissingLearningSchema(e) || isMissingSupplementSchema(e)) return none;
+    console.error(JSON.stringify({ ctx: "Learning", event: "grant_supplement_failed", merchantOrder, error: e instanceof Error ? e.name : "error" }));
+    return none;
+  }
+}
+
+/**
+ * Pedido de tienda PAGADO → matrícula del programa y, aparte, la de sus suplementos pagados (Lifetime Access). Las dos son
+ * idempotentes e independientes: el fallo de una no impide la otra.
+ */
+export async function grantLearningFromOrder(merchantOrder: string, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<OrderFlowResult> {
+  const main = await grantMainLearningFromOrder(merchantOrder, actor, now);
+  const supp = await grantSupplementsFromOrder(merchantOrder, actor, now);
+  if (main.status === "skipped" && supp.created + supp.existing > 0 && supp.userId != null) {
+    return { status: "granted", created: supp.created, existing: supp.existing, userId: supp.userId, notified: "none", ...(supp.failed ? { failed: supp.failed } : {}) };
+  }
+  return main;
+}
+
+
+// ─── Presupuesto PAGADO → derecho (retiros sin convocatoria) ─────────────────────────────────────────────
+
+export type QuoteFlowResult =
+  | { status: "skipped"; reason: "not_found" | "not_paid" | "no_lead" | "no_rule" | "no_email" | "no_schema" | "via_enrollment" | "via_order" | "no_amount" | "error" }
+  | { status: "needs_terms"; quoteId: number; minDays: number }
+  | { status: "granted"; created: number; existing: number; userId: number; blockedByTerms: number };
+
+/** Duración contratada confirmada de un presupuesto (null si nadie la ha confirmado o si no existe la migración 0093). */
+async function contractedDaysOf(quoteId: number): Promise<number | null> {
+  try {
+    const d = await getDb();
+    if (!d) return null;
+    const [r] = (await d.execute(sql`SELECT contracted_days FROM quote_access_terms WHERE quote_id = ${quoteId} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    return r?.[0] ? Number(r[0].contracted_days) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reserva CONFIRMADA y pago VERIFICADO → derecho de acceso, para retiros SIN convocatoria. La «confirmación previa de
+ * disponibilidad» es el propio presupuesto: solo el equipo lo emite, con la fecha confirmada, tras aceptar la petición; que esté
+ * PAGADO (pasarela autenticada o cobro manual verificado) es el pago confirmado. Con él:
+ *  - la opción y el producto salen de la solicitud que originó el presupuesto (lead) y casan con las reglas ACTIVAS del catálogo;
+ *  - una regla con duración mínima exige la duración CONTRATADA confirmada (opciones de duración variable: «5–6 días»): sin
+ *    confirmación o con menos días NO se concede nunca, y el presupuesto queda «pendiente de confirmar duración»;
+ *  - idempotente por presupuesto, regla y persona (la misma clave que cualquier otra operación): reintentos, barridos y
+ *    recuperaciones manuales no duplican nada;
+ *  - no duplica lo que ya concede una inscripción a convocatoria o un pedido de tienda del mismo presupuesto.
+ * Nunca lanza por falta de esquema.
+ */
+export async function grantLearningFromQuote(quoteId: number, actor: { id: number | null; name: string | null } = { id: null, name: "sistema" }, now = Date.now()): Promise<QuoteFlowResult> {
+  try {
+    const d = await getDb();
+    if (!d) return { status: "skipped", reason: "no_schema" };
+    const [q] = ((await d.execute(sql`SELECT id, quoteNumber, status, total, paidAt, leadId FROM quotes WHERE id = ${quoteId}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+    if (!q) return { status: "skipped", reason: "not_found" };
+    const status = effectiveQuoteStatus(String(q.status), q.paidAt) ?? String(q.status);
+    if (!isQuotePaid(status)) return { status: "skipped", reason: "not_paid" };
+    const cents = Math.round(Number(q.total ?? 0) * 100);
+    if (!(cents > 0)) return { status: "skipped", reason: "no_amount" };
+    const [enr] = ((await d.execute(sql`SELECT 1 FROM edition_enrollments WHERE quote_id = ${quoteId} LIMIT 1`).catch(() => [[]])) as unknown as [Array<Record<string, any>>]);
+    if (enr?.length) return { status: "skipped", reason: "via_enrollment" };
+    const [viaOrder] = (await d.execute(sql`SELECT 1 FROM learning_enrollments le JOIN reservations r ON r.id = le.order_id WHERE r.quote_id = ${quoteId} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    if (viaOrder?.length) return { status: "skipped", reason: "via_order" };
+    const [lead] = ((await d.execute(sql`SELECT id, name, email, experienceId, variant_id FROM leads WHERE id = ${Number(q.leadId)}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+    if (!lead || lead.experienceId == null) return { status: "skipped", reason: "no_lead" };
+    const experienceId = Number(lead.experienceId);
+    const variantId = lead.variant_id == null ? null : Number(lead.variant_id);
+    const matched = matchRules(await listRules(), experienceId, variantId);
+    if (!matched.length) return { status: "skipped", reason: "no_rule" };
+    const email = String(lead.email ?? "").trim();
+    if (!email) return { status: "skipped", reason: "no_email" };
+    const contractedDays = await contractedDaysOf(quoteId);
+    const needing = matched.filter((r) => r.minContractedDays && (contractedDays == null || contractedDays < r.minContractedDays));
+    if (needing.length === matched.length) return { status: "needs_terms", quoteId, minDays: Math.min(...needing.map((r) => r.minContractedDays as number)) };
+    // Cada plaza identificada recibe su PROPIO derecho: quien reservó y cada participante registrado (sin duplicar nunca a la misma persona)
+    const recipients = await quoteRecipients(quoteId, { name: String(lead.name || email), email });
+    let created = 0;
+    let existing = 0;
+    let blockedByTerms = 0;
+    let buyerUserId = 0;
+    for (const rc of recipients) {
+    const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${rc.email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+    const acc = u?.[0] ? { userId: Number(u[0].id), invite: null, created: false } : await ensureAccount(rc.name, rc.email);
+    if (!buyerUserId) buyerUserId = acc.userId;
+    const res = await grantFromPayment({
+      userId: acc.userId, clientId: null, experienceId, variantId, operation: { kind: "quote", id: quoteId }, quoteId,
+      payment: { reference: String(q.quoteNumber || `quote:${quoteId}`), amountCents: cents, verifiedBy: actor.name || "sistema (presupuesto pagado)" }, actorUserId: actor.id, now, contractedDays,
+    });
+    const made = res.granted.filter((g) => g.created).length;
+    created += made;
+    existing += res.granted.length - made;
+    blockedByTerms += res.blockedByTerms;
+    const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
+    if (made > 0 && auto) {
+      if (acc.invite) await sendLearningInvitation(acc.invite);
+      else await sendLearningAccessNotice({ userId: acc.userId, name: rc.name, email: rc.email }, `quote:${q.quoteNumber ?? quoteId}`);
+    }
+    }
+    return { status: "granted", created, existing, userId: buyerUserId, blockedByTerms };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { status: "skipped", reason: "no_schema" };
+    console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_quote_failed", quoteId, error: e instanceof Error ? e.name : "error", detail: e instanceof Error ? e.message.slice(0, 160) : undefined }));
+    return { status: "skipped", reason: "error" };
+  }
+}
+
+// ─── Participantes de una reserva de retiro ───────────────────────────────────────────────────────────────
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const emailKey = (e: string) => e.trim().toLowerCase();
+
+export interface QuoteParticipant { id: number; quoteId: number; name: string; email: string; status: "active" | "removed" }
+
+/** Participantes identificados de una reserva (sin la migración 0094, ninguno). */
+export async function listQuoteParticipants(quoteId: number, includeRemoved = false): Promise<QuoteParticipant[]> {
+  try {
+    const d = await getDb();
+    if (!d) return [];
+    const [r] = (await d.execute(sql`SELECT id, quote_id, name, email, status FROM quote_participants WHERE quote_id = ${quoteId} ${includeRemoved ? sql`` : sql`AND status = 'active'`} ORDER BY id`)) as unknown as [Array<Record<string, any>>];
+    return r.map((x) => ({ id: Number(x.id), quoteId: Number(x.quote_id), name: String(x.name), email: String(x.email), status: String(x.status) === "removed" ? "removed" : "active" }));
+  } catch {
+    return [];
+  }
+}
+
+/** Quien recibe derecho por este presupuesto: quien reservó y cada participante activo (una sola vez cada correo). */
+async function quoteRecipients(quoteId: number, buyer: { name: string; email: string }): Promise<Array<{ name: string; email: string }>> {
+  const out = [{ name: buyer.name, email: buyer.email.trim() }];
+  const seen = new Set([emailKey(buyer.email)]);
+  for (const p of await listQuoteParticipants(quoteId)) {
+    if (seen.has(emailKey(p.email))) continue;
+    seen.add(emailKey(p.email));
+    out.push({ name: p.name, email: p.email });
+  }
+  return out;
+}
+
+/** Plazas de la reserva confirmada (las de la solicitud que originó el presupuesto; al menos una). */
+const seatsOf = (lead: Record<string, any>): number => Math.max(1, Number(lead.numberOfPersons ?? 1) || 1);
+
+async function readQuoteAndLead(quoteId: number): Promise<{ quote: Record<string, any>; lead: Record<string, any> } | null> {
+  const d = await getDb();
+  if (!d) return null;
+  const [q] = ((await d.execute(sql`SELECT id, quoteNumber, status, paidAt, leadId FROM quotes WHERE id = ${quoteId}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+  if (!q) return null;
+  const [lead] = ((await d.execute(sql`SELECT id, name, email, numberOfPersons, experienceId, variant_id FROM leads WHERE id = ${Number(q.leadId)}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+  return lead ? { quote: q, lead } : null;
+}
+
+/**
+ * Identifica a una persona de la reserva. Las plazas las fija la reserva confirmada (quien reservó cuenta como una): no se admiten
+ * más personas que plazas, ni dos veces el mismo correo, ni a quien reservó. Si el presupuesto ya está pagado, la persona recibe SU
+ * derecho en el acto (pendiente de activar); si no, cuando se pague. Idempotente.
+ */
+export async function addQuoteParticipant(quoteId: number, p: { name: string; email: string }, actorUserId: number | null, now = Date.now()): Promise<{ participant: QuoteParticipant; created: boolean; grant: QuoteFlowResult | null }> {
+  const name = p.name.trim().slice(0, 190);
+  const email = emailKey(p.email);
+  if (!name) throw new LearningRuleError("BAD_REQUEST", "Indica el nombre de la persona.");
+  if (!EMAIL_RE.test(email) || email.length > 190) throw new LearningRuleError("BAD_REQUEST", "Indica un correo válido: es donde recibirá su acceso.");
+  const base = await readQuoteAndLead(quoteId);
+  if (!base) throw new LearningRuleError("BAD_REQUEST", "El presupuesto no existe.");
+  const status = String(base.quote.status);
+  if (["perdido", "rechazado", "expirado"].includes(status) && !base.quote.paidAt) throw new LearningRuleError("BAD_REQUEST", "Este presupuesto está cancelado: no admite participantes.");
+  if (email === emailKey(String(base.lead.email ?? ""))) throw new LearningRuleError("BAD_REQUEST", "Esa persona es quien hizo la reserva: ya tiene su plaza.");
+  const d = (await getDb())!;
+  const all = await listQuoteParticipants(quoteId, true);
+  const same = all.find((x) => x.email === email);
+  if (same?.status === "active") return { participant: same, created: false, grant: await grantLearningFromQuote(quoteId, { id: actorUserId, name: null }, now) };
+  if (same) throw new LearningRuleError("BAD_REQUEST", "Esa persona fue retirada de la reserva: para volver a admitirla, reactiva su acceso desde Formación.");
+  const seats = seatsOf(base.lead);
+  const active = all.filter((x) => x.status === "active").length;
+  if (active + 1 >= seats) throw new LearningRuleError("BAD_REQUEST", seats === 1 ? "Esta reserva es de una sola plaza." : `Las ${seats} plazas de esta reserva ya están identificadas.`);
+  await d.execute(sql`INSERT INTO quote_participants (quote_id, name, email, status, created_by, created_at) VALUES (${quoteId}, ${name}, ${email}, 'active', ${actorUserId}, ${now})`);
+  const [row] = await listQuoteParticipants(quoteId).then((l) => l.filter((x) => x.email === email));
+  return { participant: row, created: true, grant: await grantLearningFromQuote(quoteId, { id: actorUserId, name: null }, now) };
+}
+
+/** Retira a una persona de la reserva (libera su plaza) y revoca SOLO su derecho; el resto de la reserva sigue como estaba. */
+export async function removeQuoteParticipant(participantId: number, reason: string, actorUserId: number | null, now = Date.now()): Promise<{ removed: boolean; revokedEnrollments: number }> {
+  if (!reason.trim()) throw new LearningRuleError("REASON_REQUIRED", "Indica el motivo.");
+  const d = await getDb();
+  if (!d) throw new LearningRuleError("BAD_REQUEST", "Base de datos no disponible.");
+  const [r] = ((await d.execute(sql`SELECT id, quote_id, email, status FROM quote_participants WHERE id = ${participantId}`)) as unknown as [Array<Record<string, any>>])[0] ?? [];
+  if (!r) throw new LearningRuleError("BAD_REQUEST", "La persona no consta en ninguna reserva.");
+  if (String(r.status) !== "active") return { removed: false, revokedEnrollments: 0 };
+  await d.execute(sql`UPDATE quote_participants SET status = 'removed', removed_at = ${now}, removed_reason = ${reason.trim().slice(0, 255)} WHERE id = ${participantId} AND status = 'active'`);
+  const [list] = (await d.execute(sql`SELECT e.id FROM learning_enrollments e JOIN users u ON u.id = e.user_id WHERE e.quote_id = ${Number(r.quote_id)} AND e.source = 'payment' AND LOWER(u.email) = ${String(r.email).toLowerCase()} AND e.status <> 'revoked'`)) as unknown as [Array<Record<string, any>>];
+  const { revokeEnrollment } = await import("./learningDb");
+  for (const e of list) await revokeEnrollment(Number(e.id), `Participante retirado de la reserva: ${reason.trim()}`.slice(0, 300), actorUserId as unknown as number, now);
+  return { removed: true, revokedEnrollments: list.length };
+}
+
+// ─── Reembolsos y cancelaciones de presupuestos ────────────────────────────────────────────────────────────
+
+/**
+ * Hecho de pago sobre un presupuesto (reembolso total, disputa…): protege el acceso SIN borrar nada, igual que en los pedidos.
+ *  - «revoke»: reembolso total o disputa perdida; «suspend»: disputa abierta; «reactivate»: disputa ganada (solo reabre lo
+ *    suspendido por Stripe, nunca una suspensión manual). Afecta a TODAS las personas de la reserva. Idempotente.
+ */
+export async function changeLearningAccessForQuote(quoteId: number, action: "revoke" | "suspend" | "reactivate", reason: string): Promise<{ changed: number }> {
+  try {
+    const d = await getDb();
+    if (!d) return { changed: 0 };
+    const [list] = (await d.execute(sql`SELECT id, status FROM learning_enrollments WHERE source = 'payment' AND quote_id = ${quoteId}`)) as unknown as [Array<Record<string, any>>];
+    const { revokeEnrollment, suspendEnrollment, reactivateEnrollment } = await import("./learningDb");
+    const actor = null as unknown as number;
+    let changed = 0;
+    for (const e of list) {
+      const id = Number(e.id);
+      const status = String(e.status);
+      if (action === "revoke" && status !== "revoked") { await revokeEnrollment(id, reason, actor); changed++; }
+      else if (action === "suspend" && status === "active") { await suspendEnrollment(id, reason, actor); changed++; }
+      else if (action === "reactivate" && status === "suspended") {
+        const [ev] = (await d.execute(sql`SELECT detail FROM learning_access_events WHERE enrollment_id = ${id} AND type = 'suspended' ORDER BY id DESC LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+        let why = "";
+        try { const raw = ev?.[0]?.detail; why = String((typeof raw === "string" ? JSON.parse(raw) : raw)?.reason ?? ""); } catch { why = ""; }
+        if (why.startsWith("Stripe:")) { await reactivateEnrollment(id, reason, actor); changed++; }
+      }
+    }
+    return { changed };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { changed: 0 };
+    throw e;
+  }
+}
+
+/**
+ * Reembolso PARCIAL (o cancelación parcial) de un presupuesto: NO se retira ningún acceso por sí solo: una devolución parcial puede
+ * ser una plaza, un descuento o un gesto, y solo la administración sabe qué personas dejan de tener derecho. Se anota en el
+ * historial de cada acceso vigente y el presupuesto queda en «por revisar» hasta que la administración decide. Idempotente por hecho.
+ */
+export async function flagPartialQuoteRefund(quoteId: number, info: { key: string; refundedCents?: number | null; chargedCents?: number | null; source: string }, now = Date.now()): Promise<number> {
+  try {
+    const d = await getDb();
+    if (!d) return 0;
+    const [list] = (await d.execute(sql`SELECT id FROM learning_enrollments WHERE source = 'payment' AND quote_id = ${quoteId} AND status <> 'revoked'`)) as unknown as [Array<Record<string, any>>];
+    const { logEnrollmentEvent } = await import("./learningDb");
+    let n = 0;
+    for (const e of list) {
+      const [dup] = (await d.execute(sql`SELECT 1 FROM learning_access_events WHERE enrollment_id = ${Number(e.id)} AND type = 'quote_partial_refund' AND JSON_UNQUOTE(JSON_EXTRACT(detail, '$.key')) = ${info.key} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+      if (dup?.length) continue;
+      await logEnrollmentEvent(Number(e.id), "quote_partial_refund", { quoteId, ...info }, null, now);
+      n++;
+    }
+    return n;
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return 0;
+    throw e;
+  }
+}
+
+export interface QuoteRefundReview { quoteId: number; quoteNumber: string; source: string; refundedCents: number | null; chargedCents: number | null; people: Array<{ enrollmentId: number; userId: number; name: string | null; email: string | null; status: string }> }
+
+/** Presupuestos con una devolución parcial pendiente de decidir, con las personas cuyo derecho sigue vigente. */
+export async function listQuoteRefundReviews(): Promise<QuoteRefundReview[]> {
+  try {
+    const d = await getDb();
+    if (!d) return [];
+    const [list] = (await d.execute(sql`SELECT e.id AS enrollment_id, e.user_id, e.status, e.quote_id, u.name, u.email, q.quoteNumber, ev.detail
+      FROM learning_enrollments e
+      JOIN learning_access_events ev ON ev.enrollment_id = e.id AND ev.type = 'quote_partial_refund'
+      LEFT JOIN users u ON u.id = e.user_id LEFT JOIN quotes q ON q.id = e.quote_id
+      WHERE e.quote_id IS NOT NULL AND e.status <> 'revoked'
+        AND NOT EXISTS (SELECT 1 FROM learning_access_events r WHERE r.enrollment_id = e.id AND r.type = 'quote_refund_reviewed' AND r.id > ev.id)
+      ORDER BY ev.id DESC`)) as unknown as [Array<Record<string, any>>];
+    const out = new Map<number, QuoteRefundReview>();
+    for (const r of list) {
+      const qid = Number(r.quote_id);
+      let det: Record<string, any> = {};
+      try { det = typeof r.detail === "string" ? JSON.parse(r.detail) : (r.detail ?? {}); } catch { det = {}; }
+      const cur: QuoteRefundReview = out.get(qid) ?? { quoteId: qid, quoteNumber: String(r.quoteNumber ?? ""), source: String(det.source ?? ""), refundedCents: det.refundedCents ?? null, chargedCents: det.chargedCents ?? null, people: [] };
+      if (!cur.people.some((x) => x.enrollmentId === Number(r.enrollment_id))) cur.people.push({ enrollmentId: Number(r.enrollment_id), userId: Number(r.user_id), name: r.name ?? null, email: r.email ?? null, status: String(r.status) });
+      out.set(qid, cur);
+    }
+    return Array.from(out.values());
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return [];
+    throw e;
+  }
+}
+
+/**
+ * La administración decide una devolución parcial: retira el derecho de las personas indicadas (solo de ESTE presupuesto) y deja
+ * constancia de la revisión en las demás, que conservan su acceso. Idempotente.
+ */
+export async function resolveQuoteRefundReview(quoteId: number, revokeEnrollmentIds: number[], reason: string, actorUserId: number | null, now = Date.now()): Promise<{ revoked: number; kept: number }> {
+  if (!reason.trim()) throw new LearningRuleError("REASON_REQUIRED", "Indica el motivo de la decisión.");
+  const d = await getDb();
+  if (!d) throw new LearningRuleError("BAD_REQUEST", "Base de datos no disponible.");
+  const [list] = (await d.execute(sql`SELECT id, status FROM learning_enrollments WHERE source = 'payment' AND quote_id = ${quoteId}`)) as unknown as [Array<Record<string, any>>];
+  const own = new Set(list.map((e) => Number(e.id)));
+  if (revokeEnrollmentIds.some((id) => !own.has(id))) throw new LearningRuleError("BAD_REQUEST", "Algún acceso no pertenece a este presupuesto.");
+  const { revokeEnrollment, logEnrollmentEvent } = await import("./learningDb");
+  let revoked = 0;
+  let kept = 0;
+  for (const e of list) {
+    const id = Number(e.id);
+    if (revokeEnrollmentIds.includes(id)) {
+      if (String(e.status) !== "revoked") { await revokeEnrollment(id, `Devolución parcial del presupuesto: ${reason.trim()}`.slice(0, 300), actorUserId as unknown as number, now); revoked++; }
+    } else if (String(e.status) !== "revoked") {
+      await logEnrollmentEvent(id, "quote_refund_reviewed", { quoteId, reason: reason.trim().slice(0, 255), decision: "keep" }, actorUserId, now);
+      kept++;
+    }
+  }
+  return { revoked, kept };
+}
+
+/**
+ * Cancelaciones SIN hecho de pago automático (barrido): (a) presupuesto «perdido» o «rechazado» con accesos vigentes y sin cobro
+ * en pie; (b) solicitud de cancelación ACEPTADA del todo → se revoca la reserva entera (presupuesto y pedido); ACEPTADA PARCIAL o
+ * por líneas → solo se anota para decidir. Nada de esto toca importes ni ejecuta reembolsos. Idempotente.
+ */
+export async function reconcileCancelledQuoteRights(now = Date.now()): Promise<{ revoked: number; flagged: number }> {
+  const out = { revoked: 0, flagged: 0 };
+  const d = await getDb();
+  if (!d) return out;
+  try {
+    const [dead] = (await d.execute(sql`SELECT DISTINCT q.id, q.status FROM quotes q JOIN learning_enrollments e ON e.quote_id = q.id AND e.source = 'payment' AND e.status <> 'revoked'
+      WHERE q.status IN ('perdido', 'rechazado') AND q.paidAt IS NULL LIMIT 200`)) as unknown as [Array<Record<string, any>>];
+    for (const q of dead) out.revoked += (await changeLearningAccessForQuote(Number(q.id), "revoke", `Presupuesto ${String(q.status) === "perdido" ? "perdido" : "rechazado"}`)).changed;
+  } catch (e) {
+    if (!isMissingLearningSchema(e)) throw e;
+  }
+  try {
+    const [cancels] = (await d.execute(sql`SELECT c.id, c.cancellation_number, c.linked_quote_id, c.linked_reservation_id, c.resolution_status, c.cancellation_scope, r.quote_id AS res_quote_id, r.merchant_order
+      FROM cancellation_requests c LEFT JOIN reservations r ON r.id = c.linked_reservation_id
+      WHERE c.resolution_status IN ('aceptada_total', 'aceptada_parcial') AND (c.linked_quote_id IS NOT NULL OR c.linked_reservation_id IS NOT NULL) ORDER BY c.id DESC LIMIT 300`)) as unknown as [Array<Record<string, any>>];
+    for (const c of cancels) {
+      const quoteId = Number(c.linked_quote_id ?? c.res_quote_id ?? 0) || null;
+      const total = String(c.resolution_status) === "aceptada_total" && (c.cancellation_scope == null || String(c.cancellation_scope) === "total");
+      const why = `Cancelación ${c.cancellation_number ?? c.id} aceptada`;
+      if (total) {
+        if (quoteId) out.revoked += (await changeLearningAccessForQuote(quoteId, "revoke", why)).changed;
+        if (c.merchant_order) out.revoked += (await changeLearningAccessForOrder(String(c.merchant_order), "revoke", why)).changed;
+      } else if (quoteId) {
+        out.flagged += await flagPartialQuoteRefund(quoteId, { key: `cancellation:${c.id}`, source: `cancelación ${c.cancellation_number ?? c.id} (parcial)` }, now);
+      }
+    }
+  } catch (e) {
+    if (!isMissingLearningSchema(e) && !isMissingTable(e)) throw e;
+  }
+  return out;
+}
+
+function isMissingTable(e: unknown): boolean {
+  for (let x: any = e, depth = 0; x && depth < 5; x = x.cause, depth++) if (x?.errno === 1146 || x?.code === "ER_NO_SUCH_TABLE") return true;
+  return false;
+}
+
+export interface PendingQuote {
+  quoteId: number; quoteNumber: string; email: string | null; experienceId: number; variantId: number | null; needsTermsMinDays: number | null; paidAt: number | null;
+  /** Plazas de la reserva, participantes identificados (sin contar a quien reservó) y personas con derecho aún por conceder */
+  seats: number; participants: number; missingRecipients: number;
+}
+
+/**
+ * Presupuestos PAGADOS con regla activa y algo por hacer: derecho aún por conceder (a quien reservó o a una persona identificada),
+ * duración variable por confirmar o plazas sin identificar. Los de duración variable llevan los días mínimos por confirmar.
+ */
+export async function pendingLearningQuotes(limit = 200): Promise<PendingQuote[]> {
+  const d = await getDb();
+  if (!d) return [];
+  const rules = await listRules();
+  const active = rules.filter((r) => r.active);
+  if (!active.length) return [];
+  const expIds = Array.from(new Set(active.map((r) => r.experienceId)));
+  let rowsQ: Array<Record<string, any>> = [];
+  try {
+    [rowsQ] = (await d.execute(sql`SELECT q.id, q.quoteNumber, q.status, q.paidAt, l.name, l.email, l.experienceId, l.variant_id, l.numberOfPersons
+      FROM quotes q JOIN leads l ON l.id = q.leadId
+      WHERE l.experienceId IN (${sql.join(expIds.map((i) => sql`${i}`), sql`, `)}) AND (q.paidAt IS NOT NULL OR q.status IN ('pagado', 'convertido_reserva', 'facturado'))
+      ORDER BY q.id DESC LIMIT 1000`)) as unknown as [Array<Record<string, any>>];
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return [];
+    throw e;
+  }
+  const out: PendingQuote[] = [];
+  for (const r of rowsQ) {
+    if (!isQuotePaid(effectiveQuoteStatus(String(r.status), r.paidAt) ?? String(r.status))) continue;
+    const variantId = r.variant_id == null ? null : Number(r.variant_id);
+    const matched = matchRules(rules, Number(r.experienceId), variantId);
+    if (!matched.length) continue;
+    const quoteId = Number(r.id);
+    const days = await contractedDaysOf(quoteId);
+    const needing = matched.filter((m) => m.minContractedDays && (days == null || days < m.minContractedDays));
+    const needsTermsMinDays = needing.length === matched.length ? Math.min(...needing.map((m) => m.minContractedDays as number)) : null;
+    const seats = seatsOf(r);
+    const participants = (await listQuoteParticipants(quoteId)).length;
+    const recipients = await quoteRecipients(quoteId, { name: String(r.name ?? r.email ?? ""), email: String(r.email ?? "") });
+    const [have] = (await d.execute(sql`SELECT LOWER(u.email) AS email FROM learning_enrollments e JOIN users u ON u.id = e.user_id WHERE e.source = 'payment' AND e.quote_id = ${quoteId}`)) as unknown as [Array<Record<string, any>>];
+    const covered = new Set(have.map((h) => String(h.email)));
+    const missingRecipients = recipients.filter((x) => x.email && !covered.has(emailKey(x.email))).length;
+    if (needsTermsMinDays == null && missingRecipients === 0 && participants + 1 >= seats) continue;
+    out.push({ quoteId, quoteNumber: String(r.quoteNumber ?? ""), email: r.email ? String(r.email) : null, experienceId: Number(r.experienceId), variantId, needsTermsMinDays, paidAt: r.paidAt ? new Date(r.paidAt).getTime() : null, seats, participants, missingRecipients });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Barrido (tarea programada y recuperación): concede lo pendiente de presupuestos pagados y reintenta los pedidos pendientes. Idempotente. */
+export async function sweepLearningGrants(now = Date.now()): Promise<{ quotes: number; granted: number; needsTerms: number; orders: number; revoked: number }> {
+  const out = { quotes: 0, granted: 0, needsTerms: 0, orders: 0, revoked: 0 };
+  for (const p of await pendingLearningQuotes(50)) {
+    out.quotes++;
+    if (p.needsTermsMinDays != null) { out.needsTerms++; continue; }
+    if (p.missingRecipients === 0) continue; // solo faltan plazas por identificar: lo hace la administración
+    const r = await grantLearningFromQuote(p.quoteId, { id: null, name: "sistema (barrido)" }, now);
+    if (r.status === "granted" && r.created > 0) out.granted++;
+  }
+  for (const p of (await pendingLearningOrders(50)).filter((o) => o.paidAt != null)) {
+    const r = await grantLearningFromOrder(p.merchantOrder, { id: null, name: "sistema (barrido)" }, now);
+    if (r.status === "granted" && r.created > 0) out.orders++;
+  }
+  out.revoked = (await reconcileCancelledQuoteRights(now)).revoked;
+  return out;
+}
+
+/** La administración confirma los días CONTRATADOS de un presupuesto (duración variable) y, si basta, se concede el derecho. */
+export async function confirmQuoteContractedDays(quoteId: number, days: number, reason: string, actorUserId: number | null, now = Date.now()): Promise<QuoteFlowResult> {
+  if (!Number.isInteger(days) || days < 1 || days > 365) throw new LearningRuleError("BAD_REQUEST", "Los días contratados deben ser un entero entre 1 y 365.");
+  if (!reason.trim()) throw new LearningRuleError("REASON_REQUIRED", "Indica el motivo o el acuerdo con la persona.");
+  const d = await getDb();
+  if (!d) return { status: "skipped", reason: "no_schema" };
+  await d.execute(sql`INSERT INTO quote_access_terms (quote_id, contracted_days, reason, confirmed_by, confirmed_at) VALUES (${quoteId}, ${days}, ${reason.trim().slice(0, 255)}, ${actorUserId}, ${now})
+    ON DUPLICATE KEY UPDATE contracted_days = VALUES(contracted_days), reason = VALUES(reason), confirmed_by = VALUES(confirmed_by), confirmed_at = VALUES(confirmed_at)`);
+  return grantLearningFromQuote(quoteId, { id: actorUserId, name: null }, now);
+}
+
+/**
+ * Reembolso de UN suplemento (p. ej. Lifetime Access) sin tocar el resto del pedido: marca la línea como reembolsada y revoca
+ * SOLO la matrícula que ese suplemento concedió. La matrícula del programa y las ampliaciones siguen intactas. Idempotente.
+ * El reembolso del dinero se hace en Stripe; esto solo retira el derecho (decisión de administración, con motivo).
+ */
+export async function refundOrderSupplement(merchantOrder: string, group: string, reason: string, actorUserId: number | null): Promise<{ refunded: boolean; revokedEnrollmentId: number | null; alreadyRefunded: boolean }> {
+  const m = await markSupplementRefunded(merchantOrder, group, reason);
+  if (!m) throw new LearningRuleError("BAD_REQUEST", "Ese pedido no tiene ese suplemento.");
+  let revoked: number | null = null;
+  if (m.enrollmentId != null) {
+    const { revokeEnrollment, getEnrollment } = await import("./learningDb");
+    const e = await getEnrollment(m.enrollmentId);
+    if (e && e.status !== "revoked") {
+      await revokeEnrollment(m.enrollmentId, `Reembolso del suplemento «${group}»: ${reason}`.slice(0, 300), actorUserId as unknown as number);
+      revoked = m.enrollmentId;
+    }
+  }
+  return { refunded: true, revokedEnrollmentId: revoked, alreadyRefunded: m.alreadyRefunded };
 }
 
 /**
@@ -221,17 +737,108 @@ async function recordOrderGrantFailure(merchantOrder: string, code: string): Pro
 }
 
 /** Pedidos pagados cuyas líneas tienen regla de acceso activa y aún NO tienen matrícula (por fallo, correo sin cuenta o reglas activadas después). */
-export async function pendingLearningOrders(limit = 200): Promise<Array<{ merchantOrder: string; reservationId: number; productId: number; variantId: number | null; email: string | null; paidAt: number | null }>> {
+export interface PendingLearningOrder { merchantOrder: string; reservationId: number; productId: number; variantId: number | null; email: string | null; paidAt: number | null }
+
+async function pendingMainLearningOrders(limit = 200): Promise<PendingLearningOrder[]> {
   const d = await getDb();
   if (!d) return [];
   const rules = await listRules();
   if (!rules.some((r) => r.active)) return [];
   const [lines] = (await d.execute(sql`SELECT r.id, r.merchant_order, r.product_id, r.variant_id, r.customer_email, r.paid_at
     FROM reservations r WHERE r.status = 'paid' AND r.merchant_order IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM learning_enrollments le WHERE le.source = 'payment' AND le.order_id = r.id)
+      AND NOT EXISTS (SELECT 1 FROM learning_enrollments le WHERE le.source = 'payment' AND le.idempotency_key NOT LIKE 'pay:order-supplement:%' AND le.order_id = r.id)
     ORDER BY r.id DESC LIMIT 2000`)) as unknown as [Array<Record<string, any>>];
   return lines
     .filter((l) => matchRules(rules, Number(l.product_id), l.variant_id == null ? null : Number(l.variant_id)).length > 0)
     .slice(0, limit)
     .map((l) => ({ merchantOrder: String(l.merchant_order), reservationId: Number(l.id), productId: Number(l.product_id), variantId: l.variant_id == null ? null : Number(l.variant_id), email: l.customer_email ? String(l.customer_email) : null, paidAt: l.paid_at == null ? null : Number(l.paid_at) }));
+}
+
+/** Pedidos pagados con un suplemento (p. ej. Lifetime Access) de regla activa y aún sin su matrícula. */
+async function pendingSupplementOrders(): Promise<PendingLearningOrder[]> {
+  const d = await getDb();
+  if (!d) return [];
+  const rules = await listRules();
+  if (!rules.some((r) => r.active)) return [];
+  try {
+    const [lines] = (await d.execute(sql`SELECT s.merchant_order, s.reservation_id, s.product_id, s.variant_id, r.customer_email, r.paid_at
+      FROM order_supplement_lines s JOIN reservations r ON r.id = s.reservation_id
+      WHERE s.status = 'active' AND s.learning_enrollment_id IS NULL AND r.status = 'paid' ORDER BY s.id DESC LIMIT 500`)) as unknown as [Array<Record<string, any>>];
+    return lines
+      .filter((l) => matchExactRules(rules, Number(l.product_id), Number(l.variant_id)).length > 0)
+      .map((l) => ({ merchantOrder: String(l.merchant_order), reservationId: Number(l.reservation_id), productId: Number(l.product_id), variantId: Number(l.variant_id), email: l.customer_email ? String(l.customer_email) : null, paidAt: l.paid_at == null ? null : Number(l.paid_at) }));
+  } catch (e) {
+    if (isMissingSupplementSchema(e)) return [];
+    throw e;
+  }
+}
+
+/** Pedidos pagados con regla activa y aún sin matrícula: los del programa y los de sus suplementos. */
+export async function pendingLearningOrders(limit = 200): Promise<PendingLearningOrder[]> {
+  const main = await pendingMainLearningOrders(limit);
+  const seen = new Set(main.map((m) => m.merchantOrder));
+  const extra = (await pendingSupplementOrders()).filter((m) => !seen.has(m.merchantOrder));
+  return [...main, ...extra].slice(0, limit);
+}
+
+/**
+ * Reembolso o disputa de un pedido de tienda: protege el acceso del alumno SIN borrar nada (la matrícula y su historial
+ * quedan; solo cambia su estado, con motivo y rastro).
+ *  - «revoke»: reembolso total o disputa perdida (el cobro ya no existe).
+ *  - «suspend»: disputa abierta (reversible mientras se resuelve).
+ *  - «reactivate»: disputa ganada; solo reabre las suspendidas por esta misma vía (motivo «Stripe: …»), nunca una suspensión manual.
+ * Idempotente (repetirlo no cambia nada). Sin el esquema del LMS no hace nada. Un fallo real SÍ se propaga: el evento de
+ * Stripe queda «failed» y se reintenta, para que el acceso no quede abierto en silencio.
+ */
+export async function changeLearningAccessForOrder(merchantOrder: string, action: "revoke" | "suspend" | "reactivate", reason: string): Promise<{ changed: number; extensionsFlagged?: number }> {
+  try {
+    const d = await getDb();
+    if (!d) return { changed: 0 };
+    const [list] = (await d.execute(sql`SELECT e.id AS id, e.status AS status FROM learning_enrollments e
+      JOIN reservations r ON r.id = e.order_id WHERE e.source = 'payment' AND r.merchant_order = ${merchantOrder}`)) as unknown as [Array<Record<string, any>>];
+    const { revokeEnrollment, suspendEnrollment, reactivateEnrollment } = await import("./learningDb");
+    // Sin usuario que actúe: lo ejecuta el sistema por aviso firmado de la pasarela
+    const actor = null as unknown as number;
+    let changed = 0;
+    for (const e of list) {
+      const id = Number(e.id);
+      const status = String(e.status);
+      if (action === "revoke" && status !== "revoked") {
+        await revokeEnrollment(id, reason, actor);
+        changed++;
+      } else if (action === "suspend" && status === "active") {
+        await suspendEnrollment(id, reason, actor);
+        changed++;
+      } else if (action === "reactivate" && status === "suspended") {
+        const [ev] = (await d.execute(sql`SELECT detail FROM learning_access_events WHERE enrollment_id = ${id} AND type = 'suspended' ORDER BY id DESC LIMIT 1`)) as unknown as [Array<Record<string, any>>];
+        let why = "";
+        try {
+          const raw = ev?.[0]?.detail;
+          why = String((typeof raw === "string" ? JSON.parse(raw) : raw)?.reason ?? "");
+        } catch {
+          why = "";
+        }
+        if (why.startsWith("Stripe:")) {
+          await reactivateEnrollment(id, reason, actor);
+          changed++;
+        }
+      }
+    }
+    // Todo el pedido reembolsado: sus suplementos pagados dejan de constar como activos (sus matrículas ya se revocaron arriba)
+    if (action === "revoke") await markOrderSupplementsRefunded(merchantOrder, reason);
+    // Ampliación de módulo ya aplicada de un pedido reembolsado: solo se REGISTRA y se avisa (no se retira acceso ni se tocan facturas)
+    let extensionsFlagged = 0;
+    if (action === "revoke") {
+      // Solo constancia y aviso: un fallo aquí NO debe dejar sin revocar las matrículas del pedido ni reintentar el evento de la pasarela
+      try {
+        extensionsFlagged = await (await import("./learningExtensions")).flagExtensionRefund(merchantOrder, reason);
+      } catch (e) {
+        console.error(JSON.stringify({ ctx: "Learning", event: "extension_refund_flag_failed", merchantOrder, error: e instanceof Error ? e.name : "error" }));
+      }
+    }
+    return { changed, extensionsFlagged };
+  } catch (e) {
+    if (isMissingLearningSchema(e)) return { changed: 0 };
+    throw e;
+  }
 }

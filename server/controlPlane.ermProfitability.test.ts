@@ -17,6 +17,7 @@ import type { ExternalEvent, ExternalSubscription } from "./external/types";
 import { MemoryCommercialEventLog } from "./commercialEvents/log";
 import { createControlPlaneApp } from "./controlPlane/api";
 import { hashToken } from "./controlPlane/auth";
+import { ROLE_SCOPES } from "./controlPlane/operatorRoles";
 import { MemoryTenantRegistryStore } from "./_core/tenantRegistry/memoryStore";
 import { TenantRegistryService, type Actor } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
@@ -298,6 +299,8 @@ describe("API de rentabilidad", () => {
   const FULL = "rentab-full-token-aaaaaaaaaaaaaaaaaaaa";
   const USAGE_ONLY = "rentab-usage-token-bbbbbbbbbbbbbbbbbbb";
   const BILLING_ONLY = "rentab-billing-token-ccccccccccccccccc";
+  // Tokens con los permisos EXACTOS de cada rol de operador (lo que recibe su sesión)
+  const ROLE_TOKEN = { sales: "rol-comercial-token-aaaaaaaaaaaaaaaa", support: "rol-soporte-token-bbbbbbbbbbbbbbbbbb", readonly: "rol-lectura-token-cccccccccccccccccc", admin: "rol-admin-token-dddddddddddddddddddd", superadmin: "rol-superadmin-token-eeeeeeeeeeeeeeee" } as const;
   const OP: Actor = { type: "operator", id: "test" };
 
   beforeAll(async () => {
@@ -337,6 +340,7 @@ describe("API de rentabilidad", () => {
           { id: "full", sha256: hashToken(FULL), scopes: ["usage:read", "billing:read", "margins:read", "tenants:read"] },
           { id: "usage", sha256: hashToken(USAGE_ONLY), scopes: ["usage:read"] },
           { id: "billing", sha256: hashToken(BILLING_ONLY), scopes: ["billing:read"] },
+          ...(Object.keys(ROLE_TOKEN) as Array<keyof typeof ROLE_TOKEN>).map((r) => ({ id: `rol-${r}`, sha256: hashToken(ROLE_TOKEN[r]), scopes: [...ROLE_SCOPES[r]] })),
         ] as Array<{ id: string; sha256: string; scopes: any[] }>,
         registry,
         reader: reg,
@@ -357,15 +361,15 @@ describe("API de rentabilidad", () => {
     await new Promise<void>((r) => server.close(() => r()));
   });
 
-  const call = (path: string, token: string) =>
+  const call = (path: string, token: string, method = "GET", body?: unknown) =>
     new Promise<{ status: number; json: any }>((resolve, reject) => {
-      const req = http.request({ host: "127.0.0.1", port, path: `/cp/v1${path}`, method: "GET", headers: { authorization: `Bearer ${token}` } }, (res) => {
+      const req = http.request({ host: "127.0.0.1", port, path: `/cp/v1${path}`, method, headers: { authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) } }, (res) => {
         let b = "";
         res.on("data", (c) => (b += c));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, json: b ? JSON.parse(b) : null }));
       });
       req.on("error", reject);
-      req.end();
+      req.end(body ? JSON.stringify(body) : undefined);
     });
 
   it("exige usage:read y billing:read; solo admite 30, 90 o 365 días", async () => {
@@ -374,6 +378,31 @@ describe("API de rentabilidad", () => {
     expect((await call("/resources/profitability", "token-inventado-xxxxxxxxxxxxxxxxxxxx")).status).toBe(401);
     expect((await call("/resources/profitability?days=31", FULL)).status).toBe(400);
     expect((await call("/resources/profitability?tenant=no-existe", FULL)).status).toBe(404);
+  });
+
+  it("margins:read se aplica en el backend según el ROL: Comercial, Soporte y Solo lectura no reciben ningún dato económico de ninguna empresa", async () => {
+    const economic = ["/resources/profitability", "/resources/profitability?tenant=grande", "/resources/profitability?tenant=pequena&days=90", "/resources/costs", "/resources/costs?tenant=grande", "/resources/rates"];
+    for (const role of ["sales", "support", "readonly"] as const) {
+      for (const path of economic) {
+        const r = await call(path, ROLE_TOKEN[role]);
+        expect(r.status, `${role} ${path}`).toBe(403);
+        // La respuesta de rechazo no filtra importes, costes ni nombres de empresa
+        expect(JSON.stringify(r.json), `${role} ${path}`).not.toMatch(/billedCents|totalCents|centsPerUnit|marginCents|GRANDE/);
+      }
+      // Editar tarifas tampoco (la comprobación de permiso va antes que la validación del cuerpo)
+      expect((await call("/resources/rates", ROLE_TOKEN[role], "PUT", {})).status, `${role} PUT rates`).toBe(403);
+    }
+    // Sí consultan lo operativo de su ámbito: consumo y límites, sin ninguna cifra económica
+    const sales = await call("/tenants/grande/resources", ROLE_TOKEN.sales);
+    expect(sales.status).toBe(200);
+    expect(JSON.stringify(sales.json)).not.toMatch(/Cents|margin|revenue/i);
+    // La administración y la superadministración sí los consultan
+    for (const role of ["admin", "superadmin"] as const) for (const path of economic) expect((await call(path, ROLE_TOKEN[role])).status, `${role} ${path}`).toBe(200);
+    // Los cinco roles, con sus permisos reales: solo los dos con margins:read leen economía; ningún rol ve economía de una empresa inexistente sin permiso (403 antes que 404)
+    for (const role of Object.keys(ROLE_TOKEN) as Array<keyof typeof ROLE_TOKEN>) {
+      const allowed = ROLE_SCOPES[role].includes("margins:read");
+      expect((await call("/resources/profitability?tenant=no-existe", ROLE_TOKEN[role])).status, `${role} tenant inexistente`).toBe(allowed ? 404 : 403);
+    }
   });
 
   it("ingresos live con su fuente, costes medidos y estimados, y margen no exacto si faltan costes", async () => {

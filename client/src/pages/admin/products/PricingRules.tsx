@@ -230,7 +230,7 @@ function Simulator({ opts }: { opts: Options | undefined }) {
   );
   const r = sim.data;
   return (
-    <section className="space-y-4 rounded-2xl border border-border bg-card p-4" aria-labelledby="sim-title">
+    <section className="space-y-4 rounded-xl border border-border bg-card p-4" aria-labelledby="sim-title">
       <div className="flex items-center gap-2">
         <Calculator className="h-5 w-5 text-primary" aria-hidden="true" />
         <h2 id="sim-title" className="font-semibold text-foreground">{t("productsPricing.sim.title")}</h2>
@@ -351,7 +351,7 @@ export default function PricingRules() {
         ) : (
           <section aria-labelledby="rules-title" className="space-y-2">
             <h2 id="rules-title" className="text-sm text-muted-foreground">{t("productsPricing.count", { n: rules.length, active: activeCount })}</h2>
-            <ol className="divide-y divide-border rounded-2xl border border-border bg-card">
+            <ol className="divide-y divide-border rounded-xl border border-border bg-card">
               {rules.map((r, i) => (
                 <li key={r.id} className={cn("flex flex-wrap items-center gap-3 px-4 py-3", !r.active && "opacity-60")}>
                   <span className="w-6 text-center text-sm font-semibold tabular-nums text-muted-foreground" aria-label={t("productsPricing.priority", { n: i + 1 })}>{i + 1}</span>

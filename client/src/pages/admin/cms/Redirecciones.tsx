@@ -2,6 +2,7 @@
  * Web › Redirecciones: conserva los enlaces antiguos cuando cambias la dirección de una página o un producto.
  * Solo rutas de tu propia web (nunca otros dominios). El servidor avisa de bucles, cadenas y rutas que ya existen.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowRight, CornerDownRight, Pencil, Plus, Trash2 } from "lucide-react";
@@ -14,6 +15,9 @@ import { Label } from "@/components/ui/label";
 import { toastError } from "@/components/admin/PanelStates";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 import { useI18n } from "@/i18n/I18nProvider";
+import { PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 
 type Form = { id?: number; fromPath: string; toPath: string; statusCode: 301 | 302; isActive: boolean; note: string };
 const EMPTY: Form = { fromPath: "", toPath: "", statusCode: 301, isActive: true, note: "" };
@@ -42,13 +46,15 @@ export default function Redirecciones() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold"><CornerDownRight className="h-6 w-6" />{" "}{tx("Redirecciones de tu web")}</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{tx("Si cambias la dirección de una página o de un producto, añade aquí la antigua y quienes tengan el enlace guardado llegarán a la nueva (y los buscadores la heredan). Solo se redirige dentro de tu web. Cada cambio queda registrado.")}</p>
-          </div>
-          <Button onClick={() => setForm({ ...EMPTY })}><Plus className="mr-1.5 h-4 w-4" />{" "}{tx("Nueva redirección")}</Button>
-        </div>
+        <CmsSectionNav />
+        <PanelPageHeader
+          className="mb-0"
+          icon={<CornerDownRight />}
+          title={tx("Redirecciones de tu web")}
+          description={tx("Si cambias la dirección de una página o de un producto, añade aquí la antigua y quienes tengan el enlace guardado llegarán a la nueva (y los buscadores la heredan). Solo se redirige dentro de tu web. Cada cambio queda registrado.")}
+          actions={<Button onClick={() => setForm({ ...EMPTY })}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{tx("Nueva redirección")}</Button>}
+        />
+        {list.isError && <PanelError error={list.error} onRetry={() => void list.refetch()} />}
 
         {form && (
           <div className="space-y-3 rounded-xl border p-4">
@@ -94,7 +100,7 @@ export default function Redirecciones() {
                   <td className="p-3">{r.hits}</td>
                   <td className="p-3 text-right">
                     <Button size="sm" variant="ghost" aria-label={tx("Modificar")} onClick={() => setForm({ id: r.id, fromPath: r.fromPath, toPath: r.toPath, statusCode: r.statusCode === 302 ? 302 : 301, isActive: r.isActive, note: r.note ?? "" })}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="sm" variant="ghost" aria-label={tx("Eliminar")} onClick={() => { if (window.confirm(tx("¿Eliminar la redirección desde {fromPath}? Los enlaces antiguos dejarán de funcionar.", { fromPath: r.fromPath }))) remove.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" aria-label={tx("Eliminar")} onClick={async () => { if ((await confirmAction({ description: tx("¿Eliminar la redirección desde {fromPath}? Los enlaces antiguos dejarán de funcionar.", { fromPath: r.fromPath }), destructive: true }))) remove.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /></Button>
                   </td>
                 </tr>
               ))}

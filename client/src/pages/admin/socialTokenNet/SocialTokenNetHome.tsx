@@ -29,7 +29,7 @@ function IconTile({ children, muted }: { children: ReactNode; muted?: boolean })
 
 function Card({ icon, title, subtitle, included, children }: { icon: ReactNode; title: string; subtitle: string; included: boolean; children: ReactNode }) {
   return (
-    <section className={cn("flex flex-col gap-4 rounded-2xl border bg-card p-5", included ? "border-border" : "border-dashed border-border")}>
+    <section className={cn("flex flex-col gap-4 rounded-xl border bg-card p-5", included ? "border-border" : "border-dashed border-border")}>
       <div className="flex items-start gap-3">
         <IconTile muted={!included}>{icon}</IconTile>
         <div className="min-w-0 flex-1">
@@ -37,7 +37,7 @@ function Card({ icon, title, subtitle, included, children }: { icon: ReactNode; 
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         </div>
         {included ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success dark:text-success">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
             Activo
           </span>
@@ -129,7 +129,7 @@ export default function SocialTokenNetHome() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <header className="overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
+        <header className="overflow-hidden rounded-xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
           <div className="flex items-start gap-4">
             <IconTile>
               <Sparkles className="h-5 w-5" />

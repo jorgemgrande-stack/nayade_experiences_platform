@@ -64,7 +64,8 @@ describe("pantallas (fuente)", () => {
     expect(company).not.toContain("cms.updateSiteSettings");
     expect(settings).toContain('sub.mode === "tasks"');
     expect(settings).toContain("<CompanyData />");
-    expect(settings).toMatch(/<h1[^>]*>\{t\("settingsGeneral\.companyTitle"\)\}<\/h1>/);
+    // El título lo pinta la cabecera común (PanelPageHeader, que renderiza el h1)
+    expect(settings).toMatch(/<PanelPageHeader title=\{t\("settingsGeneral\.companyTitle"\)\}/);
   });
 
   it("sin los textos de la instalación original que no se mostraban", () => {

@@ -191,6 +191,7 @@ export default {
   mes: "Mes",
   desde: "Desde",
   hasta: "Hasta",
+  fechas: "Fechas",
   ticketDeCaja: "ticket de caja",
   ticketsDeCaja: "tickets de caja",
   seIncluiranLasFacturas: "Se incluirán las facturas, abonos y tickets de caja emitidos en {label} (fechas de España peninsular).",

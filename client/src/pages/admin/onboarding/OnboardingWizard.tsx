@@ -106,7 +106,7 @@ function StepIndicator({ step, index, isCurrent, isCompleted }: {
       isCurrent ? "bg-primary/10 text-primary" : "text-muted-foreground"
     }`}>
       <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-        isCompleted ? "bg-emerald-500 text-white" : isCurrent ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+        isCompleted ? "bg-success text-background" : isCurrent ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
       }`}>
         {isCompleted ? <Check className="w-3.5 h-3.5" /> : index + 1}
       </div>
@@ -160,9 +160,9 @@ function ModulesStep({ flags, onToggle, isPending }: {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <p className="text-sm text-amber-800 dark:text-amber-200">
+      <div className="flex gap-3 bg-warning/10 border border-warning/40 rounded-xl p-4">
+        <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+        <p className="text-sm text-warning">
           {t("onboarding.modules.warning")}
         </p>
       </div>
@@ -219,8 +219,8 @@ function IntegrationsStep({ envStatus }: {
                 <div className="flex items-center gap-1.5 shrink-0">
                   {env.isSet ? (
                     <>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t("onboarding.integrations.set")}</span>
+                      <CheckCircle2 className="w-4 h-4 text-success" />
+                      <span className="text-xs font-medium text-success">{t("onboarding.integrations.set")}</span>
                     </>
                   ) : (
                     <>
@@ -386,12 +386,12 @@ function OnboardingWizardLegacy() {
           </div>
           <div className="h-2 bg-muted rounded-full overflow-hidden">
             <div
-              className="h-full bg-emerald-500 transition-all duration-500 rounded-full"
+              className="h-full bg-success transition-all duration-500 rounded-full"
               style={{ width: `${progress}%` }}
             />
           </div>
           {allDone && (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
+            <p className="text-xs text-success mt-1 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" />
               {t("onboarding.allDone")}
             </p>
@@ -403,7 +403,7 @@ function OnboardingWizardLegacy() {
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="flex gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
+          <div className="flex gap-0 bg-card border border-border/50 rounded-xl overflow-hidden">
             {/* Sidebar */}
             <aside className="w-56 shrink-0 border-r border-border/50 py-3">
               {STEPS.map((s, idx) => (
@@ -430,7 +430,7 @@ function OnboardingWizardLegacy() {
                   {(() => { const Icon = step.icon; return <Icon className="w-5 h-5 text-muted-foreground" />; })()}
                   <h2 className="text-lg font-semibold text-foreground">{t(`onboarding.steps.${step.id}.title`)}</h2>
                   {completedMap[step.id] && (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-success/10 text-success">
                       {t("onboarding.completed")}
                     </span>
                   )}

@@ -97,7 +97,7 @@ export function PlanChangeDialog({ current, option, onClose }: { current: { plan
         </DialogHeader>
 
         {preview.isPending && <PanelLoading label={t("subscription.change.calculating")} />}
-        {preview.isError && <p className="text-sm text-red-700 dark:text-red-400">{preview.error.message}</p>}
+        {preview.isError && <p className="text-sm text-danger">{preview.error.message}</p>}
 
         {p && !result && (
           <div className="space-y-3 text-sm">
@@ -126,7 +126,7 @@ export function PlanChangeDialog({ current, option, onClose }: { current: { plan
           </div>
         )}
 
-        {result?.status === "applied" && <p className="text-sm text-emerald-800 dark:text-emerald-300">{t("subscription.change.applied")}</p>}
+        {result?.status === "applied" && <p className="text-sm text-success">{t("subscription.change.applied")}</p>}
         {result?.status === "requested" && (
           <p className="text-sm text-foreground">
             {t("subscription.change.requested", { when: result.effectiveAt ? ` (${fmtDate(result.effectiveAt)})` : "" })}
@@ -138,7 +138,7 @@ export function PlanChangeDialog({ current, option, onClose }: { current: { plan
           </p>
         )}
         {result?.status === "payment_pending" && <p className="text-sm text-foreground">{t("subscription.change.paymentPending")}</p>}
-        {result?.status === "failed" && <p className="text-sm text-red-700 dark:text-red-400">{t("subscription.change.failed")}</p>}
+        {result?.status === "failed" && <p className="text-sm text-danger">{t("subscription.change.failed")}</p>}
 
         <DialogFooter>
           {!result && (
@@ -178,7 +178,7 @@ export function PlanChangeSection() {
   const s = q.data;
   if (!s || !s.enabled) return null;
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-plan-change">
+    <section className="rounded-xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-plan-change">
       <h2 id="sub-plan-change" className="font-semibold text-foreground flex items-center gap-2">
         <Repeat2 className="w-4 h-4" aria-hidden="true" /> {t("subscription.change.sectionTitle")}
       </h2>
@@ -201,7 +201,7 @@ export function PlanChangeSection() {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  <Badge variant="outline" className="text-[11px]">{o.direction === "upgrade" ? t("subscription.change.fromToday") : t("subscription.change.atEnd")}</Badge>
+                  <Badge variant="outline" className="text-xs">{o.direction === "upgrade" ? t("subscription.change.fromToday") : t("subscription.change.atEnd")}</Badge>
                   <Button type="button" size="sm" variant="outline" onClick={() => setChoosing(o)}>
                     {t("subscription.change.choose")}
                   </Button>
@@ -241,7 +241,7 @@ export function CancellationSection() {
   const end = s.cancelAt ?? s.periodEnd;
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-cancel">
+    <section className="rounded-xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-cancel">
       <h2 id="sub-cancel" className="font-semibold text-foreground flex items-center gap-2">
         <CalendarX2 className="w-4 h-4" aria-hidden="true" /> {t("subscription.cancel.title")}
       </h2>

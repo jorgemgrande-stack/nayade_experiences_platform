@@ -12,7 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Tag, Euro, Info, MoreVertical, ListChecks } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { ProductThumb } from "./ProductThumb";
 import { Link } from "wouter";
 import { useVocabulary } from "@/lib/vocabulary";
 import { VariantIncludedServicesDialog } from "./EnrollmentCommerce";
@@ -42,7 +44,9 @@ const emptyForm = (): FormState => ({
 });
 
 export default function VariantsManager() {
-  const [selectedExp, setSelectedExp] = useState<string>("all");
+  const [selectedExp, setSelectedExp] = useState<string>(() => {
+    try { const v = new URLSearchParams(window.location.search).get("producto"); return v && /^\d+$/.test(v) ? v : "all"; } catch { return "all"; }
+  });
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -60,8 +64,8 @@ export default function VariantsManager() {
   const amount = (v: string | null | undefined) => format.number(parseFloat(v ?? "0"), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const utils = trpc.useUtils();
-  const { data: experiences, isLoading: loadingExp } = trpc.products.getAll.useQuery();
-  const { data: allVariants, isLoading: loadingVariants } = trpc.products.getVariants.useQuery(
+  const { data: experiences, isLoading: loadingExp, isError: expError, error: expErr, refetch: refetchExp } = trpc.products.getAll.useQuery();
+  const { data: allVariants, isLoading: loadingVariants, isError: varError, error: varErr, refetch: refetchVar } = trpc.products.getVariants.useQuery(
     selectedExp !== "all" ? { experienceId: parseInt(selectedExp) } : {}
   );
 
@@ -149,17 +153,15 @@ export default function VariantsManager() {
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <AdminLayout title={t("productsVariants.title")}>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">{t("productsVariants.title")}</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {voc.licensed ? t("productsVariants.intro.licensedDefine") : t("productsVariants.intro.ownDefine")} {voc.licensed ? t("productsVariants.intro.licensedChoose") : t("productsVariants.intro.ownChoose")}
-          </p>
-        </div>
-        <div className="flex gap-3">
+    <AdminLayout>
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <PanelPageHeader
+        icon={<Tag />}
+        title={t("productsVariants.title")}
+        description={<>{voc.licensed ? t("productsVariants.intro.licensedDefine") : t("productsVariants.intro.ownDefine")} {voc.licensed ? t("productsVariants.intro.licensedChoose") : t("productsVariants.intro.ownChoose")}</>}
+        actions={<>
           <Select value={selectedExp} onValueChange={setSelectedExp}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-56 max-w-full" aria-label={t("productsVariants.filterBy", { item })}>
               <SelectValue placeholder={t("productsVariants.filterBy", { item })} />
             </SelectTrigger>
             <SelectContent>
@@ -169,11 +171,11 @@ export default function VariantsManager() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={() => openCreate()} className="bg-primary hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-2" /> {t("productsVariants.newVariant")}
+          <Button onClick={() => openCreate()}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsVariants.newVariant")}
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Info box */}
       <div className="mb-6 p-4 bg-info/10 border border-info/30 rounded-xl flex gap-3 text-sm text-foreground">
@@ -188,7 +190,9 @@ export default function VariantsManager() {
       </div>
 
       {loadingExp || loadingVariants ? (
-        <div className="text-center py-12 text-muted-foreground">{t("productsVariants.loading")}</div>
+        <div role="status" className="text-center py-12 text-muted-foreground">{t("productsVariants.loading")}</div>
+      ) : expError || varError ? (
+        <PanelError error={expErr ?? varErr} onRetry={() => { void refetchExp(); void refetchVar(); }} title={t("productsVariants.loadError")} />
       ) : !experiences?.length ? (
         <PanelEmpty
           icon={<Tag className="w-6 h-6" />}
@@ -207,15 +211,20 @@ export default function VariantsManager() {
             const variants = variantsByExp[exp.id] ?? [];
             return (
               <div key={exp.id} className="bg-card border border-border rounded-xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-muted/30">
-                  <div className="flex items-center gap-3">
-                    <Tag className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-foreground">{exp.title}</span>
+                <div className="px-4 sm:px-5 py-3 border-b border-border flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-muted/30">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    <ProductThumb
+                      src={String((exp as Record<string, unknown>).image1 ?? exp.coverImageUrl ?? "") || null}
+                      alt={exp.title}
+                      noImageLabel={t("productsVariants.noImage")}
+                      className="w-12"
+                    />
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground">{exp.title}</span>
                     {!voc.licensed && <Badge variant="outline" className="text-xs">{exp.difficulty ?? "facil"}</Badge>}
                     {variants.length > 0 && (
-                      <Badge className="text-xs bg-success/10 text-success border-success/40">
+                      <StatusBadge tone="success">
                         {t("productsVariants.variantCount", { n: variants.length })}
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </div>
                   <Button size="sm" variant="outline" onClick={() => openCreate(exp.id)}>
@@ -224,10 +233,10 @@ export default function VariantsManager() {
                 </div>
 
                 {variants.length > 0 ? (
-                  <div className="divide-y divide-border">
+                  <div className="ml-4 sm:ml-8 border-l-2 border-primary/25 divide-y divide-border" data-variant-list>
                     {variants.map((v) => (
-                      <div key={v.id} className="px-5 py-3.5 flex items-center gap-4">
-                        <div className="flex-1 min-w-0">
+                      <div key={v.id} className="px-4 sm:px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <div className="flex-1 min-w-[10rem]">
                           <p className="font-medium text-foreground text-sm">{v.name}</p>
                           {v.description && (
                             <p className="text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{v.description}</p>
@@ -236,13 +245,13 @@ export default function VariantsManager() {
                             {priceTypeLabels[v.priceType] ?? v.priceType}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1 text-primary font-bold text-base">
+                        <div className="flex items-center gap-1 text-primary font-bold text-base tabular-nums">
                           <Euro className="w-4 h-4" />
                           <span>{amount(v.priceModifier)}</span>
                           {v.priceType === "percentage" && <span className="text-sm font-normal text-muted-foreground">%</span>}
                         </div>
                         {v.isRequired && (
-                          <Badge variant="secondary" className="text-xs">{t("productsVariants.required")}</Badge>
+                          <StatusBadge tone="brand">{t("productsVariants.required")}</StatusBadge>
                         )}
                         <div className="flex gap-1">
                           <DropdownMenu>
@@ -285,6 +294,8 @@ export default function VariantsManager() {
           })}
         </div>
       )}
+
+      </div>
 
       {/* Create / Edit Dialog */}
       <Dialog open={open} onOpenChange={(v) => { if (!isPending) setOpen(v); }}>

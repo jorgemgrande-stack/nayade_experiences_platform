@@ -112,7 +112,7 @@ describe("reglas de precios: motor", () => {
     const src = read("server/routers.ts");
     const checkout = src.slice(src.indexOf("cartCheckout: publicProcedure"));
     expect(checkout.indexOf("webRulePrice(cartRules")).toBeGreaterThan(0);
-    expect(checkout.indexOf("webRulePrice(cartRules")).toBeLessThan(checkout.indexOf("3b. Aplicar descuento por código"));
+    expect(checkout.indexOf("webRulePrice(cartRules")).toBeLessThan(checkout.indexOf("1b. Descuento: se valida"));
   });
 
   it("la nota de la línea guardada dice qué regla se aplicó y el precio de catálogo", () => {

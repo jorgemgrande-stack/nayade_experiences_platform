@@ -21,6 +21,7 @@ export default {
     newProduct: "Neues Produkt",
     editWeb: "Meine Website bearbeiten",
     aria: "Schnellzugriffe",
+    more: "Weitere Aktionen",
   },
   notice: {
     trial: "Du testest gerade <b>{plan}</b>: {days, plural, one {Es bleibt dir <b># Tag</b>} other {Es bleiben dir <b># Tage</b>}}. Wenn du abschließt, behältst du alles, was du angelegt hast.",

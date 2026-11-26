@@ -38,9 +38,9 @@ function amount(f: Formatters, n: number, unit: UsageRow["unit"]): string {
 }
 
 const stateStyles = (t: Translate): Record<UsageRow["state"], { label: string; bar: string; badge: string }> => ({
-  ok: { label: t("subscription.usage.within"), bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-300" },
-  warning: { label: t("subscription.usage.near"), bar: "bg-amber-500", badge: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300" },
-  exceeded: { label: t("subscription.usage.reached"), bar: "bg-red-500", badge: "bg-red-100 text-red-900 dark:bg-red-500/15 dark:text-red-300" },
+  ok: { label: t("subscription.usage.within"), bar: "bg-success", badge: "bg-success/10 text-success" },
+  warning: { label: t("subscription.usage.near"), bar: "bg-warning", badge: "bg-warning/10 text-warning" },
+  exceeded: { label: t("subscription.usage.reached"), bar: "bg-danger", badge: "bg-danger/10 text-danger" },
 });
 
 function UsageCard({ row }: { row: UsageRow }) {
@@ -48,7 +48,7 @@ function UsageCard({ row }: { row: UsageRow }) {
   const pct = row.ratio === null ? (row.used > 0 ? 100 : 0) : Math.min(100, Math.round(row.ratio * 100));
   const s = stateStyles(t)[row.state];
   return (
-    <li className="rounded-2xl border border-border bg-card p-5 space-y-3">
+    <li className="rounded-xl border border-border bg-card p-5 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-semibold text-foreground">{row.label}</h2>
@@ -91,7 +91,7 @@ function StorageCard({ title, hint, v }: { title: string; hint: string; v: Scope
   const pct = limit === null ? 0 : limit === 0 ? 100 : Math.min(100, Math.round((v.usedBytes / limit) * 100));
   const s = stateStyles(t)[LEVEL[v.level] ?? "ok"];
   return (
-    <li className="rounded-2xl border border-border bg-card p-5 space-y-3">
+    <li className="rounded-xl border border-border bg-card p-5 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-semibold text-foreground">{title}</h2>
@@ -144,7 +144,7 @@ export function UsageSection() {
         {usage.isError && <PanelError error={usage.error} onRetry={() => usage.refetch()} title={t("subscription.usage.loadError")} />}
 
         {usage.isSuccess && (!data || !data.available) && (
-          <section className="rounded-2xl border border-border bg-card p-6">
+          <section className="rounded-xl border border-border bg-card p-6">
             <p className="text-sm text-muted-foreground">{t("subscription.usage.unavailable")}</p>
           </section>
         )}

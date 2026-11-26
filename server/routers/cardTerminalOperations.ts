@@ -7,6 +7,7 @@ import { cardTerminalOperations, tpvFileImports, reservations, quotes, tpvSales 
 import * as XLSX from "xlsx";
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { listOperationsPage, summarizeOperations } from "../cardTerminalQuery";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -241,6 +242,17 @@ async function tryAutoLink(
   return { linkedEntityType: "none", linkedEntityId: null };
 }
 
+const opListInput = z.object({
+  status: z.enum(["pendiente", "conciliado", "incidencia", "ignorado", "todos"]).default("todos"),
+  operationType: z.enum(["VENTA", "DEVOLUCION", "ANULACION", "OTRO", "todos"]).default("todos"),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  search: z.string().optional(),
+  importId: z.number().optional(),
+  page: z.number().default(1),
+  pageSize: z.number().default(50),
+});
+
 // -- Router --------------------------------------------------------------------
 
 export const cardTerminalOperationsRouter = router({
@@ -248,6 +260,11 @@ export const cardTerminalOperationsRouter = router({
   listImports: adminProc.query(async () => {
     return db.select().from(tpvFileImports).orderBy(desc(tpvFileImports.createdAt));
   }),
+
+  /** Totales exactos (texto decimal) y reparto por estado del filtro COMPLETO del listado. Solo lectura. */
+  summary: adminProc
+    .input(opListInput.omit({ page: true, pageSize: true }))
+    .query(async ({ input }) => summarizeOperations(db, input)),
 
   importExcel: adminProc
     .input(z.object({
@@ -316,50 +333,12 @@ export const cardTerminalOperationsRouter = router({
     }),
 
   list: adminProc
-    .input(z.object({
-      status: z.enum(["pendiente", "conciliado", "incidencia", "ignorado", "todos"]).default("todos"),
-      operationType: z.enum(["VENTA", "DEVOLUCION", "ANULACION", "OTRO", "todos"]).default("todos"),
-      dateFrom: z.string().optional(),
-      dateTo: z.string().optional(),
-      search: z.string().optional(),
-      importId: z.number().optional(),
-      page: z.number().default(1),
-      pageSize: z.number().default(50),
-    }))
+    .input(opListInput)
     .query(async ({ input }) => {
-      const conditions: ReturnType<typeof eq>[] = [];
-      if (input.status !== "todos") conditions.push(eq(cardTerminalOperations.status, input.status as "pendiente" | "conciliado" | "incidencia" | "ignorado"));
-      if (input.operationType !== "todos") conditions.push(eq(cardTerminalOperations.operationType, input.operationType as "VENTA" | "DEVOLUCION" | "ANULACION" | "OTRO"));
-      if (input.importId) conditions.push(eq(cardTerminalOperations.importId, input.importId));
-      if (input.dateFrom) conditions.push(gte(cardTerminalOperations.operationDatetime, madridStartOfDayUtc(input.dateFrom)));
-      if (input.dateTo)   conditions.push(lte(cardTerminalOperations.operationDatetime, madridEndOfDayUtc(input.dateTo)));
-
-      const baseQuery = db.select().from(cardTerminalOperations);
-      const withWhere = conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
-      const rows = await withWhere.orderBy(desc(cardTerminalOperations.operationDatetime), desc(cardTerminalOperations.id));
-
-      const search = input.search?.toLowerCase().trim();
-      const filtered = search
-        ? rows.filter(
-            (r) =>
-              r.operationNumber?.toLowerCase().includes(search) ||
-              r.card?.toLowerCase().includes(search) ||
-              r.terminalCode?.toLowerCase().includes(search) ||
-              r.commerceCode?.toLowerCase().includes(search) ||
-              r.authorizationCode?.toLowerCase().includes(search)
-          )
-        : rows;
-
-      const total = filtered.length;
-      const offset = (input.page - 1) * input.pageSize;
-      const data = filtered.slice(offset, offset + input.pageSize);
-
-      const totalVentas = filtered
-        .filter((r) => r.operationType === "VENTA" && r.status !== "ignorado")
-        .reduce((s, r) => s + parseFloat(String(r.amount)), 0);
-      const totalDevoluciones = filtered
-        .filter((r) => r.operationType === "DEVOLUCION" && r.status !== "ignorado")
-        .reduce((s, r) => s + parseFloat(String(r.amount)), 0);
+      const { rows: data, total, summary } = await listOperationsPage(db, input);
+      // totalVentas/totalDevoluciones: los de todo el filtro (suma SQL exacta), no los de la página
+      const totalVentas = Number(summary.ventas);
+      const totalDevoluciones = Number(summary.devoluciones);
 
       // Enriquecer con reservationNumber para las operaciones vinculadas a reservas
       const reservationIds = data
@@ -382,7 +361,7 @@ export const cardTerminalOperationsRouter = router({
           : null,
       }));
 
-      return { data: enrichedData, total, totalVentas, totalDevoluciones };
+      return { data: enrichedData, total, totalVentas, totalDevoluciones, summary };
     }),
 
   getById: adminProc

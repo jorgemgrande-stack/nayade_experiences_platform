@@ -5,15 +5,17 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { AlertCircle, ArrowLeft, ExternalLink, Loader2, Mail, Package, Phone, Receipt, Search, ShoppingBag, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, Loader2, Mail, Package, Phone, Plus, Receipt, ShoppingBag, User } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { PanelDataList, PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
-import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelDataList, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { CompactEmpty, SalesFamilyShell, SummaryStrip, ToolbarRow, type SummaryStripItem, type ToolbarChip } from "@/components/admin/SalesFamilyShell";
+import { useVocabulary } from "@/lib/vocabulary";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
 import { TONE_TEXT } from "@/lib/panelTones";
 import { toastError } from "@/lib/errorMessage";
 import { ORDER_STAGE_FLOW, STAGES_NOTIFIED, type OrderStage } from "@shared/shopOrders";
@@ -50,6 +52,7 @@ const FILTERS: Array<OrderStage | "all"> = ["all", "pending_payment", "paid", "p
 
 export function OnlineOrdersList() {
   const { t } = useI18n();
+  const voc = useVocabulary();
   const { eur, fmtDate } = useOrderFormat();
   const [stage, setStage] = useState<OrderStage | "all">("all");
   const [search, setSearch] = useState("");
@@ -57,58 +60,76 @@ export function OnlineOrdersList() {
   const counts = q.data?.counts;
   const all = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
 
-  return (
-    <AdminLayout>
-      <div className="mx-auto w-full max-w-6xl space-y-5 p-4 md:p-6">
-        <PanelPageHeader
-          className="mb-0"
-          icon={<ShoppingBag />}
-          title={t("shopOrders.list.title")}
-          description={t("shopOrders.list.description")}
-        />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input aria-label={t("shopOrders.list.searchLabel")} placeholder={t("shopOrders.list.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={t("shopOrders.list.filterByStatus")}>
-          {FILTERS.map((f) => (
-            <button key={f} type="button" aria-pressed={stage === f} onClick={() => setStage(f)} className={cn("rounded-full border px-3 py-1 text-xs font-medium", stage === f ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
-              {f === "all" ? t("shopOrders.list.all") : t(`shopOrders.stage.${f}`)} ({f === "all" ? all : counts?.[f] ?? 0})
-            </button>
-          ))}
-        </div>
+  const toggleStage = (s: OrderStage) => setStage((cur) => (cur === s ? "all" : s));
+  const strip: SummaryStripItem[] = [
+    { key: "paid", label: t("shopOrders.stage.paid"), value: counts?.paid ?? 0, primary: true, tone: "brand", active: stage === "paid", onClick: () => toggleStage("paid") },
+    { key: "pending_payment", label: t("shopOrders.stage.pending_payment"), value: counts?.pending_payment ?? 0, tone: "warning", active: stage === "pending_payment", onClick: () => toggleStage("pending_payment") },
+    { key: "prepared", label: t("shopOrders.stage.prepared"), value: counts?.prepared ?? 0, tone: "info", active: stage === "prepared", onClick: () => toggleStage("prepared") },
+    { key: "delivered", label: t("shopOrders.stage.delivered"), value: counts?.delivered ?? 0, tone: "success", active: stage === "delivered", onClick: () => toggleStage("delivered") },
+  ];
+  const chips: ToolbarChip[] = [
+    ...(stage !== "all" ? [{ id: "stage", label: `${t("shopOrders.list.statusLabel")}: ${t(`shopOrders.stage.${stage}`)}`, onRemove: () => setStage("all") }] : []),
+    ...(search.trim() ? [{ id: "search", label: `“${search.trim()}”`, onRemove: () => setSearch("") }] : []),
+  ];
+  const clearFilters = () => { setStage("all"); setSearch(""); };
 
+  return (
+    <AdminLayout title={voc.crmTitle}>
+      <SalesFamilyShell
+        active="reservations"
+        title={t("shopOrders.list.title")}
+        action={<Button asChild><Link href="/admin/crm?tab=reservations&nuevo=1"><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{voc.newOrder}</Link></Button>}
+      >
+        <SummaryStrip items={strip} label={t("shopOrders.list.title")} />
+        <ToolbarRow
+          search={{ value: search, onChange: setSearch, placeholder: t("shopOrders.list.searchPlaceholder") }}
+          filters={(
+            <Select value={stage} onValueChange={(v) => setStage(v as OrderStage | "all")}>
+              <SelectTrigger className="h-9 w-full bg-card text-sm sm:w-60" aria-label={t("shopOrders.list.filterByStatus")}><span className="flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-muted-foreground">{t("shopOrders.list.statusLabel")}:</span><SelectValue /></span></SelectTrigger>
+              <SelectContent>
+                {FILTERS.map((f) => <SelectItem key={f} value={f}>{(f === "all" ? t("shopOrders.list.all") : t(`shopOrders.stage.${f}`)) + " (" + (f === "all" ? all : counts?.[f] ?? 0) + ")"}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          trailing={(
+            <>
+              <Button asChild variant="ghost" size="sm" className="h-9 gap-1 text-muted-foreground"><Link href="/admin/crm?tab=reservations">{t("salesShell.allOrders")}<ArrowRight className="h-4 w-4" aria-hidden="true" /></Link></Button>
+            </>
+          )}
+          chips={chips}
+          onClear={clearFilters}
+          summary={chips.length > 0 && q.data ? t("shopOrders.list.showing", { shown: q.data.items.length, total: q.data.total }) : undefined}
+        />
         {q.isLoading ? (
-          <div className="flex justify-center py-16" role="status" aria-label={t("shopOrders.list.loading")}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          <div className="flex justify-center rounded-xl border border-border bg-card py-12" role="status" aria-label={t("shopOrders.list.loading")}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : q.error ? (
-          <p className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{t("shopOrders.list.loadError")}</p>
+          <PanelError error={q.error} onRetry={() => q.refetch()} title={t("shopOrders.list.loadError")} />
         ) : !q.data?.items.length ? (
-          <PanelEmpty
+          <CompactEmpty
             icon={<ShoppingBag />}
             title={all === 0 ? t("shopOrders.list.emptyNone") : t("shopOrders.list.emptyFilter")}
             description={all === 0 ? t("shopOrders.list.emptyNoneText") : undefined}
-          >
-            {all > 0 && <Button size="sm" variant="outline" onClick={() => { setStage("all"); setSearch(""); }}>{t("shopOrders.list.seeAll")}</Button>}
-          </PanelEmpty>
+            action={all > 0 ? <Button size="sm" variant="outline" onClick={clearFilters}>{t("shopOrders.list.seeAll")}</Button> : undefined}
+          />
         ) : (
           <PanelDataList
+            tableFrom="lg"
+            className="shadow-sm [&_td]:py-2 [&_td]:align-middle"
             caption={t("shopOrders.list.title")}
             rows={q.data.items}
             rowKey={(o) => o.merchantOrder}
             columns={[
-              { key: "pedido", header: t("shopOrders.list.colOrder"), cell: (o) => <Link href={orderHref(o.merchantOrder)} className="font-mono font-medium text-primary hover:underline">{o.merchantOrder}</Link> },
-              { key: "fecha", header: t("shopOrders.list.colDate"), cell: (o) => <span className="text-muted-foreground">{fmtDate(o.createdAt)}</span> },
-              { key: "cliente", header: t("shopOrders.list.colCustomer"), cell: (o) => <><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-foreground">{o.customerName}</div><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{o.customerEmail}</div></> },
-              { key: "articulos", header: t("shopOrders.list.colItems"), cell: (o) => <div className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">{o.productNames.join(", ")}</div> },
-              { key: "total", header: t("shopOrders.list.colTotal"), align: "right", cell: (o) => <span className="font-medium tabular-nums text-foreground">{eur(o.totalCents)}</span> },
-              { key: "estado", header: t("shopOrders.list.colStatus"), cell: (o) => <StageBadge stage={o.stage} /> },
+              { key: "pedido", header: t("shopOrders.list.colOrder"), cell: (o) => <Link href={orderHref(o.merchantOrder)} className="whitespace-nowrap font-mono font-medium text-primary hover:underline">{o.merchantOrder}</Link> },
+              { key: "fecha", header: t("shopOrders.list.colDate"), mobile: "footer", cell: (o) => <span className="whitespace-nowrap text-muted-foreground">{fmtDate(o.createdAt)}</span> },
+              { key: "cliente", header: t("shopOrders.list.colCustomer"), mobile: "body", cell: (o) => <div className="flex min-w-0 items-baseline gap-1.5 lg:block"><div className="max-w-[60%] shrink-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-foreground lg:max-w-[14rem] lg:font-normal">{o.customerName}</div><div className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground lg:max-w-[14rem]">{o.customerEmail}</div></div> },
+              { key: "articulos", header: t("shopOrders.list.colItems"), mobile: "body", cell: (o) => <div className="max-w-[16rem] max-lg:max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">{o.productNames.join(", ")}</div> },
+              { key: "total", header: t("shopOrders.list.colTotal"), align: "right", mobile: "amount", cell: (o) => <span className="font-medium tabular-nums text-foreground">{eur(o.totalCents)}</span> },
+              { key: "estado", header: t("shopOrders.list.colStatus"), mobile: "footer", cell: (o) => <StageBadge stage={o.stage} /> },
             ]}
           />
         )}
         {q.data && q.data.total > q.data.items.length && <p className="text-xs text-muted-foreground">{t("shopOrders.list.showing", { shown: q.data.items.length, total: q.data.total })}</p>}
-      </div>
+      </SalesFamilyShell>
     </AdminLayout>
   );
 }
@@ -136,6 +157,8 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
         <Link href="/admin/tienda/pedidos" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />{t("shopOrders.detail.back")}</Link>
         {q.isLoading ? (
           <div className="flex justify-center py-16" role="status" aria-label={t("shopOrders.list.loading")}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : q.isError ? (
+          <PanelError error={q.error} onRetry={() => q.refetch()} title={t("shopOrders.list.loadError")} />
         ) : !o ? (
           <PanelEmpty icon={<ShoppingBag />} title={t("shopOrders.detail.notFound", { order: merchantOrder })}>
             <Button asChild size="sm" variant="outline"><Link href="/admin/tienda/pedidos">{t("shopOrders.detail.backToOrders")}</Link></Button>
@@ -191,7 +214,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                 <ul className="divide-y divide-border text-sm">
                   {o.lines.map((l) => (
                     <li key={l.id} className="flex items-start justify-between gap-3 py-2">
-                      <span className="min-w-0 break-words text-foreground">{l.productName}<span className="text-muted-foreground"> × {l.quantity}</span>{l.date && <span className="block text-xs text-muted-foreground">{t("shopOrders.detail.serviceDate", { date: f.date(new Date(l.date + "T00:00:00")) })}</span>}</span>
+                      <span className="min-w-0 break-words text-foreground">{l.productName}<span className="text-muted-foreground"> × {l.quantity}</span>{l.date && <span className="block text-xs text-muted-foreground">{t("shopOrders.detail.serviceDate", { date: f.date(new Date(l.date + "T00:00:00")) })}</span>}{l.participants.length > 0 && <span className="block text-xs text-muted-foreground break-words">{t("shopOrders.detail.participants", { names: l.participants.join(", ") })}</span>}</span>
                       <span className="shrink-0 tabular-nums text-foreground">{eur(l.amountCents)}</span>
                     </li>
                   ))}
@@ -217,6 +240,14 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                       {o.billing.address && <p className="break-words">{o.billing.address}</p>}
                     </div>
                   )}
+                  {o.consent && (
+                    <div className="mt-3 rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">{t("shopOrders.detail.consentTitle")}</p>
+                      <p className="break-words">{o.consent.text}</p>
+                      <p>{t("shopOrders.detail.consentLine", { date: f.date(new Date(o.consent.acceptedAt)), hash: o.consent.textHash.slice(0, 10) })}</p>
+                    </div>
+                  )}
+                  <p className="mt-3 text-xs text-muted-foreground">{t("shopOrders.detail.buyerLanguage", { lang: o.buyerLocale })}</p>
                   {o.clientId ? (
                     <Link href={`/admin/crm/clientes/${o.clientId}`} className="mt-3 inline-block font-medium text-primary hover:underline">{t("shopOrders.detail.viewCustomer")}</Link>
                   ) : (
@@ -230,7 +261,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                     <ul className="space-y-2">
                       {o.invoices.map((inv) => (
                         <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2">
-                          <Link href={`/admin/crm?tab=invoices&search=${encodeURIComponent(inv.invoiceNumber)}`} className="font-mono font-medium text-primary hover:underline">{inv.invoiceNumber}</Link>
+                          <Link href={`/admin/crm?tab=invoices&search=${encodeURIComponent(inv.invoiceNumber)}`} className="whitespace-nowrap font-mono font-medium text-primary hover:underline">{inv.invoiceNumber}</Link>
                           <a href={inv.pdfUrl ?? `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">{t("shopOrders.detail.viewPdf")} <ExternalLink className="h-3 w-3" aria-hidden="true" /></a>
                         </li>
                       ))}

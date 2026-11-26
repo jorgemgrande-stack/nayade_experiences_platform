@@ -12,6 +12,9 @@ import {
   Mail, Phone, Building2,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const INPUT_CLS = "bg-foreground/[0.05] border-foreground/[0.12] text-white mt-0.5";
+const INPUT_CLS = "bg-foreground/[0.05] border-foreground/[0.12] text-foreground mt-0.5";
 
 export default function EmployeesList() {
   const [, navigate] = useLocation();
@@ -30,7 +33,7 @@ export default function EmployeesList() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
 
-  const { data: employees, isLoading } = trpc.hr.employees.list.useQuery({
+  const { data: employees, isLoading, error, refetch } = trpc.hr.employees.list.useQuery({
     isActive: statusFilter === "all" ? undefined : statusFilter === "active",
     search: search || undefined,
   });
@@ -85,41 +88,28 @@ export default function EmployeesList() {
 
   return (
     <AdminLayout title="Empleados — Personal">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
+      <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between mb-1">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
-                <Users className="w-5 h-5 text-orange-400" />
-                Empleados
-              </h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">
-                Plantilla de la empresa — datos personales, contrato y documentos
-              </p>
-            </div>
-            <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
-              <Plus className="w-4 h-4 mr-1.5" />
-              Nuevo empleado
-            </Button>
-          </div>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6">
+          <PanelPageHeader
+            icon={<Users />}
+            title="Empleados"
+            description="Plantilla de la empresa — datos personales, contrato y documentos"
+            actions={
+              <>
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Nuevo empleado
+                </Button>
+              </>
+            }
+          />
 
           {/* Mini-counters */}
-          <div className="flex items-center gap-3 mt-3 text-xs">
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <UserCheck className="w-3.5 h-3.5" />
-              <strong>{counts.active}</strong> activos
-            </span>
-            <span className="text-foreground/30">·</span>
-            <span className="flex items-center gap-1.5 text-rose-400">
-              <UserX className="w-3.5 h-3.5" />
-              <strong>{counts.inactive}</strong> inactivos
-            </span>
-            <span className="text-foreground/30">·</span>
-            <span className="flex items-center gap-1.5 text-foreground/60">
-              <Users className="w-3.5 h-3.5" />
-              <strong>{counts.total}</strong> total
-            </span>
+          <div className="grid grid-cols-1 min-[520px]:grid-cols-3 gap-3">
+            <MetricCard compact tone="success" icon={<UserCheck />} label="Activos" value={counts.active} />
+            <MetricCard compact tone="danger" icon={<UserX />} label="Inactivos" value={counts.inactive} />
+            <MetricCard compact tone="brand" icon={<Users />} label="Total" value={counts.total} />
           </div>
         </div>
 
@@ -129,30 +119,30 @@ export default function EmployeesList() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
               <Input
-                className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
+                className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-foreground text-sm"
                 placeholder="Buscar por nombre, email o teléfono…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
             <Select value={statusFilter} onValueChange={v => setStatusFilter(v as typeof statusFilter)}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="all" className="text-white">Todos los estados</SelectItem>
-                <SelectItem value="active" className="text-white">Solo activos</SelectItem>
-                <SelectItem value="inactive" className="text-white">Solo inactivos</SelectItem>
+              <SelectContent className="bg-card border-foreground/[0.12]">
+                <SelectItem value="all" className="text-foreground">Todos los estados</SelectItem>
+                <SelectItem value="active" className="text-foreground">Solo activos</SelectItem>
+                <SelectItem value="inactive" className="text-foreground">Solo inactivos</SelectItem>
               </SelectContent>
             </Select>
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="all" className="text-white">Todos los departamentos</SelectItem>
+              <SelectContent className="bg-card border-foreground/[0.12]">
+                <SelectItem value="all" className="text-foreground">Todos los departamentos</SelectItem>
                 {departments.map(d => (
-                  <SelectItem key={d} value={d} className="text-white">{d}</SelectItem>
+                  <SelectItem key={d} value={d} className="text-foreground">{d}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -161,28 +151,27 @@ export default function EmployeesList() {
 
         {/* Lista */}
         <div className="px-4 sm:px-6 py-4">
+          {!isLoading && error && <PanelError error={error} onRetry={() => refetch()} />}
           {isLoading && (
-            <div className="text-center py-12 text-foreground/40 text-sm">Cargando empleados…</div>
+            <PanelLoading label="Cargando empleados…" />
           )}
-          {!isLoading && filtered.length === 0 && !noEmployeesYet && (
-            <div className="text-center py-12 text-foreground/40 text-sm">
-              No se encontraron empleados con esos filtros.
-            </div>
+          {!isLoading && !error && filtered.length === 0 && !noEmployeesYet && (
+            <PanelEmpty title="No se encontraron empleados con esos filtros." />
           )}
-          {!isLoading && filtered.length === 0 && noEmployeesYet && (
+          {!isLoading && !error && filtered.length === 0 && noEmployeesYet && (
             <div className="text-center py-12 space-y-3">
               <p className="text-sm text-foreground/60">Todavía no hay empleados. Da de alta al primero para empezar a llevar fichajes, vacaciones y nóminas.</p>
-              <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Button onClick={() => setCreateOpen(true)}>
                 <Plus className="w-4 h-4 mr-1.5" />
                 Dar de alta el primer empleado
               </Button>
             </div>
           )}
-          {!isLoading && filtered.length > 0 && (
-            <div className="rounded-xl border border-foreground/[0.08] overflow-hidden">
-              <table className="w-full text-sm">
+          {!isLoading && !error && filtered.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
-                  <tr className="text-left text-[10px] uppercase tracking-widest text-foreground/50">
+                  <tr className="text-left text-xs uppercase tracking-widest text-foreground/50">
                     <th className="px-4 py-3">Nombre</th>
                     <th className="px-4 py-3">Puesto / Depto</th>
                     <th className="px-4 py-3 hidden md:table-cell">Contacto</th>
@@ -199,13 +188,13 @@ export default function EmployeesList() {
                           {e.photoUrl ? (
                             <img src={e.photoUrl} alt={e.fullName} className="w-8 h-8 rounded-full object-cover" />
                           ) : (
-                            <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-300 text-xs font-semibold">
+                            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-semibold">
                               {e.fullName.charAt(0).toUpperCase()}
                             </div>
                           )}
                           <div>
                             <div className="font-medium text-foreground">{e.fullName}</div>
-                            {e.dni && <div className="text-[10px] text-foreground/40">{e.dni}</div>}
+                            {e.dni && <div className="text-xs text-foreground/40">{e.dni}</div>}
                           </div>
                         </div>
                       </td>
@@ -215,7 +204,7 @@ export default function EmployeesList() {
                             {e.position ? <><Briefcase className="w-3 h-3 text-foreground/40" />{e.position}</> : <span className="text-foreground/30">—</span>}
                           </span>
                           {e.department && (
-                            <span className="text-foreground/50 text-[10px] flex items-center gap-1">
+                            <span className="text-foreground/50 text-xs flex items-center gap-1">
                               <Building2 className="w-3 h-3" />{e.department}
                             </span>
                           )}
@@ -232,10 +221,10 @@ export default function EmployeesList() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={cn(
-                          "inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider",
+                          "inline-block px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider",
                           e.isActive
-                            ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                            : "bg-rose-500/15 text-rose-300 border border-rose-500/30",
+                            ? "bg-success/15 text-success border border-success/30"
+                            : "bg-danger/15 text-danger border border-danger/30",
                         )}>
                           {e.isActive ? "Activo" : "Inactivo"}
                         </span>
@@ -243,7 +232,7 @@ export default function EmployeesList() {
                       <td className="px-4 py-3 text-right">
                         <Link
                           href={`/admin/personal/empleados/${e.id}`}
-                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-300 hover:bg-orange-500/20 transition-colors"
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-colors"
                         >
                           <Eye className="w-3 h-3" />
                           Ver
@@ -259,10 +248,10 @@ export default function EmployeesList() {
 
         {/* Modal: nuevo empleado */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+          <DialogContent className="bg-card border-foreground/[0.12] text-foreground max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-orange-400" /> Nuevo empleado
+              <DialogTitle className="text-foreground flex items-center gap-2">
+                <Plus className="w-5 h-5 text-primary" /> Nuevo empleado
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2 text-sm">
@@ -271,41 +260,41 @@ export default function EmployeesList() {
                 se completa después en la ficha del empleado.
               </p>
               <div>
-                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Nombre completo *</Label>
+                <Label className="text-foreground/50 text-xs uppercase tracking-wider">Nombre completo *</Label>
                 <Input value={nFullName} onChange={e => setNFullName(e.target.value)} className={INPUT_CLS} placeholder="Nombre y apellidos" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">DNI / NIE</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">DNI / NIE</Label>
                   <Input value={nDni} onChange={e => setNDni(e.target.value)} className={INPUT_CLS} />
                 </div>
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Teléfono</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Teléfono</Label>
                   <Input value={nPhone} onChange={e => setNPhone(e.target.value)} className={INPUT_CLS} />
                 </div>
               </div>
               <div>
-                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Email</Label>
+                <Label className="text-foreground/50 text-xs uppercase tracking-wider">Email</Label>
                 <Input type="email" value={nEmail} onChange={e => setNEmail(e.target.value)} className={INPUT_CLS}
                   placeholder="Necesario para dar acceso al portal" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Puesto</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Puesto</Label>
                   <Input value={nPosition} onChange={e => setNPosition(e.target.value)} className={INPUT_CLS} />
                 </div>
                 <div>
-                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Departamento</Label>
+                  <Label className="text-foreground/50 text-xs uppercase tracking-wider">Departamento</Label>
                   <Input value={nDepartment} onChange={e => setNDepartment(e.target.value)} className={INPUT_CLS} />
                 </div>
               </div>
               <div>
-                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Tipo de contrato</Label>
+                <Label className="text-foreground/50 text-xs uppercase tracking-wider">Tipo de contrato</Label>
                 <Select value={nContractType} onValueChange={setNContractType}>
                   <SelectTrigger className={INPUT_CLS}><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
+                  <SelectContent className="bg-card border-foreground/[0.12]">
                     {["indefinido", "temporal", "autonomo", "practicas", "otro"].map(t => (
-                      <SelectItem key={t} value={t} className="text-white capitalize">{t}</SelectItem>
+                      <SelectItem key={t} value={t} className="text-foreground capitalize">{t}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -327,7 +316,7 @@ export default function EmployeesList() {
                   });
                 }}
                 disabled={createEmployee.isPending}
-                className="bg-orange-600 hover:bg-orange-700 text-white"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {createEmployee.isPending ? "Creando…" : "Crear empleado"}
               </Button>

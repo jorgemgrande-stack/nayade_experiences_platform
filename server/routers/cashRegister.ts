@@ -11,7 +11,15 @@ import { madridDateKey } from "../utils/timezone";
 import { assertTpvFeature } from "../tpvRulesDb";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 
+import { cashOverview, listCashMovementsPage, summarizeCashMovements } from "../cashQuery";
+
 const _pool = legacyPool();
+const cashMovementFilterInput = z.object({
+  accountId: z.number().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  search: z.string().optional(),
+});
 const db = legacyDb();
 
 // RBAC-aware procedures. Fallback: admin only (cash module is admin-only by default).
@@ -102,6 +110,21 @@ export const cashRegisterRouter = router({
         .orderBy(desc(finCashMovements.date), desc(finCashMovements.id))
         .limit(input.limit);
     }),
+
+  /** Página de movimientos (búsqueda y paginación en servidor, mismo filtro que `movementsSummary`). Solo lectura. */
+  listMovementsPage: cashViewProc
+    .input(cashMovementFilterInput.extend({ limit: z.number().int().min(1).max(500).default(50), offset: z.number().int().min(0).default(0) }))
+    .query(async ({ input }) => listCashMovementsPage(db, input)),
+
+  /** Totales exactos (texto decimal) del filtro COMPLETO de movimientos. Solo lectura. */
+  movementsSummary: cashViewProc
+    .input(cashMovementFilterInput)
+    .query(async ({ input }) => summarizeCashMovements(db, input)),
+
+  /** Saldo total, neto de hoy, cierres pendientes de resolver e incidencias abiertas, sumados en SQL. Solo lectura. */
+  overview: cashViewProc
+    .input(z.object({ accountId: z.number().optional() }).optional())
+    .query(async ({ input }) => cashOverview(db, { today: madridDateKey(), accountId: input?.accountId })),
 
   createMovement: cashManageProc
     .input(z.object({

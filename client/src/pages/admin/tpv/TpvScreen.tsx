@@ -26,8 +26,9 @@ import {
   Layers, X, User, Calendar, Clock, Users, Tag, ChevronDown, ChevronUp,
   Zap, Waves, Baby, Sparkles, Star, Sun, Filter, LogOut, Settings,
   ArrowLeft, SplitSquareHorizontal, AlarmClock, PenLine, BarChart3,
-  Package, Search, CheckCircle2, Store,
+  Package, Search, CheckCircle2, Store, MoreVertical, Wifi, WifiOff,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Link, useLocation } from "wouter";
 import TpvOpenSession from "./TpvOpenSession";
 import TpvCloseSession from "./TpvCloseSession";
@@ -257,15 +258,34 @@ export default function TpvScreen() {
   }, [activeSession]);
 
   // Catalog
-  const { data: catalog } = trpc.tpv.getCatalog.useQuery(undefined, {
+  const catalogQ = trpc.tpv.getCatalog.useQuery(undefined, {
     enabled: !!sessionId,
   });
+  const catalog = catalogQ.data;
   const licensed = !!catalog?.licensed;
   // Una venta de mostrador es de hoy: la fecha del servicio solo se pide con reservas y citas (o en la instalación propia)
   const { can } = usePanelSubscription();
   const askServiceDate = !licensed || can("bookings-generic");
   const categories = catalog?.categories ?? [];
   const filters = buildTpvFilters(catalog);
+
+  // Estado de la conexión (solo informa: los cobros los sigue registrando el servidor)
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  // Resumen discreto del turno (cabecera): ventas, cobrado y efectivo de la sesión abierta
+  const shiftQ = trpc.tpv.getSessionSummary.useQuery({ sessionId: sessionId ?? 0 }, { enabled: !!sessionId, retry: false, refetchInterval: 60_000 });
+  useEffect(() => {
+    if (lastSale && sessionId) shiftQ.refetch();
+  }, [lastSale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Búsqueda de cliente existente (a partir de 3 caracteres)
   const clientQuery = clientSearch.trim();
@@ -459,6 +479,8 @@ export default function TpvScreen() {
   const showRecipientForm = !clientInvoiceReady && (wantsInvoice || overLimit);
   const saleInvoiceRecipient = showRecipientForm ? recipient : undefined;
   const saleDocument = cashSaleDocument({ total: cartTotal, requested: saleInvoiceRecipient ?? null, client: clientForInvoice });
+  // Datos del cliente: plegados salvo que la persona los abra
+  const customerOpen = showCustomerForm;
   /** Antes de cobrar: por encima del límite del ticket, o con la factura pedida, hacen falta los datos del destinatario. */
   const checkSaleDocument = () => {
     if (saleDocument.kind !== "rechazo") return true;
@@ -558,7 +580,7 @@ export default function TpvScreen() {
     return (
       <div className="dark fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 overflow-y-auto py-8">
         <div className="text-center space-y-6 w-full max-w-md px-4">
-          <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center mx-auto shadow-2xl">
+          <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto shadow-md">
             <Store className="w-10 h-10 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Punto de venta</h1>
@@ -673,84 +695,138 @@ export default function TpvScreen() {
 
   return (
     <div className="dark fixed inset-0 bg-gray-950 flex flex-col overflow-hidden z-50 text-white">
-      {/* ── Header ── */}
-      <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
+      {/* ── Header: caja, sede, turno y conexión; acciones de la caja ── */}
+      <header className="flex items-center justify-between gap-2 px-2 sm:px-4 h-14 bg-gray-900 border-b border-gray-800 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <Store className="w-4 h-4 text-primary-foreground" />
+          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shrink-0">
+            <Store className="w-5 h-5 text-primary-foreground" />
           </div>
           <button
             type="button"
             onClick={() => setChoosingRegister(true)}
-            className="min-h-11 min-w-0 flex items-center gap-2 rounded-lg px-2 hover:bg-gray-800"
+            className="min-h-11 min-w-0 flex items-center gap-2 rounded-lg px-2 text-left hover:bg-gray-800"
             title="Cambiar de caja"
           >
-            <span className="font-bold text-white text-sm overflow-hidden text-ellipsis whitespace-nowrap">{currentRegister?.name ?? "Caja"}</span>
-            {activeSession && (
-              <Badge variant="outline" className="hidden sm:inline-flex text-success border-success/40 text-xs">
-                Caja abierta
-              </Badge>
-            )}
+            <span className="min-w-0">
+              <span className="block font-bold text-white text-sm leading-tight overflow-hidden text-ellipsis whitespace-nowrap">{currentRegister?.name ?? "Caja"}</span>
+              <span className="hidden sm:block text-xs text-muted-foreground leading-tight overflow-hidden text-ellipsis whitespace-nowrap">
+                {[currentRegister?.location, activeSession ? `Turno de ${activeSession.cashierName} desde las ${new Date(activeSession.openedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}` : null].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
           </button>
+          <span
+            role="status"
+            className={`hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium shrink-0 ${online ? "border-success/40 bg-success/10 text-success" : "border-danger/40 bg-danger/10 text-danger"}`}
+          >
+            {online ? <Wifi className="w-3.5 h-3.5" aria-hidden="true" /> : <WifiOff className="w-3.5 h-3.5" aria-hidden="true" />}
+            {online ? "En línea" : "Sin conexión"}
+          </span>
+          <span
+            className={`sm:hidden inline-block w-2.5 h-2.5 rounded-full shrink-0 ${online ? "bg-success" : "bg-danger"}`}
+            title={online ? "En línea" : "Sin conexión"}
+            aria-label={online ? "En línea" : "Sin conexión"}
+          />
         </div>
 
+        {/* Resumen discreto del turno (solo con espacio) */}
+        {shiftQ.data && (
+          <div className="hidden xl:flex items-center gap-4 rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-1 text-xs shrink-0" aria-label="Resumen del turno">
+            <span className="text-muted-foreground">Turno <span className="ml-1 font-semibold tabular-nums text-white">{shiftQ.data.sales?.length ?? 0} ventas</span></span>
+            <span className="text-muted-foreground">Cobrado <span className="ml-1 font-semibold tabular-nums text-primary">{formatEur(shiftQ.data.totalSales ?? 0)}</span></span>
+            <span className="text-muted-foreground">Efectivo <span className="ml-1 font-semibold tabular-nums text-white">{formatEur(shiftQ.data.totalCash ?? 0)}</span></span>
+          </div>
+        )}
+
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <span className="hidden lg:inline text-xs text-muted-foreground">{user?.name}</span>
-          <Link href="/admin/tpv/backoffice">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-primary hover:text-primary/80 h-11 px-2 text-xs gap-1"
-              title={licensed ? "Ventas y cierres de caja" : "Historial de ventas y reservas del día"}
-              aria-label={licensed ? "Ventas y cierres de caja" : "Backoffice"}
-            >
-              <Settings className="w-4 h-4" />
-              <span className="hidden md:inline">{licensed ? "Ventas" : "Backoffice"}</span>
-            </Button>
-          </Link>
-          {!licensed && (
-            <Link href="/admin/contabilidad/control-diario">
+          <span className="hidden 2xl:inline text-xs text-muted-foreground">{user?.name}</span>
+          {/* Escritorio y tableta: todas las acciones a la vista */}
+          <div className="hidden md:flex items-center gap-1">
+            <Link href="/admin/tpv/backoffice">
               <Button
                 size="sm"
                 variant="ghost"
                 className="text-primary hover:text-primary/80 h-11 px-2 text-xs gap-1"
-                title="Control de operaciones diario"
-                aria-label="Control de operaciones diario"
+                title={licensed ? "Ventas y cierres de caja" : "Historial de ventas y reservas del día"}
+                aria-label={licensed ? "Ventas y cierres de caja" : "Backoffice"}
               >
-                <BarChart3 className="w-4 h-4" />
-                <span className="hidden md:inline">Control</span>
+                <Settings className="w-4 h-4" />
+                <span className="hidden lg:inline">{licensed ? "Ventas" : "Backoffice"}</span>
               </Button>
             </Link>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground hover:text-white h-11 w-11 p-0"
-            onClick={() => setShowCashMovement("in")}
-            title="Entrada de efectivo"
-            aria-label="Entrada de efectivo"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground hover:text-white h-11 w-11 p-0"
-            onClick={() => setShowCashMovement("out")}
-            title="Salida de efectivo"
-            aria-label="Salida de efectivo"
-          >
-            <Minus className="w-4 h-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-warning hover:text-warning h-11 px-2 text-xs"
-            onClick={() => setShowCloseSession(true)}
-          >
-            Cerrar caja
-          </Button>
+            {!licensed && (
+              <Link href="/admin/contabilidad/control-diario">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-primary hover:text-primary/80 h-11 px-2 text-xs gap-1"
+                  title="Control de operaciones diario"
+                  aria-label="Control de operaciones diario"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span className="hidden lg:inline">Control</span>
+                </Button>
+              </Link>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-white h-11 px-2 gap-1 text-xs"
+              onClick={() => setShowCashMovement("in")}
+              title="Entrada de efectivo"
+              aria-label="Entrada de efectivo"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden lg:inline">Entrada</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-white h-11 px-2 gap-1 text-xs"
+              onClick={() => setShowCashMovement("out")}
+              title="Salida de efectivo"
+              aria-label="Salida de efectivo"
+            >
+              <Minus className="w-4 h-4" />
+              <span className="hidden lg:inline">Salida</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-warning/50 bg-transparent text-warning hover:bg-warning/10 hover:text-warning h-11 px-3 text-xs"
+              onClick={() => setShowCloseSession(true)}
+            >
+              Cerrar caja
+            </Button>
+          </div>
           {sessionId && <TpvSessionReturns sessionId={sessionId} />}
+          {/* Móvil: las acciones de la caja, en un menú */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="md:hidden text-muted-foreground hover:text-white h-11 w-11 p-0" aria-label="Más acciones de la caja">
+                <MoreVertical className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="dark min-w-56 bg-gray-900 border-gray-700 text-white">
+              <DropdownMenuItem className="min-h-11" onSelect={() => navigate("/admin/tpv/backoffice")}>
+                <Settings className="w-4 h-4 mr-2" /> {licensed ? "Ventas y cierres de caja" : "Backoffice"}
+              </DropdownMenuItem>
+              {!licensed && (
+                <DropdownMenuItem className="min-h-11" onSelect={() => navigate("/admin/contabilidad/control-diario")}>
+                  <BarChart3 className="w-4 h-4 mr-2" /> Control diario
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem className="min-h-11" onSelect={() => setShowCashMovement("in")}>
+                <Plus className="w-4 h-4 mr-2" /> Entrada de efectivo
+              </DropdownMenuItem>
+              <DropdownMenuItem className="min-h-11" onSelect={() => setShowCashMovement("out")}>
+                <Minus className="w-4 h-4 mr-2" /> Salida de efectivo
+              </DropdownMenuItem>
+              <DropdownMenuItem className="min-h-11 text-warning focus:text-warning" onSelect={() => setShowCloseSession(true)}>
+                <LogOut className="w-4 h-4 mr-2" /> Cerrar caja
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             size="sm"
             variant="ghost"
@@ -759,128 +835,160 @@ export default function TpvScreen() {
             title="Volver al inicio"
             aria-label="Volver al inicio"
           >
-            <LogOut className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4" />
           </Button>
         </div>
       </header>
+
+      {!online && (
+        <div role="alert" className="flex items-center gap-2 px-4 py-2 bg-danger/15 border-b border-danger/40 text-sm text-danger shrink-0">
+          <WifiOff className="w-4 h-4 shrink-0" aria-hidden="true" />
+          Sin conexión. Los cobros no se podrán registrar hasta que vuelva internet; el ticket actual se conserva.
+        </div>
+      )}
 
       {/* ── Main ── */}
       <div className="flex flex-1 overflow-hidden">
         {/* ── Catalog ── */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden md:border-r border-gray-800">
-          {/* Filters */}
-          <div className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0 overflow-x-auto">
-            <Input
-              placeholder="Buscar producto..."
-              aria-label="Buscar producto"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 w-40 sm:w-48 shrink-0"
-            />
-            {filters.map((f) => (
-              <Button
-                key={f.key}
-                size="sm"
-                variant={filter === f.key ? "default" : "ghost"}
-                aria-pressed={filter === f.key}
-                className={`h-11 px-3 text-xs gap-1 shrink-0 ${
-                  filter === f.key
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "text-muted-foreground hover:text-white"
-                }`}
-                onClick={() => setFilter(f.key)}
-              >
-                {filterIcon(f.key, licensed)}
-                {f.label}
-              </Button>
-            ))}
+          {/* Búsqueda y categorías */}
+          <div className="px-2 sm:px-4 pt-3 pb-2 bg-gray-900 border-b border-gray-800 shrink-0 space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" aria-hidden="true" />
+              <Input
+                placeholder="Buscar producto..."
+                aria-label="Buscar producto"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-12 pl-10 pr-11 text-base bg-gray-800 border-gray-700 text-white placeholder:text-gray-500"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-0 top-0 h-12 w-12 flex items-center justify-center text-muted-foreground hover:text-white"
+                  aria-label="Borrar la búsqueda"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+              {filters.map((f) => {
+                const count = allProducts.filter((p) => matchesTpvFilter(p, f.key)).length;
+                return (
+                  <Button
+                    key={f.key}
+                    size="sm"
+                    variant={filter === f.key ? "default" : "ghost"}
+                    aria-pressed={filter === f.key}
+                    className={`h-11 px-4 text-sm gap-1.5 shrink-0 rounded-full border ${filter === f.key ? "border-primary" : "border-gray-700"} ${
+                      filter === f.key
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                        : "text-muted-foreground hover:text-white"
+                    }`}
+                    onClick={() => setFilter(f.key)}
+                  >
+                    {filterIcon(f.key, licensed)}
+                    {f.label}
+                    <span className={`text-xs tabular-nums ${filter === f.key ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{count}</span>
+                  </Button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Product grid */}
           <ScrollArea className="flex-1 min-h-0">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 sm:gap-3 p-2 sm:p-4 pb-24 md:pb-4">
+              {catalogQ.isLoading && Array.from({ length: 8 }, (_, i) => (
+                <div key={i} className="h-36 rounded-xl bg-gray-900 border border-gray-800 animate-pulse" aria-hidden="true" />
+              ))}
+              {catalogQ.isError && (
+                <div role="alert" className="col-span-full rounded-xl border border-danger/40 bg-danger/10 p-6 text-center space-y-3">
+                  <p className="text-danger font-medium">No se ha podido cargar el catálogo.</p>
+                  <Button variant="outline" className="h-11 border-danger/40 text-danger" onClick={() => catalogQ.refetch()}>Reintentar</Button>
+                </div>
+              )}
               {/* Producto flexible — solo admin, siempre primero */}
-              {user?.role === "admin" && (
+              {user?.role === "admin" && !catalogQ.isLoading && (
                 <button
                   onClick={() => { setManualConcept(""); setManualPrice(""); setShowManualModal(true); }}
-                  className="group relative bg-gray-900 rounded-xl overflow-hidden border border-dashed border-primary hover:border-primary transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                  className="group relative min-h-36 bg-gray-900/40 rounded-xl border-2 border-dashed border-primary/60 hover:border-primary hover:bg-primary/10 transition-all active:scale-[0.98] text-left p-3 flex flex-col justify-between"
                 >
-                  <div className="h-28 bg-primary/15 flex items-center justify-center">
-                    <PenLine className="w-10 h-10 text-primary group-hover:text-primary/80 transition-colors" />
-                  </div>
-                  <div className="p-2">
-                    <p className="text-xs font-medium text-primary line-clamp-2 leading-tight mb-1">Producto flexible</p>
-                    <p className="text-[10px] text-gray-500">Concepto + precio libre</p>
-                  </div>
+                  <PenLine className="w-8 h-8 text-primary" />
+                  <span>
+                    <span className="block text-sm font-semibold text-primary leading-tight">Producto flexible</span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">Concepto + precio libre</span>
+                  </span>
                 </button>
               )}
               {filteredProducts.map((product) => {
                 const price = parseFloat(String(product.basePrice ?? "0"));
                 const discount = getActiveDiscountPercent(product);
                 const finalPrice = discount > 0 ? price * (1 - discount / 100) : price;
+                const inCart = cart.filter((i) => i.product.id === product.id && i.product.productType === product.productType).reduce((a, i) => a + i.quantity, 0);
                 return (
                   <button
                     key={`${product.productType}-${product.id}`}
                     onClick={() => addToCart(product)}
-                    className="group relative bg-gray-900 rounded-xl overflow-hidden border border-gray-800 hover:border-primary transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                    aria-label={`Añadir ${product.title}, ${formatEur(finalPrice)}${inCart > 0 ? `, ${inCart} en el ticket` : ""}`}
+                    className={`group relative min-h-36 bg-gray-900 rounded-xl overflow-hidden border transition-all hover:border-primary active:scale-[0.98] text-left flex flex-col ${inCart > 0 ? "border-primary ring-1 ring-primary/50" : "border-gray-800"}`}
                   >
-                    {/* Image */}
-                    <div className={`h-28 bg-gradient-to-br ${TYPE_COLORS[product.productType]} relative overflow-hidden`}>
-                      {product.coverImageUrl ? (
-                        <img
-                          src={product.coverImageUrl}
-                          alt={product.title}
-                          className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <ProductIcon licensed={licensed} className="w-8 h-8 text-white/40" />
-                        </div>
-                      )}
-                      {discount > 0 && (
-                        <div className="absolute top-1 right-1 bg-destructive text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                          -{discount.toFixed(0)}%
-                        </div>
-                      )}
-                      {product.variants && product.variants.length > 0 && (
-                        <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                          {product.variants.length} {product.variants.length === 1 ? "opción" : "opciones"}
-                        </div>
-                      )}
-                      <div className="absolute bottom-1 left-1">
-                        <Badge className={`text-xs bg-black/50 text-white border-0`}>
-                          {productBadge(product, licensed, categories)}
+                    {/* Imagen: solo si el producto la tiene (sin ella no se reserva el espacio) */}
+                    {product.coverImageUrl && (
+                      <div className="h-24 shrink-0 bg-gray-800 relative overflow-hidden">
+                        <img src={product.coverImageUrl} alt="" className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    )}
+                    <div className="flex flex-1 flex-col gap-1 p-3">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Badge className="text-xs bg-gray-800 text-muted-foreground border-0 font-normal max-w-full">
+                          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{productBadge(product, licensed, categories)}</span>
                         </Badge>
-                      </div>
-                    </div>
-                    {/* Info */}
-                    <div className="p-2">
-                      <p className="text-xs font-medium text-white line-clamp-2 leading-tight mb-1">
-                        {product.title}
-                      </p>
-                      <div className="flex items-center gap-1">
-                        {discount > 0 && (
-                          <span className="text-xs text-gray-500 line-through">{formatEur(price)}</span>
+                        {product.variants && product.variants.length > 0 && (
+                          <Badge className="text-xs bg-primary/15 text-primary border-0 font-medium">
+                            {product.variants.length} {product.variants.length === 1 ? "opción" : "opciones"}
+                          </Badge>
                         )}
-                        <span className="text-sm font-bold text-primary">{formatEur(finalPrice)}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-white line-clamp-2 leading-snug">{product.title}</p>
+                      <div className="mt-auto flex items-end justify-between gap-2 pt-1">
+                        <div className="flex flex-col leading-tight">
+                          {discount > 0 && <span className="text-xs text-muted-foreground line-through tabular-nums">{formatEur(price)}</span>}
+                          <span className="text-lg font-bold text-primary tabular-nums">{formatEur(finalPrice)}</span>
+                        </div>
+                        <span className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 ${inCart > 0 ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary group-hover:bg-primary group-hover:text-primary-foreground"}`} aria-hidden="true">
+                          {inCart > 0 ? <span className="text-sm font-bold tabular-nums">×{inCart}</span> : <Plus className="w-5 h-5" />}
+                        </span>
                       </div>
                     </div>
-                    {/* Add overlay */}
-                    <div className="absolute inset-0 bg-transparent group-hover:bg-primary/10 transition-colors flex items-center justify-center">
-                      <Plus className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
-                    </div>
+                    {discount > 0 && (
+                      <span className="absolute top-2 right-2 bg-destructive text-white text-xs font-bold px-1.5 py-0.5 rounded-full">-{discount.toFixed(0)}%</span>
+                    )}
                   </button>
                 );
               })}
-              {filteredProducts.length === 0 && (
+              {!catalogQ.isLoading && !catalogQ.isError && filteredProducts.length === 0 && (
                 <div className="col-span-full text-center py-16 text-gray-500">
                   <ProductIcon licensed={licensed} className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>No hay productos disponibles</p>
-                  {licensed && user?.role === "admin" && (
-                    <p className="text-xs mt-2">
-                      Activa «Vendible en caja» en la ficha de tus productos, en{" "}
-                      <Link href="/admin/productos/experiencias" className="underline underline-offset-4 text-primary">Productos y servicios</Link>.
-                    </p>
+                  {searchQuery ? (
+                    <>
+                      <p>Ningún producto coincide con «{searchQuery}»</p>
+                      <Button variant="outline" className="mt-3 h-11 border-gray-700 text-muted-foreground hover:text-white" onClick={() => { setSearchQuery(""); setFilter("all"); }}>
+                        Quitar la búsqueda y los filtros
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p>No hay productos disponibles</p>
+                      {licensed && user?.role === "admin" && (
+                        <p className="text-xs mt-2">
+                          Activa «Vendible en caja» en la ficha de tus productos, en{" "}
+                          <Link href="/admin/productos/experiencias" className="underline underline-offset-4 text-primary">Productos y servicios</Link>.
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -888,20 +996,20 @@ export default function TpvScreen() {
           </ScrollArea>
         </div>
 
-        {/* ── Cart + Payment ── */}
+        {/* ── Ticket actual + cobro ── */}
         {cartOpen && <div className="md:hidden fixed inset-0 bg-black/60 z-40" onClick={() => setCartOpen(false)} aria-hidden="true" />}
         <div
           role={cartOpen ? "dialog" : undefined}
           aria-label="Carrito"
-          className={`${cartOpen ? "flex" : "hidden"} md:flex flex-col bg-gray-900 overflow-hidden fixed inset-x-0 bottom-0 top-12 z-50 rounded-t-2xl md:static md:z-auto md:rounded-none md:w-72 lg:w-80 xl:w-96 md:shrink-0`}
+          className={`${cartOpen ? "flex" : "hidden"} md:flex flex-col bg-gray-900 overflow-hidden fixed inset-x-0 bottom-0 top-14 z-50 rounded-t-2xl md:static md:z-auto md:rounded-none md:w-80 lg:w-[22rem] xl:w-[26rem] md:shrink-0`}
         >
-          {/* Cart header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+          {/* Cabecera del ticket */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
             <div className="flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Carrito</span>
+              <ShoppingCart className="w-5 h-5 text-primary" />
+              <span className="font-semibold">Carrito</span>
               {cart.length > 0 && (
-                <Badge className="bg-primary text-primary-foreground text-xs">{cart.reduce((a, i) => a + i.quantity, 0)}</Badge>
+                <Badge className="bg-primary text-primary-foreground text-xs tabular-nums">{cart.reduce((a, i) => a + i.quantity, 0)}</Badge>
               )}
             </div>
             <div className="flex items-center gap-1">
@@ -909,7 +1017,7 @@ export default function TpvScreen() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-danger hover:text-danger h-11 px-3 text-xs"
+                  className="text-danger hover:text-danger h-11 px-3 text-sm"
                   onClick={() => setCart([])}
                 >
                   Vaciar
@@ -927,146 +1035,39 @@ export default function TpvScreen() {
             </div>
           </div>
 
-          {/* ── Datos del cliente (siempre visible) ── */}
-          <div className="px-3 py-2 border-b border-gray-800 bg-gray-900/80">
-            <div className="flex items-center gap-1.5 mb-2">
-              <User className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-semibold text-gray-300">Datos del cliente</span>
-              <span className="text-[10px] text-gray-600 ml-1">(opcional)</span>
-            </div>
-            <div className="space-y-1.5">
-              {/* Cliente existente: búsqueda por nombre, email o teléfono */}
-              {selectedClient ? (
-                <div className="flex items-center justify-between gap-2 bg-success/10 border border-success/40 rounded px-2 py-1 min-h-11">
-                  <span className="flex items-center gap-1 text-xs text-success min-w-0">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap">Cliente existente: {selectedClient.name}</span>
-                  </span>
-                  <button type="button" onClick={clearCustomer} className="text-xs text-muted-foreground hover:text-white h-11 px-2 shrink-0">Quitar</button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-                  <Input
-                    placeholder="Buscar cliente (nombre, email o teléfono)"
-                    aria-label="Buscar cliente existente"
-                    value={clientSearch}
-                    onChange={(e) => setClientSearch(e.target.value)}
-                    className="h-11 md:h-8 pl-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
-                  />
-                  {clientQuery.length >= 3 && (
-                    <div className="absolute z-10 left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-xl">
-                      {clientResults.isLoading ? (
-                        <p className="text-xs text-muted-foreground px-3 py-2">Buscando…</p>
-                      ) : (clientResults.data ?? []).length === 0 ? (
-                        <p className="text-xs text-muted-foreground px-3 py-2">Sin coincidencias: escribe sus datos abajo y se dará de alta al cobrar.</p>
-                      ) : (
-                        (clientResults.data ?? []).map((c) => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => pickClient(c)}
-                            className="w-full text-left px-3 py-2 min-h-11 hover:bg-gray-700"
-                          >
-                            <span className="block text-xs text-white overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>
-                            <span className="block text-[11px] text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              <Input
-                placeholder="Nombre"
-                aria-label="Nombre del cliente"
-                value={customerName}
-                onChange={(e) => { setCustomerName(e.target.value); setSelectedClient(null); }}
-                className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
-              />
-              <div className="grid grid-cols-2 gap-1.5">
-                <Input
-                  placeholder="Email"
-                  aria-label="Email del cliente"
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => { setCustomerEmail(e.target.value); setSelectedClient(null); }}
-                  className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
-                />
-                <Input
-                  placeholder="Teléfono"
-                  aria-label="Teléfono del cliente"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
-                />
-              </div>
-              {/* Documento de la venta: ticket o factura completa (art. 4 y 6 del RD 1619/2012) */}
-              {cart.length > 0 && (
-                <div className="pt-1 space-y-1.5" aria-live="polite">
-                  {clientInvoiceReady ? (
-                    <p className="text-[11px] text-success">Factura completa a nombre de {selectedClient!.invoiceRecipient.name} (NIF {selectedClient!.invoiceRecipient.nif}).</p>
-                  ) : overLimit ? (
-                    <p role="alert" className="text-[11px] text-warning">Más de {SIMPLIFIED_INVOICE_LIMIT_EUR} € (IVA incluido): no basta con el ticket, hace falta factura completa. Indica los datos del destinatario.</p>
-                  ) : (
-                    <label className="flex items-center gap-2 min-h-11 text-xs text-gray-300 cursor-pointer">
-                      <input type="checkbox" checked={wantsInvoice} onChange={(e) => setWantsInvoice(e.target.checked)} className="w-4 h-4 accent-primary" />
-                      El cliente quiere factura completa (con NIF)
-                    </label>
-                  )}
-                  {showRecipientForm ? (
-                    <div className="space-y-1.5" role="group" aria-label="Datos para la factura completa">
-                      <Input placeholder="Nombre o razón social" aria-label="Nombre o razón social para la factura" value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <Input placeholder="NIF" aria-label="NIF para la factura" value={recipient.nif} onChange={(e) => setRecipient({ ...recipient, nif: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
-                        <Input placeholder="Código postal" aria-label="Código postal para la factura" value={recipient.postalCode} onChange={(e) => setRecipient({ ...recipient, postalCode: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
-                      </div>
-                      <Input placeholder="Dirección" aria-label="Dirección para la factura" value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
-                      <Input placeholder="Población" aria-label="Población para la factura" value={recipient.city} onChange={(e) => setRecipient({ ...recipient, city: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
-                    </div>
-                  ) : !clientInvoiceReady && (
-                    <p className="text-[11px] text-gray-500">Se entregará ticket (factura simplificada). Si después pide factura completa, se canjea el ticket.</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Cart items + promo + discount (scrollable) */}
+          {/* ── Líneas del ticket, descuentos y datos del cliente (con scroll) ── */}
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-3 space-y-2">
               {cart.length === 0 ? (
-                <div className="text-center py-12 text-gray-600">
-                  <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Carrito vacío</p>
-                  <p className="text-xs mt-1">Toca un producto para añadirlo</p>
+                <div className="text-center py-10 text-muted-foreground">
+                  <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Carrito vacío</p>
+                  <p className="text-sm mt-1">Toca un producto para añadirlo</p>
                 </div>
               ) : (
                 cart.map((item, index) => {
                   const rule = ruleOf(index);
                   const lineTotal = unitOf(item, index) * item.quantity * (1 - item.discountPercent / 100);
                   return (
-                    <div key={item.id} className="bg-gray-800 rounded-lg p-3 space-y-2">
+                    <div key={item.id} className="bg-gray-800 rounded-xl p-3 space-y-2">
                       <div className="flex items-start gap-2">
-                        <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${TYPE_COLORS[item.product.productType]} shrink-0 flex items-center justify-center`}>
-                          <ProductIcon licensed={licensed} className="w-3 h-3 text-white/70" />
-                        </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-sm font-semibold text-white line-clamp-2 leading-snug">{item.product.title}</p>
+                          <p className="text-xs text-muted-foreground tabular-nums">
                             {rule && <span className="line-through mr-1">{formatEur(rule.baseUnitPrice)}</span>}
                             {formatEur(unitOf(item, index))}/ud
+                            {item.discountPercent > 0 && <span className="ml-1.5 rounded-full bg-destructive/20 px-1.5 py-0.5 font-semibold text-danger">-{item.discountPercent.toFixed(0)}%</span>}
                           </p>
                           {rule && <p className="text-xs text-success mt-0.5">{rule.rules.join(" + ")}</p>}
                           {item.variantName && (
-                            <p className="text-xs text-info flex items-center gap-0.5 mt-0.5">
-                              <Tag className="w-2.5 h-2.5" />
+                            <p className="text-xs text-info flex items-center gap-1 mt-0.5">
+                              <Tag className="w-3 h-3" />
                               {item.variantName}
                             </p>
                           )}
                           {item.selectedTimeSlotLabel && (
-                            <p className="text-xs text-primary flex items-center gap-0.5 mt-0.5">
-                              <AlarmClock className="w-2.5 h-2.5" />
+                            <p className="text-xs text-primary flex items-center gap-1 mt-0.5">
+                              <AlarmClock className="w-3 h-3" />
                               {item.selectedTimeSlotLabel}
                               {item.selectedTime && ` · ${item.selectedTime}`}
                             </p>
@@ -1074,7 +1075,7 @@ export default function TpvScreen() {
                         </div>
                         <button
                           onClick={() => removeItem(item.id)}
-                          className="text-gray-500 hover:text-danger transition-colors w-11 h-11 -m-2 flex items-center justify-center shrink-0"
+                          className="text-muted-foreground hover:text-danger transition-colors w-11 h-11 -m-2 flex items-center justify-center shrink-0"
                           aria-label={`Quitar ${item.product.title}`}
                         >
                           <X className="w-4 h-4" />
@@ -1085,20 +1086,20 @@ export default function TpvScreen() {
                           <button
                             onClick={() => updateQty(item.id, -1)}
                             aria-label="Quitar una unidad"
-                            className="w-11 h-11 md:w-8 md:h-8 rounded bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
+                            className="w-11 h-11 rounded-lg bg-gray-700 hover:bg-gray-600 active:bg-gray-600 flex items-center justify-center transition-colors"
                           >
-                            <Minus className="w-3 h-3" />
+                            <Minus className="w-4 h-4" />
                           </button>
-                          <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                          <span className="w-9 text-center text-base font-semibold tabular-nums">{item.quantity}</span>
                           <button
                             onClick={() => updateQty(item.id, 1)}
                             aria-label="Añadir una unidad"
-                            className="w-11 h-11 md:w-8 md:h-8 rounded bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
+                            className="w-11 h-11 rounded-lg bg-gray-700 hover:bg-gray-600 active:bg-gray-600 flex items-center justify-center transition-colors"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-4 h-4" />
                           </button>
                         </div>
-                        <span className="text-sm font-bold text-primary">{formatEur(lineTotal)}</span>
+                        <span className="text-lg font-bold text-primary tabular-nums">{formatEur(lineTotal)}</span>
                       </div>
 
                       {/* Desglose de líneas para Lego Pack */}
@@ -1123,28 +1124,28 @@ export default function TpvScreen() {
               )}
             </div>
 
-            {/* Código promocional (dentro del scroll) */}
+            {/* Código promocional */}
             {cart.length > 0 && (
-              <div className="px-0 pb-2 space-y-1 border-t border-gray-800 pt-2">
+              <div className="px-3 pb-2 space-y-1 border-t border-gray-800 pt-2">
                 {promoCodeData ? (
-                  <div className="flex items-center justify-between bg-success/10 border border-success/40 rounded px-2 py-1">
-                    <span className="text-xs text-success font-mono font-bold">{promoCodeData.code}</span>
-                    <span className="text-xs text-success">-{promoCodeData.discountPercent}% (-{formatEur(promoDiscount)})</span>
-                    <button onClick={removePromoCode} aria-label="Quitar código" className="text-gray-500 hover:text-danger ml-1 w-11 h-11 -my-2 flex items-center justify-center"><X className="w-4 h-4" /></button>
+                  <div className="flex items-center justify-between bg-success/10 border border-success/40 rounded-lg px-3 py-1 min-h-11">
+                    <span className="text-sm text-success font-mono font-bold">{promoCodeData.code}</span>
+                    <span className="text-sm text-success tabular-nums">-{promoCodeData.discountPercent}% (-{formatEur(promoDiscount)})</span>
+                    <button onClick={removePromoCode} aria-label="Quitar código" className="text-gray-500 hover:text-danger -mr-2 w-11 h-11 flex items-center justify-center"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
-                  <div className="flex gap-1">
+                  <div className="flex gap-2">
                     <Input
                       placeholder="Código promo"
                       aria-label="Código promocional"
                       value={promoCodeInput}
                       onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
                       onKeyDown={(e) => e.key === "Enter" && applyPromoCode()}
-                      className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white font-mono uppercase"
+                      className="h-11 text-sm bg-gray-800 border-gray-700 text-white font-mono uppercase"
                     />
                     <Button
                       size="sm"
-                      className="h-11 md:h-8 px-3 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+                      className="h-11 px-4 text-sm bg-primary hover:bg-primary/90 text-primary-foreground"
                       onClick={applyPromoCode}
                       disabled={promoCodeLoading || !promoCodeInput.trim()}
                     >
@@ -1155,125 +1156,241 @@ export default function TpvScreen() {
               </div>
             )}
 
-            {/* Descuento manual (dentro del scroll) */}
+            {/* Descuento manual */}
             {cart.length > 0 && (
-              <div className="pb-2 space-y-1 border-t border-gray-800 pt-2">
+              <div className="px-3 pb-2 space-y-1 border-t border-gray-800 pt-1">
                 <button
-                  className="w-full min-h-11 flex items-center justify-between text-xs text-muted-foreground hover:text-white py-1"
+                  className="w-full min-h-11 flex items-center justify-between text-sm text-muted-foreground hover:text-white py-1"
                   onClick={() => setShowDiscountForm(!showDiscountForm)}
+                  aria-expanded={showDiscountForm}
                 >
-                  <span className="flex items-center gap-1">
-                    <Tag className="w-3 h-3" />
+                  <span className="flex items-center gap-2">
+                    <Tag className="w-4 h-4" />
                     {discountAmount > 0 ? `-${formatEur(discountAmount)}` : "Descuento manual"}
                   </span>
-                  {showDiscountForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  {showDiscountForm ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
                 {showDiscountForm && (
-                  <div className="space-y-1 pb-1">
+                  <div className="space-y-2 pb-1">
                     <Input
                       type="number"
                       placeholder="Importe descuento (€)"
                       aria-label="Importe del descuento"
                       value={discountAmount || ""}
                       onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                      className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white"
+                      className="h-11 text-sm bg-gray-800 border-gray-700 text-white"
                     />
                     <Input
                       placeholder="Motivo"
                       aria-label="Motivo del descuento"
                       value={discountReason}
                       onChange={(e) => setDiscountReason(e.target.value)}
-                      className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white"
+                      className="h-11 text-sm bg-gray-800 border-gray-700 text-white"
                     />
                   </div>
                 )}
               </div>
             )}
+
+            {/* ── Datos del cliente (opcional): plegado salvo que haya algo que ver o rellenar ── */}
+            <div className="px-3 pb-3 border-t border-gray-800 pt-1">
+              <button
+                type="button"
+                className="w-full min-h-11 flex items-center justify-between gap-2 text-sm text-muted-foreground hover:text-white py-1"
+                onClick={() => setShowCustomerForm(!showCustomerForm)}
+                aria-expanded={customerOpen}
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <User className="w-4 h-4 text-primary shrink-0" />
+                  <span className="font-medium text-gray-300 shrink-0">Datos del cliente</span>
+                  <span className="text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+                    {selectedClient ? selectedClient.name : customerName ? customerName : "(opcional)"}
+                  </span>
+                </span>
+                {customerOpen ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
+              </button>
+              {customerOpen && (
+                <div className="space-y-2 pt-1">
+                  {/* Cliente existente: búsqueda por nombre, email o teléfono */}
+                  {selectedClient ? (
+                    <div className="flex items-center justify-between gap-2 bg-success/10 border border-success/40 rounded-lg px-2 py-1 min-h-11">
+                      <span className="flex items-center gap-1 text-sm text-success min-w-0">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span className="overflow-hidden text-ellipsis whitespace-nowrap">Cliente existente: {selectedClient.name}</span>
+                      </span>
+                      <button type="button" onClick={clearCustomer} className="text-sm text-muted-foreground hover:text-white h-11 px-2 shrink-0">Quitar</button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                      <Input
+                        placeholder="Buscar cliente (nombre, email o teléfono)"
+                        aria-label="Buscar cliente existente"
+                        value={clientSearch}
+                        onChange={(e) => setClientSearch(e.target.value)}
+                        className="h-11 pl-9 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                      />
+                      {clientQuery.length >= 3 && (
+                        <div className="absolute z-10 left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-md">
+                          {clientResults.isLoading ? (
+                            <p className="text-sm text-muted-foreground px-3 py-2">Buscando…</p>
+                          ) : (clientResults.data ?? []).length === 0 ? (
+                            <p className="text-sm text-muted-foreground px-3 py-2">Sin coincidencias: escribe sus datos abajo y se dará de alta al cobrar.</p>
+                          ) : (
+                            (clientResults.data ?? []).map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => pickClient(c)}
+                                className="w-full text-left px-3 py-2 min-h-11 hover:bg-gray-700"
+                              >
+                                <span className="block text-sm text-white overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>
+                                <span className="block text-xs text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <Input
+                    placeholder="Nombre"
+                    aria-label="Nombre del cliente"
+                    value={customerName}
+                    onChange={(e) => { setCustomerName(e.target.value); setSelectedClient(null); }}
+                    className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      placeholder="Email"
+                      aria-label="Email del cliente"
+                      type="email"
+                      value={customerEmail}
+                      onChange={(e) => { setCustomerEmail(e.target.value); setSelectedClient(null); }}
+                      className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                    />
+                    <Input
+                      placeholder="Teléfono"
+                      aria-label="Teléfono del cliente"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                    />
+                  </div>
+                </div>
+              )}
+              {/* Documento de la venta: ticket o factura completa (art. 4 y 6 del RD 1619/2012) */}
+              {cart.length > 0 && (
+                <div className="pt-1 space-y-2" aria-live="polite">
+                  {clientInvoiceReady ? (
+                    <p className="text-xs text-success">Factura completa a nombre de {selectedClient!.invoiceRecipient.name} (NIF {selectedClient!.invoiceRecipient.nif}).</p>
+                  ) : overLimit ? (
+                    <p role="alert" className="text-xs text-warning">Más de {SIMPLIFIED_INVOICE_LIMIT_EUR} € (IVA incluido): no basta con el ticket, hace falta factura completa. Indica los datos del destinatario.</p>
+                  ) : (
+                    <label className="flex items-center gap-2 min-h-11 text-sm text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={wantsInvoice} onChange={(e) => setWantsInvoice(e.target.checked)} className="w-5 h-5 accent-primary" />
+                      El cliente quiere factura completa (con NIF)
+                    </label>
+                  )}
+                  {showRecipientForm ? (
+                    <div className="space-y-2" role="group" aria-label="Datos para la factura completa">
+                      <Input placeholder="Nombre o razón social" aria-label="Nombre o razón social para la factura" value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input placeholder="NIF" aria-label="NIF para la factura" value={recipient.nif} onChange={(e) => setRecipient({ ...recipient, nif: e.target.value })} className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                        <Input placeholder="Código postal" aria-label="Código postal para la factura" value={recipient.postalCode} onChange={(e) => setRecipient({ ...recipient, postalCode: e.target.value })} className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                      </div>
+                      <Input placeholder="Dirección" aria-label="Dirección para la factura" value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                      <Input placeholder="Población" aria-label="Población para la factura" value={recipient.city} onChange={(e) => setRecipient({ ...recipient, city: e.target.value })} className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                    </div>
+                  ) : !clientInvoiceReady && (
+                    <p className="text-xs text-gray-500">Se entregará ticket (factura simplificada). Si después pide factura completa, se canjea el ticket.</p>
+                  )}
+                </div>
+              )}
+            </div>
           </ScrollArea>
 
           {/* Fecha del servicio */}
-          {askServiceDate && <div className="px-4 py-2 border-t border-gray-800">
-            <label htmlFor="tpv-service-date" className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> {licensed ? "Fecha del servicio" : "Fecha de actividad"}
+          {askServiceDate && <div className="px-4 py-2 border-t border-gray-800 shrink-0 flex items-center gap-3">
+            <label htmlFor="tpv-service-date" className="text-sm text-muted-foreground flex items-center gap-1.5 shrink-0">
+              <Calendar className="w-4 h-4" /> {licensed ? "Fecha del servicio" : "Fecha de actividad"}
             </label>
             <input
               id="tpv-service-date"
               type="date"
               value={serviceDate}
               onChange={(e) => setServiceDate(e.target.value)}
-              className="w-full h-11 md:h-8 text-xs bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-primary"
+              className="flex-1 min-w-0 h-11 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg px-2 focus:outline-none focus:border-primary"
             />
           </div>}
 
-          {/* Totals — siempre visible */}
-          <div className="px-4 py-3 border-t border-gray-800 space-y-1">
+          {/* Totales — siempre visibles */}
+          <div className="px-4 py-3 border-t border-gray-800 space-y-1 shrink-0 bg-gray-950/40">
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>Subtotal</span>
-              <span>{formatEur(cartSubtotal)}</span>
+              <span className="tabular-nums">{formatEur(cartSubtotal)}</span>
             </div>
             {promoDiscount > 0 && (
-              <div className="flex justify-between text-xs text-success">
+              <div className="flex justify-between text-sm text-success">
                 <span>Promo {promoCodeData?.code}</span>
-                <span>-{formatEur(promoDiscount)}</span>
+                <span className="tabular-nums">-{formatEur(promoDiscount)}</span>
               </div>
             )}
             {discountAmount > 0 && (
-              <div className="flex justify-between text-xs text-success">
+              <div className="flex justify-between text-sm text-success">
                 <span>Descuento manual</span>
-                <span>-{formatEur(discountAmount)}</span>
+                <span className="tabular-nums">-{formatEur(discountAmount)}</span>
               </div>
             )}
-            <div className="flex justify-between text-lg font-bold text-white">
-              <span>TOTAL</span>
-              <span className="text-primary">{formatEur(cartTotal)}</span>
+            <div className="flex items-baseline justify-between text-white pt-1">
+              <span className="text-sm font-semibold tracking-wide">TOTAL</span>
+              <span className="text-4xl font-extrabold text-primary tabular-nums leading-none">{formatEur(cartTotal)}</span>
             </div>
           </div>
 
-          {/* Payment buttons */}
-          <div className="px-3 pb-3 space-y-2">
-            {cart.length > 0 && (
-              <>
-                <Button
-                  className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-2"
-                  onClick={() => { if (checkSaleDocument()) setShowSplitPayment(true); }}
-                  disabled={createSaleMut.isPending || pricingPending}
-                >
-                  <SplitSquareHorizontal className="w-4 h-4" />
-                  Dividir cuenta
-                </Button>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-0.5 text-xs font-medium"
-                    onClick={() => {
-                      if (!sessionId) return toast.error("No hay sesión de caja abierta");
-                      if (cart.length === 0) return toast.error("El carrito está vacío");
-                      if (!checkSaleDocument()) return;
-                      setShowCashPayment(true);
-                    }}
-                    disabled={createSaleMut.isPending || pricingPending}
-                  >
-                    <Banknote className="w-4 h-4" />
-                    Efectivo
-                  </Button>
-                  <Button
-                    className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-0.5 text-xs font-medium"
-                    onClick={() => handleQuickPay("card")}
-                    disabled={createSaleMut.isPending}
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    Tarjeta
-                  </Button>
-                  <Button
-                    className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-0.5 text-xs font-medium"
-                    onClick={() => handleQuickPay("bizum")}
-                    disabled={createSaleMut.isPending}
-                  >
-                    <Smartphone className="w-4 h-4" />
-                    Bizum
-                  </Button>
-                </div>
-              </>
-            )}
+          {/* Cobro */}
+          <div className="px-3 pb-3 space-y-2 shrink-0">
+            {pricingPending && <p className="text-xs text-muted-foreground text-center" aria-live="polite">Calculando precios…</p>}
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                className="h-16 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-1 text-sm font-semibold rounded-xl"
+                onClick={() => {
+                  if (!sessionId) return toast.error("No hay sesión de caja abierta");
+                  if (cart.length === 0) return toast.error("El carrito está vacío");
+                  if (!checkSaleDocument()) return;
+                  setShowCashPayment(true);
+                }}
+                disabled={createSaleMut.isPending || pricingPending || cart.length === 0}
+              >
+                <Banknote className="w-6 h-6" />
+                Efectivo
+              </Button>
+              <Button
+                className="h-16 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-1 text-sm font-semibold rounded-xl"
+                onClick={() => handleQuickPay("card")}
+                disabled={createSaleMut.isPending || cart.length === 0}
+              >
+                <CreditCard className="w-6 h-6" />
+                Tarjeta
+              </Button>
+              <Button
+                className="h-16 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-1 text-sm font-semibold rounded-xl"
+                onClick={() => handleQuickPay("bizum")}
+                disabled={createSaleMut.isPending || cart.length === 0}
+              >
+                <Smartphone className="w-6 h-6" />
+                Bizum
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full h-11 border-gray-700 bg-transparent text-gray-200 hover:bg-gray-800 hover:text-white gap-2"
+              onClick={() => { if (checkSaleDocument()) setShowSplitPayment(true); }}
+              disabled={createSaleMut.isPending || pricingPending || cart.length === 0}
+            >
+              <SplitSquareHorizontal className="w-4 h-4" />
+              Dividir cuenta
+            </Button>
           </div>
         </div>
       </div>
@@ -1289,7 +1406,7 @@ export default function TpvScreen() {
               <ShoppingCart className="w-5 h-5" />
               Carrito{cart.length > 0 ? ` (${cart.reduce((a, i) => a + i.quantity, 0)})` : ""}
             </span>
-            <span>{formatEur(cartTotal)}</span>
+            <span className="tabular-nums">{formatEur(cartTotal)}</span>
           </Button>
         </div>
       )}
@@ -1414,7 +1531,7 @@ export default function TpvScreen() {
                   }
                 }}
               />
-              <p className="text-[10px] text-gray-500">Mín 0.01 € · Máx 10.000 €</p>
+              <p className="text-xs text-gray-400">Mín 0.01 € · Máx 10.000 €</p>
             </div>
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"

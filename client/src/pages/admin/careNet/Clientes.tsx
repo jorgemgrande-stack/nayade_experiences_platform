@@ -59,7 +59,7 @@ export default function Clientes() {
             {canWrite && <Button onClick={() => setSelling(true)}>Vender un bono</Button>}
           </PanelEmpty>
         ) : (
-          <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
             {(list.data ?? []).map((c) => (
               <li key={c.clientId}>
                 <button type="button" onClick={() => setOpen(c.clientId)} className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left hover:bg-muted/50">

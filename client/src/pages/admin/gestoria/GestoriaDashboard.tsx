@@ -7,15 +7,28 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard, SegmentedTabs } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Landmark, AlertTriangle, Wallet, CalendarClock, RefreshCw } from "lucide-react";
-import { MODEL_NAME, STATUS_LABEL, STATUS_COLOR, STATUSES, eur, daysUntil } from "./taxLabels";
+import { Landmark, AlertTriangle, Wallet, CalendarClock, RefreshCw, CheckCircle2 } from "lucide-react";
+import { TONE_BADGE, TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
+import { cn } from "@/lib/utils";
+import { EconomySummary, EconomyTable, type EconomyColumn } from "../accounting/shared/EconomyUi";
+import { STATUSES } from "./taxLabels";
+import { STATUS_TONE, isOpenStatus, useGestoriaLabels } from "./gestoriaLabels";
+import { SectionCard, YearSelect, FootNote } from "./GestoriaParts";
+
+type Filter = "all" | "open" | "overdue" | "closed";
 
 export default function GestoriaDashboard() {
+  const { t, modelName, statusLabel, money, day, dueText, dueTone, daysUntil } = useGestoriaLabels();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
+  const [filter, setFilter] = useState<Filter>("all");
   const utils = trpc.useUtils();
 
   const summaryQ = trpc.gestoria.dashboard.summary.useQuery({ year });
@@ -24,219 +37,210 @@ export default function GestoriaDashboard() {
 
   const setStatusMut = trpc.gestoria.obligations.setStatus.useMutation({
     onSuccess: () => {
-      toast.success("Estado actualizado");
+      toast.success(t("gestoria.dashboard.statusUpdated"));
       utils.gestoria.obligations.list.invalidate();
       utils.gestoria.dashboard.summary.invalidate();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toastError(e),
   });
 
   const remindersMut = trpc.gestoria.dashboard.sendReminders.useMutation({
-    onSuccess: (r) => toast.success(`Avisos enviados: ${r.sent} (de ${r.checked} obligaciones revisadas)`),
-    onError: (e) => toast.error("Error: " + e.message),
+    onSuccess: (r) => toast.success(t("gestoria.dashboard.remindersSent", { sent: r.sent, checked: r.checked })),
+    onError: (e) => toastError(e),
   });
 
   const s = summaryQ.data;
   const obligations = obligationsQ.data ?? [];
-  const yearOptions = [currentYear - 1, currentYear, currentYear + 1];
+  const isOverdue = (o: (typeof obligations)[number]) => isOpenStatus(o.status) && daysUntil(o.dueDate) < 0;
+  const counts: Record<Filter, number> = {
+    all: obligations.length,
+    open: obligations.filter((o) => isOpenStatus(o.status)).length,
+    overdue: obligations.filter(isOverdue).length,
+    closed: obligations.filter((o) => !isOpenStatus(o.status)).length,
+  };
+  const shown = obligations.filter((o) =>
+    filter === "open" ? isOpenStatus(o.status) : filter === "overdue" ? isOverdue(o) : filter === "closed" ? !isOpenStatus(o.status) : true,
+  );
+
+  const columns: EconomyColumn<(typeof obligations)[number]>[] = [
+    {
+      key: "model",
+      header: t("gestoria.dashboard.colModel"),
+      mobile: "title",
+      cell: (o) => (
+        <span>
+          <span className="block font-medium text-foreground">{modelName(o.model)}</span>
+          <span className="block text-xs text-muted-foreground">{o.periodLabel}</span>
+        </span>
+      ),
+    },
+    {
+      key: "due",
+      header: t("gestoria.dashboard.colDue"),
+      cell: (o) => {
+        const d = daysUntil(o.dueDate);
+        const open = isOpenStatus(o.status);
+        return (
+          <span className="whitespace-nowrap">
+            {day(o.dueDate)}
+            {open && d < 0 && <span className={cn("ml-2 text-xs font-medium", TONE_TEXT.danger)}>{t("gestoria.dashboard.overdueTag")}</span>}
+            {open && d >= 0 && d <= 7 && <span className={cn("ml-2 text-xs font-medium", TONE_TEXT.warning)}>{t("gestoria.dashboard.daysShort", { count: d })}</span>}
+          </span>
+        );
+      },
+    },
+    { key: "amount", header: t("gestoria.dashboard.colAmount"), align: "right", num: true, mobile: "amount", cell: (o) => money(o.estimatedAmount) },
+    {
+      key: "status",
+      header: t("gestoria.dashboard.colStatus"),
+      className: "w-56",
+      cell: (o) => (
+        <Select value={o.status} onValueChange={(v) => setStatusMut.mutate({ id: o.id, status: v as (typeof STATUSES)[number] })}>
+          <SelectTrigger aria-label={t("gestoria.dashboard.changeStatus", { period: o.periodLabel })} className={cn("h-8 w-full border text-xs font-medium", TONE_BADGE[STATUS_TONE[o.status] ?? "neutral"])}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUSES.map((st) => (
+              <SelectItem key={st} value={st}>{statusLabel(st)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ),
+    },
+  ];
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6 max-w-6xl mx-auto">
-        {/* Cabecera */}
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Landmark className="w-6 h-6 text-primary" /> Dashboard Fiscal
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Situación fiscal del ejercicio · Modelos 303, 390, 111, 190, 200 y 202
-            </p>
-          </div>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="mx-auto max-w-6xl space-y-6 p-6">
+        <PanelPageHeader
+          icon={<Landmark />}
+          title={t("gestoria.dashboard.title")}
+          description={t("gestoria.dashboard.description")}
+          actions={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => remindersMut.mutate()}
+                disabled={remindersMut.isPending}
+                title={t("gestoria.dashboard.remindersHint")}
+                className="gap-2"
+              >
+                <RefreshCw className={cn("h-4 w-4", remindersMut.isPending && "animate-spin")} aria-hidden="true" />
+                {t("gestoria.dashboard.sendReminders")}
+              </Button>
+              <YearSelect year={year} onChange={setYear} />
+            </>
+          }
+        />
 
-        {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard
-            label="Obligaciones pendientes"
+        {/* Resumen del ejercicio */}
+        <EconomySummary>
+          <MetricCard
+            icon={<CalendarClock />}
+            tone="info"
+            label={t("gestoria.dashboard.kpiPending")}
             value={s ? String(s.pendingCount) : "—"}
-            sub={s ? `${s.total} en el ejercicio` : ""}
-            icon={<CalendarClock className="w-4 h-4" />}
-            tone="sky"
+            detail={s ? t("gestoria.dashboard.kpiPendingDetail", { total: s.total }) : undefined}
           />
-          <KpiCard
-            label="Vencidas sin presentar"
+          <MetricCard
+            icon={s && s.overdue > 0 ? <AlertTriangle /> : <CheckCircle2 />}
+            tone={s && s.overdue > 0 ? "danger" : "success"}
+            label={t("gestoria.dashboard.kpiOverdue")}
             value={s ? String(s.overdue) : "—"}
-            sub={s && s.overdue > 0 ? "Requieren atención" : "Al día"}
-            icon={<AlertTriangle className="w-4 h-4" />}
-            tone={s && s.overdue > 0 ? "red" : "emerald"}
+            detail={s ? (s.overdue > 0 ? t("gestoria.dashboard.kpiOverdueAttention") : t("gestoria.dashboard.kpiOverdueOk")) : undefined}
+            onClick={s && s.overdue > 0 ? () => setFilter("overdue") : undefined}
           />
-          <KpiCard
-            label="Importe estimado pendiente"
-            value={s ? eur(s.pendingEstimated) : "—"}
-            sub="Suma de obligaciones abiertas"
-            icon={<Landmark className="w-4 h-4" />}
-            tone="amber"
-          />
-          <KpiCard
-            label="Caja disponible"
-            value={s ? eur(s.cashAvailable) : "—"}
-            sub="Saldo de cuentas de caja activas"
-            icon={<Wallet className="w-4 h-4" />}
-            tone="emerald"
-          />
-        </div>
+          <MetricCard icon={<Landmark />} tone="warning" label={t("gestoria.dashboard.kpiEstimated")} value={s ? money(s.pendingEstimated) : "—"} detail={t("gestoria.dashboard.kpiEstimatedDetail")} />
+          <MetricCard icon={<Wallet />} tone="success" label={t("gestoria.dashboard.kpiCash")} value={s ? money(s.cashAvailable) : "—"} detail={t("gestoria.dashboard.kpiCashDetail")} />
+        </EconomySummary>
 
-        {/* Tesorería fiscal */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-1.5">
-            <Wallet className="w-4 h-4" /> Tesorería fiscal — previsión de liquidez
-          </h2>
-          {!treasuryQ.data ? (
-            <p className="text-sm text-muted-foreground">Calculando…</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-3">
-              {treasuryQ.data.buckets.map((b) => {
-                const negative = b.balance < 0;
-                return (
-                  <div key={b.days} className={`rounded-lg p-3 border ${negative ? "bg-red-500/10 border-red-500/30" : "bg-emerald-500/10 border-emerald-500/25"}`}>
-                    <div className="text-xs text-muted-foreground">A {b.days} días</div>
-                    <div className="text-sm text-foreground/70 mt-1">Vencimientos: <span className="font-medium text-foreground">{eur(b.due)}</span></div>
-                    <div className={`text-sm mt-0.5 ${negative ? "text-red-400" : "text-emerald-400"}`}>
-                      Saldo proyectado: <span className="font-bold">{eur(b.balance)}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <p className="text-[11px] text-muted-foreground mt-2">
-            Saldo proyectado = caja disponible ({treasuryQ.data ? eur(treasuryQ.data.cashAvailable) : "—"}) menos los
-            vencimientos fiscales y las cuotas de aplazamientos del horizonte. En rojo, riesgo de liquidez.
-          </p>
-        </div>
-
-        {/* Próximos vencimientos */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-              <CalendarClock className="w-4 h-4" /> Próximos vencimientos
-            </h2>
-            <button
-              onClick={() => remindersMut.mutate()}
-              disabled={remindersMut.isPending}
-              className="flex items-center gap-1 text-xs text-primary/80 hover:text-primary disabled:opacity-50"
-              title="Envía ahora los avisos de vencimiento (el cron los envía a diario)"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${remindersMut.isPending ? "animate-spin" : ""}`} />
-              Enviar avisos ahora
-            </button>
-          </div>
-          {!s || s.upcoming.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay vencimientos próximos.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {s.upcoming.map((o) => {
-                const d = daysUntil(o.dueDate);
-                return (
-                  <div key={o.id} className="flex items-center justify-between text-sm border-b border-border/50 last:border-0 pb-1.5 last:pb-0">
-                    <span className="text-foreground/80">{o.periodLabel}</span>
-                    <span className={`text-xs font-medium ${d <= 7 ? "text-red-400" : d <= 21 ? "text-amber-400" : "text-muted-foreground"}`}>
-                      {o.dueDate} · {d === 0 ? "hoy" : d > 0 ? `en ${d} días` : `vencida hace ${-d} días`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Tabla de obligaciones */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-foreground">Obligaciones del ejercicio {year}</h2>
-            {obligationsQ.isLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-xs text-muted-foreground">
-                  <th className="text-left px-4 py-2 font-medium">Modelo</th>
-                  <th className="text-left px-4 py-2 font-medium">Periodo</th>
-                  <th className="text-left px-4 py-2 font-medium whitespace-nowrap">Vencimiento</th>
-                  <th className="text-right px-4 py-2 font-medium whitespace-nowrap">Importe estimado</th>
-                  <th className="text-left px-4 py-2 font-medium w-48">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {obligations.map((o) => {
-                  const d = daysUntil(o.dueDate);
-                  const open = o.status !== "pagado" && o.status !== "cerrado";
+        <div className="grid gap-4 lg:grid-cols-5">
+          {/* Tesorería fiscal */}
+          <SectionCard
+            className="lg:col-span-3"
+            icon={<Wallet />}
+            title={t("gestoria.dashboard.treasuryTitle")}
+            description={t("gestoria.dashboard.treasuryHelp", { cash: treasuryQ.data ? money(treasuryQ.data.cashAvailable) : "—" })}
+          >
+            {!treasuryQ.data ? (
+              <PanelLoading className="py-4" label={t("gestoria.dashboard.calculating")} />
+            ) : (
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {treasuryQ.data.buckets.map((b) => {
+                  const negative = b.balance < 0;
                   return (
-                    <tr key={o.id} className="border-b border-border/50 last:border-0 hover:bg-foreground/[0.03]">
-                      <td className="px-4 py-2.5 text-foreground/80">{MODEL_NAME[o.model] ?? o.model}</td>
-                      <td className="px-4 py-2.5 text-foreground/60">{o.periodLabel}</td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <span className="text-foreground/70">{o.dueDate}</span>
-                        {open && d < 0 && <span className="ml-2 text-xs text-red-400">vencida</span>}
-                        {open && d >= 0 && d <= 7 && <span className="ml-2 text-xs text-amber-400">{d}d</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-foreground/80">{eur(o.estimatedAmount)}</td>
-                      <td className="px-4 py-2.5">
-                        <Select
-                          value={o.status}
-                          onValueChange={(v) => setStatusMut.mutate({ id: o.id, status: v as typeof STATUSES[number] })}
-                        >
-                          <SelectTrigger className={`h-8 text-xs border ${STATUS_COLOR[o.status] ?? ""}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {STATUSES.map((st) => (
-                              <SelectItem key={st} value={st}>{STATUS_LABEL[st]}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                    </tr>
+                    <li key={b.days} className={cn("rounded-lg border p-3", TONE_SURFACE[negative ? "danger" : "success"])}>
+                      <p className="text-xs font-medium text-muted-foreground">{t("gestoria.dashboard.inDaysBucket", { days: b.days })}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t("gestoria.dashboard.dueAmount")} <span className="font-medium tabular-nums text-foreground">{money(b.due)}</span>
+                      </p>
+                      <p className={cn("mt-1 text-lg font-bold tabular-nums", TONE_TEXT[negative ? "danger" : "success"])}>{money(b.balance)}</p>
+                      <p className="text-xs text-muted-foreground">{negative ? t("gestoria.dashboard.liquidityRisk") : t("gestoria.dashboard.projectedBalance")}</p>
+                    </li>
                   );
                 })}
-                {obligations.length === 0 && !obligationsQ.isLoading && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Sin obligaciones</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+            )}
+          </SectionCard>
+
+          {/* Próximos vencimientos */}
+          <SectionCard className="lg:col-span-2" icon={<CalendarClock />} title={t("gestoria.dashboard.upcomingTitle")}>
+            {!s || s.upcoming.length === 0 ? (
+              <PanelEmpty icon={<CalendarClock className="h-5 w-5" />} title={t("gestoria.dashboard.upcomingEmpty")} className="border-0" />
+            ) : (
+              <ul className="divide-y divide-border">
+                {s.upcoming.map((o) => {
+                  const d = daysUntil(o.dueDate);
+                  return (
+                    <li key={o.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 first:pt-0 last:pb-0">
+                      <span className="min-w-0 text-sm text-foreground">{o.periodLabel}</span>
+                      <span className={cn("text-xs font-medium", TONE_TEXT[dueTone(d)])}>
+                        {day(o.dueDate)} · {dueText(d)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </SectionCard>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Los importes estimados se calcularán automáticamente en fases posteriores del módulo.
-          Hoy las obligaciones se dan de alta según el calendario AEAT y se gestiona su estado.
-        </p>
+        {/* Obligaciones del ejercicio */}
+        <section aria-labelledby="gestoria-obligaciones" className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="gestoria-obligaciones" className="flex items-center gap-2 text-base font-semibold text-foreground">
+              {t("gestoria.dashboard.obligationsTitle", { year })}
+              {obligationsQ.isLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden="true" />}
+            </h2>
+            <SegmentedTabs
+              label={t("gestoria.dashboard.filterLabel")}
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: "all", label: t("gestoria.dashboard.filterAll"), count: counts.all },
+                { value: "open", label: t("gestoria.dashboard.filterOpen"), count: counts.open },
+                { value: "overdue", label: t("gestoria.dashboard.filterOverdue"), count: counts.overdue },
+                { value: "closed", label: t("gestoria.dashboard.filterClosed"), count: counts.closed },
+              ]}
+            />
+          </div>
+          <EconomyTable
+            rows={shown}
+            columns={columns}
+            rowKey={(o) => o.id}
+            caption={t("gestoria.dashboard.obligationsCaption", { year })}
+            loading={obligationsQ.isLoading}
+            error={obligationsQ.error}
+            onRetry={() => void obligationsQ.refetch()}
+            emptyTitle={filter === "all" ? t("gestoria.dashboard.emptyTitle") : t("gestoria.dashboard.emptyFiltered")}
+            emptyDescription={filter === "all" ? t("gestoria.dashboard.emptyHelp") : undefined}
+            rowClassName={(o) => (isOverdue(o) ? "bg-danger/5" : undefined)}
+          />
+        </section>
+
+        <FootNote>{t("gestoria.dashboard.footNote")}</FootNote>
       </div>
     </AdminLayout>
-  );
-}
-
-function KpiCard({ label, value, sub, icon, tone }: {
-  label: string; value: string; sub: string; icon: React.ReactNode;
-  tone: "sky" | "amber" | "emerald" | "red";
-}) {
-  const tones: Record<string, string> = {
-    sky: "text-sky-400", amber: "text-amber-400", emerald: "text-emerald-400", red: "text-red-400",
-  };
-  return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <div className={`flex items-center gap-1.5 text-xs font-medium ${tones[tone]}`}>
-        {icon} {label}
-      </div>
-      <div className="text-xl font-bold text-foreground mt-1.5">{value}</div>
-      <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>
-    </div>
   );
 }

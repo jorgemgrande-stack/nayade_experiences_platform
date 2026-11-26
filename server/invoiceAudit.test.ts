@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { ordersWithoutInvoice } from "./invoiceAudit";
 
 import { srcShows, esDictText } from "./i18nSource";
@@ -27,7 +28,7 @@ describe("pedidos cobrados sin factura", () => {
   });
 
   it("el aviso de Ventas usa un texto genérico, sin «auditoría» ni «requieren factura manual»", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/CRMDashboard.tsx"), "utf8");
+    const src = crmDashboardFuentes();
     expect(src).not.toContain("Auditoría — se detectaron incidencias");
     expect(src).not.toContain("requieren factura manual");
     expect(esDictText()).toContain("Revisión de facturación");

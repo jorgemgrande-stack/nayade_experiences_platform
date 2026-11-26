@@ -1,6 +1,9 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { PanelEmpty, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +18,10 @@ import {
 type BatchStatus = "borrador" | "emitida" | "cobrada" | "anulada";
 
 const STATUS_MAP: Record<BatchStatus, { label: string; cls: string }> = {
-  borrador:  { label: "Borrador",  cls: "bg-gray-100 text-gray-600" },
-  emitida:   { label: "Emitida",   cls: "bg-blue-50 text-blue-600" },
-  cobrada:   { label: "Cobrada",   cls: "bg-green-50 text-green-700" },
-  anulada:   { label: "Anulada",   cls: "bg-red-50 text-red-500" },
+  borrador:  { label: "Borrador",  cls: "bg-muted text-muted-foreground" },
+  emitida:   { label: "Emitida",   cls: "bg-info text-info" },
+  cobrada:   { label: "Cobrada",   cls: "bg-success text-success" },
+  anulada:   { label: "Anulada",   cls: "bg-danger text-danger" },
 };
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -46,9 +49,7 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
 
   if (isLoading || !batch) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
-      </div>
+      <PanelLoading label="Cargando liquidación…" />
     );
   }
 
@@ -86,8 +87,8 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
               disabled={updateStatus.isPending}>
               <CheckCircle className="w-3.5 h-3.5" /> Emitir
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-600 gap-1.5"
-              onClick={() => { if (confirm("¿Eliminar esta liquidación?")) deleteBatch.mutate({ id: batchId }); }}
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-danger hover:text-danger gap-1.5"
+              onClick={async () => { if ((await confirmAction({ description: "¿Eliminar esta liquidación?", destructive: true }))) deleteBatch.mutate({ id: batchId }); }}
               disabled={deleteBatch.isPending}>
               <Trash2 className="w-3.5 h-3.5" /> Eliminar
             </Button>
@@ -100,7 +101,7 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
               disabled={updateStatus.isPending}>
               <Euro className="w-3.5 h-3.5" /> Marcar cobrada
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 hover:text-red-600 gap-1.5"
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-danger hover:text-danger gap-1.5"
               onClick={() => updateStatus.mutate({ id: batchId, status: "anulada" })}
               disabled={updateStatus.isPending}>
               <XCircle className="w-3.5 h-3.5" /> Anular
@@ -148,8 +149,8 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
                   <td className="px-4 py-3 text-foreground/70 hidden sm:table-cell">
                     {item.bookingDate ? new Date(item.bookingDate).toLocaleDateString("es-ES") : "—"}
                   </td>
-                  <td className="px-4 py-3 text-foreground/70 hidden md:table-cell truncate max-w-[140px]">{item.customerName ?? "—"}</td>
-                  <td className="px-4 py-3 text-foreground/70 hidden lg:table-cell truncate max-w-[160px]">{item.productName ?? "—"}</td>
+                  <td className="px-4 py-3 text-foreground/70 hidden md:table-cell overflow-hidden text-ellipsis whitespace-nowrap max-w-[140px]">{item.customerName ?? "—"}</td>
+                  <td className="px-4 py-3 text-foreground/70 hidden lg:table-cell overflow-hidden text-ellipsis whitespace-nowrap max-w-[160px]">{item.productName ?? "—"}</td>
                   <td className="px-4 py-3 text-right font-medium text-foreground">
                     {parseFloat(item.amount ?? "0").toFixed(2)} €
                   </td>
@@ -206,7 +207,7 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-background border border-foreground/[0.1] rounded-2xl shadow-xl w-full max-w-lg">
+      <div className="bg-background border border-foreground/[0.1] rounded-xl shadow-md w-full max-w-lg">
         <div className="flex items-center justify-between px-6 py-4 border-b border-foreground/[0.08]">
           <h2 className="font-semibold text-foreground">Nueva liquidación</h2>
           <button onClick={onClose} className="text-foreground/40 hover:text-foreground/80"><X className="w-5 h-5" /></button>
@@ -214,9 +215,9 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
         <div className="px-6 py-5 space-y-4">
           <div>
-            <Label className="text-xs text-foreground/60">Partner <span className="text-red-400">*</span></Label>
+            <Label className="text-xs text-foreground/60">Partner <span className="text-danger">*</span></Label>
             <select
-              className="mt-1 w-full rounded-lg border border-foreground/[0.15] bg-background text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              className="mt-1 w-full rounded-lg border border-foreground/[0.15] bg-background text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
               value={partnerId ?? ""}
               onChange={e => setPartnerId(e.target.value ? parseInt(e.target.value) : null)}
             >
@@ -229,11 +230,11 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-foreground/60">Inicio período <span className="text-red-400">*</span></Label>
+              <Label className="text-xs text-foreground/60">Inicio período <span className="text-danger">*</span></Label>
               <Input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="mt-1 text-sm" />
             </div>
             <div>
-              <Label className="text-xs text-foreground/60">Fin período <span className="text-red-400">*</span></Label>
+              <Label className="text-xs text-foreground/60">Fin período <span className="text-danger">*</span></Label>
               <Input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="mt-1 text-sm" />
             </div>
           </div>
@@ -269,7 +270,7 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                   <div className="space-y-1 max-h-40 overflow-y-auto">
                     {preview.map((r: any) => (
                       <div key={r.id} className="flex items-center justify-between text-xs text-foreground/60">
-                        <span className="truncate">{r.customerName} · {r.productName}</span>
+                        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{r.customerName} · {r.productName}</span>
                         <span className="ml-2 font-medium flex-shrink-0">{((r.amountTotal ?? 0) / 100).toFixed(2)} €</span>
                       </div>
                     ))}
@@ -292,7 +293,7 @@ function NewBatchModal({ onClose, onCreated }: { onClose: () => void; onCreated:
         <div className="px-6 py-4 border-t border-foreground/[0.08] flex items-center gap-3 justify-end">
           <Button variant="ghost" onClick={onClose} className="text-sm">Cancelar</Button>
           <Button
-            className="bg-orange-600 hover:bg-orange-700 text-white text-sm gap-2"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm gap-2"
             disabled={!partnerId || !periodStart || !periodEnd || !preview?.length || createBatch.isPending}
             onClick={() => createBatch.mutate({ partnerId: partnerId!, periodType, periodStart, periodEnd, notes: notes || undefined })}
           >
@@ -325,19 +326,21 @@ export default function PartnerBillingManager() {
 
   return (
     <AdminLayout title="Facturación partners">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c] print:bg-white print:text-black">
+      <div className="min-h-screen bg-background text-foreground  print:bg-white print:text-black">
 
         {/* Header — oculto al imprimir */}
-        <div className="px-4 sm:px-6 pt-4 pb-4 border-b border-foreground/[0.08] print:hidden">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Facturación partners</h1>
-              <p className="text-xs text-foreground/50 mt-0.5">Liquidaciones agrupadas de reservas por colaborador</p>
-            </div>
-            <Button onClick={() => setShowNew(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
-              <Plus className="w-4 h-4 mr-1.5" /> Nueva liquidación
-            </Button>
-          </div>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6 print:hidden">
+          <PanelPageHeader
+            className="mb-0"
+            icon={<Euro />}
+            title="Facturación partners"
+            description="Liquidaciones agrupadas de reservas por colaborador"
+            actions={
+              <Button onClick={() => setShowNew(true)}>
+                <Plus className="w-4 h-4 mr-1.5" /> Nueva liquidación
+              </Button>
+            }
+          />
         </div>
 
         <div className="flex h-[calc(100vh-9rem)] print:block print:h-auto">
@@ -370,14 +373,9 @@ export default function PartnerBillingManager() {
             {/* Listado */}
             <div className="flex-1 overflow-y-auto divide-y divide-foreground/[0.05]">
               {isLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-foreground/20" />
-                </div>
+                <PanelLoading label="Cargando liquidaciones…" />
               ) : filtered.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="w-8 h-8 text-foreground/20 mx-auto mb-3" />
-                  <p className="text-sm text-foreground/40">Sin liquidaciones</p>
-                </div>
+                <PanelEmpty className="m-3" icon={<FileText />} title="Sin liquidaciones" description="Crea la primera con «Nueva liquidación»." />
               ) : (
                 filtered.map(batch => {
                   const s = STATUS_MAP[batch.status as BatchStatus] ?? STATUS_MAP.borrador;
@@ -386,13 +384,13 @@ export default function PartnerBillingManager() {
                     <button
                       key={batch.id}
                       onClick={() => setSelectedId(batch.id)}
-                      className={`w-full text-left px-4 py-3.5 transition-colors ${active ? "bg-orange-500/10" : "hover:bg-foreground/[0.03]"}`}
+                      className={`w-full text-left px-4 py-3.5 transition-colors ${active ? "bg-primary/10" : "hover:bg-foreground/[0.03]"}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono text-xs text-foreground/50">{batch.batchNumber}</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${s.cls}`}>{s.label}</span>
                       </div>
-                      <p className="text-sm font-medium text-foreground mt-0.5 truncate">{batch.partnerFiscalName ?? batch.partnerName}</p>
+                      <p className="text-sm font-medium text-foreground mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{batch.partnerFiscalName ?? batch.partnerName}</p>
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-xs text-foreground/50 flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> {batch.periodStart} – {batch.periodEnd}

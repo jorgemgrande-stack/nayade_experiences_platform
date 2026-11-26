@@ -6,6 +6,7 @@
  * accesos (los elementos mantienen su identidad) y guarda la versión anterior para poder recuperarla. Los ficheros (vídeo, audio, PDF)
  * no se tocan en este lote.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -25,11 +26,11 @@ import { diffTrees, normalizeTree, type EditorBlock, type EditorTree } from "@sh
 
 const KIND: Record<string, { key: string; Icon: typeof Type; tone: string }> = {
   text: { key: "text", Icon: Type, tone: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
-  video: { key: "video", Icon: PlayCircle, tone: "bg-sky-500/15 text-sky-700 dark:text-sky-300" },
-  audio: { key: "audio", Icon: Headphones, tone: "bg-violet-500/15 text-violet-700 dark:text-violet-300" },
-  pdf: { key: "pdf", Icon: File, tone: "bg-rose-500/15 text-rose-700 dark:text-rose-300" },
-  exercise: { key: "exercise", Icon: Dumbbell, tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
-  external_link: { key: "external_link", Icon: Link2, tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  video: { key: "video", Icon: PlayCircle, tone: "bg-info/10 text-info" },
+  audio: { key: "audio", Icon: Headphones, tone: "bg-primary/10 text-primary" },
+  pdf: { key: "pdf", Icon: File, tone: "bg-danger/10 text-danger" },
+  exercise: { key: "exercise", Icon: Dumbbell, tone: "bg-warning/10 text-warning" },
+  external_link: { key: "external_link", Icon: Link2, tone: "bg-success/10 text-success" },
 };
 const kindOf = (k: string | undefined) => KIND[k ?? "text"] ?? KIND.text;
 
@@ -49,7 +50,7 @@ function Stat({ Icon, value, label }: { Icon: typeof Type; value: number | strin
   return (
     <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
       <Icon className="h-4 w-4 text-primary" aria-hidden />
-      <div className="leading-tight"><div className="text-base font-semibold">{value}</div><div className="text-[11px] text-muted-foreground">{label}</div></div>
+      <div className="leading-tight"><div className="text-base font-semibold">{value}</div><div className="text-xs text-muted-foreground">{label}</div></div>
     </div>
   );
 }
@@ -119,7 +120,7 @@ export default function CourseEditor() {
   const setBlock = (b: number, f: (x: EditorBlock) => EditorBlock) => sel.k === "lesson" && setLes(sel.m, sel.l, (l) => ({ ...l, blocks: l.blocks.map((x, i) => (i === b ? f(x) : x)) }));
   const pick = (next: Sel) => { setSel(next); if (next.k !== "course") setOpen((o) => new Set(o).add(next.m)); };
 
-  const state = unsaved ? { label: t("learningEditor.stateUnsaved"), cls: "bg-red-500/15 text-red-700 dark:text-red-300", Icon: CircleDot } : s.draft ? { label: t("learningEditor.stateDraft", { n: s.changes.length }), cls: "bg-amber-500/15 text-amber-800 dark:text-amber-300", Icon: Pencil } : { label: t("learningEditor.statePublished"), cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 };
+  const state = unsaved ? { label: t("learningEditor.stateUnsaved"), cls: "bg-danger/10 text-danger", Icon: CircleDot } : s.draft ? { label: t("learningEditor.stateDraft", { n: s.changes.length }), cls: "bg-warning/10 text-warning", Icon: Pencil } : { label: t("learningEditor.statePublished"), cls: "bg-success/10 text-success", Icon: CheckCircle2 };
 
   return (
     <div className="space-y-4">
@@ -153,20 +154,20 @@ export default function CourseEditor() {
         <div className="ml-auto flex flex-wrap gap-2">
           <Button size="sm" variant={preview ? "default" : "outline"} onClick={() => setPreview((p) => !p)}><Eye className="mr-1 h-4 w-4" aria-hidden />{preview ? t("learningEditor.backToEdit") : t("learningEditor.previewDraft")}</Button>
           <Button size="sm" variant="outline" onClick={() => setShowVersions(true)}><History className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.versions", { n: s.versions.length })}</Button>
-          <Button size="sm" variant="outline" disabled={!s.draft || discard.isPending} onClick={() => confirm(t("learningEditor.discardConfirm")) && discard.mutate({ courseId: s.course.id })}><Trash2 className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.discard")}</Button>
+          <Button size="sm" variant="outline" disabled={!s.draft || discard.isPending} onClick={async () => (await confirmAction({ description: t("learningEditor.discardConfirm"), destructive: true })) && discard.mutate({ courseId: s.course.id })}><Trash2 className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.discard")}</Button>
           <Button size="sm" variant="secondary" disabled={!unsaved || save.isPending} onClick={() => save.mutate({ courseId: s.course.id, tree, expectedUpdatedAt: s.draftInfo?.updatedAt ?? null })}><Save className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.saveDraft")}</Button>
           <Button size="sm" disabled={!s.draft || unsaved || !s.changes.length || publish.isPending} title={unsaved ? t("learningEditor.saveBeforePublish") : undefined} onClick={() => setPublishing(true)}><Rocket className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.publishChanges")}</Button>
         </div>
       </div>
 
       {s.usage.activeEnrollments > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-200">
+        <div className="flex items-start gap-2 rounded-lg border border-success/40 bg-success/10 p-3 text-sm text-foreground">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <p>{t("learningEditor.activeNotice", { enrollments: s.usage.activeEnrollments, learners: s.usage.learnersWithProgress })}</p>
         </div>
       )}
       {s.draftInfo?.stale && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+        <div className="flex items-start gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm text-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <p>{t("learningEditor.staleNotice")}</p>
         </div>
@@ -177,7 +178,7 @@ export default function CourseEditor() {
         <nav aria-label={t("learningEditor.structure")} className="space-y-1 rounded-xl border bg-card p-2">
           <button type="button" onClick={() => pick({ k: "course" })} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-semibold ${sel.k === "course" ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}>
             <GraduationCap className="h-4 w-4 shrink-0" aria-hidden /><span className="truncate">{tree.course.title || t("learningEditor.courseFallback")}</span>
-            {dirty.course && <span className="ml-auto h-2 w-2 rounded-full bg-amber-500" title={t("learningEditor.modified")} />}
+            {dirty.course && <span className="ml-auto h-2 w-2 rounded-full bg-warning" title={t("learningEditor.modified")} />}
           </button>
           {tree.modules.map((m, mi) => {
             const isOpen = open.has(mi);
@@ -190,9 +191,9 @@ export default function CourseEditor() {
                   </button>
                   <button type="button" onClick={() => pick({ k: "module", m: mi })} className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left text-sm font-medium">
                     <Layers className="h-4 w-4 shrink-0 text-primary" aria-hidden /><span className="truncate">{m.title || t("learningEditor.untitled")}</span>
-                    {dirty.modules.has(m.id) && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title={t("learningEditor.modified")} />}
+                    {dirty.modules.has(m.id) && <span className="h-2 w-2 shrink-0 rounded-full bg-warning" title={t("learningEditor.modified")} />}
                   </button>
-                  <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{m.lessons.length}</span>
+                  <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">{m.lessons.length}</span>
                   <Button size="icon" variant="ghost" className="h-6 w-6" aria-label={t("learningEditor.moduleUp")} disabled={mi === 0} onClick={() => { setTree({ ...tree, modules: move(tree.modules, mi, -1) }); setOpen((o) => new Set(Array.from(o).map((x) => (x === mi ? mi - 1 : x === mi - 1 ? mi : x)))); setSel({ k: "module", m: mi - 1 }); }}><ArrowUp className="h-3.5 w-3.5" /></Button>
                   <Button size="icon" variant="ghost" className="h-6 w-6" aria-label={t("learningEditor.moduleDown")} disabled={mi === tree.modules.length - 1} onClick={() => { setTree({ ...tree, modules: move(tree.modules, mi, 1) }); setOpen((o) => new Set(Array.from(o).map((x) => (x === mi ? mi + 1 : x === mi + 1 ? mi : x)))); setSel({ k: "module", m: mi + 1 }); }}><ArrowDown className="h-3.5 w-3.5" /></Button>
                 </div>
@@ -204,7 +205,7 @@ export default function CourseEditor() {
                         <li key={l.id} className={`flex items-center gap-1 rounded-md pr-1 ${on ? "bg-primary/10 font-medium text-primary" : "hover:bg-muted"}`}>
                           <button type="button" className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left text-sm" onClick={() => pick({ k: "lesson", m: mi, l: li })}>
                             <BookOpen className="h-3.5 w-3.5 shrink-0" aria-hidden /><span className="truncate">{li + 1}. {l.title || t("learningEditor.untitled")}</span>
-                            {dirty.lessons.has(l.id) && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title={t("learningEditor.modifiedFem")} />}
+                            {dirty.lessons.has(l.id) && <span className="h-2 w-2 shrink-0 rounded-full bg-warning" title={t("learningEditor.modifiedFem")} />}
                           </button>
                           <Button size="icon" variant="ghost" className="h-6 w-6" aria-label={t("learningEditor.lessonUp")} disabled={li === 0} onClick={() => { setMod(mi, (x) => ({ ...x, lessons: move(x.lessons, li, -1) })); setSel({ k: "lesson", m: mi, l: li - 1 }); }}><ArrowUp className="h-3.5 w-3.5" /></Button>
                           <Button size="icon" variant="ghost" className="h-6 w-6" aria-label={t("learningEditor.lessonDown")} disabled={li === m.lessons.length - 1} onClick={() => { setMod(mi, (x) => ({ ...x, lessons: move(x.lessons, li, 1) })); setSel({ k: "lesson", m: mi, l: li + 1 }); }}><ArrowDown className="h-3.5 w-3.5" /></Button>
@@ -259,7 +260,7 @@ export default function CourseEditor() {
 
           {sel.k === "lesson" && mod && les && (preview ? (
             <article className="space-y-3">
-              <p className="rounded-md bg-sky-500/10 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">{t("learningEditor.previewNote")}</p>
+              <p className="rounded-md bg-info/10 px-3 py-2 text-xs text-foreground">{t("learningEditor.previewNote")}</p>
               <h3 className="text-xl font-semibold">{les.title}</h3>
               {les.blocks.map((b) => {
                 const K = kindOf(s.blockMeta[b.id]?.kind);
@@ -287,7 +288,7 @@ export default function CourseEditor() {
                   <div key={b.id} className="overflow-hidden rounded-lg border">
                     <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5">
                       <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${K.tone}`}><K.Icon className="h-3.5 w-3.5" aria-hidden />{t(`learningEditor.kind.${K.key}`)}</span>
-                      {meta?.resourceKind && <span className={`text-xs ${meta.resourceStatus === "verified" ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>{meta.resourceStatus === "verified" ? t("learningEditor.fileVerified") : t("learningEditor.filePending")}</span>}
+                      {meta?.resourceKind && <span className={`text-xs ${meta.resourceStatus === "verified" ? "text-success" : "text-warning"}`}>{meta.resourceStatus === "verified" ? t("learningEditor.fileVerified") : t("learningEditor.filePending")}</span>}
                       <span className="ml-auto text-xs text-muted-foreground">{t("learningEditor.blockOf", { n: bi + 1, total: les.blocks.length })}</span>
                       <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={t("learningEditor.blockUp")} disabled={bi === 0} onClick={() => setLes(sel.m, sel.l, (l) => ({ ...l, blocks: move(l.blocks, bi, -1) }))}><ArrowUp className="h-4 w-4" /></Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={t("learningEditor.blockDown")} disabled={bi === les.blocks.length - 1} onClick={() => setLes(sel.m, sel.l, (l) => ({ ...l, blocks: move(l.blocks, bi, 1) }))}><ArrowDown className="h-4 w-4" /></Button>
@@ -332,9 +333,9 @@ export default function CourseEditor() {
                 {s.versions.map((v) => (
                   <li key={v.id} className="flex items-center justify-between gap-2 py-2">
                     <span><span className="font-medium">{t("learningEditor.versionsDialog.version", { n: v.version })}</span> · {fmt(v.createdAt)}<br /><span className="text-xs text-muted-foreground">{v.summary}{v.note ? ` · ${v.note}` : ""}</span></span>
-                    <Button size="sm" variant="outline" disabled={restore.isPending} onClick={() => {
+                    <Button size="sm" variant="outline" disabled={restore.isPending} onClick={async () => {
                       const replace = !!s.draft && s.changes.length > 0;
-                      if (replace && !confirm(t("learningEditor.versionsDialog.replaceConfirm"))) return;
+                      if (replace && !(await confirmAction({ description: t("learningEditor.versionsDialog.replaceConfirm") }))) return;
                       restore.mutate({ courseId: s.course.id, versionId: v.id, replace });
                     }}><RotateCcw className="mr-1 h-4 w-4" aria-hidden />{t("learningEditor.versionsDialog.restore")}</Button>
                   </li>

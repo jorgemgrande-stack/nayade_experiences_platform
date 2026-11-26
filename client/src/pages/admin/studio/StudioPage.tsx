@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import {
-  ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2,
+  ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, Eye, ExternalLink, History, Keyboard, Loader2, Monitor, MoreHorizontal, PanelLeft, PanelRight, Redo2, Save,
   LifeBuoy, Maximize2, Minimize2, SlidersHorizontal, Smartphone, Tablet, Undo2, Upload, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -50,6 +50,7 @@ import { VersionsPanel } from "@/components/admin/studio/VersionsPanel";
 import { SiteChromeEditor } from "@/components/admin/studio/SiteChromeEditor";
 import { WhatsAppButtonEditor } from "@/components/admin/studio/WhatsAppButtonEditor";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { moduleIcon } from "@/components/admin/studio/icons";
 import { STUDIO_CANVAS_PATH, isFromCanvas, parseDragPayload, type FromCanvas, type ToCanvas } from "@/components/admin/studio/protocol";
@@ -66,7 +67,7 @@ const MODE_KEY = "elephant-studio-modo";
 const CLIPBOARD_KEY = "elephant-studio-portapapeles";
 /** Pasos del zoom del lienzo */
 const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5];
-const ACCENT = "#5b5bf6";
+const ACCENT = "var(--primary)";
 
 function readMode(): boolean {
   try {
@@ -103,11 +104,28 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   const presets = useMemo(() => SECTION_PRESETS.filter((p) => !p.capability || (subReady && subscription.can(p.capability))), [subReady, subscription.mode, subscription.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [device, setDevice] = useState<Device>("desktop");
+  // En un móvil el lienzo arranca en la vista de móvil: el de ordenador no cabría sin desbordar
+  const [device, setDevice] = useState<Device>(() => (typeof window !== "undefined" && window.innerWidth < 640 ? "mobile" : "desktop"));
   const [pro, setProState] = useState(readMode);
   const wide = typeof window !== "undefined" ? window.innerWidth >= 1100 : true;
-  const [leftOpen, setLeftOpen] = useState(wide);
-  const [rightOpen, setRightOpen] = useState(wide);
+  const [leftOpen, setLeftOpenRaw] = useState(wide);
+  const [rightOpen, setRightOpenRaw] = useState(wide);
+  // Por debajo de 1024 px los paneles son cajones sobre el lienzo: solo uno abierto a la vez
+  const narrow = () => typeof window !== "undefined" && window.innerWidth < 1024;
+  const setLeftOpen = (v: boolean | ((p: boolean) => boolean)) => {
+    setLeftOpenRaw((p) => {
+      const next = typeof v === "function" ? v(p) : v;
+      if (next && narrow()) setRightOpenRaw(false);
+      return next;
+    });
+  };
+  const setRightOpen = (v: boolean | ((p: boolean) => boolean)) => {
+    setRightOpenRaw((p) => {
+      const next = typeof v === "function" ? v(p) : v;
+      if (next && narrow()) setLeftOpenRaw(false);
+      return next;
+    });
+  };
   const [leftTab, setLeftTab] = useState<LeftTab>("add");
   const [inspTab, setInspTab] = useState<InspectorTab>("content");
   /** Zoom del lienzo: null = ajustar al espacio disponible */
@@ -570,7 +588,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
     return () => ro.disconnect();
   }, []);
   const dev = DEVICES.find((d) => d.key === device)!;
-  const pad = device === "desktop" ? 20 : 28;
+  const pad = area.w < 500 ? 12 : device === "desktop" ? 20 : 28;
   const fitScale = Math.min(1, Math.max(0.3, (area.w - pad * 2) / dev.width));
   const scale = zoom ?? fitScale;
   const overflowX = dev.width * scale > area.w - pad * 2 + 1;
@@ -585,13 +603,18 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
 
   if (pagesQ.error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center">
-        <div className="max-w-sm space-y-3">
-          <p className="font-semibold">{tx("No puedes abrir Elephant Studio")}</p>
-          <p className="text-sm text-muted-foreground">{pagesQ.error.data?.code === "FORBIDDEN" ? tx("Tu cuenta no tiene permiso para editar la web de la empresa.") : tx("No hemos podido cargar las páginas de tu web. Inténtalo de nuevo.")}</p>
-          <Button variant="outline" asChild>
-            <Link href="/admin">{tx("Volver al panel")}</Link>
-          </Button>
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md space-y-3">
+          {pagesQ.error.data?.code === "FORBIDDEN" ? (
+            <PanelEmpty title={tx("No puedes abrir Elephant Studio")} description={tx("Tu cuenta no tiene permiso para editar la web de la empresa.")} />
+          ) : (
+            <PanelError title={tx("No puedes abrir Elephant Studio")} error={pagesQ.error} onRetry={() => void pagesQ.refetch()} />
+          )}
+          <div className="text-center">
+            <Button variant="outline" asChild>
+              <Link href="/admin">{tx("Volver al panel")}</Link>
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -603,23 +626,23 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
       {/* ── Barra superior ── */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-2 md:px-3">
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-1.5 gap-y-1 border-b border-border bg-background px-2 py-1 sm:gap-x-2 md:px-3 lg:h-14 lg:flex-nowrap lg:py-0">
         <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" asChild title={tx("Volver a las páginas")}>
           <Link href="/admin/cms/paginas" aria-label={tx("Volver a las páginas")}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div className="hidden shrink-0 items-center gap-2 pr-1 md:flex">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${ACCENT}, #8b5cf6)` }} aria-hidden>S</span>
+        <div className="hidden shrink-0 items-center gap-2 pr-1 lg:flex">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] font-bold text-primary-foreground" style={{ background: `linear-gradient(135deg, ${ACCENT}, color-mix(in oklab, ${ACCENT} 60%, white))` }} aria-hidden>S</span>
           <span className="hidden text-sm font-semibold tracking-tight xl:inline">{tx("Elephant Studio")}</span>
         </div>
-        <span className="hidden h-6 w-px bg-border md:block" aria-hidden />
+        <span className="hidden h-6 w-px bg-border lg:block" aria-hidden />
         <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", leftOpen && "bg-muted")} onClick={() => setLeftOpen((v) => !v)} aria-label={leftOpen ? tx("Ocultar panel izquierdo") : tx("Mostrar panel izquierdo")} title={tx("Panel izquierdo")}>
           <PanelLeft className="h-4 w-4" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-9 min-w-0 max-w-[150px] gap-1.5 px-2.5 lg:max-w-[220px]">
+            <Button variant="ghost" className="h-9 min-w-0 max-w-[112px] gap-1.5 px-2 sm:max-w-[150px] sm:px-2.5 lg:max-w-[220px]">
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{page?.title ?? tx("Página")}</span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </Button>
@@ -628,9 +651,9 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <DropdownMenuLabel>{tx("Páginas de tu web")}</DropdownMenuLabel>
             {pages.map((p) => (
               <DropdownMenuItem key={p.slug} onSelect={() => void openPage(p.slug)} className="gap-2">
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", !p.isPublished ? "bg-slate-300" : p.hasDraft ? "bg-amber-400" : "bg-emerald-500")} aria-hidden />
+                <span className={cn("h-2 w-2 shrink-0 rounded-full", !p.isPublished ? "bg-muted-foreground/40" : p.hasDraft ? "bg-warning" : "bg-success")} aria-hidden />
                 <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</span>
-                {p.isHome && <span className="text-[11px] text-muted-foreground">{tx("Portada")}</span>}
+                {p.isHome && <span className="text-xs text-muted-foreground">{tx("Portada")}</span>}
                 {p.slug === slug && <Check className="h-3.5 w-3.5" />}
               </DropdownMenuItem>
             ))}
@@ -643,24 +666,24 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
         {status && (
           <span
             className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 text-[11px] font-medium lg:px-2 lg:py-0.5",
-              status.tone === "ok" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
-              status.tone === "draft" && "bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200",
-              status.tone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full border border-transparent px-2 py-1 text-xs font-medium md:px-2.5",
+              status.tone === "ok" && "border-success/30 bg-success/10 text-success",
+              status.tone === "draft" && "border-warning/30 bg-warning/10 text-warning",
+              status.tone === "error" && "border-danger/30 bg-danger/10 text-danger",
               status.tone === "muted" && "bg-muted text-muted-foreground",
             )}
             title={doc.error ?? (doc.savedAt ? tx("Borrador guardado a las {time}", { time: format.time(doc.savedAt) }) : undefined)}
             role="status"
           >
-            {status.icon ? <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} /> : <span className="h-2 w-2 rounded-full bg-current lg:hidden" aria-hidden />}
-            <span className="sr-only lg:not-sr-only">{status.label}</span>
+            {status.icon ? <status.icon className={cn("h-3 w-3", status.icon === Loader2 && "animate-spin")} /> : <span className="h-2 w-2 rounded-full bg-current md:hidden" aria-hidden />}
+            <span className="sr-only md:not-sr-only">{status.label}</span>
           </span>
         )}
         {doc.status === "error" && (
           <Button variant="outline" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => void doc.save().then((ok) => ok && toast.success(tx("Borrador guardado")))} title={doc.error ?? undefined}>{tx("Reintentar")}</Button>
         )}
 
-        <div className="flex flex-1 items-center justify-center gap-1">
+        <div className="order-last flex basis-full items-center justify-center gap-1 lg:order-none lg:basis-auto lg:flex-1">
           <Button variant="ghost" size="icon" className="h-9 w-9" onClick={doc.undo} disabled={!doc.canUndo || !!viewing} aria-label={tx("Deshacer")} title={tx("Deshacer (Ctrl+Z)")}>
             <Undo2 className="h-4 w-4" />
           </Button>
@@ -681,20 +704,20 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   setDevice(d.key);
                   if (d.key === "mobile") markGuide("mobile");
                 }}
-                className={cn("rounded-md px-2.5 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", device === d.key ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+                className={cn("rounded-md px-2.5 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", device === d.key ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
               >
                 <d.icon className="h-4 w-4" />
               </button>
             ))}
           </div>
-          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 md:flex" role="group" aria-label={tx("Zoom del lienzo")}>
+          <div className="ml-1 hidden items-center rounded-lg bg-muted p-0.5 2xl:flex" role="group" aria-label={tx("Zoom del lienzo")}>
             <button type="button" onClick={() => stepZoom(-1)} disabled={scale <= ZOOM_STEPS[0] + 0.001} className="rounded-md px-1.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40" aria-label={tx("Alejar")} title={tx("Alejar")}>
               <ZoomOut className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={() => setZoom(null)}
-              className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+              className={cn("min-w-[52px] rounded-md px-1.5 py-1 text-xs font-medium tabular-nums", zoom === null ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
               title={tx("Ajustar al espacio disponible")}
               aria-label={tx("Zoom {v} %. Pulsa para ajustar", { v: Math.round(scale * 100) })}
             >
@@ -717,7 +740,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           </Button>
         </div>
 
-        <div className="hidden items-center rounded-lg bg-muted p-0.5 lg:flex" role="radiogroup" aria-label={tx("Modo de edición")}>
+        <div className="hidden items-center rounded-lg bg-muted p-0.5 2xl:flex" role="radiogroup" aria-label={tx("Modo de edición")}>
           {[
             { v: false, label: tx("Sencillo") },
             { v: true, label: tx("Profesional") },
@@ -733,13 +756,14 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 setPro(m.v);
                 toast(m.v ? tx("Modo profesional: diseño avanzado y pestaña «Avanzado» en el inspector.") : tx("Modo sencillo: lo esencial para editar el contenido de tu web."));
               }}
-              className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", pro === m.v ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+              className={cn("rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", pro === m.v ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
             >
               {m.label}
             </button>
           ))}
         </div>
-        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setVersionsOpen(true)} aria-label={tx("Historial de versiones")} title={tx("Historial de versiones")}>
+        <span className="max-lg:flex-1 lg:hidden" aria-hidden />
+        <Button variant="ghost" size="icon" className="hidden h-9 w-9 lg:inline-flex" onClick={() => setVersionsOpen(true)} aria-label={tx("Historial de versiones")} title={tx("Historial de versiones")}>
           <History className="h-4 w-4" />
         </Button>
         <DropdownMenu>
@@ -749,11 +773,17 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuItem className="sm:hidden" disabled={!page || !!viewing || !doc.dirty} onSelect={() => void doc.save().then((ok) => ok && toast.success(tx("Borrador guardado. Tu web no cambia hasta que publiques.")))}>
+              <Save className="mr-2 h-4 w-4" />{" "}{tx("Guardar el borrador")}</DropdownMenuItem>
+            <DropdownMenuItem className="sm:hidden" disabled={!page} onSelect={openPreview}>
+              <Eye className="mr-2 h-4 w-4" />{" "}{tx("Vista previa del borrador")}</DropdownMenuItem>
+            <DropdownMenuItem className="lg:hidden" onSelect={() => setVersionsOpen(true)}>
+              <History className="mr-2 h-4 w-4" />{" "}{tx("Historial de versiones")}</DropdownMenuItem>
             {page?.isPublished && (
               <DropdownMenuItem onSelect={() => window.open(page.isHome ? "/" : `/${page.slug}`, "_blank", "noopener")}>
                 <ExternalLink className="mr-2 h-4 w-4" />{" "}{tx("Ver la página publicada")}</DropdownMenuItem>
             )}
-            <DropdownMenuItem className="lg:hidden" onSelect={() => setPro(!pro)}>
+            <DropdownMenuItem className="2xl:hidden" onSelect={() => setPro(!pro)}>
               {pro ? tx("Pasar al modo sencillo") : tx("Pasar al modo profesional")}
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -774,27 +804,36 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+        <Button variant="ghost" size="sm" className="hidden h-9 sm:inline-flex" onClick={() => void doc.save().then((ok) => ok && toast.success(tx("Borrador guardado. Tu web no cambia hasta que publiques.")))} disabled={!page || !!viewing || !doc.dirty || doc.status === "saving"} aria-label={tx("Guardar")} title={tx("Guardar el borrador")}>
+          <Save className="h-4 w-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">{tx("Guardar")}</span>
+        </Button>
         <Button variant="outline" size="sm" className="hidden h-9 sm:inline-flex" onClick={openPreview} disabled={!page} aria-label={tx("Vista previa")} title={tx("Vista previa del borrador")}>
-          <Eye className="h-4 w-4 xl:mr-1.5" /> <span className="hidden xl:inline">{tx("Vista previa")}</span>
+          <Eye className="h-4 w-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">{tx("Vista previa")}</span>
         </Button>
         <Button
           size="sm"
-          className="h-9 text-white hover:opacity-90"
+          className="h-9 text-primary-foreground hover:opacity-90"
           style={{ background: ACCENT }}
           onClick={() => setConfirmPublish(true)}
           disabled={!page || !!viewing || !pendingPublish || publish.isPending}
           title={viewing ? tx("Vuelve a tu borrador para publicar") : !pendingPublish ? tx("No hay cambios pendientes: tu web ya muestra esta versión") : tx("Publicar los cambios en tu web")}
+          aria-label={tx("Publicar")}
         >
-          <Upload className="mr-1.5 h-4 w-4" />{" "}{tx("Publicar")}</Button>
+          <Upload className="h-4 w-4 sm:mr-1.5" />{" "}<span className="hidden sm:inline">{tx("Publicar")}</span></Button>
         <Button variant="ghost" size="icon" className={cn("h-9 w-9 shrink-0", rightOpen && "bg-muted")} onClick={() => setRightOpen((v) => !v)} aria-label={rightOpen ? tx("Ocultar inspector") : tx("Mostrar inspector")} title={tx("Inspector")}>
           <PanelRight className="h-4 w-4" />
         </Button>
       </header>
 
       <div className="relative flex min-h-0 flex-1">
+        {/* Por debajo de 1024 px los paneles son cajones: un toque fuera los cierra */}
+        {(leftOpen || rightOpen) && (
+          <button type="button" tabIndex={-1} aria-hidden className="absolute inset-0 z-20 cursor-default bg-black/30 lg:hidden" onClick={() => { setLeftOpenRaw(false); setRightOpenRaw(false); }} />
+        )}
         {/* ── Panel izquierdo ── */}
         {leftOpen && (
-          <aside className="absolute inset-y-0 left-0 z-30 w-[272px] shrink-0 border-r border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-left-3 motion-reduce:animate-none lg:static lg:shadow-none" aria-label={tx("Biblioteca y estructura")}>
+          <aside className="absolute inset-y-0 left-0 z-30 w-[min(88vw,300px)] shrink-0 overflow-hidden border-r border-border bg-background shadow-md duration-200 animate-in fade-in slide-in-from-left-3 motion-reduce:animate-none lg:static lg:w-[244px] lg:shadow-none xl:w-[264px] 2xl:w-[280px]" aria-label={tx("Biblioteca y estructura")}>
             <LeftPanel
               tab={leftTab}
               onTab={setLeftTab}
@@ -841,23 +880,22 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           aria-label={tx("Lienzo")}
         >
           {viewing && (
-            <div className="absolute inset-x-0 top-0 z-10 flex h-[52px] items-center justify-between gap-3 border-b border-[#5b5bf6]/30 bg-[#5b5bf6]/10 px-4 text-sm backdrop-blur">
+            <div className="absolute inset-x-0 top-0 z-10 flex h-[52px] items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 text-sm backdrop-blur">
               <span className="min-w-0">{tx("Estás viendo la")}{" "}<strong>{viewing.label}</strong>{tx(". No se puede editar; recupérala para seguir trabajando con ella.")}</span>
               <span className="flex shrink-0 gap-2">
                 <Button size="sm" variant="outline" className="h-8 bg-background" onClick={() => setViewing(null)}>
                   <X className="mr-1 h-3.5 w-3.5" />{" "}{tx("Volver a mi borrador")}</Button>
-                <Button size="sm" className="h-8 text-white" style={{ background: ACCENT }} onClick={() => setConfirmRestore(viewing.id)}>{tx("Recuperar esta versión")}</Button>
+                <Button size="sm" className="h-8 text-primary-foreground" style={{ background: ACCENT }} onClick={() => setConfirmRestore(viewing.id)}>{tx("Recuperar esta versión")}</Button>
               </span>
             </div>
           )}
           {notFound ? (
-            <div className="flex h-full items-center justify-center p-6 text-center">
-              <div className="space-y-3">
-                <p className="font-semibold">{tx("No se ha encontrado la página")}</p>
+            <div className="flex h-full items-center justify-center p-4">
+              <PanelEmpty className="max-w-sm" title={tx("No se ha encontrado la página")}>
                 <Button variant="outline" asChild>
                   <Link href="/admin/studio">{tx("Abrir la portada")}</Link>
                 </Button>
-              </div>
+              </PanelEmpty>
             </div>
           ) : (
             <div className={cn("absolute inset-0 flex overflow-auto", overflowX ? "justify-start" : "justify-center")} style={{ paddingTop: pad + (viewing ? 52 : 0) + (floatBar ? 40 : 0), paddingLeft: pad, paddingRight: pad, paddingBottom: zoom ? pad : 0 }}>
@@ -874,8 +912,12 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   style={{ width: dev.width, height: frameH / scale, transform: `scale(${scale})`, transformOrigin: "top left" }}
                 />
                 {(!doc.loaded || !canvasReady) && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white" role="status" aria-label={tx("Cargando la página")}>
-                    <Loader2 className="h-7 w-7 animate-spin" style={{ color: ACCENT }} />
+                  <div className="absolute inset-0 flex items-center justify-center bg-background">
+                    {doc.editor.error ? (
+                      <PanelError className="m-4 max-w-sm" error={doc.editor.error} title={tx("No se ha podido cargar la página")} onRetry={() => void doc.editor.refetch()} />
+                    ) : (
+                      <PanelLoading label={tx("Cargando la página")} />
+                    )}
                   </div>
                 )}
               </div>
@@ -884,7 +926,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
           {floatBar && (
             <div className="pointer-events-none absolute inset-x-3 top-2.5 z-20 flex items-start justify-between gap-2">
               {focusMode ? (
-                <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-background py-1 pl-3 pr-1 text-xs shadow-md duration-200 animate-in fade-in">
+                <div className="pointer-events-auto hidden items-center gap-1 rounded-full border border-border bg-background py-1 pl-3 pr-1 text-xs shadow-md duration-200 animate-in fade-in lg:flex">
                   <span className="font-medium">{tx("Modo concentrado")}</span>
                   <Button size="sm" variant="ghost" className="h-7 rounded-full px-2.5 text-xs" onClick={toggleFocus} title="Ctrl + .">
                     <Minimize2 className="mr-1 h-3.5 w-3.5" />{" "}{tx("Mostrar los paneles")}</Button>
@@ -893,20 +935,20 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                 <span />
               )}
               {selected && !rightOpen && (
-                <Button size="sm" variant="outline" className="pointer-events-auto h-8 rounded-full bg-background shadow-md duration-200 animate-in fade-in" onClick={() => openInspector(selected.id, inspTab)}>
+                <Button size="sm" variant="outline" className="pointer-events-auto h-9 rounded-full bg-background shadow-md duration-200 animate-in fade-in" onClick={() => openInspector(selected.id, inspTab)}>
                   <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" style={{ color: ACCENT }} />{" "}{tx("Opciones de «{label}»", { label: tx(blockLabel(selected.type)) })}
                 </Button>
               )}
             </div>
           )}
           {doc.loaded && source === "converted" && !viewing && (
-            <p role="note" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-full border border-sky-200 bg-sky-50 px-4 py-1.5 text-center text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">{tx("Hemos preparado esta página en bloques con todo su contenido. Tu web sigue mostrando la versión actual hasta que publiques.")}</p>
+            <p role="note" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 rounded-full border border-info/40 bg-info/10 px-4 py-1.5 text-center text-xs text-foreground shadow-sm">{tx("Hemos preparado esta página en bloques con todo su contenido. Tu web sigue mostrando la versión actual hasta que publiques.")}</p>
           )}
         </main>
 
         {/* ── Inspector ── */}
         {rightOpen && (
-          <aside className="absolute inset-y-0 right-0 z-30 flex w-[300px] shrink-0 flex-col border-l border-border bg-background shadow-xl duration-200 animate-in fade-in slide-in-from-right-3 motion-reduce:animate-none lg:static lg:shadow-none 2xl:w-[320px]" aria-label={tx("Inspector")}>
+          <aside className="absolute inset-y-0 right-0 z-30 flex w-[min(92vw,340px)] shrink-0 flex-col border-l border-border bg-background shadow-md duration-200 animate-in fade-in slide-in-from-right-3 motion-reduce:animate-none lg:static lg:w-[272px] lg:shadow-none xl:w-[296px] 2xl:w-[320px]" aria-label={tx("Inspector")}>
             <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
               {selected && ModuleIcon ? (
                 <>
@@ -928,10 +970,10 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   >
                     <BookmarkPlus className="h-4 w-4" />
                   </button>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{tx("{v} de {parentSectionN}", { v: found ? found.index + 1 : 0, parentSectionN: parentSection?.block.type === "section" || parentSection?.block.type === "modal" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length })}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{tx("{v} de {parentSectionN}", { v: found ? found.index + 1 : 0, parentSectionN: parentSection?.block.type === "section" || parentSection?.block.type === "modal" ? (parentSection.block.data.columns[found!.col]?.blocks.length ?? 0) : blocks.length })}</span>
                 </>
               ) : (
-                <span className="text-sm font-medium">{tx("Ajustes de la página")}</span>
+                <span className="text-sm font-semibold">{tx("Ajustes de la página")}</span>
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -963,7 +1005,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
-                        className="bg-[#5b5bf6] text-white hover:bg-[#4a4ae0]"
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                         onClick={() => setAddAt({ parent: null, col: 0, index: blocks.length })}
                       >{tx("Añadir un bloque")}</Button>
                       <Button
@@ -978,7 +1020,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
                   </div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx("Ajustes de esta página")}</p>
                   {missingTokens.length > 0 && (
-                    <p role="note" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Esta página usa datos de tu empresa que aún no has rellenado (")}{missingTokens.join(", ").toLowerCase()}{tx("). Si falta alguno, esa línea no se muestra en tu web hasta que lo completes en")}{" "}
+                    <p role="note" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-foreground">{tx("Esta página usa datos de tu empresa que aún no has rellenado (")}{missingTokens.join(", ").toLowerCase()}{tx("). Si falta alguno, esa línea no se muestra en tu web hasta que lo completes en")}{" "}
                       <Link href="/admin/configuracion/sitio"className="font-medium underline underline-offset-2">{tx("Datos de la empresa")}</Link>
                       .
                     </p>
@@ -1042,7 +1084,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <AlertDialogCancel>{tx("Seguir editando")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={publish.isPending}
-              className="text-white"
+              className="text-primary-foreground"
               style={{ background: ACCENT }}
               onClick={(e) => {
                 e.preventDefault();
@@ -1093,7 +1135,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <SheetTitle>{tx("Estilo global de tu web")}</SheetTitle>
             <SheetDescription>{tx("Colores, tipografía, bordes y logotipo de toda tu web. Cada bloque puede tener además su propio fondo en «Diseño».")}</SheetDescription>
           </SheetHeader>
-          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Atención: este estilo es común a todas las páginas. Al pulsar «Guardar» se aplica al momento en toda tu web publicada y en la pantalla de acceso de tu equipo; no espera a «Publicar».")}</p>
+          <p role="note" className="mx-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">{tx("Atención: este estilo es común a todas las páginas. Al pulsar «Guardar» se aplica al momento en toda tu web publicada y en la pantalla de acceso de tu equipo; no espera a «Publicar».")}</p>
           <div className="px-4 pb-6">
             <BrandIdentityEditor
               variant="full"
@@ -1113,7 +1155,7 @@ function Studio({ routeSlug }: { routeSlug: string | null }) {
             <SheetTitle>{tx("Cabecera y pie de tu web")}</SheetTitle>
             <SheetDescription>{tx("El botón destacado, los menús y el pie que se ven en todas las páginas.")}</SheetDescription>
           </SheetHeader>
-          <p role="note" className="mx-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100">{tx("Atención: la cabecera y el pie son comunes a todas las páginas. Los cambios se aplican al momento en tu web publicada; no esperan a «Publicar».")}</p>
+          <p role="note" className="mx-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">{tx("Atención: la cabecera y el pie son comunes a todas las páginas. Los cambios se aplican al momento en tu web publicada; no esperan a «Publicar».")}</p>
           <div className="px-4">
             <SiteChromeEditor
               targets={targets}

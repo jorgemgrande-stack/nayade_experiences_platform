@@ -3,6 +3,7 @@
  * Modal con 4 pestañas: General | Imágenes | Líneas | Configuración
  * El constructor de líneas está integrado dentro del modal de edición.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Plus, Search, Pencil, Trash2, Eye, EyeOff, Layers,
@@ -12,6 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { SegmentedTabs } from "@/components/admin/PanelVisual";
+import { ProductThumb } from "./ProductThumb";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -71,7 +76,7 @@ function ImageUploadZone({ label, value, onChange, index }: {
             <img src={value} alt={label} className="w-full h-full object-cover" />
             <button
               type="button"
-              className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-600 transition-colors"
+              className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-danger transition-colors"
               onClick={(e) => { e.stopPropagation(); onChange(""); }}
             >
               <X className="w-3.5 h-3.5" />
@@ -158,7 +163,7 @@ export default function LegoPacksManager() {
   const [productSearch, setProductSearch] = useState("");
 
   // Queries
-  const { data: packs = [], refetch } = trpc.legoPacks.list.useQuery({});
+  const { data: packs = [], refetch, isLoading: packsLoading, isError: packsError, error: packsErr } = trpc.legoPacks.list.useQuery({});
   const { data: editingPack, refetch: refetchEditingPack } = trpc.legoPacks.get.useQuery(
     { id: editId! },
     { enabled: editId !== null }
@@ -360,7 +365,17 @@ export default function LegoPacksManager() {
   const lines = editingPack?.lines ?? [];
 
   return (
-    <AdminLayout title={t("productsPacks.pageTitle")}>
+    <AdminLayout>
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <PanelPageHeader
+        icon={<Layers />}
+        title={t("productsPacks.pageTitle")}
+        actions={
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsPacks.new")}
+          </Button>
+        }
+      />
       {/* ── Pack list ── */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3 flex-wrap">
@@ -368,51 +383,45 @@ export default function LegoPacksManager() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder={t("productsPacks.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
-          <div className="flex gap-1">
-            {(["todos", "dia", "escolar", "empresa", "estancia"] as const).map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategoryFilter(cat)}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
-                  categoryFilter === cat
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-muted/40 text-muted-foreground border-border hover:border-primary/40"
-                )}
-              >
-                {cat === "todos" ? t("productsPacks.filter.all") : cat === "dia" ? `☀️ ${t("productsPacks.filter.day")}` : cat === "escolar" ? `🏫 ${t("productsPacks.filter.school")}` : cat === "empresa" ? `🏢 ${t("productsPacks.filter.company")}` : `🏨 ${t("productsPacks.filter.hotel")}`}
-              </button>
-            ))}
-          </div>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" /> {t("productsPacks.new")}
-          </Button>
+          <SegmentedTabs
+            label={t("productsPacks.filter.all")}
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            options={[
+              { value: "todos", label: t("productsPacks.filter.all") },
+              { value: "dia", label: `☀️ ${t("productsPacks.filter.day")}` },
+              { value: "escolar", label: `🏫 ${t("productsPacks.filter.school")}` },
+              { value: "empresa", label: `🏢 ${t("productsPacks.filter.company")}` },
+              { value: "estancia", label: `🏨 ${t("productsPacks.filter.hotel")}` },
+            ]}
+          />
         </div>
 
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-            <Layers className="w-16 h-16 opacity-20" />
-            <p className="text-lg font-medium">{t("productsPacks.empty.title")}</p>
-            <p className="text-sm">{t("productsPacks.empty.text")}</p>
+        {packsLoading ? (
+          <div role="status" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-48 animate-pulse rounded-xl bg-muted" />)}
           </div>
+        ) : packsError ? (
+          <PanelError error={packsErr} onRetry={() => refetch()} title={t("productsPacks.loadError")} />
+        ) : filtered.length === 0 ? (
+          <PanelEmpty icon={<Layers />} title={t("productsPacks.empty.title")} description={t("productsPacks.empty.text")}>
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsPacks.new")}
+            </Button>
+          </PanelEmpty>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((p) => (
               <div key={p.id} className="rounded-xl border bg-card p-4 flex flex-col gap-3 hover:border-accent/50 transition-all">
-                {p.coverImageUrl && (
-                  <div className="h-32 rounded-lg overflow-hidden bg-muted">
-                    <img src={p.coverImageUrl} alt={p.title} className="w-full h-full object-cover" />
-                  </div>
-                )}
+                <ProductThumb src={p.coverImageUrl} alt={p.title} noImageLabel={t("productsPacks.noImage")} className="w-full" />
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm truncate">{p.title}</div>
                     <div className="text-xs text-muted-foreground truncate">{p.slug}</div>
                   </div>
-                  <Badge variant={p.isPublished ? "default" : "secondary"} className="text-xs flex-shrink-0">
+                  <StatusBadge tone={p.isPublished ? "info" : "warning"} className="shrink-0" icon={p.isPublished ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}>
                     {p.isPublished ? t("productsPacks.published") : t("productsPacks.draft")}
-                  </Badge>
+                  </StatusBadge>
                 </div>
                 <div className="flex items-center gap-1 flex-wrap">
                   <Badge variant="outline" className="text-xs">
@@ -420,15 +429,15 @@ export default function LegoPacksManager() {
                     {t("productsPacks.lineCount", { n: (p as any).lineCount ?? 0 })}
                   </Badge>
                   <Badge variant="outline" className={cn("text-xs",
-                    p.category === "dia" ? "border-blue-300 bg-blue-50 text-blue-700" :
-                    p.category === "escolar" ? "border-green-300 bg-green-50 text-green-700" :
-                    p.category === "estancia" ? "border-amber-300 bg-amber-50 text-amber-700" :
-                    "border-purple-300 bg-purple-50 text-purple-700"
+                    p.category === "dia" ? "border-info/40 bg-info/10 text-info" :
+                    p.category === "escolar" ? "border-success/40 bg-success/10 text-success" :
+                    p.category === "estancia" ? "border-warning/40 bg-warning/10 text-warning" :
+                    "border-primary/40 bg-primary/10 text-primary"
                   )}>
                     {p.category === "dia" ? `☀️ ${t("productsPacks.filter.day")}` : p.category === "escolar" ? `🏫 ${t("productsPacks.filter.school")}` : p.category === "estancia" ? `🏨 ${t("productsPacks.filter.hotel")}` : `🏢 ${t("productsPacks.filter.company")}`}
                   </Badge>
                   {(p as any).discountPercent && (
-                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
+                    <Badge variant="outline" className="text-xs text-warning border-warning/40 bg-warning/10">
                       -{(p as any).discountPercent}%
                     </Badge>
                   )}
@@ -449,7 +458,7 @@ export default function LegoPacksManager() {
                   </Button>
                   <Button
                     size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                    onClick={() => { if (confirm(t("productsPacks.confirmDelete"))) deleteMutation.mutate({ id: p.id }); }}
+                    onClick={async () => { if ((await confirmAction({ description: t("productsPacks.confirmDelete"), destructive: true }))) deleteMutation.mutate({ id: p.id }); }}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
@@ -458,6 +467,7 @@ export default function LegoPacksManager() {
             ))}
           </div>
         )}
+      </div>
       </div>
 
       {/* ══ Pack form dialog (4 tabs: General | Imágenes | Líneas | Configuración) ══ */}
@@ -531,10 +541,10 @@ export default function LegoPacksManager() {
                 <Label className="text-sm font-semibold">{t("productsPacks.g.category")}</Label>
                 <p className="text-xs text-muted-foreground mb-2">{t("productsPacks.g.categoryHelp")}</p>
                 <div className="grid grid-cols-3 gap-3">                  {([
-                    { value: "dia", label: t("productsPacks.cat.dia.label"), icon: "☀️", desc: t("productsPacks.cat.dia.desc"), color: "border-blue-400 bg-blue-50 text-blue-700" },
-                    { value: "escolar", label: t("productsPacks.cat.escolar.label"), icon: "🏫", desc: t("productsPacks.cat.escolar.desc"), color: "border-green-400 bg-green-50 text-green-700" },
-                    { value: "empresa", label: t("productsPacks.cat.empresa.label"), icon: "🏢", desc: t("productsPacks.cat.empresa.desc"), color: "border-purple-400 bg-purple-50 text-purple-700" },
-                    { value: "estancia", label: t("productsPacks.cat.estancia.label"), icon: "🏨", desc: t("productsPacks.cat.estancia.desc"), color: "border-amber-400 bg-amber-50 text-amber-700" },
+                    { value: "dia", label: t("productsPacks.cat.dia.label"), icon: "☀️", desc: t("productsPacks.cat.dia.desc"), color: "border-info/40 bg-info/10 text-info" },
+                    { value: "escolar", label: t("productsPacks.cat.escolar.label"), icon: "🏫", desc: t("productsPacks.cat.escolar.desc"), color: "border-success/40 bg-success/10 text-success" },
+                    { value: "empresa", label: t("productsPacks.cat.empresa.label"), icon: "🏢", desc: t("productsPacks.cat.empresa.desc"), color: "border-primary/40 bg-primary/10 text-primary" },
+                    { value: "estancia", label: t("productsPacks.cat.estancia.label"), icon: "🏨", desc: t("productsPacks.cat.estancia.desc"), color: "border-warning/40 bg-warning/10 text-warning" },
                   ] as const).map((cat) => (
                     <button
                       key={cat.value}
@@ -555,9 +565,9 @@ export default function LegoPacksManager() {
                 </div>
               </div>
               {/* Descuento promocional */}
-              <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
-                <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">%</span>
+              <div className="border border-warning/40 bg-warning/10 rounded-xl p-4">
+                <p className="text-sm font-semibold text-warning flex items-center gap-1.5 mb-3">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-warning/10 text-warning text-xs font-bold">%</span>
                   {t("productsPacks.g.promo")}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
@@ -585,7 +595,7 @@ export default function LegoPacksManager() {
                   </div>
                 </div>
                 {form.discountPercent && (
-                  <p className="text-xs text-amber-600 mt-2">
+                  <p className="text-xs text-warning mt-2">
                     {t("productsPacks.g.discountNote")}
                     {!form.discountExpiresAt && ` ${t("productsPacks.g.noExpiry")}`}
                   </p>
@@ -642,7 +652,7 @@ export default function LegoPacksManager() {
                       </div>
                       <div className="rounded-lg border bg-card p-3">
                         <div className="text-xs text-muted-foreground">{t("productsPacks.lines.totalDiscount")}</div>
-                        <div className="text-lg font-bold text-orange-500">-{f.currency((pricing as any).totalDiscount)}</div>
+                        <div className="text-lg font-bold text-warning">-{f.currency((pricing as any).totalDiscount)}</div>
                       </div>
                       <div className="rounded-lg border bg-accent/10 border-accent/30 p-3">
                         <div className="text-xs text-muted-foreground">{t("productsPacks.lines.totalFinal")}</div>
@@ -693,7 +703,7 @@ export default function LegoPacksManager() {
                                   title={line.isActive ? t("productsPacks.lines.deactivate") : t("productsPacks.lines.activate")}
                                 >
                                   {line.isActive
-                                    ? <CheckSquare className="w-4 h-4 text-green-600" />
+                                    ? <CheckSquare className="w-4 h-4 text-success" />
                                     : <Square className="w-4 h-4" />
                                   }
                                 </button>
@@ -710,7 +720,7 @@ export default function LegoPacksManager() {
                               <td className="px-3 py-2">{line.defaultQuantity}</td>
                               <td className="px-3 py-2">
                                 {parseFloat(String(line.discountValue)) > 0
-                                  ? <span className="text-orange-500 font-medium">{line.discountType === "percent" ? `${line.discountValue}%` : f.currency(Number(line.discountValue))}</span>
+                                  ? <span className="text-warning font-medium">{line.discountType === "percent" ? `${line.discountValue}%` : f.currency(Number(line.discountValue))}</span>
                                   : "—"}
                               </td>
                               <td className="px-3 py-2 font-medium">
@@ -718,8 +728,8 @@ export default function LegoPacksManager() {
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex gap-1 flex-wrap">
-                                  {line.isRequired && <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">{t("productsPacks.lines.req")}</Badge>}
-                                  {line.isOptional && <Badge variant="outline" className="text-xs bg-blue-50 text-blue-600 border-blue-200">{t("productsPacks.lines.opt")}</Badge>}
+                                  {line.isRequired && <Badge variant="outline" className="text-xs bg-danger/10 text-danger border-danger/40">{t("productsPacks.lines.req")}</Badge>}
+                                  {line.isOptional && <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/40">{t("productsPacks.lines.opt")}</Badge>}
                                   {!line.isClientVisible && <Badge variant="outline" className="text-xs bg-gray-50 text-gray-500 border-gray-200">{t("productsPacks.lines.hidden")}</Badge>}
                                 </div>
                               </td>
@@ -730,7 +740,7 @@ export default function LegoPacksManager() {
                                   </Button>
                                   <Button
                                     size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title={t("productsPacks.lines.delete")}
-                                    onClick={() => { if (confirm(t("productsPacks.lines.confirmDelete"))) deleteLineMutation.mutate({ id: line.id }); }}
+                                    onClick={async () => { if ((await confirmAction({ description: t("productsPacks.lines.confirmDelete"), destructive: true }))) deleteLineMutation.mutate({ id: line.id }); }}
                                   >
                                     <Trash2 className="w-3 h-3" />
                                   </Button>
@@ -897,7 +907,7 @@ export default function LegoPacksManager() {
                 ))}
               </div>
               {lineForm.sourceId && (
-                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                <p className="text-xs text-success mt-1 flex items-center gap-1">
                   <CheckSquare className="w-3 h-3" />
                   {t("productsPacks.line.selected", { id: lineForm.sourceId })}
                 </p>
@@ -939,8 +949,8 @@ export default function LegoPacksManager() {
               <Textarea rows={2} value={lineForm.frontendNote} onChange={(e) => setLineForm({ ...lineForm, frontendNote: e.target.value })} placeholder={t("productsPacks.line.notePh")} />
             </div>
             {/* Override price for accommodation/external lines */}
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-xs font-semibold text-amber-700 mb-2">{t("productsPacks.line.refPrice")}</p>
+            <div className="p-3 bg-warning/10 border border-warning/40 rounded-lg">
+              <p className="text-xs font-semibold text-warning mb-2">{t("productsPacks.line.refPrice")}</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>{t("productsPacks.line.override")}</Label>
@@ -951,7 +961,7 @@ export default function LegoPacksManager() {
                   <Input value={lineForm.overridePriceLabel} onChange={(e) => setLineForm({ ...lineForm, overridePriceLabel: e.target.value })} placeholder={t("productsPacks.line.overrideLabelPh")} />
                 </div>
               </div>
-              <p className="text-xs text-amber-600 mt-1">{t("productsPacks.line.overrideHelp")}</p>
+              <p className="text-xs text-warning mt-1">{t("productsPacks.line.overrideHelp")}</p>
             </div>
 
             {/* Flags */}

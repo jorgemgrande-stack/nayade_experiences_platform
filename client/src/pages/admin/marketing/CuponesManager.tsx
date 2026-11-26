@@ -7,6 +7,10 @@
 import React, { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { Link } from "wouter";
+import { PanelPageHeader, PanelDataList, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard, PersonAvatar, SegmentedTabs } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,69 +58,55 @@ interface Coupon {
 // ─── PROVEEDORES FIJOS ────────────────────────────────────────────────────────
 const PROVIDERS = ["Groupon", "Smartbox", "CheckYeti", "Atrapalo", "Jumping", "Alpine Resort", "Civitatis"];
 
-const PROVIDER_COLORS: Record<string, string> = {
-  Groupon: "bg-green-500/15 text-green-400 border-green-500/30",
-  Smartbox: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  CheckYeti: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
-  Atrapalo: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  Jumping: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  "Alpine Resort": "bg-sky-500/15 text-sky-400 border-sky-500/30",
-  Civitatis: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+/** Cada proveedor se distingue por un tono con significado del sistema (no por un color propio). */
+const PROVIDER_TONES: Record<string, Tone> = {
+  Groupon: "success",
+  Smartbox: "info",
+  CheckYeti: "info",
+  Atrapalo: "warning",
+  Jumping: "warning",
+  "Alpine Resort": "info",
+  Civitatis: "brand",
 };
 
 // ─── BADGES ───────────────────────────────────────────────────────────────────
 function ProviderBadge({ provider }: { provider: string }) {
-  const cls = PROVIDER_COLORS[provider] ?? "bg-slate-500/15 text-slate-400 border-slate-500/30";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {provider}
-    </span>
-  );
+  return <StatusBadge tone={PROVIDER_TONES[provider] ?? "neutral"}>{provider}</StatusBadge>;
 }
 
 function OpBadge({ status }: { status: StatusOp }) {
-  const map: Record<StatusOp, { label: string; cls: string; icon: React.ReactNode }> = {
-    recibido: { label: "Recibido", cls: "bg-blue-500/15 text-blue-400 border-blue-500/30", icon: <Ticket className="w-3 h-3" /> },
-    pendiente: { label: "Pendiente", cls: "bg-amber-500/15 text-amber-400 border-amber-500/30", icon: <Clock className="w-3 h-3" /> },
-    reserva_generada: { label: "Reserva generada", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30", icon: <CheckCircle className="w-3 h-3" /> },
+  const map: Record<StatusOp, { label: string; tone: Tone; icon: React.ReactNode }> = {
+    recibido: { label: "Recibido", tone: "info", icon: <Ticket /> },
+    pendiente: { label: "Pendiente", tone: "warning", icon: <Clock /> },
+    reserva_generada: { label: "Reserva generada", tone: "success", icon: <CheckCircle /> },
   };
-  const { label, cls, icon } = map[status] ?? map.recibido;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {icon}{label}
-    </span>
-  );
+  const { label, tone, icon } = map[status] ?? map.recibido;
+  return <StatusBadge tone={tone} icon={icon}>{label}</StatusBadge>;
 }
 
 function FinBadge({ status }: { status: StatusFin }) {
-  const map: Record<StatusFin, { label: string; cls: string }> = {
-    pendiente_canjear: { label: "Pendiente canjear", cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
-    canjeado: { label: "Canjeado", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-    incidencia: { label: "Incidencia", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+  const map: Record<StatusFin, { label: string; tone: Tone }> = {
+    pendiente_canjear: { label: "Pendiente canjear", tone: "neutral" },
+    canjeado: { label: "Canjeado", tone: "success" },
+    incidencia: { label: "Incidencia", tone: "danger" },
   };
-  const { label, cls } = map[status] ?? map.pendiente_canjear;
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>
-      {label}
-    </span>
-  );
+  const { label, tone } = map[status] ?? map.pendiente_canjear;
+  return <StatusBadge tone={tone}>{label}</StatusBadge>;
 }
 
-// ─── STAT CARD ────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, gradient, icon }: {
-  label: string; value: number | string; sub?: string; gradient: string; icon: React.ReactNode;
-}) {
+/** Botón de icono de una fila: con nombre accesible, un objetivo táctil cómodo y el color de su significado. */
+const ACTION_TONE: Record<string, string> = {
+  neutral: "text-muted-foreground hover:text-foreground",
+  warning: "text-warning hover:bg-warning/10",
+  success: "text-success hover:bg-success/10",
+  danger: "text-danger hover:bg-danger/10",
+  info: "text-info hover:bg-info/10",
+};
+function RowAction({ label, tone = "neutral", onClick, disabled, children }: { label: string; tone?: keyof typeof ACTION_TONE; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <div className={`relative overflow-hidden rounded-xl border border-white/5 p-5 ${gradient}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-white/50 uppercase tracking-wider font-medium">{label}</p>
-          <p className="text-3xl font-bold text-white mt-1">{value}</p>
-          {sub && <p className="text-xs text-white/40 mt-1">{sub}</p>}
-        </div>
-        <div className="p-2 rounded-lg bg-white/10">{icon}</div>
-      </div>
-    </div>
+    <Button type="button" variant="ghost" size="icon" className={`h-9 w-9 ${ACTION_TONE[tone]}`} aria-label={label} title={label} disabled={disabled} onClick={onClick}>
+      {children}
+    </Button>
   );
 }
 
@@ -135,76 +125,76 @@ function DetailModal({ coupon, onClose, onConvert, onRedeem, onPostpone, onIncid
   });
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-background border-border text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Ticket className="w-5 h-5 text-violet-400" />
+            <Ticket className="w-5 h-5 text-primary" />
             Detalle del cupón #{coupon.id}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           {/* Cliente */}
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
-            <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-400 font-bold shrink-0">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold shrink-0">
               {coupon.customerName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <p className="font-semibold text-white">{coupon.customerName}</p>
-              <p className="text-sm text-white/50">{coupon.email}</p>
-              {coupon.phone && <p className="text-sm text-white/50">{coupon.phone}</p>}
+              <p className="font-semibold text-foreground">{coupon.customerName}</p>
+              <p className="text-sm text-muted-foreground">{coupon.email}</p>
+              {coupon.phone && <p className="text-sm text-muted-foreground">{coupon.phone}</p>}
             </div>
           </div>
           {/* Info cupón */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="p-3 rounded-lg bg-white/5">
-              <p className="text-white/40 text-xs mb-1">Código cupón</p>
-              <code className="text-violet-300 font-mono">{coupon.couponCode}</code>
-              {coupon.duplicateFlag && <span className="ml-2 text-xs text-amber-400">⚠ Posible duplicado</span>}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-muted-foreground text-xs mb-1">Código cupón</p>
+              <code className="text-primary font-mono">{coupon.couponCode}</code>
+              {coupon.duplicateFlag && <span className="ml-2 text-xs text-warning">⚠ Posible duplicado</span>}
             </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <p className="text-white/40 text-xs mb-1">Proveedor</p>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-muted-foreground text-xs mb-1">Proveedor</p>
               <ProviderBadge provider={coupon.provider} />
             </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <p className="text-white/40 text-xs mb-1">Estado operacional</p>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-muted-foreground text-xs mb-1">Estado operacional</p>
               <OpBadge status={coupon.statusOperational} />
             </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <p className="text-white/40 text-xs mb-1">Estado financiero</p>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-muted-foreground text-xs mb-1">Estado financiero</p>
               <FinBadge status={coupon.statusFinancial} />
             </div>
             {coupon.requestedDate && (
-              <div className="p-3 rounded-lg bg-white/5">
-                <p className="text-white/40 text-xs mb-1">Fecha solicitada</p>
-                <p className="text-white">{coupon.requestedDate}</p>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-muted-foreground text-xs mb-1">Fecha solicitada</p>
+                <p className="text-foreground">{coupon.requestedDate}</p>
               </div>
             )}
             {coupon.station && (
-              <div className="p-3 rounded-lg bg-white/5">
-                <p className="text-white/40 text-xs mb-1">Estación</p>
-                <p className="text-white">{coupon.station}</p>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-muted-foreground text-xs mb-1">Estación</p>
+                <p className="text-foreground">{coupon.station}</p>
               </div>
             )}
-            <div className="p-3 rounded-lg bg-white/5">
-              <p className="text-white/40 text-xs mb-1">Participantes</p>
-              <p className="text-white">{coupon.participants ?? 1}</p>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-muted-foreground text-xs mb-1">Participantes</p>
+              <p className="text-foreground">{coupon.participants ?? 1}</p>
             </div>
-            <div className="p-3 rounded-lg bg-white/5">
-              <p className="text-white/40 text-xs mb-1">Recibido</p>
-              <p className="text-white">{new Date(coupon.createdAt).toLocaleDateString("es-ES")}</p>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-muted-foreground text-xs mb-1">Recibido</p>
+              <p className="text-foreground">{new Date(coupon.createdAt).toLocaleDateString("es-ES")}</p>
             </div>
           </div>
           {/* Notas */}
           {coupon.notes && (
-            <div className="p-3 rounded-lg bg-white/5">
-              <p className="text-white/40 text-xs mb-1">Notas</p>
-              <p className="text-white text-sm">{coupon.notes}</p>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-muted-foreground text-xs mb-1">Notas</p>
+              <p className="text-foreground text-sm">{coupon.notes}</p>
             </div>
           )}
           {/* Reserva generada */}
           {coupon.reservationId && (
-            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <p className="text-emerald-400 text-sm flex items-center gap-1">
+            <div className="p-3 rounded-lg bg-success/10 border border-success/20">
+              <p className="text-success text-sm flex items-center gap-1">
                 <CheckCircle className="w-4 h-4" />
                 Reserva #{coupon.reservationId} generada en el CRM
               </p>
@@ -212,20 +202,20 @@ function DetailModal({ coupon, onClose, onConvert, onRedeem, onPostpone, onIncid
           )}
           {/* Adjunto + OCR */}
           {coupon.attachmentUrl && (
-            <div className="p-3 rounded-lg bg-white/5 space-y-2">
-              <p className="text-white/40 text-xs">Adjunto del cupón</p>
+            <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+              <p className="text-muted-foreground text-xs">Adjunto del cupón</p>
               <div className="flex items-center gap-3">
                 <a href={coupon.attachmentUrl} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300">
+                  className="flex items-center gap-2 text-sm text-primary hover:text-primary">
                   <ExternalLink className="w-4 h-4" /> Ver adjunto
                 </a>
                 {coupon.ocrStatus && (
-                  <span className="text-xs text-white/40">OCR: {coupon.ocrConfidenceScore}%</span>
+                  <span className="text-xs text-muted-foreground">OCR: {coupon.ocrConfidenceScore}%</span>
                 )}
                 {!coupon.ocrStatus && (
                   <Button variant="outline" size="sm" onClick={() => rerunOcr.mutate({ id: coupon.id })}
                     disabled={rerunOcr.isPending}
-                    className="h-7 text-xs border-white/10 text-white/60">
+                    className="h-7 text-xs border-border text-foreground/60">
                     {rerunOcr.isPending ? "Analizando..." : "Ejecutar OCR"}
                   </Button>
                 )}
@@ -234,19 +224,19 @@ function DetailModal({ coupon, onClose, onConvert, onRedeem, onPostpone, onIncid
           )}
         </div>
         <DialogFooter className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cerrar</Button>
+          <Button variant="outline" onClick={onClose} className="border-border text-foreground/70">Cerrar</Button>
           {coupon.statusOperational === "recibido" && (
-            <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => { onClose(); onPostpone(coupon); }}>
+            <Button className="bg-warning hover:bg-warning/90 text-primary-foreground" onClick={() => { onClose(); onPostpone(coupon); }}>
               <Pause className="w-4 h-4 mr-1" /> Posponer
             </Button>
           )}
           {coupon.statusFinancial !== "incidencia" && coupon.statusOperational !== "reserva_generada" && (
-            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={() => { onClose(); onIncidence(coupon); }}>
+            <Button variant="destructive" onClick={() => { onClose(); onIncidence(coupon); }}>
               <AlertTriangle className="w-4 h-4 mr-1" /> Incidencia
             </Button>
           )}
           {coupon.statusFinancial === "pendiente_canjear" && (
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { onClose(); onRedeem(coupon); }}>
+            <Button className="bg-success hover:bg-success/90 text-primary-foreground" onClick={() => { onClose(); onRedeem(coupon); }}>
               <BadgeCheck className="w-4 h-4 mr-1" /> Marcar como canjeado
             </Button>
           )}
@@ -289,31 +279,31 @@ function ConvertModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg">
+      <DialogContent className="bg-background border-border text-foreground max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarCheck className="w-5 h-5 text-emerald-400" />
+            <CalendarCheck className="w-5 h-5 text-success" />
             Convertir en reserva
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           {/* Info cupón */}
-          <div className="p-3 rounded-lg bg-white/5 text-sm">
-            <p className="text-white/60">Cliente: <span className="text-white font-medium">{coupon.customerName}</span></p>
-            <p className="text-white/60 mt-0.5">Cupón: <code className="text-violet-300">{coupon.couponCode}</code> · <ProviderBadge provider={coupon.provider} /></p>
+          <div className="p-3 rounded-lg bg-muted/50 text-sm">
+            <p className="text-foreground/60">Cliente: <span className="text-foreground font-medium">{coupon.customerName}</span></p>
+            <p className="text-foreground/60 mt-0.5">Cupón: <code className="text-primary">{coupon.couponCode}</code> · <ProviderBadge provider={coupon.provider} /></p>
           </div>
 
           {/* Selector de plataforma */}
           <div>
-            <Label className="text-white/70 text-sm">Plataforma *</Label>
+            <Label className="text-foreground/70 text-sm">Plataforma *</Label>
             <Select
               value={convertForm.selectedPlatformId?.toString() ?? ""}
               onValueChange={(v) => setConvertForm(f => ({ ...f, selectedPlatformId: parseInt(v), platformProductId: undefined }))}
             >
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+              <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1">
                 <SelectValue placeholder="Selecciona la plataforma del cupón" />
               </SelectTrigger>
-              <SelectContent className="bg-[#1a1a2e] border-white/10">
+              <SelectContent className="bg-card border-border">
                 {platforms.map((pl: { id: number; name: string }) => (
                   <SelectItem key={pl.id} value={pl.id.toString()}>{pl.name}</SelectItem>
                 ))}
@@ -324,24 +314,24 @@ function ConvertModal({
           {/* Selector de producto de plataforma */}
           {convertForm.selectedPlatformId && (
             <div>
-              <Label className="text-white/70 text-sm">Producto *</Label>
+              <Label className="text-foreground/70 text-sm">Producto *</Label>
               {productsQuery.isPending ? (
-                <p className="text-white/40 text-sm mt-2">Cargando productos...</p>
+                <p className="text-muted-foreground text-sm mt-2">Cargando productos...</p>
               ) : products.length === 0 ? (
-                <p className="text-amber-400 text-sm mt-2">No hay productos activos en esta plataforma. Configúralos en Plataformas.</p>
+                <p className="text-warning text-sm mt-2">No hay productos activos en esta plataforma. Configúralos en Plataformas.</p>
               ) : (
                 <Select
                   value={convertForm.platformProductId?.toString() ?? ""}
                   onValueChange={(v) => setConvertForm(f => ({ ...f, platformProductId: parseInt(v) }))}
                 >
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1">
                     <SelectValue placeholder="Selecciona el producto" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                  <SelectContent className="bg-card border-border">
                     {products.map((p: { id: number; externalProductName?: string | null; pvpPrice?: string | null; netPrice?: string | null; expiresAt?: Date | null }) => (
                       <SelectItem key={p.id} value={p.id.toString()}>
                         <span>{p.externalProductName ?? `Producto #${p.id}`}</span>
-                        {p.pvpPrice && <span className="ml-2 text-white/40 text-xs">PVP: {p.pvpPrice}€</span>}
+                        {p.pvpPrice && <span className="ml-2 text-muted-foreground text-xs">PVP: {p.pvpPrice}€</span>}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -353,17 +343,17 @@ function ConvertModal({
           {/* Detalle del producto seleccionado */}
           {selectedProduct && (
             <div className="grid grid-cols-3 gap-2">
-              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-                <p className="text-xs text-white/40 mb-0.5">PVP</p>
-                <p className="text-emerald-400 font-bold">{selectedProduct.pvpPrice ?? "—"}€</p>
+              <div className="p-2.5 rounded-lg bg-success/10 border border-success/20 text-center">
+                <p className="text-xs text-muted-foreground mb-0.5">PVP</p>
+                <p className="text-success font-bold">{selectedProduct.pvpPrice ?? "—"}€</p>
               </div>
-              <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-center">
-                <p className="text-xs text-white/40 mb-0.5">Precio neto</p>
-                <p className="text-blue-400 font-bold">{selectedProduct.netPrice ?? "—"}€</p>
+              <div className="p-2.5 rounded-lg bg-info/10 border border-info/20 text-center">
+                <p className="text-xs text-muted-foreground mb-0.5">Precio neto</p>
+                <p className="text-info font-bold">{selectedProduct.netPrice ?? "—"}€</p>
               </div>
-              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-center">
-                <p className="text-xs text-white/40 mb-0.5">Caduca</p>
-                <p className="text-white/70 text-sm">
+              <div className="p-2.5 rounded-lg bg-muted/50 border border-border text-center">
+                <p className="text-xs text-muted-foreground mb-0.5">Caduca</p>
+                <p className="text-foreground/70 text-sm">
                   {selectedProduct.expiresAt
                     ? new Date(selectedProduct.expiresAt).toLocaleDateString("es-ES")
                     : "Sin caducidad"}
@@ -373,46 +363,46 @@ function ConvertModal({
           )}
 
           {/* Fecha y participantes */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label className="text-white/70 text-sm">Fecha de reserva *</Label>
-              <Input type="date" value={convertForm.reservationDate}
+              <Label htmlFor="cup-campo-1" className="text-foreground/70 text-sm">Fecha de reserva *</Label>
+              <Input id="cup-campo-1" type="date" value={convertForm.reservationDate}
                 onChange={(e) => setConvertForm(f => ({ ...f, reservationDate: e.target.value }))}
-                className="bg-white/5 border-white/10 text-white mt-1" />
+                className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-white/70 text-sm">Participantes</Label>
-              <Input type="number" min={1} value={convertForm.participants}
+              <Label htmlFor="cup-campo-2" className="text-foreground/70 text-sm">Participantes</Label>
+              <Input id="cup-campo-2" type="number" min={1} value={convertForm.participants}
                 onChange={(e) => setConvertForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))}
-                className="bg-white/5 border-white/10 text-white mt-1" />
+                className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
           </div>
 
           {/* Resumen de importes */}
           {selectedProduct && convertForm.participants > 0 && (
-            <div className="p-3 rounded-lg bg-white/5 border border-white/5 text-sm">
-              <div className="flex justify-between text-white/60">
+            <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-sm">
+              <div className="flex justify-between text-foreground/60">
                 <span>Importe total (PVP × {convertForm.participants} pax)</span>
-                <span className="text-white font-medium">
+                <span className="text-foreground font-medium">
                   {((parseFloat(selectedProduct.pvpPrice ?? "0")) * convertForm.participants).toFixed(2)}€
                 </span>
               </div>
-              <div className="flex justify-between text-white/60 mt-1">
+              <div className="flex justify-between text-foreground/60 mt-1">
                 <span>Importe neto (lo que pagamos al proveedor)</span>
-                <span className="text-blue-400 font-medium">
+                <span className="text-info font-medium">
                   {((parseFloat(selectedProduct.netPrice ?? "0")) * convertForm.participants).toFixed(2)}€
                 </span>
               </div>
             </div>
           )}
 
-          <p className="text-xs text-white/30">
+          <p className="text-xs text-muted-foreground">
             La plataforma ya confirmó el canje. Se creará la reserva en el CRM con origen "Plataforma". El cupón pasará a estado "Reserva generada".
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cancelar</Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          <Button variant="outline" onClick={onClose} className="border-border text-foreground/70">Cancelar</Button>
+          <Button className="bg-success hover:bg-success/90 text-primary-foreground"
             disabled={!convertForm.reservationDate || !convertForm.platformProductId || convertMutation.isPending}
             onClick={() => {
               convertMutation.mutate({
@@ -546,91 +536,120 @@ export default function CuponesManager() {
     { id: "liquidaciones", label: "Liquidaciones" },
   ];
 
+  const columns: PanelColumn<Coupon>[] = [
+    {
+      key: "cliente",
+      header: "Cliente",
+      cell: (c) => (
+        <div className="flex min-w-[11rem] items-center gap-2.5">
+          <PersonAvatar name={c.customerName} id={c.id} size="sm" />
+          <div className="min-w-0">
+            <p className="break-words text-sm font-medium text-foreground">{c.customerName}</p>
+            <p className="break-words text-xs font-normal text-muted-foreground">{c.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "codigo",
+      header: "Cupón",
+      cell: (c) => (
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
+          <code className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">{c.couponCode}</code>
+          <ProviderBadge provider={c.provider} />
+          {c.duplicateFlag && <StatusBadge tone="warning" icon={<AlertTriangle />}>Posible duplicado</StatusBadge>}
+        </div>
+      ),
+    },
+    {
+      key: "estado",
+      header: "Estado",
+      cell: (c) => (
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
+          <OpBadge status={c.statusOperational} />
+          <FinBadge status={c.statusFinancial} />
+        </div>
+      ),
+    },
+    {
+      key: "fecha",
+      header: "Fecha",
+      cell: (c) => (
+        <span className="text-xs text-muted-foreground">
+          {new Date(c.createdAt).toLocaleDateString("es-ES")}
+          {c.requestedDate && <span className="block">Pide: {c.requestedDate}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "acciones",
+      header: "Acciones",
+      align: "right",
+      cell: (c) => (
+        <div className="flex flex-nowrap items-center justify-end gap-0.5">
+          <RowAction label="Ver detalle" onClick={() => setDetailCoupon(c)}><Eye className="h-4 w-4" /></RowAction>
+          {c.statusOperational === "recibido" && (
+            <RowAction label="Posponer" tone="warning" onClick={() => { setPostponeCoupon(c); setPostponeNotes(""); }}><Pause className="h-4 w-4" /></RowAction>
+          )}
+          {c.statusFinancial === "pendiente_canjear" && (
+            <RowAction label="Marcar como canjeado" tone="success" onClick={() => setRedeemCoupon(c)}><BadgeCheck className="h-4 w-4" /></RowAction>
+          )}
+          {c.statusFinancial !== "incidencia" && (
+            <RowAction label="Marcar incidencia" tone="danger" onClick={() => { setIncidenceCoupon(c); setIncidenceNotes(""); }}><AlertTriangle className="h-4 w-4" /></RowAction>
+          )}
+          {c.statusOperational === "reserva_generada" && c.reservationId && (
+            <RowAction label="Regenerar operación y reenviar email" tone="info" disabled={regenerateMutation.isPending} onClick={() => regenerateMutation.mutate({ reservationId: c.reservationId! })}><Zap className="h-4 w-4" /></RowAction>
+          )}
+          <RowAction label="Eliminar cupón" tone="danger" onClick={() => setDeleteCoupon(c)}><Trash2 className="h-4 w-4" /></RowAction>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <AdminLayout>
-      <div className="min-h-screen bg-[#080810] text-white">
-        <div className="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
+      <div className="min-h-screen bg-background text-foreground">
+        <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6">
 
           {/* ── HEADER ─────────────────────────────────────────────────────── */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Ticket className="w-6 h-6 text-violet-400" />
-                Pipeline de Cupones
-              </h1>
-              <p className="text-sm text-white/40 mt-1">
-                Recibido → Pendiente → Reserva generada · Trazabilidad completa por proveedor
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm"
-                className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
-                onClick={() => window.location.href = "/admin/marketing/plataformas"}>
-                <Settings className="w-4 h-4 mr-1" /> Plataformas
+          <PanelPageHeader
+            className="mb-0"
+            icon={<Ticket />}
+            title="Pipeline de Cupones"
+            description="Recibido → Pendiente → Reserva generada · Trazabilidad completa por proveedor"
+            actions={<>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/admin/marketing/plataformas"><Settings className="mr-1 h-4 w-4" /> Plataformas</Link>
               </Button>
-              <Button variant="outline" size="sm"
-                className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
-                onClick={() => { utils.ticketing.listCoupons.invalidate(); utils.ticketing.getDashboardStats.invalidate(); }}>
-                <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+              <Button variant="outline" size="sm" onClick={() => { utils.ticketing.listCoupons.invalidate(); utils.ticketing.getDashboardStats.invalidate(); }}>
+                <RefreshCw className="mr-1 h-4 w-4" /> Actualizar
               </Button>
-              <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white"
-                onClick={() => setManualOpen(true)}>
-                <Plus className="w-4 h-4 mr-1" /> Alta manual
+              <Button size="sm" onClick={() => setManualOpen(true)}>
+                <Plus className="mr-1 h-4 w-4" /> Alta manual
               </Button>
-            </div>
+            </>}
+          />
+
+          {/* ── INDICADORES: los cuatro del pipeline son accesos a su vista ───── */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <MetricCard tone="info" icon={<Ticket />} label="Cupones recibidos" value={stats?.recibidos ?? 0} detail="Sin procesar" className="bg-gradient-to-br from-info/10 to-card" onClick={() => { setActiveTab("todos"); setPage(1); }} active={activeTab === "todos"} />
+            <MetricCard tone="warning" icon={<Clock />} label="Pendientes" value={stats?.pendientes ?? 0} detail="Sin disponibilidad" className="bg-gradient-to-br from-warning/10 to-card" onClick={() => { setActiveTab("pendientes"); setPage(1); }} active={activeTab === "pendientes"} />
+            <MetricCard tone="success" icon={<CalendarCheck />} label="Reservas generadas" value={stats?.convertidos ?? 0} detail={`${stats?.conversionRate ?? 0}% conversión`} className="bg-gradient-to-br from-success/10 to-card" onClick={() => { setActiveTab("reservas_generadas"); setPage(1); }} active={activeTab === "reservas_generadas"} />
+            <MetricCard tone="danger" icon={<AlertTriangle />} label="Incidencias" value={stats?.incidencias ?? 0} detail="Requieren atención" className="bg-gradient-to-br from-danger/10 to-card" onClick={() => { setActiveTab("incidencias"); setPage(1); }} active={activeTab === "incidencias"} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <MetricCard compact tone="brand" icon={<TrendingUp />} label="Total cupones" value={stats?.total ?? 0} />
+            <MetricCard compact tone="success" icon={<Banknote />} label="Canjeados" value={stats?.canjeados ?? 0} />
+            <MetricCard compact tone="warning" icon={<Zap />} label="% Conversión" value={`${stats?.conversionRate ?? 0}%`} />
           </div>
 
-          {/* ── DASHBOARD CARDS ─────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Cupones recibidos" value={stats?.recibidos ?? 0} sub="Sin procesar"
-              gradient="bg-gradient-to-br from-blue-900/40 to-blue-800/20"
-              icon={<Ticket className="w-5 h-5 text-blue-400" />} />
-            <StatCard label="Pendientes" value={stats?.pendientes ?? 0} sub="Sin disponibilidad"
-              gradient="bg-gradient-to-br from-amber-900/40 to-amber-800/20"
-              icon={<Clock className="w-5 h-5 text-amber-400" />} />
-            <StatCard label="Reservas generadas" value={stats?.convertidos ?? 0} sub={`${stats?.conversionRate ?? 0}% conversión`}
-              gradient="bg-gradient-to-br from-emerald-900/40 to-emerald-800/20"
-              icon={<CalendarCheck className="w-5 h-5 text-emerald-400" />} />
-            <StatCard label="Incidencias" value={stats?.incidencias ?? 0} sub="Requieren atención"
-              gradient="bg-gradient-to-br from-red-900/40 to-red-800/20"
-              icon={<AlertTriangle className="w-5 h-5 text-red-400" />} />
-          </div>
-
-          {/* ── MÉTRICAS SECUNDARIAS ─────────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: "Total cupones", value: stats?.total ?? 0, icon: <TrendingUp className="w-4 h-4 text-violet-400" />, bg: "bg-violet-500/10" },
-              { label: "Canjeados", value: stats?.canjeados ?? 0, icon: <Banknote className="w-4 h-4 text-emerald-400" />, bg: "bg-emerald-500/10" },
-              { label: "% Conversión", value: `${stats?.conversionRate ?? 0}%`, icon: <Zap className="w-4 h-4 text-amber-400" />, bg: "bg-amber-500/10" },
-            ].map((m) => (
-              <div key={m.label} className="rounded-xl border border-white/5 bg-white/3 p-4 flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${m.bg}`}>{m.icon}</div>
-                <div>
-                  <p className="text-xs text-white/40">{m.label}</p>
-                  <p className="text-lg font-bold text-white">{m.value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* ── TABS ─────────────────────────────────────────────────────────── */}
-          <div className="flex gap-1 border-b border-white/5">
-            {tabs.map((tab) => (
-              <button key={tab.id} onClick={() => { setActiveTab(tab.id); setPage(1); }}
-                className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-2 ${
-                  activeTab === tab.id
-                    ? "bg-white/8 text-white border-b-2 border-violet-500"
-                    : "text-white/50 hover:text-white/80 hover:bg-white/5"
-                }`}>
-                {tab.label}
-                {tab.count !== undefined && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? "bg-violet-500/30 text-violet-300" : "bg-white/10 text-white/40"}`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+          {/* ── VISTAS ───────────────────────────────────────────────────────── */}
+          <SegmentedTabs<Tab>
+            label="Vista del pipeline"
+            value={activeTab}
+            onChange={(v) => { setActiveTab(v); setPage(1); }}
+            options={tabs.map((tab) => ({ value: tab.id, label: tab.label, count: tab.count ?? null }))}
+          />
 
           {/* ── CONTENIDO POR TAB ────────────────────────────────────────────── */}
           {activeTab === "liquidaciones" ? (
@@ -638,127 +657,51 @@ export default function CuponesManager() {
           ) : (
             <>
               {/* Filtros */}
-              <div className="flex gap-3 items-center">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                  <Input placeholder="Buscar por nombre, email, código..."
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1 sm:max-w-sm">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input aria-label="Buscar cupones" placeholder="Buscar por nombre, email, código..."
                     value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                    className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30 focus:border-violet-500/50" />
+                    className="pl-9" />
                 </div>
                 <Select value={providerFilter} onValueChange={(v) => { setProviderFilter(v); setPage(1); }}>
-                  <SelectTrigger className="w-48 bg-white/5 border-white/10 text-white">
-                    <Filter className="w-4 h-4 mr-2 text-white/40" />
+                  <SelectTrigger aria-label="Filtrar por proveedor" className="w-full sm:w-52">
+                    <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Proveedor" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                  <SelectContent>
                     <SelectItem value="all">Todos los proveedores</SelectItem>
                     {PROVIDERS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Tabla */}
-              <div className="rounded-xl border border-white/5 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/5 bg-white/3">
-                      {["Cliente", "Código", "Proveedor", "Estado op.", "Estado fin.", "Fecha", ""].map((h, i) => (
-                        <th key={i} className="text-left px-4 py-3 text-white/40 font-medium text-xs">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {couponsQuery.isLoading ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <tr key={i} className="border-b border-white/5">
-                          {Array.from({ length: 7 }).map((_, j) => (
-                            <td key={j} className="px-4 py-3"><div className="h-4 bg-white/5 rounded animate-pulse" /></td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : coupons.length === 0 ? (
-                      <tr><td colSpan={7} className="text-center py-12 text-white/30">No hay cupones en esta vista</td></tr>
-                    ) : coupons.map((c) => (
-                      <tr key={c.id} className={`border-b border-white/5 hover:bg-white/3 transition-colors ${c.duplicateFlag ? "bg-amber-500/5" : ""}`}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0">
-                              {c.customerName.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="text-white font-medium text-sm">{c.customerName}</p>
-                              <p className="text-white/40 text-xs">{c.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            {c.duplicateFlag && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" aria-label="Posible duplicado" />}
-                            <code className="text-violet-300 text-xs bg-violet-500/10 px-2 py-0.5 rounded">{c.couponCode}</code>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3"><ProviderBadge provider={c.provider} /></td>
-                        <td className="px-4 py-3"><OpBadge status={c.statusOperational} /></td>
-                        <td className="px-4 py-3"><FinBadge status={c.statusFinancial} /></td>
-                        <td className="px-4 py-3 text-white/40 text-xs">
-                          {new Date(c.createdAt).toLocaleDateString("es-ES")}
-                          {c.requestedDate && <div className="text-white/30">{c.requestedDate}</div>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => setDetailCoupon(c)}
-                              className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors" aria-label="Ver detalle">
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            {c.statusOperational === "recibido" && (
-                              <button onClick={() => { setPostponeCoupon(c); setPostponeNotes(""); }}
-                                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-amber-400/60 hover:text-amber-400 transition-colors" aria-label="Posponer">
-                                <Pause className="w-4 h-4" />
-                              </button>
-                            )}
-                            {c.statusFinancial === "pendiente_canjear" && (
-                              <button onClick={() => setRedeemCoupon(c)}
-                                className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400/60 hover:text-emerald-400 transition-colors" aria-label="Marcar como canjeado">
-                                <BadgeCheck className="w-4 h-4" />
-                              </button>
-                            )}
-                            {c.statusFinancial !== "incidencia" && (
-                              <button onClick={() => { setIncidenceCoupon(c); setIncidenceNotes(""); }}
-                                className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition-colors" aria-label="Marcar incidencia">
-                                <AlertTriangle className="w-4 h-4" />
-                              </button>
-                            )}
-                            {c.statusOperational === "reserva_generada" && c.reservationId && (
-                              <button
-                                onClick={() => regenerateMutation.mutate({ reservationId: c.reservationId! })}
-                                disabled={regenerateMutation.isPending}
-                                className="p-1.5 rounded-lg hover:bg-sky-500/20 text-sky-400/60 hover:text-sky-400 transition-colors disabled:opacity-40" aria-label="Regenerar operación y reenviar email">
-                                <Zap className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button onClick={() => setDeleteCoupon(c)}
-                              className="p-1.5 rounded-lg hover:bg-red-700/30 text-red-600/50 hover:text-red-400 transition-colors" aria-label="Eliminar cupón">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {/* Listado: tabla desde 768 px, tarjetas en móvil */}
+              {couponsQuery.isLoading ? (
+                <PanelLoading />
+              ) : couponsQuery.error ? (
+                <PanelError error={couponsQuery.error} onRetry={() => void couponsQuery.refetch()} title="No se han podido cargar los cupones" />
+              ) : coupons.length === 0 ? (
+                <PanelEmpty
+                  icon={<Ticket />}
+                  title="No hay cupones en esta vista"
+                  description={search || providerFilter !== "all" ? "Prueba con otra búsqueda o quita el filtro de proveedor." : "Cuando llegue un cupón de una plataforma aparecerá aquí, o dalo de alta a mano."}
+                >
+                  <Button size="sm" onClick={() => setManualOpen(true)}><Plus className="mr-1 h-4 w-4" /> Alta manual</Button>
+                </PanelEmpty>
+              ) : (
+                <PanelDataList rows={coupons} columns={columns} rowKey={(c) => c.id} caption="Cupones del pipeline" />
+              )}
 
               {/* Paginación */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-white/40">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm text-muted-foreground">
                     Página {page} de {totalPages} · {couponsQuery.data?.total ?? 0} cupones
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-                      className="border-white/10 bg-white/5 text-white/70">Anterior</Button>
-                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-                      className="border-white/10 bg-white/5 text-white/70">Siguiente</Button>
+                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
                   </div>
                 </div>
               )}
@@ -794,32 +737,32 @@ export default function CuponesManager() {
 
       {/* Posponer */}
       <Dialog open={!!postponeCoupon} onOpenChange={() => setPostponeCoupon(null)}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Pause className="w-5 h-5 text-amber-400" />
+              <Pause className="w-5 h-5 text-warning" />
               Posponer cupón
             </DialogTitle>
           </DialogHeader>
           {postponeCoupon && (
             <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
+              <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-sm text-warning">
                 Se enviará un email automático al cliente: "Actualmente no hay disponibilidad para la fecha solicitada. Quedará en lista de espera."
               </div>
-              <div className="p-3 rounded-lg bg-white/5 text-sm">
-                <p className="text-white/60">Cliente: <span className="text-white">{postponeCoupon.customerName}</span></p>
-                <p className="text-white/60">Cupón: <code className="text-violet-300">{postponeCoupon.couponCode}</code></p>
+              <div className="p-3 rounded-lg bg-muted/50 text-sm">
+                <p className="text-foreground/60">Cliente: <span className="text-foreground">{postponeCoupon.customerName}</span></p>
+                <p className="text-foreground/60">Cupón: <code className="text-primary">{postponeCoupon.couponCode}</code></p>
               </div>
               <div>
-                <Label className="text-white/70 text-sm">Notas internas (opcional)</Label>
-                <Textarea value={postponeNotes} onChange={(e) => setPostponeNotes(e.target.value)}
-                  placeholder="Motivo del aplazamiento..." className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={3} />
+                <Label htmlFor="cup-campo-3" className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
+                <Textarea id="cup-campo-3" value={postponeNotes} onChange={(e) => setPostponeNotes(e.target.value)}
+                  placeholder="Motivo del aplazamiento..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={3} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPostponeCoupon(null)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-amber-600 hover:bg-amber-700 text-white"
+            <Button variant="outline" onClick={() => setPostponeCoupon(null)} className="border-border text-foreground/70">Cancelar</Button>
+            <Button className="bg-warning hover:bg-warning/90 text-primary-foreground"
               disabled={postponeMutation.isPending}
               onClick={() => {
                 if (!postponeCoupon) return;
@@ -833,29 +776,29 @@ export default function CuponesManager() {
 
       {/* Incidencia */}
       <Dialog open={!!incidenceCoupon} onOpenChange={() => setIncidenceCoupon(null)}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <AlertTriangle className="w-5 h-5 text-danger" />
               Marcar incidencia
             </DialogTitle>
           </DialogHeader>
           {incidenceCoupon && (
             <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-white/5 text-sm">
-                <p className="text-white/60">Cliente: <span className="text-white">{incidenceCoupon.customerName}</span></p>
-                <p className="text-white/60">Cupón: <code className="text-violet-300">{incidenceCoupon.couponCode}</code></p>
+              <div className="p-3 rounded-lg bg-muted/50 text-sm">
+                <p className="text-foreground/60">Cliente: <span className="text-foreground">{incidenceCoupon.customerName}</span></p>
+                <p className="text-foreground/60">Cupón: <code className="text-primary">{incidenceCoupon.couponCode}</code></p>
               </div>
               <div>
-                <Label className="text-white/70 text-sm">Descripción de la incidencia</Label>
-                <Textarea value={incidenceNotes} onChange={(e) => setIncidenceNotes(e.target.value)}
-                  placeholder="Describe el problema..." className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={3} />
+                <Label htmlFor="cup-campo-4" className="text-foreground/70 text-sm">Descripción de la incidencia</Label>
+                <Textarea id="cup-campo-4" value={incidenceNotes} onChange={(e) => setIncidenceNotes(e.target.value)}
+                  placeholder="Describe el problema..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={3} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIncidenceCoupon(null)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-red-600 hover:bg-red-700 text-white"
+            <Button variant="outline" onClick={() => setIncidenceCoupon(null)} className="border-border text-foreground/70">Cancelar</Button>
+            <Button variant="destructive" 
               disabled={incidenceMutation.isPending}
               onClick={() => {
                 if (!incidenceCoupon) return;
@@ -879,29 +822,29 @@ export default function CuponesManager() {
 
       {/* Alta manual */}
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-background border-border text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5 text-violet-400" />
+              <Plus className="w-5 h-5 text-primary" />
               Alta manual de cupón
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white/70 text-xs">Proveedor *</Label>
+                <Label htmlFor="cup-campo-16" className="text-foreground/70 text-xs">Proveedor *</Label>
                 <Select value={manualForm.provider} onValueChange={(v) => setManualForm(f => ({ ...f, provider: v }))}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                  <SelectTrigger id="cup-campo-16" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-card border-border">
                     {PROVIDERS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-white/70 text-xs">Canal *</Label>
+                <Label htmlFor="cup-campo-17" className="text-foreground/70 text-xs">Canal *</Label>
                 <Select value={manualForm.channelEntry} onValueChange={(v) => setManualForm(f => ({ ...f, channelEntry: v as typeof manualForm.channelEntry }))}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                  <SelectTrigger id="cup-campo-17" className="bg-muted/50 border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-card border-border">
                     {["web", "email", "whatsapp", "telefono", "presencial", "manual"].map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
@@ -910,54 +853,54 @@ export default function CuponesManager() {
               </div>
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Nombre cliente *</Label>
-              <Input value={manualForm.customerName} onChange={(e) => setManualForm(f => ({ ...f, customerName: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label htmlFor="cup-campo-5" className="text-foreground/70 text-xs">Nombre cliente *</Label>
+              <Input id="cup-campo-5" value={manualForm.customerName} onChange={(e) => setManualForm(f => ({ ...f, customerName: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-white/70 text-xs">Email *</Label>
-                <Input type="email" value={manualForm.email} onChange={(e) => setManualForm(f => ({ ...f, email: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label htmlFor="cup-campo-6" className="text-foreground/70 text-xs">Email *</Label>
+                <Input id="cup-campo-6" type="email" value={manualForm.email} onChange={(e) => setManualForm(f => ({ ...f, email: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label className="text-white/70 text-xs">Teléfono</Label>
-                <Input value={manualForm.phone} onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-white/70 text-xs">Código cupón *</Label>
-                <Input value={manualForm.couponCode} onChange={(e) => setManualForm(f => ({ ...f, couponCode: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1 font-mono" />
-              </div>
-              <div>
-                <Label className="text-white/70 text-xs">Código seguridad</Label>
-                <Input value={manualForm.securityCode} onChange={(e) => setManualForm(f => ({ ...f, securityCode: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1 font-mono" />
+                <Label htmlFor="cup-campo-7" className="text-foreground/70 text-xs">Teléfono</Label>
+                <Input id="cup-campo-7" value={manualForm.phone} onChange={(e) => setManualForm(f => ({ ...f, phone: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-white/70 text-xs">Fecha solicitada</Label>
-                <Input type="date" value={manualForm.requestedDate} onChange={(e) => setManualForm(f => ({ ...f, requestedDate: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label htmlFor="cup-campo-8" className="text-foreground/70 text-xs">Código cupón *</Label>
+                <Input id="cup-campo-8" value={manualForm.couponCode} onChange={(e) => setManualForm(f => ({ ...f, couponCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
               </div>
               <div>
-                <Label className="text-white/70 text-xs">Participantes</Label>
-                <Input type="number" min={1} value={manualForm.participants} onChange={(e) => setManualForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))} className="bg-white/5 border-white/10 text-white mt-1" />
+                <Label htmlFor="cup-campo-9" className="text-foreground/70 text-xs">Código seguridad</Label>
+                <Input id="cup-campo-9" value={manualForm.securityCode} onChange={(e) => setManualForm(f => ({ ...f, securityCode: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 font-mono" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="cup-campo-10" className="text-foreground/70 text-xs">Fecha solicitada</Label>
+                <Input id="cup-campo-10" type="date" value={manualForm.requestedDate} onChange={(e) => setManualForm(f => ({ ...f, requestedDate: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="cup-campo-11" className="text-foreground/70 text-xs">Participantes</Label>
+                <Input id="cup-campo-11" type="number" min={1} value={manualForm.participants} onChange={(e) => setManualForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))} className="bg-muted/50 border-border text-foreground mt-1" />
               </div>
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Adjunto cupón (imagen o PDF)</Label>
+              <Label className="text-foreground/70 text-xs">Adjunto cupón (imagen o PDF)</Label>
               <div className="mt-1">
                 {manualForm.attachmentUrl ? (
-                  <div className="flex items-center gap-2 p-2 rounded bg-green-500/10 border border-green-500/20">
-                    <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
-                    <span className="text-green-300 text-xs truncate flex-1">{manualAttachName}</span>
-                    <button type="button" onClick={() => { setManualForm(f => ({ ...f, attachmentUrl: "" })); setManualAttachName(""); setManualAttachError(""); }} className="text-white/40 hover:text-white/70">
+                  <div className="flex items-center gap-2 p-2 rounded bg-success/10 border border-success/20">
+                    <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                    <span className="text-success text-xs overflow-hidden text-ellipsis whitespace-nowrap flex-1">{manualAttachName}</span>
+                    <button type="button" onClick={() => { setManualForm(f => ({ ...f, attachmentUrl: "" })); setManualAttachName(""); setManualAttachError(""); }} className="text-muted-foreground hover:text-foreground/70">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
-                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded border border-dashed border-white/20 hover:border-violet-400/50 transition-colors">
-                    <Upload className="w-4 h-4 text-white/40" />
-                    <span className="text-white/40 text-xs">{manualUploadMutation.isPending ? "Subiendo..." : "Seleccionar archivo (JPG, PNG, PDF, máx 10MB)"}</span>
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded border border-dashed border-border hover:border-primary/50 transition-colors">
+                    <Upload className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-muted-foreground text-xs">{manualUploadMutation.isPending ? "Subiendo..." : "Seleccionar archivo (JPG, PNG, PDF, máx 10MB)"}</span>
                     <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
@@ -980,17 +923,17 @@ export default function CuponesManager() {
                       }} />
                   </label>
                 )}
-                {manualAttachError && <p className="text-red-400 text-xs mt-1">{manualAttachError}</p>}
+                {manualAttachError && <p className="text-danger text-xs mt-1">{manualAttachError}</p>}
               </div>
             </div>
             <div>
-              <Label className="text-white/70 text-xs">Notas internas</Label>
-              <Textarea value={manualForm.notes} onChange={(e) => setManualForm(f => ({ ...f, notes: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={2} />
+              <Label htmlFor="cup-campo-12" className="text-foreground/70 text-xs">Notas internas</Label>
+              <Textarea id="cup-campo-12" value={manualForm.notes} onChange={(e) => setManualForm(f => ({ ...f, notes: e.target.value }))} className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setManualOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-violet-600 hover:bg-violet-700 text-white"
+            <Button variant="outline" onClick={() => setManualOpen(false)} className="border-border text-foreground/70">Cancelar</Button>
+            <Button 
               disabled={!manualForm.customerName || !manualForm.email || !manualForm.couponCode || createManualMutation.isPending || manualUploadMutation.isPending}
               onClick={() => createManualMutation.mutate({ ...manualForm, attachmentUrl: manualForm.attachmentUrl || undefined })}>
               {createManualMutation.isPending ? "Registrando..." : "Registrar cupón"}
@@ -1002,46 +945,46 @@ export default function CuponesManager() {
       {/* Modal de confirmación de borrado */}
       {deleteCoupon && (
         <Dialog open onOpenChange={() => setDeleteCoupon(null)}>
-          <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+          <DialogContent className="bg-background border-border text-foreground max-w-md">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-red-400">
+              <DialogTitle className="flex items-center gap-2 text-danger">
                 <Trash2 className="w-5 h-5" />
                 Eliminar cupón
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
-                <p className="text-sm text-red-300">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-danger/10 border border-danger/20">
+                <AlertTriangle className="w-5 h-5 text-danger shrink-0" />
+                <p className="text-sm text-danger">
                   Esta acción es <strong>permanente e irreversible</strong>. El cupón será eliminado completamente del sistema.
                 </p>
               </div>
-              <div className="p-3 rounded-lg bg-white/5 space-y-1">
+              <div className="p-3 rounded-lg bg-muted/50 space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-white/40 text-xs w-20">Cliente</span>
-                  <span className="text-white text-sm font-medium">{deleteCoupon.customerName}</span>
+                  <span className="text-muted-foreground text-xs w-20">Cliente</span>
+                  <span className="text-foreground text-sm font-medium">{deleteCoupon.customerName}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-white/40 text-xs w-20">Código</span>
-                  <code className="text-violet-300 font-mono text-sm">{deleteCoupon.couponCode}</code>
+                  <span className="text-muted-foreground text-xs w-20">Código</span>
+                  <code className="text-primary font-mono text-sm">{deleteCoupon.couponCode}</code>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-white/40 text-xs w-20">Proveedor</span>
+                  <span className="text-muted-foreground text-xs w-20">Proveedor</span>
                   <ProviderBadge provider={deleteCoupon.provider} />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-white/40 text-xs w-20">Estado</span>
+                  <span className="text-muted-foreground text-xs w-20">Estado</span>
                   <OpBadge status={deleteCoupon.statusOperational} />
                 </div>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeleteCoupon(null)}
-                className="border-white/10 text-white/70 hover:bg-white/10">
+                className="border-border text-foreground/70 hover:bg-muted">
                 Cancelar
               </Button>
               <Button
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-danger hover:bg-danger/90 text-primary-foreground"
                 disabled={deleteRedemptionMutation.isPending}
                 onClick={() => deleteRedemptionMutation.mutate({ id: deleteCoupon.id })}>
                 {deleteRedemptionMutation.isPending ? "Eliminando..." : "Sí, eliminar cupón"}
@@ -1107,30 +1050,30 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-background border-border text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <BadgeCheck className="w-5 h-5 text-emerald-400" />
+            <BadgeCheck className="w-5 h-5 text-success" />
             Marcar como canjeado
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
+          <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm text-success">
             El cupón pasará a <strong>Canjeado</strong> y se creará automáticamente una reserva en el CRM.
           </div>
-          <div className="p-3 rounded-lg bg-white/5 text-sm space-y-1">
-            <p className="text-white/60">Cliente: <span className="text-white">{coupon.customerName}</span></p>
-            <p className="text-white/60">Cupón: <code className="text-violet-300">{coupon.couponCode}</code> · <ProviderBadge provider={coupon.provider} /></p>
+          <div className="p-3 rounded-lg bg-muted/50 text-sm space-y-1">
+            <p className="text-foreground/60">Cliente: <span className="text-foreground">{coupon.customerName}</span></p>
+            <p className="text-foreground/60">Cupón: <code className="text-primary">{coupon.couponCode}</code> · <ProviderBadge provider={coupon.provider} /></p>
           </div>
 
           {/* Plataforma */}
           <div>
-            <Label className="text-white/70 text-sm">Plataforma *</Label>
+            <Label htmlFor="cup-campo-18" className="text-foreground/70 text-sm">Plataforma *</Label>
             <Select value={selectedPlatformId?.toString() ?? ""} onValueChange={(v) => { setSelectedPlatformId(parseInt(v)); setPlatformProductId(undefined); }}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+              <SelectTrigger id="cup-campo-18" className="bg-muted/50 border-border text-foreground mt-1">
                 <SelectValue placeholder="Selecciona la plataforma del cupón" />
               </SelectTrigger>
-              <SelectContent className="bg-[#1a1a2e] border-white/10">
+              <SelectContent className="bg-card border-border">
                 {platforms.map((pl: { id: number; name: string }) => (
                   <SelectItem key={pl.id} value={pl.id.toString()}>{pl.name}</SelectItem>
                 ))}
@@ -1141,21 +1084,21 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
           {/* Producto */}
           {selectedPlatformId && (
             <div>
-              <Label className="text-white/70 text-sm">Producto *</Label>
+              <Label className="text-foreground/70 text-sm">Producto *</Label>
               {productsQuery.isPending ? (
-                <p className="text-white/40 text-sm mt-2">Cargando...</p>
+                <p className="text-muted-foreground text-sm mt-2">Cargando...</p>
               ) : products.length === 0 ? (
-                <p className="text-amber-400 text-sm mt-2">No hay productos activos. Configúralos en Plataformas.</p>
+                <p className="text-warning text-sm mt-2">No hay productos activos. Configúralos en Plataformas.</p>
               ) : (
                 <Select value={platformProductId?.toString() ?? ""} onValueChange={(v) => setPlatformProductId(parseInt(v))}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+                  <SelectTrigger className="bg-muted/50 border-border text-foreground mt-1">
                     <SelectValue placeholder="Selecciona el producto" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                  <SelectContent className="bg-card border-border">
                     {products.map((p: { id: number; externalProductName?: string | null; pvpPrice?: string | null }) => (
                       <SelectItem key={p.id} value={p.id.toString()}>
                         {p.externalProductName ?? `Producto #${p.id}`}
-                        {p.pvpPrice && <span className="ml-2 text-white/40 text-xs">PVP: {p.pvpPrice}€</span>}
+                        {p.pvpPrice && <span className="ml-2 text-muted-foreground text-xs">PVP: {p.pvpPrice}€</span>}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1166,57 +1109,57 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
 
           {selectedProduct && (
             <div className="grid grid-cols-2 gap-2">
-              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-                <p className="text-xs text-white/40 mb-0.5">PVP</p>
-                <p className="text-emerald-400 font-bold">{selectedProduct.pvpPrice ?? "—"}€</p>
+              <div className="p-2.5 rounded-lg bg-success/10 border border-success/20 text-center">
+                <p className="text-xs text-muted-foreground mb-0.5">PVP</p>
+                <p className="text-success font-bold">{selectedProduct.pvpPrice ?? "—"}€</p>
               </div>
-              <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-center">
-                <p className="text-xs text-white/40 mb-0.5">Precio neto</p>
-                <p className="text-blue-400 font-bold">{selectedProduct.netPrice ?? "—"}€</p>
+              <div className="p-2.5 rounded-lg bg-info/10 border border-info/20 text-center">
+                <p className="text-xs text-muted-foreground mb-0.5">Precio neto</p>
+                <p className="text-info font-bold">{selectedProduct.netPrice ?? "—"}€</p>
               </div>
             </div>
           )}
 
           {/* Fecha y participantes */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label className="text-white/70 text-sm">Fecha de reserva *</Label>
-              <Input type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
-                className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label htmlFor="cup-campo-13" className="text-foreground/70 text-sm">Fecha de reserva *</Label>
+              <Input id="cup-campo-13" type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
+                className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
             <div>
-              <Label className="text-white/70 text-sm">Participantes</Label>
-              <Input type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
-                className="bg-white/5 border-white/10 text-white mt-1" />
+              <Label htmlFor="cup-campo-14" className="text-foreground/70 text-sm">Participantes</Label>
+              <Input id="cup-campo-14" type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
+                className="bg-muted/50 border-border text-foreground mt-1" />
             </div>
           </div>
 
           {/* Comprobante */}
           <div>
-            <Label className="text-white/70 text-sm mb-2 block">Comprobante de canje (opcional)</Label>
-            <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed border-white/10 hover:border-emerald-500/40 cursor-pointer transition-colors bg-white/3">
-              <Upload className="w-5 h-5 text-white/30" />
-              <span className="text-xs text-white/40">{file ? file.name : "Arrastra o haz clic para subir"}</span>
+            <Label className="text-foreground/70 text-sm mb-2 block">Comprobante de canje (opcional)</Label>
+            <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed border-border hover:border-success/40 cursor-pointer transition-colors bg-muted/50">
+              <Upload className="w-5 h-5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">{file ? file.name : "Arrastra o haz clic para subir"}</span>
               <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileChange} />
             </label>
             {file && (
-              <div className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/5 text-xs">
-                <span className="text-white/70 truncate">{file.name}</span>
-                <button onClick={() => { setFile(null); setFilePreview(null); }} className="text-white/30 hover:text-red-400 ml-2"><X className="w-3.5 h-3.5" /></button>
+              <div className="mt-2 flex items-center justify-between p-2 rounded-lg bg-muted/50 text-xs">
+                <span className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{file.name}</span>
+                <button onClick={() => { setFile(null); setFilePreview(null); }} className="text-muted-foreground hover:text-danger ml-2"><X className="w-3.5 h-3.5" /></button>
               </div>
             )}
             {filePreview && <img src={filePreview} alt="Preview" className="mt-2 rounded-lg max-h-32 object-contain w-full" />}
           </div>
 
           <div>
-            <Label className="text-white/70 text-sm">Notas internas (opcional)</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-              placeholder="Observaciones del canje..." className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={2} />
+            <Label htmlFor="cup-campo-15" className="text-foreground/70 text-sm">Notas internas (opcional)</Label>
+            <Textarea id="cup-campo-15" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Observaciones del canje..." className="bg-muted/50 border-border text-foreground mt-1 resize-none" rows={2} />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cancelar</Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          <Button variant="outline" onClick={onClose} className="border-border text-foreground/70">Cancelar</Button>
+          <Button className="bg-success hover:bg-success/90 text-primary-foreground"
             disabled={isPending || !reservationDate || !platformProductId}
             onClick={handleConfirm}>
             {isPending ? "Guardando..." : "✅ Confirmar canje y crear reserva"}
@@ -1242,83 +1185,87 @@ function SettlementCard({ s }: { s: {
   const coupons = couponsQuery.data ?? [];
 
   const statusBadge = s.status === "pagada"
-    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30"><CheckCircle className="w-3 h-3" /> Pagada</span>
+    ? <StatusBadge tone="success" icon={<CheckCircle />}>Pagada</StatusBadge>
     : s.status === "emitida"
-    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-blue-500/15 text-blue-400 border-blue-500/30"><Zap className="w-3 h-3" /> Emitida</span>
-    : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/15 text-amber-400 border-amber-500/30"><Clock className="w-3 h-3" /> Pendiente</span>;
+    ? <StatusBadge tone="info" icon={<Zap />}>Emitida</StatusBadge>
+    : <StatusBadge tone="warning" icon={<Clock />}>Pendiente</StatusBadge>;
 
   return (
-    <div className="rounded-xl border border-white/8 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       {/* Cabecera siempre visible */}
       <button
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/4 transition-colors text-left"
+        type="button"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-5"
         onClick={() => setOpen((v) => !v)}
       >
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-violet-500/15 flex items-center justify-center shrink-0">
-            <Banknote className="w-4 h-4 text-violet-400" />
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <Banknote className="h-4 w-4 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-white font-semibold text-sm truncate">
+            <p className="break-words text-sm font-semibold text-foreground">
               {s.platformName ?? `Plataforma #${s.platformId}`}
-              <span className="ml-2 text-white/30 font-normal">·</span>
-              <span className="ml-2 text-white/50 font-normal">{s.periodLabel}</span>
+              <span className="ml-2 font-normal text-muted-foreground">·</span>
+              <span className="ml-2 font-normal text-muted-foreground">{s.periodLabel}</span>
             </p>
-            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-              <span className="text-xs text-white/40">{s.totalCoupons} cupón{s.totalCoupons !== 1 ? "es" : ""}</span>
-              <span className="text-xs font-semibold text-white/70">PVP: {s.totalAmount} €</span>
-              {s.netTotal && <span className="text-xs font-semibold text-blue-400">Neto: {s.netTotal} €</span>}
-              {s.invoiceRef && <span className="text-xs text-white/30">Ref: {s.invoiceRef}</span>}
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <span className="text-xs text-muted-foreground">{s.totalCoupons} cupón{s.totalCoupons !== 1 ? "es" : ""}</span>
+              <span className="text-xs font-semibold text-foreground">PVP: {s.totalAmount} €</span>
+              {s.netTotal && <span className="text-xs font-semibold text-info">Neto: {s.netTotal} €</span>}
+              {s.invoiceRef && <span className="text-xs text-muted-foreground">Ref: {s.invoiceRef}</span>}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0 ml-4">
+        <div className="flex shrink-0 items-center gap-3">
           {statusBadge}
-          <ChevronRight className={`w-4 h-4 text-white/30 transition-transform ${open ? "rotate-90" : ""}`} />
+          <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} aria-hidden="true" />
         </div>
       </button>
 
       {/* Detalle expandido */}
       {open && (
-        <div className="border-t border-white/5 px-5 pb-4 pt-3">
+        <div className="border-t border-border px-4 pb-4 pt-3 sm:px-5">
           {couponsQuery.isPending ? (
-            <p className="text-white/30 text-sm py-4 text-center">Cargando cupones...</p>
+            <PanelLoading label="Cargando cupones…" />
           ) : coupons.length === 0 ? (
-            <p className="text-white/30 text-sm py-4 text-center">No hay cupones vinculados a esta liquidación.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">No hay cupones vinculados a esta liquidación.</p>
           ) : (
-            <div className="space-y-1">
-              {/* Cabecera columnas */}
-              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 px-3 pb-1 text-[10px] uppercase tracking-wider text-white/30 font-semibold">
-                <span>Cliente</span>
-                <span>Código cupón</span>
-                <span>Fecha canje</span>
-                <span className="text-right">PVP</span>
-                <span className="text-right">Neto</span>
-              </div>
-              {coupons.map((c) => (
-                <div key={c.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center px-3 py-2 rounded-lg hover:bg-white/4 transition-colors">
-                  <span className="text-sm text-white truncate">{c.customerName}</span>
-                  <span className="text-sm font-mono text-violet-300">{c.couponCode}</span>
-                  <span className="text-xs text-white/50 whitespace-nowrap">
-                    {c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—"}
-                  </span>
-                  <span className="text-xs text-white/70 text-right whitespace-nowrap">{c.pvpPrice ? `${c.pvpPrice} €` : "—"}</span>
-                  <span className="text-xs text-blue-400 text-right whitespace-nowrap">{c.netPrice ? `${c.netPrice} €` : "—"}</span>
+            <div className="overflow-x-auto">
+              <div className="min-w-[30rem] space-y-1">
+                {/* Cabecera columnas */}
+                <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 px-3 pb-1 text-xs font-medium text-muted-foreground">
+                  <span>Cliente</span>
+                  <span>Código cupón</span>
+                  <span>Fecha canje</span>
+                  <span className="text-right">PVP</span>
+                  <span className="text-right">Neto</span>
                 </div>
-              ))}
-              {/* Totales */}
-              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center px-3 pt-2 mt-1 border-t border-white/5">
-                <span className="text-xs font-semibold text-white/50 col-span-3">Total ({coupons.length} cupones)</span>
-                <span className="text-xs font-bold text-white text-right">{s.totalAmount} €</span>
-                <span className="text-xs font-bold text-blue-400 text-right">{s.netTotal ?? "—"} €</span>
+                {coupons.map((c) => (
+                  <div key={c.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto] items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-muted/40">
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm text-foreground">{c.customerName}</span>
+                    <span className="font-mono text-sm text-primary">{c.couponCode}</span>
+                    <span className="whitespace-nowrap text-xs text-muted-foreground">
+                      {c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                    </span>
+                    <span className="whitespace-nowrap text-right text-xs text-foreground">{c.pvpPrice ? `${c.pvpPrice} €` : "—"}</span>
+                    <span className="whitespace-nowrap text-right text-xs text-info">{c.netPrice ? `${c.netPrice} €` : "—"}</span>
+                  </div>
+                ))}
+                {/* Totales */}
+                <div className="mt-1 grid grid-cols-[1fr_1fr_auto_auto_auto] items-center gap-3 border-t border-border px-3 pt-2">
+                  <span className="col-span-3 text-xs font-semibold text-muted-foreground">Total ({coupons.length} cupones)</span>
+                  <span className="text-right text-xs font-bold text-foreground">{s.totalAmount} €</span>
+                  <span className="text-right text-xs font-bold text-info">{s.netTotal ?? "—"} €</span>
+                </div>
               </div>
             </div>
           )}
           {s.notes && (
-            <p className="mt-3 text-xs text-white/30 italic border-t border-white/5 pt-3">{s.notes}</p>
+            <p className="mt-3 border-t border-border pt-3 text-xs italic text-muted-foreground">{s.notes}</p>
           )}
           {(s.paidAt || s.emittedAt) && (
-            <div className="mt-3 flex gap-4 text-xs text-white/30 border-t border-white/5 pt-3">
+            <div className="mt-3 flex gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
               {s.emittedAt && <span>Emitida: {new Date(s.emittedAt).toLocaleDateString("es-ES")}</span>}
               {s.paidAt && <span>Pagada: {new Date(s.paidAt).toLocaleDateString("es-ES")}</span>}
             </div>
@@ -1336,18 +1283,20 @@ function LiquidacionesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">Liquidaciones de plataformas</h2>
-        <Button variant="outline" size="sm"
-          className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
-          onClick={() => window.location.href = "/admin/marketing/plataformas"}>
-          Gestionar plataformas <ChevronRight className="w-4 h-4 ml-1" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-foreground">Liquidaciones de plataformas</h2>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/admin/marketing/plataformas">Gestionar plataformas <ChevronRight className="ml-1 h-4 w-4" /></Link>
         </Button>
       </div>
-      {settlements.length === 0 ? (
-        <div className="rounded-xl border border-white/5 p-12 text-center text-white/30">
-          No hay liquidaciones registradas. Crea plataformas y genera liquidaciones desde el módulo de Plataformas.
-        </div>
+      {settlementsQuery.isLoading ? (
+        <PanelLoading />
+      ) : settlementsQuery.error ? (
+        <PanelError error={settlementsQuery.error} onRetry={() => void settlementsQuery.refetch()} title="No se han podido cargar las liquidaciones" />
+      ) : settlements.length === 0 ? (
+        <PanelEmpty icon={<Banknote />} title="No hay liquidaciones registradas" description="Crea plataformas y genera liquidaciones desde el módulo de Plataformas.">
+          <Button asChild size="sm" variant="outline"><Link href="/admin/marketing/plataformas">Ir a Plataformas</Link></Button>
+        </PanelEmpty>
       ) : (
         <div className="space-y-2">
           {settlements.map((s) => <SettlementCard key={s.id} s={s} />)}

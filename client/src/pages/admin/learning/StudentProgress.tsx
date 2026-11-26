@@ -4,10 +4,11 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { useI18n } from "@/i18n/I18nProvider";
 
+const STATUS_TONE: Record<string, Tone> = { active: "success", suspended: "warning", revoked: "danger", expired: "neutral" };
 
 function Learners({ courseId }: { courseId: number }) {
   const { t, format } = useI18n();
@@ -18,7 +19,7 @@ function Learners({ courseId }: { courseId: number }) {
   const { lessonsTotal, learners } = q.data!;
   if (!learners.length) return <PanelEmpty title={t("learningManage.progress.nobodyTitle")} description={t("learningManage.progress.nobodyDesc")} />;
   return (
-    <ul className="divide-y rounded-xl border bg-card">
+    <ul className="divide-y divide-border rounded-xl border border-border bg-card">
       {learners.map((l) => {
         const pct = lessonsTotal ? Math.round((l.completed / lessonsTotal) * 100) : 0;
         return (
@@ -28,7 +29,7 @@ function Learners({ courseId }: { courseId: number }) {
               <Progress value={pct} className="h-2" />
               <p className="text-xs text-muted-foreground">{t("learningManage.progress.summary", { done: l.completed, total: lessonsTotal, inProgress: l.inProgress ? t("learningManage.progress.inProgress", { n: l.inProgress }) : "", pct })}</p>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span>{t("learningManage.progress.lastActivity", { date: fmt(l.lastActivity) })}</span><Badge variant="secondary">{l.status === "active" ? t("learningManage.progress.status.active") : l.status === "suspended" ? t("learningManage.progress.status.suspended") : l.status === "revoked" ? t("learningManage.progress.status.revoked") : l.status === "expired" ? t("learningManage.progress.status.expired") : l.status}</Badge></div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span>{t("learningManage.progress.lastActivity", { date: fmt(l.lastActivity) })}</span><StatusBadge tone={STATUS_TONE[l.status] ?? "neutral"}>{l.status === "active" ? t("learningManage.progress.status.active") : l.status === "suspended" ? t("learningManage.progress.status.suspended") : l.status === "revoked" ? t("learningManage.progress.status.revoked") : l.status === "expired" ? t("learningManage.progress.status.expired") : l.status}</StatusBadge></div>
           </li>
         );
       })}

@@ -8,6 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { describe, expect, it } from "vitest";
 import { buildTheme, whatsappNumber } from "./_core/theme";
 import { LEGACY_WHATSAPP_PHONE, LEGACY_WHATSAPP_URL, boxesOverlap, normalizeWhatsapp, whatsappHidden, whatsappTarget } from "../shared/whatsappButton";
@@ -108,7 +109,7 @@ describe("CRM: aplicar un bono a un presupuesto", () => {
     const { appRouter } = await import("./routers");
     const procedures = (appRouter as unknown as { _def: { procedures: Record<string, unknown> } })._def.procedures;
     expect(procedures["crm.timeline.applyDiscountCode"]).toBeDefined();
-    const src = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/crm/CRMDashboard.tsx"), "utf8");
+    const src = crmDashboardFuentes();
     expect(src).toContain("trpc.crm.timeline.applyDiscountCode.useMutation");
     // Toda llamada trpc.crm.<grupo>.<procedimiento> del panel CRM existe en el servidor
     const used = Array.from(new Set(Array.from(src.matchAll(/trpc\.crm\.([a-zA-Z]+)\.([a-zA-Z]+)\.use(?:Query|Mutation)/g), (m) => `crm.${m[1]}.${m[2]}`)));

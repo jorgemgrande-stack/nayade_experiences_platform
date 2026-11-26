@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
@@ -12,9 +13,9 @@ import { useI18n } from "@/i18n/I18nProvider";
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 
 const RISK_META: Record<string, { label: string; color: string }> = {
-  low:    { label: "settingsGeneral.advanced.riskLow",    color: "bg-emerald-100 text-emerald-700" },
-  medium: { label: "settingsGeneral.advanced.riskMedium", color: "bg-amber-100 text-amber-700" },
-  high:   { label: "settingsGeneral.advanced.riskHigh",   color: "bg-red-100 text-red-700" },
+  low:    { label: "settingsGeneral.advanced.riskLow",    color: "bg-success/10 text-success" },
+  medium: { label: "settingsGeneral.advanced.riskMedium", color: "bg-warning/10 text-warning" },
+  high:   { label: "settingsGeneral.advanced.riskHigh",   color: "bg-danger/10 text-danger" },
 };
 
 function FeatureFlagsTab() {
@@ -30,9 +31,9 @@ function FeatureFlagsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-        <div className="text-sm text-amber-800">
+      <div className="bg-warning/10 border border-warning/40 rounded-xl p-4 flex gap-3">
+        <AlertTriangle className="w-5 h-5 text-warning mt-0.5 shrink-0" />
+        <div className="text-sm text-warning">
           <span className="font-semibold">{t("settingsGeneral.advanced.caution")}</span> {t("settingsGeneral.advanced.cautionText")}
         </div>
       </div>
@@ -46,7 +47,7 @@ function FeatureFlagsTab() {
       {modules.map(module => {
         const moduleFlags = flags.filter(f => f.module === module);
         return (
-          <div key={module} className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+          <div key={module} className="bg-card border border-border/50 rounded-xl overflow-hidden">
             <div className="px-5 py-3 bg-muted/30 border-b border-border/50">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">{module.replace(/_/g, " ")}</h3>
             </div>
@@ -165,9 +166,9 @@ function SystemSettingsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex gap-3">
-        <Zap className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
-        <div className="text-sm text-blue-800">
+      <div className="bg-info/10 border border-info/40 rounded-xl p-4 flex gap-3">
+        <Zap className="w-5 h-5 text-info mt-0.5 shrink-0" />
+        <div className="text-sm text-info">
           {t("settingsGeneral.advanced.defaultsNotice")}
         </div>
       </div>
@@ -181,7 +182,7 @@ function SystemSettingsTab() {
       {categories.map(cat => {
         const catSettings = settings.filter(s => s.category === cat);
         return (
-          <div key={cat} className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+          <div key={cat} className="bg-card border border-border/50 rounded-xl overflow-hidden">
             <div className="px-5 py-3 bg-muted/30 border-b border-border/50">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
                 {CATEGORY_KEYS.includes(cat) ? t(`settingsGeneral.advanced.cat.${cat}`) : cat.replace(/_/g, " ")}
@@ -218,10 +219,7 @@ export default function AdvancedSettings() {
   return (
     <AdminLayout>
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsGeneral.advanced.title")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("settingsGeneral.advanced.intro")}</p>
-        </div>
+        <PanelPageHeader title={t("settingsGeneral.advanced.title")} description={t("settingsGeneral.advanced.intro")} />
 
         <div className="flex gap-1 bg-muted/40 p-1 rounded-xl w-fit">
           {(["flags", "settings"] as Tab[]).map(k => (

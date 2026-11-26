@@ -1,5 +1,11 @@
 /** Gestor de plantillas de email (solo la interfaz; el contenido de las plantillas no se traduce). */
 export default {
+  sectionIdentity: "Identificación",
+  sectionContent: "Contenido del correo",
+  loadError: "No se pudieron cargar las plantillas",
+  summary: { all: "Plantillas", active: "Activas", custom: "Propias de la empresa", inactive: "Desactivadas" },
+  unsaved: "Cambios sin guardar",
+  saving: "Guardando…",
   title: "Plantillas de Email",
   subtitle: "{count} plantillas · Edita, crea y previsualiza",
   testEmailPlaceholder: "Email de prueba",

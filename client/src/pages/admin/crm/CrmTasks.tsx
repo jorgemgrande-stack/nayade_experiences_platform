@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { FormField, describedBy, selectClass, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { cn } from "@/lib/utils";
@@ -249,20 +250,20 @@ export default function CrmTasks() {
   return (
     <AdminLayout>
       <div className="max-w-5xl space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("crmTasks.page.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("crmTasks.page.description")}</p>
-          </div>
-          {canWrite && (
+        <PanelPageHeader
+          className="mb-0"
+          icon={<ClipboardList />}
+          title={t("crmTasks.page.title")}
+          description={t("crmTasks.page.description")}
+          actions={canWrite ? (
             <Button onClick={() => setEditing(null)}>
               <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("crmTasks.page.newTask")}
             </Button>
-          )}
-        </div>
+          ) : undefined}
+        />
 
         {/* Filtros */}
-        <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
           <div role="group" aria-label={t("crmTasks.page.whichTasks")} className="inline-flex rounded-md border border-input p-0.5">
             {([["mine", t("crmTasks.page.mine")], ["all", t("crmTasks.page.team")]] as const).map(([k, label]) => (
               <button

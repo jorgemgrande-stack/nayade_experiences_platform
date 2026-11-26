@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Calendar, List, Settings, Users, ChevronLeft, ChevronRight,
-  CheckCircle, XCircle, Clock, Loader2, Phone, Mail, RefreshCw,
+  CheckCircle, XCircle, Clock, Loader2, Phone, UtensilsCrossed, Mail, RefreshCw,
   AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban, Images, OctagonX,
 } from "lucide-react";
 import ImageUploader from "@/components/ImageUploader";
@@ -15,11 +19,11 @@ type ViewMode = "list" | "calendar" | "config";
 type StatusFilter = "all" | "pending" | "confirmed" | "cancelled" | "no_show";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending:         { label: "Pendiente",       color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
-  pending_payment: { label: "Pago pendiente",  color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
-  confirmed:       { label: "Confirmada",      color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-  cancelled:       { label: "Cancelada",       color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
-  no_show:         { label: "No show",         color: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  pending:         { label: "Pendiente",       color: "bg-warning/10 text-warning" },
+  pending_payment: { label: "Pago pendiente",  color: "bg-warning/10 text-warning" },
+  confirmed:       { label: "Confirmada",      color: "bg-success/10 text-success" },
+  cancelled:       { label: "Cancelada",       color: "bg-danger/10 text-danger" },
+  no_show:         { label: "No show",         color: "bg-muted text-muted-foreground" },
 };
 
 const DAYS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -89,7 +93,7 @@ function NewBookingModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-card rounded-2xl border border-border/40 p-6 w-full max-w-lg shadow-2xl my-4">
+      <div className="bg-card rounded-xl border border-border/40 p-6 w-full max-w-lg shadow-md my-4">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h3 className="font-heading font-bold text-foreground text-lg">Nueva reserva</h3>
@@ -247,24 +251,24 @@ function NewBookingModal({
 
           {/* Selector de pago */}
           {depositPerPax > 0 && (
-            <div className={`rounded-xl border-2 p-4 transition-all ${form.requiresPayment ? "border-orange-400 bg-orange-50 dark:bg-orange-900/20" : "border-border/40 bg-muted/30"}`}>
+            <div className={`rounded-xl border-2 p-4 transition-all ${form.requiresPayment ? "border-warning/40 bg-warning/10" : "border-border/40 bg-muted/30"}`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <CreditCard className={`w-4 h-4 ${form.requiresPayment ? "text-orange-600" : "text-muted-foreground"}`} />
-                  <span className={`font-display font-semibold text-sm ${form.requiresPayment ? "text-orange-700 dark:text-orange-300" : "text-foreground"}`}>
+                  <CreditCard className={`w-4 h-4 ${form.requiresPayment ? "text-warning" : "text-muted-foreground"}`} />
+                  <span className={`font-display font-semibold text-sm ${form.requiresPayment ? "text-warning" : "text-foreground"}`}>
                     Cobrar depósito
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setForm(f => ({ ...f, requiresPayment: !f.requiresPayment }))}
-                  className={`w-12 h-6 rounded-full transition-colors ${form.requiresPayment ? "bg-orange-500" : "bg-muted-foreground/30"}`}
+                  className={`w-12 h-6 rounded-full transition-colors ${form.requiresPayment ? "bg-warning/25" : "bg-muted-foreground/30"}`}
                 >
                   <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${form.requiresPayment ? "translate-x-6" : "translate-x-0"}`} />
                 </button>
               </div>
               {form.requiresPayment ? (
-                <div className="text-sm font-display text-orange-700 dark:text-orange-300">
+                <div className="text-sm font-display text-warning">
                   <p>Se enviará un email a <strong>{form.guestEmail || "el cliente"}</strong> con un enlace de pago seguro (Redsys).</p>
                   <p className="mt-1 font-semibold">Importe: {estimatedDeposit} € ({form.guests} × {depositPerPax} €)</p>
                 </div>
@@ -284,7 +288,7 @@ function NewBookingModal({
           )}
 
           {createMutation.isError && (
-            <p className="text-sm text-red-600 font-display">{createMutation.error.message}</p>
+            <p className="text-sm text-danger font-display">{createMutation.error.message}</p>
           )}
 
           <div className="flex gap-3 justify-end pt-2">
@@ -292,7 +296,7 @@ function NewBookingModal({
             <Button
               type="submit"
               disabled={createMutation.isPending || !shiftId}
-              className={`rounded-full font-display font-semibold ${form.requiresPayment ? "bg-orange-500 hover:bg-orange-600 text-white" : "bg-accent hover:bg-accent/90 text-white"}`}
+              className={`rounded-full font-display font-semibold ${form.requiresPayment ? "bg-warning/25 hover:border border-warning/40 bg-warning/15 text-warning" : "bg-accent hover:bg-accent/90 text-white"}`}
             >
               {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               {form.requiresPayment ? "Crear y enviar link de pago" : "Crear reserva confirmada"}
@@ -339,7 +343,7 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-card rounded-2xl border border-border/40 p-6 w-full max-w-md shadow-2xl">
+      <div className="bg-card rounded-xl border border-border/40 p-6 w-full max-w-md shadow-md">
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-heading font-bold text-foreground text-lg">Nuevo restaurante</h3>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-muted transition-colors">
@@ -378,7 +382,7 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
             />
           </div>
           {createMutation.isError && (
-            <p className="text-sm text-red-600 font-display">{createMutation.error.message}</p>
+            <p className="text-sm text-danger font-display">{createMutation.error.message}</p>
           )}
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="outline" onClick={onClose} className="rounded-full font-display">Cancelar</Button>
@@ -427,10 +431,10 @@ function DeleteRestaurantModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-card rounded-2xl border border-red-500/40 p-6 w-full max-w-md shadow-2xl">
+      <div className="bg-card rounded-xl border border-danger/40 p-6 w-full max-w-md shadow-md">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <OctagonX className="w-5 h-5 text-red-500" />
+            <OctagonX className="w-5 h-5 text-danger" />
             <h3 className="font-heading font-bold text-foreground text-lg">Eliminar restaurante</h3>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-muted transition-colors">
@@ -444,7 +448,7 @@ function DeleteRestaurantModal({
             <select
               value={selectedId ?? ""}
               onChange={e => { setSelectedId(Number(e.target.value) || null); setConfirmed(""); }}
-              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-red-500/50"
+              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-danger/40"
             >
               <option value="">— Seleccionar —</option>
               {restaurants.map(r => (
@@ -455,7 +459,7 @@ function DeleteRestaurantModal({
 
           {selected && (
             <>
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm font-display text-red-700 dark:text-red-300 space-y-1">
+              <div className="bg-danger/10 border border-danger/40 rounded-xl p-4 text-sm font-display text-danger space-y-1">
                 <p className="font-semibold">⚠ Esta acción es irreversible</p>
                 <p>Se eliminarán permanentemente <strong>todas las reservas, turnos, cierres y datos</strong> de <strong>{selected.name}</strong>.</p>
               </div>
@@ -466,7 +470,7 @@ function DeleteRestaurantModal({
                 <input
                   value={confirmed}
                   onChange={e => setConfirmed(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-danger/40"
                   placeholder={selected.name}
                   autoComplete="off"
                 />
@@ -475,7 +479,7 @@ function DeleteRestaurantModal({
           )}
 
           {deleteMutation.isError && (
-            <p className="text-sm text-red-600 font-display">{deleteMutation.error.message}</p>
+            <p className="text-sm text-danger font-display">{deleteMutation.error.message}</p>
           )}
 
           <div className="flex gap-3 justify-end pt-2">
@@ -483,7 +487,7 @@ function DeleteRestaurantModal({
             <Button
               type="submit"
               disabled={deleteMutation.isPending || !selectedId || confirmed !== selected?.name}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-full font-display font-semibold"
+              className="bg-destructive text-white hover:bg-destructive/90 rounded-full font-display font-semibold"
             >
               {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
               Eliminar definitivamente
@@ -550,20 +554,20 @@ export default function RestaurantsManager() {
 
   if (loadingRest) return (
     <AdminLayout>
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
-      </div>
+      <PanelLoading className="h-64" />
     </AdminLayout>
   );
 
   // ── Selector de restaurante ──────────────────────────────────────────────
   if (!selectedRestaurantId) return (
     <AdminLayout>
-      <div className="p-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl font-heading font-bold text-foreground">Gestión de Restaurantes</h1>
-          {isAdmin && (
-            <div className="flex items-center gap-2">
+      <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+        <PanelPageHeader
+          icon={<UtensilsCrossed />}
+          title="Gestión de Restaurantes"
+          description="Selecciona un restaurante para gestionar sus reservas."
+          actions={isAdmin ? (
+            <>
               <Button
                 onClick={() => setShowNewRestaurant(true)}
                 className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
@@ -574,37 +578,40 @@ export default function RestaurantsManager() {
                 <Button
                   variant="outline"
                   onClick={() => setShowDeleteRestaurant(true)}
-                  className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full font-display font-semibold flex items-center gap-2"
+                  className="border-danger/40 text-danger hover:bg-danger/10 rounded-full font-display font-semibold flex items-center gap-2"
                 >
                   <Trash2 className="w-4 h-4" /> Eliminar
                 </Button>
               )}
-            </div>
-          )}
-        </div>
-        <p className="text-muted-foreground font-display mb-8">Selecciona un restaurante para gestionar sus reservas.</p>
+            </>
+          ) : undefined}
+        />
         {!restaurants || restaurants.length === 0 ? (
-          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-2xl p-6 flex gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-amber-800 dark:text-amber-300">No hay restaurantes configurados</p>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">{isAdmin ? "Crea el primero con el botón de arriba." : "Aún no tienes restaurantes asignados. Contacta con un administrador."}</p>
-            </div>
-          </div>
+          <PanelEmpty
+            icon={<UtensilsCrossed />}
+            title="No hay restaurantes configurados"
+            description={isAdmin ? "Crea el primero con el botón «Nuevo restaurante»." : "Aún no tienes restaurantes asignados. Contacta con un administrador."}
+          />
         ) : (
+          <>
+          <div className="mb-5 grid grid-cols-3 gap-3">
+            <MetricCard icon={<UtensilsCrossed />} label="Restaurantes" value={restaurants.length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard icon={<CheckCircle />} tone="success" label="Activos" value={restaurants.filter(r => r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+            <MetricCard icon={<Ban />} tone="neutral" label="Inactivos" value={restaurants.filter(r => !r.isActive).length} className="bg-gradient-to-br from-primary/5 to-card" />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {restaurants.map(r => (
               <button
                 key={r.id}
                 onClick={() => setSelectedRestaurantId(r.id)}
-                className="bg-card border border-border/40 rounded-2xl p-5 text-left hover:border-accent/50 hover:shadow-md transition-all group"
+                className="bg-card border border-border/40 rounded-xl p-5 text-left hover:border-accent/50 hover:shadow-md transition-all group"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="font-heading font-bold text-foreground group-hover:text-accent transition-colors">{r.name}</h3>
                     <p className="text-sm text-muted-foreground font-display">{r.cuisine}</p>
                   </div>
-                  <span className={`text-xs font-display font-semibold px-2 py-1 rounded-full ${r.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  <span className={`text-xs font-display font-semibold px-2 py-1 rounded-full ${r.isActive ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
                     {r.isActive ? "Activo" : "Inactivo"}
                   </span>
                 </div>
@@ -617,6 +624,7 @@ export default function RestaurantsManager() {
               </button>
             ))}
           </div>
+          </>
         )}
         {showNewRestaurant && (
           <NewRestaurantModal
@@ -637,19 +645,16 @@ export default function RestaurantsManager() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSelectedRestaurantId(null)} className="p-2 rounded-xl hover:bg-muted transition-colors">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-xl font-heading font-bold text-foreground">{selectedRestaurant?.name}</h1>
-              <p className="text-sm text-muted-foreground font-display">{selectedRestaurant?.cuisine}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+        <PanelPageHeader
+          icon={<UtensilsCrossed />}
+          title={selectedRestaurant?.name ?? "Restaurante"}
+          description={selectedRestaurant?.cuisine}
+          actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setSelectedRestaurantId(null)} className="rounded-full">
+              <ChevronLeft className="w-4 h-4 mr-1" /> Restaurantes
+            </Button>
             {/* Botón nueva reserva */}
             <Button
               onClick={() => setShowNewBooking(true)}
@@ -683,23 +688,24 @@ export default function RestaurantsManager() {
                 </button>
               ))}
             </div>
-            <button onClick={() => refetchBookings()} className="p-2 rounded-xl hover:bg-muted transition-colors" title="Actualizar">
+            <button onClick={() => refetchBookings()} className="p-2 rounded-xl hover:bg-muted transition-colors" title="Actualizar" aria-label="Actualizar">
               <RefreshCw className="w-4 h-4" />
             </button>
-          </div>
-        </div>
+          </>
+          }
+        />
 
         {/* Banner de éxito tras crear reserva */}
         {successLocator && (
-          <div className="mb-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-2xl p-4 flex items-center justify-between">
+          <div className="mb-4 bg-success/10 border border-success/40 rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600" />
+              <CheckCircle className="w-5 h-5 text-success" />
               <div>
-                <p className="font-display font-semibold text-green-800 dark:text-green-300">Reserva creada correctamente</p>
-                <p className="text-sm text-green-700 dark:text-green-400">Localizador: <strong className="font-mono">{successLocator}</strong></p>
+                <p className="font-display font-semibold text-success">Reserva creada correctamente</p>
+                <p className="text-sm text-success">Localizador: <strong className="font-mono">{successLocator}</strong></p>
               </div>
             </div>
-            <button onClick={() => setSuccessLocator(null)} className="text-green-600 hover:text-green-800 p-1">
+            <button onClick={() => setSuccessLocator(null)} className="text-success hover:text-success/80 p-1">
               <XCircle className="w-4 h-4" />
             </button>
           </div>
@@ -708,6 +714,14 @@ export default function RestaurantsManager() {
         {/* ── VISTA LISTA ── */}
         {viewMode === "list" && (
           <div>
+            {!loadingBookings && bookings && bookings.length > 0 && (
+              <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <MetricCard icon={<Calendar />} label="Reservas en la lista" value={bookings.length} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<Users />} tone="info" label="Comensales" value={bookings.reduce((s, b) => s + (b.guests ?? 0), 0)} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<Clock />} tone="warning" label="Pendientes" value={bookings.filter(b => b.status === "pending_payment").length} className="bg-gradient-to-br from-primary/5 to-card" />
+                <MetricCard icon={<CheckCircle />} tone="success" label="Confirmadas" value={bookings.filter(b => b.status === "confirmed").length} className="bg-gradient-to-br from-primary/5 to-card" />
+              </div>
+            )}
             {/* Filtros */}
             <div className="flex gap-2 mb-5 flex-wrap">
               {(["all","pending","confirmed","cancelled","no_show"] as StatusFilter[]).map(s => (
@@ -723,24 +737,20 @@ export default function RestaurantsManager() {
               ))}
             </div>
             {loadingBookings ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="w-6 h-6 animate-spin text-accent" />
-              </div>
+              <PanelLoading />
             ) : !bookings || bookings.length === 0 ? (
-              <div className="bg-muted/50 rounded-2xl p-12 text-center">
-                <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground font-display">No hay reservas con este filtro.</p>
+              <PanelEmpty icon={<Calendar />} title="No hay reservas con este filtro" description="Cambia el filtro o crea una reserva desde recepción.">
                 <Button
                   onClick={() => setShowNewBooking(true)}
-                  className="mt-4 bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold"
+                  className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold"
                 >
                   <Plus className="w-4 h-4 mr-2" /> Crear primera reserva
                 </Button>
-              </div>
+              </PanelEmpty>
             ) : (
               <div className="space-y-3">
                 {bookings.map(b => (
-                  <div key={b.id} className="bg-card border border-border/40 rounded-2xl p-4 hover:shadow-sm transition-shadow">
+                  <div key={b.id} className="bg-card border border-border/40 rounded-xl p-4 hover:shadow-sm transition-shadow">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-2 flex-wrap">
@@ -751,11 +761,11 @@ export default function RestaurantsManager() {
                           <span className="font-mono text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">#{b.locator}</span>
                           {/* Icono de pago — badge visual prominente */}
                           {b.paymentStatus === "paid" ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-display font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-700">
+                            <span className="inline-flex items-center gap-1 text-xs font-display font-bold px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/40">
                               <CheckCircle className="w-3 h-3" /> Pagado
                             </span>
                           ) : Number(b.depositAmount) > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-display font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border border-orange-200 dark:border-orange-700">
+                            <span className="inline-flex items-center gap-1 text-xs font-display font-bold px-2 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/40">
                               <CreditCard className="w-3 h-3" /> Sin pagar
                             </span>
                           ) : (
@@ -784,7 +794,7 @@ export default function RestaurantsManager() {
                           )}
                         </div>
                         {b.allergies && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 font-display mt-2 flex items-center gap-1">
+                          <p className="text-xs text-warning font-display mt-2 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5" /> Alergias: {b.allergies}
                           </p>
                         )}
@@ -792,7 +802,7 @@ export default function RestaurantsManager() {
                           <p className="text-xs text-muted-foreground font-display mt-1">Petición: {b.specialRequests}</p>
                         )}
                         {b.adminNotes && (
-                          <p className="text-xs text-blue-600 dark:text-blue-400 font-display mt-1 flex items-center gap-1">
+                          <p className="text-xs text-info font-display mt-1 flex items-center gap-1">
                             <MessageSquare className="w-3.5 h-3.5" /> {b.adminNotes}
                           </p>
                         )}
@@ -809,14 +819,14 @@ export default function RestaurantsManager() {
                             title={b.status === "no_show" ? "Marcar como Show (asistió)" : "Marcar como No-show (no asistió)"}
                             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-display font-bold transition-all border-2 select-none ${
                               b.status === "no_show"
-                                ? "bg-gray-800 dark:bg-gray-700 border-gray-700 text-white"
-                                : "bg-white dark:bg-card border-gray-200 dark:border-border/60 text-gray-500 hover:border-gray-400 hover:text-gray-700"
+                                ? "border-foreground/40 bg-foreground text-background"
+                                : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
                             }`}
                           >
                             <span className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
                               b.status === "no_show"
-                                ? "bg-gray-600 border-gray-500"
-                                : "bg-green-500 border-green-400"
+                                ? "border-foreground/40 bg-muted-foreground"
+                                : "border-success bg-success"
                             }`}>
                               {b.status === "no_show"
                                 ? <XCircle className="w-2.5 h-2.5 text-white" />
@@ -829,13 +839,13 @@ export default function RestaurantsManager() {
                           <div className="flex gap-2">
                             <button
                               onClick={() => updateStatusMutation.mutate({ id: b.id, status: "confirmed" })}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-xs font-display font-semibold transition-colors"
+                              className="flex items-center gap-1 px-3 py-1.5 bg-success/10 hover:bg-success/20 text-success rounded-lg text-xs font-display font-semibold transition-colors"
                             >
                               <CheckCircle className="w-3.5 h-3.5" /> Confirmar
                             </button>
                             <button
                               onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
+                              className="flex items-center gap-1 px-3 py-1.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg text-xs font-display font-semibold transition-colors"
                             >
                               <XCircle className="w-3.5 h-3.5" /> Cancelar
                             </button>
@@ -844,7 +854,7 @@ export default function RestaurantsManager() {
                         {b.status === "confirmed" && (
                           <button
                             onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg text-xs font-display font-semibold transition-colors"
                           >
                             <XCircle className="w-3.5 h-3.5" /> Cancelar
                           </button>
@@ -852,13 +862,13 @@ export default function RestaurantsManager() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => { setEditingBooking(b.id); setNoteText(b.adminNotes ?? ""); setShowNoteModal(true); }}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-display font-semibold transition-colors"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-info/10 hover:bg-info/10 text-info rounded-lg text-xs font-display font-semibold transition-colors"
                           >
                             <Edit className="w-3.5 h-3.5" /> Nota
                           </button>
                           <button
-                            onClick={() => { if (confirm("¿Eliminar esta reserva?")) deleteBookingMutation.mutate({ bookingId: b.id as number }); }}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg text-xs font-display font-semibold transition-colors"
+                            onClick={async () => { if ((await confirmAction({ description: "¿Eliminar esta reserva?", destructive: true }))) deleteBookingMutation.mutate({ bookingId: b.id as number }); }}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-danger/10 hover:bg-danger/10 text-danger rounded-lg text-xs font-display font-semibold transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -876,7 +886,7 @@ export default function RestaurantsManager() {
         {viewMode === "calendar" && (
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Mini calendario */}
-            <div className="bg-card rounded-2xl border border-border/40 p-5">
+            <div className="bg-card rounded-xl border border-border/40 p-5">
               <div className="flex items-center justify-between mb-4">
                 <button onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth()-1, 1))} className="p-1 rounded-lg hover:bg-muted">
                   <ChevronLeft className="w-5 h-5" />
@@ -910,7 +920,7 @@ export default function RestaurantsManager() {
             </div>
 
             {/* Reservas del día */}
-            <div className="lg:col-span-2 bg-card rounded-2xl border border-border/40 p-5">
+            <div className="lg:col-span-2 bg-card rounded-xl border border-border/40 p-5">
               <h3 className="font-heading font-bold text-foreground mb-4">
                 Reservas del {selectedDate}
               </h3>
@@ -929,8 +939,8 @@ export default function RestaurantsManager() {
                         {b.guestPhone && <div className="text-xs text-muted-foreground font-display">{b.guestPhone}</div>}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {b.paymentStatus === "pending" && <span title="Pago pendiente"><CreditCard className="w-4 h-4 text-orange-500" /></span>}
-                        {b.paymentStatus === "paid" && Number(b.depositAmount) > 0 && <span title="Pagado"><CheckCircle className="w-4 h-4 text-green-500" /></span>}
+                        {b.paymentStatus === "pending" && <span title="Pago pendiente"><CreditCard className="w-4 h-4 text-warning" /></span>}
+                        {b.paymentStatus === "paid" && Number(b.depositAmount) > 0 && <span title="Pagado"><CheckCircle className="w-4 h-4 text-success" /></span>}
                         {b.paymentStatus === "paid" && Number(b.depositAmount) === 0 && <span title="Sin depósito"><Ban className="w-4 h-4 text-muted-foreground" /></span>}
                         <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${STATUS_LABELS[b.status]?.color ?? STATUS_LABELS.pending.color}`}>
                           {STATUS_LABELS[b.status]?.label ?? b.status}
@@ -952,7 +962,7 @@ export default function RestaurantsManager() {
         {/* Modal de nota */}
         {showNoteModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-card rounded-2xl border border-border/40 p-6 w-full max-w-md shadow-2xl">
+            <div className="bg-card rounded-xl border border-border/40 p-6 w-full max-w-md shadow-md">
               <h3 className="font-heading font-bold text-foreground mb-4">Añadir nota interna</h3>
               <textarea
                 value={noteText}
@@ -1177,7 +1187,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
 
       {/* Tab: Ficha pública */}
       {tab === "ficha" && (
-        <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-4">
+        <div className="bg-card rounded-xl border border-border/40 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-foreground">Ficha pública — {ficha.name}</h3>
             <div className="flex items-center gap-2">
@@ -1273,7 +1283,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
                     <button
                       type="button"
                       onClick={() => setFicha(f => ({ ...f, galleryImages: f.galleryImages.filter((_, i) => i !== idx) }))}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 bg-destructive text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Eliminar imagen"
                     >
                       <XCircle className="w-4 h-4" />
@@ -1313,7 +1323,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
 
       {/* Tab: Configuración operativa */}
       {tab === "operativa" && (
-        <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-4">
+        <div className="bg-card rounded-xl border border-border/40 p-6 space-y-4">
           <h3 className="font-heading font-bold text-foreground">Configuración operativa</h3>
 
           {/* Booking on/off */}
@@ -1385,7 +1395,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
 
       {/* Tab: Turnos */}
       {tab === "turnos" && (
-        <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-4">
+        <div className="bg-card rounded-xl border border-border/40 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-heading font-bold text-foreground">Turnos de servicio</h3>
@@ -1427,7 +1437,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
                       shift.isActive ? "border-border/40 bg-muted/20" : "border-border/20 bg-muted/10 opacity-60"
                     }`}>
                       <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${shift.isActive ? "bg-green-500" : "bg-gray-400"}`} />
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${shift.isActive ? "bg-success" : "bg-muted-foreground/40"}`} />
                         <div>
                           <p className="font-display font-semibold text-foreground text-sm">{shift.name}</p>
                           <p className="text-xs text-muted-foreground font-display">
@@ -1441,12 +1451,12 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
                           className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
                           <Edit className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => {
-                            if (confirm(`¿Eliminar el turno "${shift.name}"? Esta acción no se puede deshacer.`)) {
+                        <button onClick={async () => {
+                            if ((await confirmAction({ description: `¿Eliminar el turno "${shift.name}"? Esta acción no se puede deshacer.`, destructive: true }))) {
                               deleteShiftMutation.mutate({ id: shift.id, restaurantId: restaurant.id });
                             }
                           }}
-                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-muted-foreground hover:text-red-600">
+                          className="p-1.5 rounded-lg hover:bg-danger/10 transition-colors text-muted-foreground hover:text-danger">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>

@@ -118,7 +118,7 @@ import { tenantTermsReader } from "../commercialTerms/tenantView";
 import { TermsBillingService, createTermsBillingRouter, type BillingLink, type NegotiatedBillingGateway } from "../commercialTerms/billing";
 import type { TermsBillingStore } from "../commercialTerms/billingStore";
 import { StripeNegotiatedGateway, catalogProductsOf } from "../commercialTerms/stripeGateway";
-import { NegotiatedBillingService, createNegotiatedBillingRouter } from "../commercialTerms/stripeBilling";
+import { NegotiatedBillingService, mapStripeStatus, createNegotiatedBillingRouter } from "../commercialTerms/stripeBilling";
 import type { TrialConclusionHook } from "../commercialTerms/trialDefer";
 import { TermsLicences, createTermsLicencesRouter } from "../commercialTerms/licences";
 import { CommercialTermsService, type TermsInput } from "../commercialTerms/service";
@@ -166,6 +166,7 @@ import { ChargeService, type ChargeStore } from "../invoicing/charges";
 import { createInvoicingRouter } from "../invoicing/api";
 import { invoiceHtml } from "../invoicing/document";
 import { TenantPlanService, createTenantPlanRouter } from "../commerce/tenantPlan";
+import { TenantBillingCenterService } from "../commerce/tenantBillingCenter";
 import { ChargePaymentService, type ChargePaymentStore } from "../invoicing/chargePayments";
 import { ExternalOperationsService, type OperationStore } from "../external/operations";
 import { EXTERNAL_UPLOAD_PATHS, createExternalOperationsRouter } from "../external/operationsApi";
@@ -204,6 +205,8 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
+import { LINKED_STATES } from "../commercialTerms/billingStore";
+import { createBillingNotifier } from "../commercialTerms/billingNotices";
 import { customDomainDecision, exemptTenantsFromEnv, quotaPolicyForPhase, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
@@ -2095,11 +2098,24 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       },
     });
     let customTermsOfTenant: ReturnType<typeof tenantTermsReader> | null = null;
+    // Estado de cobro de la contratación (se enlaza más abajo, cuando existe el cobro de condiciones personalizadas)
+    let contractingStageOf: ((subscriptionId: number) => Promise<import("../commercialTerms/stripeBilling").ContractingStage | null>) | null = null;
     // Condiciones comerciales personalizadas: antes del router de suscripciones (que responde 404 a lo que no conoce)
     const orderStoreForTerms = d.orders?.store;
     let termsBilling: TermsBillingService | null = null;
     let termsLicences: TermsLicences | null = null;
     let platformAfterPayment: PlatformActivationDeps | null = null;
+    // Avisos internos a Dirección (administracion@bigelephant.es): idempotentes por hecho de negocio, nunca frenan el cobro
+    const billingNotifier =
+      d.mail?.platform && d.subscriptions?.store && d.crm
+        ? createBillingNotifier({
+            subscriptions: d.subscriptions.store as never,
+            crmStore: d.crm.store as never,
+            billing: { plan: (sid) => termsBilling!.plan(sid) },
+            send: (k, t, l) => d.mail!.platform!.billingNotice(k, t, l),
+            crmUrl: process.env.CP_CRM_URL || undefined,
+          })
+        : undefined;
     const commercialTerms = d.subscriptions.terms
       ? new CommercialTermsService({
           store: d.subscriptions.terms,
@@ -2136,6 +2152,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             now: d.subscriptions.now,
             // El contrato sale por el correo de plataforma; el enlace se guarda cifrado si está la migración 0051
             mail: d.mail?.platform?.termsAcceptanceMail() ?? null,
+            notice: billingNotifier,
             links: d.termsAcceptance?.links ?? null,
             logo: d.termsAcceptance?.logo,
             // Condiciones aceptadas con un producto Net de sector: expediente de implantación (idempotente)
@@ -2191,7 +2208,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       router.use(createTermsBillingRouter(termsBilling));
     }
     // Lo que la empresa ve de sus condiciones (solo lectura, con la presentación elegida): lo usa «Mi plan»
-    customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now) : null;
+    customTermsOfTenant = commercialTerms && d.subscriptions.terms ? tenantTermsReader(commercialTerms, d.subscriptions.terms, d.subscriptions.store, d.subscriptions.now ?? Date.now, (sid) => (contractingStageOf ? contractingStageOf(sid) : Promise.resolve(null))) : null;
     // Antes de calcular un periodo se resuelve el fin de las condiciones temporales (tarifa oficial vigente ese día)
     const shadowBilling = new ShadowBillingService({
       store: d.subscriptions.store,
@@ -2477,9 +2494,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               if ((await st.store.subscription(id))?.orderId !== o.id) continue;
               const sub = await st.gateway.subscription(id);
               if (!sub || sub.metadata.es_env !== st.config.namespace) return null;
-              if (sub.status === "past_due" || sub.status === "unpaid") return sub.status;
-              if (sub.status === "active" || sub.status === "trialing") return "active" as const;
-              return sub.status === "canceled" || sub.status === "incomplete_expired" ? ("canceled" as const) : null;
+              // Misma correspondencia que el webhook (stripe/events.ts) y las condiciones personalizadas: paused cuenta como unpaid
+              return mapStripeStatus(sub.status);
             }
             return null;
           }
@@ -2706,6 +2722,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             capabilities: d.capabilities,
             licences: licences ? { ensure: (id, actor, o) => licences.ensure(id, actor, o) } : undefined,
             orderBilled: async (sid) => (await subscriptionBilling(ordersForTerms, sid)).source === "stripe",
+            notice: billingNotifier,
             afterFirstCharge:
               termsAcceptance || platformAfterPayment
                 ? async (sid) => {
@@ -2735,6 +2752,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             },
             stage: (sid) => nb.stage(sid),
           });
+          contractingStageOf = (sid) => nb.stage(sid);
         }
         const negotiated = negotiatedBilling;
         const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, negotiated: negotiated ? { handleSession: (id) => negotiated.handleSession(id), handleSubscription: (sub, hint) => negotiated.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => negotiated.handleCharge(c, inv, sub) } : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined, charges: { handleSession: (id) => (chargePaymentsRef.svc ? chargePaymentsRef.svc.handleSession(id) : Promise.resolve(null)) } });
@@ -2940,7 +2958,39 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
     // Origen del cobro (Stripe o simulación) desde los pedidos; sin pedidos activos, todo es simulación
     const orderStore = d.orders?.store;
-    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling, orderStore ? (sid) => subscriptionBilling(orderStore, sid) : undefined));
+    // Una suscripción cobrada en Stripe por condiciones personalizadas (sin pedido) también consta como Stripe: la ficha de empresa y la
+    // suscripción no pueden decir «simulada» cuando Stripe ya cobró. Solo lectura; `orderId` 0 = sin pedido.
+    const termsBillingStore = d.subscriptions?.termsBilling?.store;
+    const originOf =
+      orderStore || termsBillingStore
+        ? async (sid: number) => {
+            const byOrder = orderStore ? await subscriptionBilling(orderStore, sid) : ({ source: "shadow" } as const);
+            if (byOrder.source === "stripe" || !termsBillingStore) return byOrder;
+            const row = await termsBillingStore.bySubscription(sid);
+            if (!row || !row.linkedAt || !LINKED_STATES.includes(row.status)) return byOrder;
+            // Fuente de verdad del cobro: una factura PAGADA de importe mayor que cero. La suscripción activa, la prueba gratuita o
+            // una factura de 0 € no son un cobro (no se infiere de campos secundarios).
+            const paid = (await termsBillingStore.invoices(row.id, 100).catch(() => [])).filter((i) => i.status === "paid" && i.amountPaidCents > 0).sort((x, y) => (y.paidAt ?? y.createdAt) - (x.paidAt ?? x.createdAt))[0];
+            // Plan contratado según las condiciones vigentes (el contrato del CRM puede no llevar plan)
+            const live = await d.subscriptions?.terms?.list({ subscriptionId: sid, status: ["active", "scheduled"] }).catch(() => []);
+            const planLine = (live ?? []).flatMap((t) => t.lines).find((l) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan");
+            return {
+              source: "stripe" as const,
+              planName: planLine?.name ?? null,
+              mode: d.stripe?.config.mode === "live" ? ("live" as const) : ("test" as const),
+              orderId: 0,
+              orderReference: null,
+              orderState: "terms_billing" as never,
+              graceEndsAt: row.graceEndsAt,
+              stripeStatus: row.stripeStatus,
+              trialEnd: row.stripeStatus === "trialing" ? row.currentPeriodEnd : null,
+              lastPayment: paid
+                ? { status: "succeeded" as const, purpose: paid.billingReason === "subscription_cycle" ? ("renewal" as const) : ("initial" as const), amountCents: paid.amountPaidCents, currency: paid.currency, at: paid.paidAt ?? paid.createdAt, periodStart: paid.periodStart }
+                : null,
+            };
+          }
+        : undefined;
+    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling, originOf));
     // Facturación propia: emisor de las facturas = entidad jurídica de DF-1 (server/stripe/issuer.ts, solo lectura)
     if (d.invoicing) {
       const crmStore = d.crm.store;
@@ -3046,7 +3096,35 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           : undefined,
         billingPortalEnabled: stripe?.billingPortal?.enabled ?? false,
       });
-      router.use("/commerce", createTenantPlanRouter(plan));
+      // Centro de suscripción, pagos y facturas: reutiliza «Mi plan», las condiciones vigentes, el cobro por condiciones
+      // personalizadas (Stripe) y las facturas expedidas. No crea ningún libro nuevo ni escribe nada.
+      const billingRows = d.subscriptions?.termsBilling?.store;
+      const center = new TenantBillingCenterService({
+        companyOfTenant: async (t) => {
+          const c = (await crmStore.list("companies", { tenantId: t }, { limit: 2 })) as Array<{ id: number; name: string }>;
+          return c.length === 1 ? { id: c[0].id, name: c[0].name } : null;
+        },
+        subscriptionsOf: async (companyId, tenantId) => ((await d.subscriptions?.store.list({ companyId })) ?? []).filter((s) => s.companyId === companyId && (s.tenantId === tenantId || s.tenantId === null)),
+        billingRow: async (sid) => (billingRows ? billingRows.bySubscription(sid) : null),
+        billingInvoices: async (bid) => (billingRows ? billingRows.invoices(bid, 100) : []),
+        customTerms: customTermsOfTenant ? (t, companyId, sid) => customTermsOfTenant!(t, companyId, sid) : undefined,
+        planName: async (sid) => {
+          const live = await d.subscriptions?.terms?.list({ subscriptionId: sid, status: ["active", "scheduled"] }).catch(() => []);
+          return (live ?? []).flatMap((x) => x.lines).find((l) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan")?.name ?? null;
+        },
+        order: (t) => plan.summary(t).catch(() => null),
+        crmInvoices: inv ? (companyId) => inv.store.list({ companyId, limit: 100 }) : undefined,
+        invoiceHtml: inv ? (i) => invoiceHtml(i, issuer) : undefined,
+        stripeInvoiceLinks: stripe
+          ? async (id) => {
+              const g = await stripe.gateway.invoice(id);
+              return g ? { pdfUrl: g.invoicePdf ?? null, hostedUrl: g.hostedInvoiceUrl ?? null, customerId: g.customerId } : null;
+            }
+          : undefined,
+        portalEnabled: stripe?.billingPortal?.enabled ?? false,
+        now: d.subscriptions?.now ?? Date.now,
+      });
+      router.use("/commerce", createTenantPlanRouter(plan, center));
     }
     // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
     router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
@@ -3122,6 +3200,40 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         await mailer.service.drain(list.length).catch(() => undefined);
         opsLog("info", "Mail", "test_send", { run, count: results.length, by: getAuth(req)?.tokenId ?? "operador" });
         res.json({ run, sent: results.length, results });
+      }),
+    );
+
+    // Prueba CONTROLADA de los avisos internos de contratación y cobro a Dirección: un evento SINTÉTICO, claramente marcado como
+    // prueba (sin contrato, cobro ni operación real), enviado dos veces con la misma clave para comprobar la idempotencia.
+    // Mismo camino que los avisos reales (PlatformMailer.billingNotice → bandeja → proveedor).
+    router.post(
+      "/billing-notices/test",
+      requireScope("ops:write"),
+      wrap(async (req, res) => {
+        z.object({}).strict().parse(req.body ?? {});
+        if (mailer.policy.mode === "off") return void res.status(409).json({ error: "mail_off", message: "El correo de la plataforma está desactivado (MAIL_MODE=off)" });
+        const run = Date.now().toString(36);
+        const when = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" }).format(new Date());
+        const title = "[PRUEBA] Aviso de cobro sintético · sin contrato ni cobro reales";
+        const lines = [
+          "PRUEBA CONTROLADA del servicio de avisos a Dirección. Este evento es SINTÉTICO: no corresponde a ningún contrato, cobro ni operación real y no requiere ninguna acción.",
+          "Acontecimiento: Primer cobro real confirmado (SIMULADO).",
+          `Fecha y hora (España): ${when}.`,
+          "Empresa: EMPRESA DE PRUEBA (n.º 0). Contrato: CT-PRUEBA · Suscripción: SUB-PRUEBA.",
+          "Plan y servicios: Plan de prueba. Cuota contratada: 0,00 € + IVA 0,00 € = 0,00 € (simulada).",
+          "Importe efectivamente cobrado: 0,00 € (sintético; ningún cargo real).",
+          "Estado de la suscripción: ficticio. Estado de la plataforma: ficticio.",
+          "Acción requerida: ninguna.",
+          `Identificador de la prueba: ${run}`,
+        ];
+        const key = `test:${run}`;
+        const first = await mailer.billingNotice(key, title, lines);
+        const second = await mailer.billingNotice(key, title, lines);
+        // Entrega inmediata; el resultado del proveedor queda en la bandeja de salida (CRM → Comunicaciones)
+        await mailer.service.drain(5).catch(() => undefined);
+        const pick = (r: typeof first) => (r ? { status: r.status, reason: r.reason ?? null, outboxId: r.id ?? null, duplicate: r.duplicate ?? false } : null);
+        opsLog("info", "Mail", "billing_notice_test", { run, by: getAuth(req)?.tokenId ?? "operador" });
+        res.json({ run, key: `billing-notice:${key}`, first: pick(first), secondSameKey: pick(second), idempotent: !!second && (second.duplicate === true || second.id === first?.id) });
       }),
     );
   }

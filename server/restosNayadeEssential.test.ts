@@ -5,10 +5,12 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { buildVocabulary } from "../shared/vocabulary";
 import { ORIGINAL } from "../shared/sinNayade";
 
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8");
+const codeDe = (s: string) => s.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
 const code = (p: string) => read(p).split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
 
 describe("indicadores de la cabecera de Ventas", () => {
@@ -25,7 +27,7 @@ describe("indicadores de la cabecera de Ventas", () => {
   });
 
   it("el panel los toma del vocabulario", () => {
-    const src = code("client/src/pages/admin/crm/CRMDashboard.tsx");
+    const src = codeDe(crmDashboardFuentes());
     expect(src).toContain("label={voc.todayCounter}");
     expect(src).toContain("subtitle={voc.todayCounterSubtitle}");
     expect(src).toContain("subtitle={voc.upcomingCounterSubtitle}");
@@ -39,7 +41,7 @@ describe("textos del panel de una empresa Essential", () => {
     expect(code("client/src/pages/admin/products/ExperiencesManager.tsx")).toContain('{voc.licensed ? t("productsCatalog.modal.sellableCashier") : t("productsCatalog.modal.sellableTpv")}');
     expect(code("shared/i18n/locales/es/productsCatalog.ts")).toContain('sellableCashier: "Vendible en caja"');
     expect(code("client/src/pages/admin/tpv/TpvScreen.tsx")).toContain("Activa «Vendible en caja»");
-    expect(code("client/src/pages/admin/crm/CRMDashboard.tsx")).toContain('voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")');
+    expect(codeDe(crmDashboardFuentes())).toContain('voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")');
     expect(code("client/src/pages/admin/crm/CancellationsManager.tsx")).toContain('voc.licensed ? t("crmCancellations.valesEnviados") : t("crmCancellations.bonosEnviados")');
     const discounts = code("client/src/pages/DiscountCodesManager.tsx");
     const discountsEs = code("shared/i18n/locales/es/discounts.ts");

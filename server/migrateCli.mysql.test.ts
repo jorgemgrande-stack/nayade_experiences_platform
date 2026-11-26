@@ -208,7 +208,8 @@ d("ejecutor de migraciones contra MySQL real", () => {
     await t.pool.query("CREATE TABLE cash_movements (id INT PRIMARY KEY)");
     // 0020 amplía `invoices` y copia los ajustes fiscales de `system_settings` y `site_settings`: basta con que existan
     await t.pool.query("CREATE TABLE invoices (id INT PRIMARY KEY)");
-    await t.pool.query("CREATE TABLE system_settings (id INT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL)");
+    // 0087 inserta ajustes con value_type/category/label/…: la tabla lleva las columnas REALES de la baseline (clave única incluida)
+    await t.pool.query("CREATE TABLE system_settings (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL, value_type ENUM('string','number','boolean','json') NOT NULL DEFAULT 'string', category VARCHAR(64) NOT NULL DEFAULT 'general', label VARCHAR(256) NOT NULL, description TEXT NULL, is_sensitive TINYINT(1) NOT NULL DEFAULT 0, is_public TINYINT(1) NOT NULL DEFAULT 0, created_at TIMESTAMP NOT NULL DEFAULT (now()), updated_at TIMESTAMP NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY system_settings_key_unique (`key`))");
     await t.pool.query("CREATE TABLE site_settings (id INT PRIMARY KEY, `key` VARCHAR(128) NOT NULL, value TEXT NULL)");
     // 0069 añade offer_mode a `experiences`: basta con que exista (0070 solo crea tablas nuevas, sin claves foráneas)
     await t.pool.query("CREATE TABLE experiences (id INT PRIMARY KEY)");

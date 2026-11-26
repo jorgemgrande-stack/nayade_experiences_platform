@@ -191,6 +191,10 @@ export const experiences = mysqlTable("experiences", {
   // Migración 0069 (E-6): cómo se ofrece (precio fijo, bajo petición, próximamente) y texto del botón de petición
   offerMode: mysqlEnum("offer_mode", ["fixed", "on_request", "coming_soon", "priced_request"]).default("fixed").notNull(),
   requestCtaLabel: varchar("request_cta_label", { length: 80 }),
+  // Migración 0088: duración como dato y periodo en el que se admiten peticiones de fecha de inicio (NULL = sin calendario)
+  durationDays: int("duration_days"),
+  requestDatesFrom: date("request_dates_from", { mode: "string" }),
+  requestDatesUntil: date("request_dates_until", { mode: "string" }),
   sortOrder: int("sortOrder").default(0).notNull(),
   metaTitle: varchar("metaTitle", { length: 256 }),
   metaDescription: text("metaDescription"),
@@ -210,6 +214,14 @@ export const experienceVariants = mysqlTable("experience_variants", {
   sortOrder: int("sortOrder").default(0).notNull(),
   /** Último día (inclusive, Europe/Madrid) en que se ofrece la variante; NULL = sin caducidad. */
   validUntil: date("validUntil", { mode: "string" }),
+  /** Participantes mínimos/máximos con los que se puede comprar la opción (p. ej. «desde 2 participantes»); NULL = sin límite. */
+  minQty: int("minQty"),
+  maxQty: int("maxQty"),
+  /**
+   * Suplemento opcional (0090): si está informado, la fila NO es una opción del programa sino un suplemento que la persona
+   * marca aparte. Las filas con el mismo grupo son los tramos (minQty/maxQty) de un mismo suplemento. NULL = opción normal.
+   */
+  supplementGroup: varchar("supplementGroup", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

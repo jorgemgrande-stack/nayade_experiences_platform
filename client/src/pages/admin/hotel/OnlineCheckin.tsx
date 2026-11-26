@@ -56,7 +56,7 @@ export default function OnlineCheckin({ reservationId, onApplied }: { reservatio
               <li key={i} className="break-words">
                 <strong>{g.displayName}</strong>
                 <span className="text-xs text-muted-foreground"> · {[g.docType && g.docNumber ? `${g.docType} ${g.docNumber}` : null, g.nationality, g.birthDate].filter(Boolean).join(" · ")}</span>
-                {g.missing.length > 0 && <span className="block text-xs text-amber-700 dark:text-amber-400">Falta: {g.missing.join(" ")}</span>}
+                {g.missing.length > 0 && <span className="block text-xs text-warning">Falta: {g.missing.join(" ")}</span>}
               </li>
             ))}
           </ul>
@@ -66,7 +66,7 @@ export default function OnlineCheckin({ reservationId, onApplied }: { reservatio
           </div>
         </div>
       )}
-      {s && s.status === "applied" && <p className="text-xs text-emerald-700 dark:text-emerald-400">Datos del check-in online aplicados el {fmt(s.decidedAt)}.</p>}
+      {s && s.status === "applied" && <p className="text-xs text-success">Datos del check-in online aplicados el {fmt(s.decidedAt)}.</p>}
     </div>
   );
 }

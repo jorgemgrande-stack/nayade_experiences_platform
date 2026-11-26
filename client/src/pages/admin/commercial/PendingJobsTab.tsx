@@ -1,40 +1,35 @@
-import React, { useState } from "react";
+/**
+ * Cola de envíos (Atención Comercial, pestaña «Cola de envíos»): envíos programados por las reglas de automatización.
+ * Cabecera con acciones, estado de la tarea programada, filtros por estado (indicadores pulsables) y por plantilla,
+ * tabla compacta (tarjetas en móvil), clientes pausados e historial. Solo presentación: las consultas y acciones son
+ * las de siempre.
+ */
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "../../../../../server/routers";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Inbox, ListChecks, Loader2, MinusCircle, Play, RefreshCw, XCircle } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
+import { useI18n, useFormat } from "@/i18n/I18nProvider";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PanelDataList, StatusBadge, type PanelColumn, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 
 type JobStatus = "pending" | "sent" | "skipped" | "failed" | "cancelled";
 
-const STATUS_CONFIG: Record<JobStatus, { label: string; color: string; bg: string }> = {
-  pending:   { label: "Pendiente",  color: "text-amber-300",  bg: "bg-amber-900/30"  },
-  sent:      { label: "Enviado",    color: "text-green-300",  bg: "bg-green-900/30"  },
-  skipped:   { label: "Saltado",    color: "text-gray-400",   bg: "bg-gray-800/50"   },
-  failed:    { label: "Fallido",    color: "text-red-400",    bg: "bg-red-900/30"    },
-  cancelled: { label: "Cancelado",  color: "text-zinc-500",   bg: "bg-zinc-900/30"   },
-};
+const STATUS_TONE: Record<JobStatus, Tone> = { pending: "warning", sent: "success", skipped: "neutral", failed: "danger", cancelled: "neutral" };
 
-function fmtDateTime(d: Date | string | null | undefined): string {
-  if (!d) return "—";
-  return new Date(d).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function timeUntil(d: Date | string | null | undefined): string {
-  if (!d) return "";
-  const ms = new Date(d).getTime() - Date.now();
-  if (ms < 0) return "hace " + formatMs(-ms);
-  return "en " + formatMs(ms);
-}
-
-function formatMs(ms: number): string {
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  if (h > 24) return `${Math.floor(h / 24)}d`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
+type Out = inferRouterOutputs<AppRouter>["emailCommunications"];
+type JobRow = Out["listScheduledJobs"]["rows"][number];
+type LogRow = Out["listCommLog"]["rows"][number];
+type PausedRow = Out["listPausedCustomers"][number];
 
 export default function PendingJobsTab() {
+  const { t } = useI18n();
+  const f = useFormat();
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
   const [templateFilter, setTemplateFilter] = useState("");
   const [page, setPage] = useState(0);
@@ -48,314 +43,258 @@ export default function PendingJobsTab() {
     offset: page * pageSize,
   }, { retry: 1 });
 
-  const { data: logs, isLoading: logsLoading, isError: logsError, refetch: refetchLogs } = trpc.emailCommunications.listCommLog.useQuery({
+  const { data: logs, isLoading: logsLoading, isError: logsError, error: logsErr, refetch: refetchLogs } = trpc.emailCommunications.listCommLog.useQuery({
     isAutomatic: true,
     limit: 100,
     offset: 0,
   }, { retry: 1 });
 
   const flagsQ = trpc.config.listFeatureFlags.useQuery();
-  const automationFlag = flagsQ.data?.find(f => f.key === "email_automation_job_enabled");
+  const automationFlag = flagsQ.data?.find((x) => x.key === "email_automation_job_enabled");
 
   const { data: pausedCustomers, refetch: refetchPaused } = trpc.emailCommunications.listPausedCustomers.useQuery(undefined, { retry: 1 });
   const setPrefs = trpc.emailCommunications.setCustomerPrefs.useMutation({
-    onSuccess: () => { toast.success("Automatizaciones reanudadas"); refetchPaused(); },
+    onSuccess: () => { toast.success(t("commQueue.resumed")); refetchPaused(); },
     onError: (e) => toastError(e),
   });
 
   const cancelJob = trpc.emailCommunications.cancelJob.useMutation({
-    onSuccess: () => { toast.success("Job cancelado"); refetch(); },
+    onSuccess: () => { toast.success(t("commQueue.cancelled")); refetch(); },
     onError: (e) => toastError(e),
   });
 
   const runNow = trpc.emailCommunications.runAutomationJobNow.useMutation({
     onSuccess: (result) => {
       setLastRunResult(result);
-      toast.success(`Job ejecutado — ${result.sent} enviados, ${result.skipped} saltados, ${result.failed} fallidos`);
+      toast.success(t("commQueue.runDone", { sent: result.sent, skipped: result.skipped, failed: result.failed }));
       refetch();
       refetchLogs();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toast.error(t("commQueue.runError", { message: e.message })),
   });
 
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
+  const statusLabel = (s: string) => (s in STATUS_TONE ? t(`commQueue.status.${s as JobStatus}`) : s);
 
-  const pendingCount = rows.filter(r => r.status === "pending").length;
+  const dur = (ms: number) => {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    if (h > 24) return t("commQueue.days", { n: Math.floor(h / 24) });
+    if (h > 0) return t("commQueue.hoursMin", { h, m });
+    return t("commQueue.min", { m });
+  };
+  const timeUntil = (d: Date | string | null | undefined) => {
+    if (!d) return "";
+    const ms = new Date(d).getTime() - Date.now();
+    return ms < 0 ? t("commQueue.inPast", { t: dur(-ms) }) : t("commQueue.inFuture", { t: dur(ms) });
+  };
+  const dt = (d: Date | string | null | undefined) => (d ? f.dateTime(d, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+
+  const filters: { key: JobStatus | "all"; tone: Tone; icon: React.ReactNode }[] = [
+    { key: "all", tone: "brand", icon: <ListChecks /> },
+    { key: "pending", tone: "warning", icon: <Clock /> },
+    { key: "sent", tone: "success", icon: <CheckCircle2 /> },
+    { key: "skipped", tone: "neutral", icon: <MinusCircle /> },
+    { key: "failed", tone: "danger", icon: <XCircle /> },
+  ];
+
+  const jobColumns: PanelColumn<JobRow>[] = [
+    {
+      key: "template",
+      header: t("commQueue.col.template"),
+      cell: (job) => (
+        <div>
+          <div className="font-mono text-xs text-foreground">{job.templateKey}</div>
+          <div className="text-xs font-normal text-muted-foreground">
+            {t("commQueue.rule", { id: job.ruleId })} · {job.relatedEntityType} #{job.relatedEntityId}
+          </div>
+        </div>
+      ),
+    },
+    { key: "recipient", header: t("commQueue.col.recipient"), cell: (job) => <span className="block max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground md:max-w-[160px]">{job.recipientEmail ?? "—"}</span> },
+    {
+      key: "scheduled",
+      header: t("commQueue.col.scheduled"),
+      cell: (job) => {
+        const late = job.scheduledFor && new Date(job.scheduledFor) < new Date() && job.status === "pending";
+        return (
+          <div className="text-xs">
+            <div className="text-foreground">{dt(job.scheduledFor)}</div>
+            <div className={late ? "text-danger" : "text-muted-foreground"}>{timeUntil(job.scheduledFor)}</div>
+          </div>
+        );
+      },
+    },
+    {
+      key: "status",
+      header: t("commQueue.col.status"),
+      cell: (job) => (
+        <div className="space-y-0.5">
+          <StatusBadge tone={STATUS_TONE[job.status as JobStatus] ?? "neutral"}>{statusLabel(job.status)}</StatusBadge>
+          {job.skipReason && <div className="text-xs text-muted-foreground">{job.skipReason}</div>}
+          {job.errorMessage && <div className="max-w-[200px] break-words text-xs text-danger">{job.errorMessage}</div>}
+        </div>
+      ),
+    },
+    { key: "attempts", header: t("commQueue.col.attempts"), cell: (job) => <span className="text-xs text-muted-foreground">{job.attempts}</span> },
+    {
+      key: "action",
+      header: t("commQueue.col.action"),
+      align: "right",
+      cell: (job) =>
+        job.status === "pending" ? (
+          <Button variant="ghost" size="sm" className="text-danger hover:text-danger" disabled={cancelJob.isPending} onClick={() => cancelJob.mutate({ id: job.id })}>
+            {t("commQueue.cancel")}
+          </Button>
+        ) : null,
+    },
+  ];
+
+  const pausedColumns: PanelColumn<PausedRow>[] = [
+    { key: "email", header: t("commQueue.col.email"), cell: (c) => <span className="font-mono text-xs">{c.email}</span> },
+    { key: "reason", header: t("commQueue.col.reason"), cell: (c) => <span className="text-xs text-muted-foreground">{c.pauseReason ?? "—"}</span> },
+    { key: "paused", header: t("commQueue.col.paused"), cell: (c) => <span className="text-xs text-muted-foreground">{c.pausedAt ? f.date(c.pausedAt) : "—"}</span> },
+    {
+      key: "action",
+      header: t("commQueue.col.action"),
+      align: "right",
+      cell: (c) => (
+        <Button variant="ghost" size="sm" className="text-success hover:text-success" disabled={setPrefs.isPending} onClick={() => setPrefs.mutate({ email: c.email, automationsPaused: false })}>
+          {t("commQueue.resume")}
+        </Button>
+      ),
+    },
+  ];
+
+  const logColumns: PanelColumn<LogRow>[] = [
+    {
+      key: "template",
+      header: t("commQueue.col.template"),
+      cell: (log) => (
+        <div>
+          <div className="font-mono text-xs text-foreground">{log.templateKey ?? "—"}</div>
+          {log.triggerEvent && <div className="text-xs font-normal text-muted-foreground">{log.triggerEvent}</div>}
+        </div>
+      ),
+    },
+    { key: "date", header: t("commQueue.col.date"), cell: (log) => <span className="whitespace-nowrap text-xs text-muted-foreground">{dt(log.createdAt)}</span> },
+    { key: "recipient", header: t("commQueue.col.recipient"), cell: (log) => <span className="block max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap text-xs md:max-w-[180px]">{log.recipientEmail ?? "—"}</span> },
+    { key: "status", header: t("commQueue.col.status"), cell: (log) => <StatusBadge tone={STATUS_TONE[log.status as JobStatus] ?? "danger"}>{statusLabel(log.status)}</StatusBadge> },
+    { key: "kind", header: t("commQueue.col.kind"), cell: (log) => <span className="text-xs text-muted-foreground">{log.isAutomatic ? t("commQueue.auto") : t("commQueue.manual")}</span> },
+    { key: "provider", header: t("commQueue.col.provider"), cell: (log) => <span className="font-mono text-xs text-muted-foreground">{log.provider ?? "—"}</span> },
+  ];
+
+  const cronOn = !!automationFlag?.enabled;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Cola de envíos</h2>
-          <p className="text-sm text-gray-400 mt-1">
-            Jobs programados por las reglas de automatización. El cron corre cada 10 minutos.
-          </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-foreground">{t("commQueue.title")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("commQueue.description")}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => { refetch(); refetchLogs(); }} className="text-gray-500 hover:text-white transition-colors text-xs px-3 py-1.5 rounded border border-[#2a2a2a] hover:border-[#444]">
-            ↻ Actualizar
-          </button>
-          <button
-            onClick={() => runNow.mutate()}
-            disabled={runNow.isPending}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-50 transition-colors"
-          >
-            {runNow.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>▶</span>}
-            Ejecutar ahora
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => { refetch(); refetchLogs(); }}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            {t("commQueue.refresh")}
+          </Button>
+          <Button size="sm" onClick={() => runNow.mutate()} disabled={runNow.isPending}>
+            {runNow.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Play className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />}
+            {t("commQueue.runNow")}
+          </Button>
         </div>
+      </header>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${cronOn ? "bg-success" : "bg-warning"}`} aria-hidden="true" />
+          <span className="text-sm font-medium text-foreground">{t("commQueue.cronLabel")}</span>
+          <StatusBadge tone={cronOn ? "success" : "warning"}>{cronOn ? t("commQueue.cronOn") : t("commQueue.cronOff")}</StatusBadge>
+        </div>
+        {!cronOn && <p className="text-xs text-muted-foreground">{t("commQueue.cronOffHint")}</p>}
       </div>
 
-      {/* Feature flag status */}
-      <div className={`flex items-center justify-between rounded-lg border px-4 py-3 ${automationFlag?.enabled ? "bg-green-900/20 border-green-700/40" : "bg-yellow-900/20 border-yellow-700/40"}`}>
-        <div className="flex items-center gap-3">
-          <span className={`w-2 h-2 rounded-full ${automationFlag?.enabled ? "bg-green-400" : "bg-yellow-400"}`} />
-          <div>
-            <span className="text-sm font-medium text-white">Cron email_automation_job_enabled</span>
-            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${automationFlag?.enabled ? "bg-green-900/50 text-green-300" : "bg-yellow-900/50 text-yellow-300"}`}>
-              {automationFlag?.enabled ? "Activo" : "Inactivo"}
-            </span>
-          </div>
-        </div>
-        {!automationFlag?.enabled && (
-          <span className="text-xs text-yellow-400">
-            Activa el flag en Settings → Avanzado → Feature Flags para que el cron corra automáticamente.
-            El botón "Ejecutar ahora" funciona igualmente para pruebas.
-          </span>
-        )}
-      </div>
-
-      {/* Resultado última ejecución manual */}
       {lastRunResult && (
-        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3">
-          <div className="text-xs text-gray-500 mb-2">Resultado de la última ejecución manual</div>
-          <div className="flex gap-4 text-sm">
-            <span className="text-gray-400">Procesados: <strong className="text-white">{lastRunResult.processed}</strong></span>
-            <span className="text-green-400">Enviados: <strong>{lastRunResult.sent}</strong></span>
-            <span className="text-gray-500">Saltados: <strong>{lastRunResult.skipped}</strong></span>
-            {lastRunResult.failed > 0 && <span className="text-red-400">Fallidos: <strong>{lastRunResult.failed}</strong></span>}
+        <div className="rounded-lg border border-border bg-card px-4 py-3" role="status">
+          <p className="mb-1 text-xs text-muted-foreground">{t("commQueue.lastRun")}</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+            <span className="text-muted-foreground">{t("commQueue.processed")}: <strong className="text-foreground">{lastRunResult.processed}</strong></span>
+            <span className="text-success">{t("commQueue.sent")}: <strong>{lastRunResult.sent}</strong></span>
+            <span className="text-muted-foreground">{t("commQueue.skipped")}: <strong>{lastRunResult.skipped}</strong></span>
+            {lastRunResult.failed > 0 && <span className="text-danger">{t("commQueue.failed")}: <strong>{lastRunResult.failed}</strong></span>}
           </div>
         </div>
       )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {(["all", "pending", "sent", "skipped", "failed"] as const).map(s => {
-          const sc = s === "all" ? null : STATUS_CONFIG[s];
-          const count = s === "all" ? total : (data?.rows ?? []).filter(r => r.status === s).length;
-          return (
-            <button
-              key={s}
-              onClick={() => { setStatusFilter(s); setPage(0); }}
-              className={`bg-[#1a1a1a] border rounded-lg p-3 text-center transition-colors ${statusFilter === s ? "border-orange-500" : "border-[#2a2a2a] hover:border-[#444]"}`}
-            >
-              <div className={`text-xl font-bold ${sc?.color ?? "text-white"}`}>{count}</div>
-              <div className="text-xs text-gray-500 mt-1">{sc?.label ?? "Todos"}</div>
-            </button>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {filters.map((x) => (
+          <MetricCard
+            key={x.key}
+            tone={x.tone}
+            icon={x.icon}
+            label={t(`commQueue.status.${x.key}`)}
+            value={x.key === "all" ? total : rows.filter((r) => r.status === x.key).length}
+            active={statusFilter === x.key}
+            onClick={() => { setStatusFilter(x.key); setPage(0); }}
+          />
+        ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="text"
-          placeholder="Filtrar por template key..."
-          value={templateFilter}
-          onChange={e => { setTemplateFilter(e.target.value); setPage(0); }}
-          className="bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-white rounded px-3 py-1.5 w-52 focus:outline-none focus:border-[#444]"
-        />
+      <div className="max-w-xs">
+        <Input aria-label={t("commQueue.filterLabel")} placeholder={t("commQueue.filterPlaceholder")} value={templateFilter} onChange={(e) => { setTemplateFilter(e.target.value); setPage(0); }} />
       </div>
 
-      {/* Jobs table */}
       {isLoading ? (
-        <div className="py-12 text-center text-gray-600 text-sm">Cargando jobs...</div>
+        <PanelLoading label={t("commQueue.loading")} />
       ) : isError ? (
-        <div className="py-8 text-center space-y-2">
-          <div className="text-red-400 text-sm font-medium">Error al cargar los jobs</div>
-          <div className="text-red-600 text-xs font-mono">{(error as any)?.message ?? "Error desconocido"}</div>
-          <div className="text-gray-600 text-xs">Las tablas de automatización pueden no existir aún. Espera el redeploy de Railway y actualiza.</div>
-          <button onClick={() => refetch()} className="mt-2 text-xs px-3 py-1.5 rounded border border-[#2a2a2a] hover:border-[#444] text-gray-400 hover:text-white transition-colors">↻ Reintentar</button>
+        <div className="space-y-1">
+          <PanelError error={error} onRetry={() => refetch()} title={t("commQueue.loadError")} />
+          <p className="text-xs text-muted-foreground">{t("commQueue.loadErrorHint")}</p>
         </div>
       ) : rows.length === 0 ? (
-        <div className="py-12 text-center text-gray-600 text-sm">Sin jobs para los filtros actuales</div>
+        <PanelEmpty icon={<Inbox className="h-5 w-5" />} title={t("commQueue.empty")} description={t("commQueue.emptyHint")} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[#2a2a2a]">
-          <table className="w-full text-sm min-w-[700px]">
-            <thead>
-              <tr className="bg-[#111] border-b border-[#2a2a2a]">
-                <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">ID</th>
-                <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Entidad</th>
-                <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Template</th>
-                <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Destinatario</th>
-                <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Programado</th>
-                <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium">Estado</th>
-                <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium">Intentos</th>
-                <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(job => {
-                const sc = STATUS_CONFIG[job.status as JobStatus] ?? STATUS_CONFIG.pending;
-                const isPast = job.scheduledFor && new Date(job.scheduledFor) < new Date();
-                return (
-                  <tr key={job.id} className="border-b border-[#1e1e1e] hover:bg-[#1a1a1a] transition-colors">
-                    <td className="px-3 py-2 text-xs text-gray-600 font-mono">#{job.id}</td>
-                    <td className="px-3 py-2">
-                      <div className="text-xs text-gray-400">{job.relatedEntityType}</div>
-                      <div className="text-xs text-gray-600 font-mono">#{job.relatedEntityId}</div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="text-xs text-white font-mono">{job.templateKey}</div>
-                      <div className="text-xs text-gray-600">regla #{job.ruleId}</div>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-300 max-w-[160px] truncate">{job.recipientEmail ?? "—"}</td>
-                    <td className="px-3 py-2">
-                      <div className="text-xs text-white">{fmtDateTime(job.scheduledFor)}</div>
-                      <div className={`text-xs ${isPast && job.status === "pending" ? "text-red-400" : "text-gray-600"}`}>
-                        {timeUntil(job.scheduledFor)}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
-                      {job.skipReason && <div className="text-[10px] text-gray-600 mt-0.5">{job.skipReason}</div>}
-                    </td>
-                    <td className="px-3 py-2 text-center text-xs text-gray-500">{job.attempts}</td>
-                    <td className="px-3 py-2">
-                      {job.status === "pending" && (
-                        <button
-                          onClick={() => cancelJob.mutate({ id: job.id })}
-                          className="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-[#2a2a2a] transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                      )}
-                      {job.errorMessage && (
-                        <div className="text-[10px] text-red-400 max-w-[120px] truncate" title={job.errorMessage}>{job.errorMessage}</div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataList rows={rows} columns={jobColumns} rowKey={(r) => r.id} caption={t("commQueue.jobsCaption")} />
       )}
 
-      {/* Pagination */}
       {total > pageSize && (
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>{page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} de {total}</span>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{t("commQueue.pageRange", { from: page * pageSize + 1, to: Math.min((page + 1) * pageSize, total), total })}</span>
           <div className="flex gap-2">
-            <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="px-3 py-1.5 rounded border border-[#2a2a2a] disabled:opacity-40 hover:border-[#444] transition-colors">← Anterior</button>
-            <button disabled={(page + 1) * pageSize >= total} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 rounded border border-[#2a2a2a] disabled:opacity-40 hover:border-[#444] transition-colors">Siguiente →</button>
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>{t("commQueue.prev")}</Button>
+            <Button variant="outline" size="sm" disabled={(page + 1) * pageSize >= total} onClick={() => setPage((p) => p + 1)}>{t("commQueue.next")}</Button>
           </div>
         </div>
       )}
 
-      {/* Clientes con automatizaciones pausadas */}
       {pausedCustomers && pausedCustomers.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-medium text-amber-400 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-              Clientes con automatizaciones pausadas ({pausedCustomers.length})
-            </div>
-          </div>
-          <div className="rounded-lg border border-amber-700/30 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-amber-950/20 border-b border-amber-700/20">
-                  <th className="px-3 py-2 text-left text-xs text-amber-500/70 font-medium">Email</th>
-                  <th className="px-3 py-2 text-left text-xs text-amber-500/70 font-medium">Motivo</th>
-                  <th className="px-3 py-2 text-left text-xs text-amber-500/70 font-medium">Pausado</th>
-                  <th className="px-3 py-2 text-center text-xs text-amber-500/70 font-medium">Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pausedCustomers.map(c => (
-                  <tr key={c.id} className="border-b border-[#1e1e1e] hover:bg-[#1a1a1a] transition-colors">
-                    <td className="px-3 py-2 text-xs text-white font-mono">{c.email}</td>
-                    <td className="px-3 py-2 text-xs text-amber-400/70 max-w-[200px] truncate">{c.pauseReason ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-gray-500">
-                      {c.pausedAt ? new Date(c.pausedAt).toLocaleDateString("es-ES") : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <button
-                        onClick={() => setPrefs.mutate({ email: c.email, automationsPaused: false })}
-                        disabled={setPrefs.isPending}
-                        className="text-xs text-green-400 hover:text-green-300 px-2 py-1 rounded hover:bg-[#2a2a2a] transition-colors disabled:opacity-50"
-                      >
-                        Reanudar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <section className="space-y-3">
+          <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
+            {t("commQueue.pausedTitle", { count: pausedCustomers.length })}
+          </h3>
+          <PanelDataList rows={pausedCustomers} columns={pausedColumns} rowKey={(c) => c.id} caption={t("commQueue.pausedCaption")} />
+        </section>
       )}
 
-      {/* Historial reciente */}
-      <div className="space-y-3">
+      <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium text-gray-400">Historial de emails automáticos (últimos 100)</div>
-          <button onClick={() => refetchLogs()} className="text-xs text-gray-600 hover:text-white transition-colors">↻</button>
+          <h3 className="text-sm font-medium text-foreground">{t("commQueue.historyTitle")}</h3>
+          <Button variant="ghost" size="icon" aria-label={t("commQueue.refresh")} onClick={() => refetchLogs()}>
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
         </div>
         {logsLoading ? (
-          <div className="text-sm text-gray-600 py-4 text-center">Cargando historial...</div>
+          <PanelLoading label={t("commQueue.historyLoading")} />
         ) : logsError ? (
-          <div className="py-4 text-center space-y-1">
-            <div className="text-red-400 text-sm">Error al cargar el historial</div>
-            <div className="text-gray-600 text-xs">Espera el redeploy de Railway y actualiza.</div>
-            <button onClick={() => refetchLogs()} className="mt-1 text-xs px-3 py-1 rounded border border-[#2a2a2a] hover:border-[#444] text-gray-400 hover:text-white transition-colors">↻ Reintentar</button>
-          </div>
+          <PanelError error={logsErr} onRetry={() => refetchLogs()} title={t("commQueue.historyError")} />
         ) : !logs?.rows?.length ? (
-          <div className="text-sm text-gray-600 py-4 text-center">Sin registros aún. Los emails enviados via <code className="font-mono">sendManagedEmail()</code> aparecerán aquí.</div>
+          <PanelEmpty icon={<Inbox className="h-5 w-5" />} title={t("commQueue.historyEmpty")} description={t("commQueue.historyEmptyHint")} />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-[#2a2a2a]">
-            <table className="w-full text-sm min-w-[600px]">
-              <thead>
-                <tr className="bg-[#111] border-b border-[#2a2a2a]">
-                  <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Fecha</th>
-                  <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Template</th>
-                  <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Destinatario</th>
-                  <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium">Estado</th>
-                  <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium">Tipo</th>
-                  <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Proveedor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.rows.map(log => {
-                  const sc = STATUS_CONFIG[log.status as JobStatus] ?? STATUS_CONFIG.failed;
-                  return (
-                    <tr key={log.id} className="border-b border-[#1e1e1e] hover:bg-[#1a1a1a] transition-colors">
-                      <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">{fmtDateTime(log.createdAt)}</td>
-                      <td className="px-3 py-2">
-                        <div className="text-xs font-mono text-white">{log.templateKey ?? "—"}</div>
-                        {log.triggerEvent && <div className="text-xs text-gray-600">{log.triggerEvent}</div>}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-gray-300 max-w-[180px] truncate">{log.recipientEmail ?? "—"}</td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
-                      </td>
-                      <td className="px-3 py-2 text-center text-xs">
-                        {log.isAutomatic
-                          ? <span className="text-amber-400">Auto</span>
-                          : <span className="text-gray-500">Manual</span>}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-gray-500 font-mono">{log.provider ?? "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <PanelDataList rows={logs.rows} columns={logColumns} rowKey={(l) => l.id} caption={t("commQueue.historyCaption")} />
         )}
-      </div>
+      </section>
     </div>
   );
 }

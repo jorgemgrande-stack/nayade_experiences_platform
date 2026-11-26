@@ -41,7 +41,7 @@ export default function NetProductHome() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-5">
-        <header className="overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
+        <header className="overflow-hidden rounded-xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-6">
           <div className="flex items-start gap-4">
             <span aria-hidden="true" className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-background text-primary">
               <Layers className="h-5 w-5" />
@@ -58,7 +58,7 @@ export default function NetProductHome() {
         </header>
 
         {tools.length > 0 && (
-          <section className="rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="net-tools-t">
+          <section className="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="net-tools-t">
             <h2 id="net-tools-t" className="mb-3 text-lg font-bold text-foreground">
               Herramientas
             </h2>

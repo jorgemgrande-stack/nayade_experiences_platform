@@ -7,6 +7,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { describe, expect, it } from "vitest";
 import { quoteStatusView } from "../shared/quotePublicView";
 import { newProductDefaults, presentialSaleAllowed } from "../shared/catalogDefaults";
@@ -157,7 +158,7 @@ describe("aviso de cookies: solo las categorías que existen", () => {
 
 describe("contraste AA en Facturas, formulario de producto y web pública", () => {
   it("Facturas: totales de abonos, neto y rectificativas con colores por significado", () => {
-    const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+    const crm = crmDashboardFuentes();
     const invoices = crm.slice(crm.indexOf('t("crmInvoices.docsEnPeriodo")'), crm.indexOf('t("crmInvoices.visualizarFactura")'));
     expect(invoices.length).toBeGreaterThan(1000);
     expect(invoices).not.toMatch(/text-(?:violet|emerald|orange|sky)-\d{3}(?:\/\d+)?/);
@@ -176,7 +177,7 @@ describe("contraste AA en Facturas, formulario de producto y web pública", () =
     expect(read("client/src/components/ReviewSection.tsx")).toContain('"border-primary text-foreground hover:bg-primary/10"');
   });
   it("plural de oportunidades", () => {
-    const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+    const crm = crmDashboardFuentes();
     expect(crm).toContain('=== 1 ? t("crmDashboard.oportunidadEnTotal") : t("crmDashboard.oportunidadesEnTotal")');
   });
 });

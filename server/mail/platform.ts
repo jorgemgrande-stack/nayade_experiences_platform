@@ -88,6 +88,21 @@ export class PlatformMailer {
     for (const to of this.opsRecipients) await this.send(PLATFORM_TENANT, `ops:${key}:${short(to)}`, "operational", to, this.t.opsNotice({ title, lines }));
   }
 
+  /**
+   * Aviso interno de la vida comercial de una contratación (contrato aceptado, método de pago, cobros, fallos…) al buzón de
+   * Dirección (CP_BILLING_NOTICE_EMAIL; por defecto administracion@bigelephant.es). La clave identifica el hecho de negocio:
+   * repetirla no duplica el correo. Nunca lanza; el estado de entrega queda en la bandeja de salida (reintento seguro).
+   */
+  async billingNotice(key: string, title: string, lines: string[]): Promise<SendResult | null> {
+    const to = (process.env.CP_BILLING_NOTICE_EMAIL ?? "").trim() || "administracion@bigelephant.es";
+    try {
+      return await this.send(PLATFORM_TENANT, `billing-notice:${key}`, "operational", to, this.t.opsNotice({ title, lines }));
+    } catch (e) {
+      opsLog("warn", "Mail", "billing_notice_failed", { error: e instanceof Error ? e.name : "error" });
+      return null;
+    }
+  }
+
   /** Clientes externos (server/external): invitación al contrato para el representante y aviso interno de la aceptación. */
   externalMail(): ExternalMail {
     return {

@@ -59,18 +59,18 @@ const FIN_STATUS_LABELS: Record<string, string> = {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 function ReasonIcon({ reason }: { reason: string }) {
   const icons: Record<string, React.ReactNode> = {
-    meteorologicas: <CloudLightning className="w-4 h-4 text-blue-400" />,
-    accidente: <Car className="w-4 h-4 text-red-400" />,
-    enfermedad: <HeartPulse className="w-4 h-4 text-pink-400" />,
-    desistimiento: <HelpCircle className="w-4 h-4 text-yellow-400" />,
-    otra: <HelpCircle className="w-4 h-4 text-gray-400" />,
+    meteorologicas: <CloudLightning className="w-4 h-4 text-info" />,
+    accidente: <Car className="w-4 h-4 text-danger" />,
+    enfermedad: <HeartPulse className="w-4 h-4 text-primary" />,
+    desistimiento: <HelpCircle className="w-4 h-4 text-warning" />,
+    otra: <HelpCircle className="w-4 h-4 text-muted-foreground" />,
   };
-  return <>{icons[reason] ?? <HelpCircle className="w-4 h-4 text-gray-400" />}</>;
+  return <>{icons[reason] ?? <HelpCircle className="w-4 h-4 text-muted-foreground" />}</>;
 }
 
 function StatusBadge({ label, className }: { label: string; className?: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className ?? "bg-gray-500/10 text-gray-400 border-gray-500/20"}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className ?? "bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20"}`}>
       {label}
     </span>
   );
@@ -86,18 +86,18 @@ function ActionButton({
   onClick: () => void;
 }) {
   const colorMap: Record<string, string> = {
-    red: "border-red-500/30 hover:bg-red-500/10 text-red-400",
-    green: "border-green-500/30 hover:bg-green-500/10 text-green-400",
-    amber: "border-amber-500/30 hover:bg-amber-500/10 text-amber-400",
-    blue: "border-blue-500/30 hover:bg-blue-500/10 text-blue-400",
-    orange: "border-orange-500/30 hover:bg-orange-500/10 text-orange-400",
-    gray: "border-gray-500/30 hover:bg-gray-500/10 text-gray-400",
-    purple: "border-purple-500/30 hover:bg-purple-500/10 text-purple-400",
+    red: "border-danger/30 hover:bg-danger/10 text-danger",
+    green: "border-success/30 hover:bg-success/10 text-success",
+    amber: "border-warning/30 hover:bg-warning/10 text-warning",
+    blue: "border-info/30 hover:bg-info/10 text-info",
+    orange: "border-warning/30 hover:bg-warning/10 text-warning",
+    gray: "border-muted-foreground/30 hover:bg-muted-foreground/10 text-muted-foreground",
+    purple: "border-primary/30 hover:bg-primary/10 text-primary",
   };
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${colorMap[color] ?? colorMap.gray} ${active ? "ring-1 ring-white/20 bg-white/5" : ""}`}
+      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${colorMap[color] ?? colorMap.gray} ${active ? "ring-1 ring-border bg-foreground/5" : ""}`}
     >
       {icon}
       <span>{label}</span>
@@ -108,17 +108,17 @@ function ActionButton({
 
 function ActionPanelWrapper({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
   const colorMap: Record<string, string> = {
-    red: "border-red-500/20 bg-red-500/5",
-    green: "border-green-500/20 bg-green-500/5",
-    amber: "border-amber-500/20 bg-amber-500/5",
-    blue: "border-blue-500/20 bg-blue-500/5",
-    orange: "border-orange-500/20 bg-orange-500/5",
-    gray: "border-gray-500/20 bg-gray-500/5",
-    purple: "border-purple-500/20 bg-purple-500/5",
+    red: "border-danger/20 bg-danger/5",
+    green: "border-success/20 bg-success/5",
+    amber: "border-warning/20 bg-warning/5",
+    blue: "border-info/20 bg-info/5",
+    orange: "border-warning/20 bg-warning/5",
+    gray: "border-muted-foreground/20 bg-muted-foreground/5",
+    purple: "border-primary/20 bg-primary/5",
   };
   return (
     <div className={`mt-3 rounded-xl border p-4 space-y-3 ${colorMap[color] ?? colorMap.gray}`}>
-      <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">{title}</p>
+      <p className="text-xs font-semibold text-foreground/80 uppercase tracking-wide">{title}</p>
       {children}
     </div>
   );
@@ -128,16 +128,16 @@ function TimelineEntry({ log }: { log: { id: number; actionType: string; adminUs
   const { t, format } = useI18n();
   const icons: Record<string, React.ReactNode> = {
     created: <Plus className="w-3 h-3" />,
-    rejected: <XCircle className="w-3 h-3 text-red-400" />,
-    accepted_total: <CheckCircle2 className="w-3 h-3 text-green-400" />,
-    accepted_partial: <CheckCircle2 className="w-3 h-3 text-amber-400" />,
-    doc_requested: <FileQuestion className="w-3 h-3 text-blue-400" />,
-    incidence: <AlertTriangle className="w-3 h-3 text-orange-400" />,
-    closed: <Archive className="w-3 h-3 text-gray-400" />,
-    note_added: <Plus className="w-3 h-3 text-blue-400" />,
-    voucher_generated: <Gift className="w-3 h-3 text-purple-400" />,
-    email_sent: <Mail className="w-3 h-3 text-gray-400" />,
-    client_reclamation: <MessageSquareWarning className="w-3 h-3 text-rose-400" />,
+    rejected: <XCircle className="w-3 h-3 text-danger" />,
+    accepted_total: <CheckCircle2 className="w-3 h-3 text-success" />,
+    accepted_partial: <CheckCircle2 className="w-3 h-3 text-warning" />,
+    doc_requested: <FileQuestion className="w-3 h-3 text-info" />,
+    incidence: <AlertTriangle className="w-3 h-3 text-warning" />,
+    closed: <Archive className="w-3 h-3 text-muted-foreground" />,
+    note_added: <Plus className="w-3 h-3 text-info" />,
+    voucher_generated: <Gift className="w-3 h-3 text-primary" />,
+    email_sent: <Mail className="w-3 h-3 text-muted-foreground" />,
+    client_reclamation: <MessageSquareWarning className="w-3 h-3 text-danger" />,
   };
   const ACTION_LABELS: Record<string, string> = {
     created: t("crmCancellations.solicitudCreada"),
@@ -160,17 +160,17 @@ function TimelineEntry({ log }: { log: { id: number; actionType: string; adminUs
   const description = (log.payload as Record<string, unknown>)?.description as string | undefined;
   const ts = log.createdAt instanceof Date ? log.createdAt : new Date(log.createdAt);
   return (
-    <div className={`flex gap-3 py-2 border-b border-white/5 last:border-0 ${log.actionType === "client_reclamation" ? "bg-rose-500/5 rounded-lg px-2 -mx-2" : ""}`}>
-      <div className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0 mt-0.5">
-        {icons[log.actionType] ?? <Clock className="w-3 h-3 text-gray-500" />}
+    <div className={`flex gap-3 py-2 border-b border-border/50 last:border-0 ${log.actionType === "client_reclamation" ? "bg-danger/5 rounded-lg px-2 -mx-2" : ""}`}>
+      <div className="w-6 h-6 rounded-full bg-foreground/5 flex items-center justify-center flex-shrink-0 mt-0.5">
+        {icons[log.actionType] ?? <Clock className="w-3 h-3 text-muted-foreground" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`text-xs font-medium ${log.actionType === "client_reclamation" ? "text-rose-300" : "text-gray-300"}`}>
+        <p className={`text-xs font-medium ${log.actionType === "client_reclamation" ? "text-danger" : "text-foreground/80"}`}>
           {ACTION_LABELS[log.actionType] ?? log.actionType.replace(/_/g, " ")}
         </p>
-        {description && <p className="text-gray-400 text-xs mt-0.5 whitespace-pre-wrap">{description}</p>}
-        {note && !description && <p className="text-gray-500 text-xs mt-0.5 truncate">{note}</p>}
-        <p className="text-gray-600 text-xs mt-0.5">
+        {description && <p className="text-muted-foreground text-xs mt-0.5 whitespace-pre-wrap">{description}</p>}
+        {note && !description && <p className="text-muted-foreground text-xs mt-0.5 truncate">{note}</p>}
+        <p className="text-muted-foreground text-xs mt-0.5">
           {log.adminUserName ?? "Sistema"} · {format.dateTime(ts, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
@@ -332,8 +332,8 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
   if (isLoading || !data) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-        <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60">
+        <div className="w-8 h-8 border-2 border-border border-t-white rounded-full animate-spin" />
       </div>
     );
   }
@@ -341,23 +341,23 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   const { request: req, logs, voucher, linkedReservation } = data;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-background/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full sm:w-[520px] h-full sm:h-auto sm:max-h-[90vh] bg-[#111] border-l border-white/10 overflow-y-auto flex flex-col"
+        className="w-full sm:w-[520px] h-full sm:h-auto sm:max-h-[90vh] bg-card border-l border-border overflow-y-auto flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 p-5 border-b border-white/10 sticky top-0 bg-[#111] z-10">
-          <div className="w-9 h-9 bg-orange-500/10 rounded-xl flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-orange-400" />
+        <div className="flex items-center gap-3 p-5 border-b border-border sticky top-0 bg-card z-10">
+          <div className="w-9 h-9 bg-warning/10 rounded-xl flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-warning" />
           </div>
           <div>
-            <h2 className="text-white font-semibold">{t("crmCancellations.solicitud", { id: req.id })}</h2>
-            <p className="text-gray-500 text-xs">
+            <h2 className="text-foreground font-semibold">{t("crmCancellations.solicitud", { id: req.id })}</h2>
+            <p className="text-muted-foreground text-xs">
               {format.dateTime(req.createdAt, { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>
-          <button onClick={onClose} className="ml-auto p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors">
+          <button onClick={onClose} className="ml-auto p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -367,41 +367,41 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 1: Datos del solicitante ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.datosDelSolicitante")}</h3>
-            <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.datosDelSolicitante")}</h3>
+            <div className="bg-muted rounded-xl border border-border/50 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                <span className="text-white text-sm font-medium">{req.fullName}</span>
+                <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-foreground text-sm font-medium">{req.fullName}</span>
               </div>
               {req.email && (
                 <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                  <a href={`mailto:${req.email}`} className="text-blue-400 text-sm hover:underline truncate">{req.email}</a>
+                  <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <a href={`mailto:${req.email}`} className="text-info text-sm hover:underline truncate">{req.email}</a>
                 </div>
               )}
               {req.phone && (
                 <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                  <span className="text-gray-300 text-sm">{req.phone}</span>
+                  <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <span className="text-foreground/80 text-sm">{req.phone}</span>
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                <span className="text-gray-300 text-sm">{voc.serviceDateLabel}: <strong className="text-white">{req.activityDate}</strong></span>
+                <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-foreground/80 text-sm">{voc.serviceDateLabel}: <strong className="text-foreground">{req.activityDate}</strong></span>
               </div>
               {req.locator && (
                 <div className="flex items-center gap-2">
-                  <Hash className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  <Hash className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                   {req.linkedReservationId && onNavigateToReservation ? (
                     <button
                       onClick={() => { onNavigateToReservation(req.linkedReservationId!); onClose(); }}
-                      className="text-blue-400 text-sm font-mono hover:text-blue-300 hover:underline underline-offset-2 transition-colors text-left"
+                      className="text-info text-sm font-mono hover:text-info hover:underline underline-offset-2 transition-colors text-left"
                       title={voc.viewOrder}
                     >
                       {req.locator}
                     </button>
                   ) : (
-                    <span className="text-gray-300 text-sm font-mono">{req.locator}</span>
+                    <span className="text-foreground/80 text-sm font-mono">{req.locator}</span>
                   )}
                 </div>
               )}
@@ -411,22 +411,22 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
           {/* ── Bloque 1b: Desglose de la reserva vinculada ── */}
           {linkedReservation && (
             <section>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.desgloseDe", { theOrder: voc.theOrder })}</h3>
-              <div className="bg-[#1a1a1a] rounded-xl border border-white/5 overflow-hidden">
+              <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.desgloseDe", { theOrder: voc.theOrder })}</h3>
+              <div className="bg-muted rounded-xl border border-border/50 overflow-hidden">
                 {/* Cabecera reserva */}
-                <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5">
+                <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50">
                   <div className="flex items-center gap-2">
                     {linkedReservation.reservationNumber && (
-                      <span className="text-xs font-mono font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-1.5 py-0.5">
+                      <span className="text-xs font-mono font-bold text-warning bg-warning/10 border border-warning/20 rounded px-1.5 py-0.5">
                         {linkedReservation.reservationNumber}
                       </span>
                     )}
-                    <span className="text-gray-500 text-xs">{linkedReservation.bookingDate}</span>
+                    <span className="text-muted-foreground text-xs">{linkedReservation.bookingDate}</span>
                   </div>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
-                    linkedReservation.status === "paid" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" :
-                    linkedReservation.status === "cancelled" ? "text-red-400 bg-red-500/10 border-red-500/20" :
-                    "text-gray-400 bg-gray-500/10 border-gray-500/20"
+                    linkedReservation.status === "paid" ? "text-success bg-success/10 border-success/20" :
+                    linkedReservation.status === "cancelled" ? "text-danger bg-danger/10 border-danger/20" :
+                    "text-muted-foreground bg-muted-foreground/10 border-muted-foreground/20"
                   }`}>
                     {linkedReservation.status === "paid" ? t("crmCancellations.pagada") :
                      linkedReservation.status === "cancelled" ? t("crmCancellations.cancelada") :
@@ -436,13 +436,13 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 </div>
 
                 {/* Líneas */}
-                <div className="divide-y divide-white/5">
+                <div className="divide-y divide-border">
                   {/* Servicio principal */}
                   <div className="flex items-center gap-3 px-4 py-3">
-                    <ShoppingBag className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <ShoppingBag className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-gray-200 text-sm font-medium truncate">{linkedReservation.productName}</p>
-                      <p className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
+                      <p className="text-muted-foreground text-xs flex items-center gap-1 mt-0.5">
                         <Users className="w-3 h-3" />
                         {linkedReservation.pricingType === "per_unit" && linkedReservation.unitsBooked
                           ? t("crmCancellations.unidadesPax", { units: linkedReservation.unitsBooked, capacity: linkedReservation.unitCapacity ?? 1 })
@@ -450,7 +450,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                         }
                       </p>
                     </div>
-                    <span className="text-gray-300 text-sm font-mono flex-shrink-0">
+                    <span className="text-foreground/80 text-sm font-mono flex-shrink-0">
                       {(() => {
                         let extrasTotal = 0;
                         try {
@@ -478,13 +478,13 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                         const priceCents = ex.price ?? (ex.unitPrice != null ? ex.unitPrice * 100 : null);
                         return (
                           <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-                            <PackagePlus className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                            <PackagePlus className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-gray-400 text-sm truncate">{name}</p>
-                              {qty > 1 && <p className="text-gray-600 text-xs">{t("crmCancellations.texto", { qty })}</p>}
+                              <p className="text-muted-foreground text-sm truncate">{name}</p>
+                              {qty > 1 && <p className="text-muted-foreground text-xs">{t("crmCancellations.texto", { qty })}</p>}
                             </div>
                             {priceCents != null && (
-                              <span className="text-gray-400 text-sm font-mono flex-shrink-0">
+                              <span className="text-muted-foreground text-sm font-mono flex-shrink-0">
                                 {((priceCents * qty) / 100).toFixed(2)} €
                               </span>
                             )}
@@ -496,21 +496,21 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 </div>
 
                 {/* Totales */}
-                <div className="border-t border-white/10 px-4 py-3 space-y-1.5">
+                <div className="border-t border-border px-4 py-3 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-xs flex items-center gap-1.5"><Euro className="w-3 h-3" />{t("crmCancellations.total2", { order: voc.order })}</span>
-                    <span className="text-white text-sm font-bold font-mono">{(linkedReservation.amountTotal / 100).toFixed(2)} €</span>
+                    <span className="text-muted-foreground text-xs flex items-center gap-1.5"><Euro className="w-3 h-3" />{t("crmCancellations.total2", { order: voc.order })}</span>
+                    <span className="text-foreground text-sm font-bold font-mono">{(linkedReservation.amountTotal / 100).toFixed(2)} €</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-xs">{t("crmCancellations.importeCobrado")}</span>
-                    <span className={`text-sm font-mono ${(linkedReservation.amountPaid ?? 0) >= linkedReservation.amountTotal ? "text-emerald-400" : "text-amber-400"}`}>
+                    <span className="text-muted-foreground text-xs">{t("crmCancellations.importeCobrado")}</span>
+                    <span className={`text-sm font-mono ${(linkedReservation.amountPaid ?? 0) >= linkedReservation.amountTotal ? "text-success" : "text-warning"}`}>
                       {((linkedReservation.amountPaid ?? 0) / 100).toFixed(2)} €
                     </span>
                   </div>
                   {(linkedReservation.amountPaid ?? 0) < linkedReservation.amountTotal && (
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-500 text-xs">{t("crmCancellations.pendienteDeCobro")}</span>
-                      <span className="text-red-400 text-sm font-mono">
+                      <span className="text-muted-foreground text-xs">{t("crmCancellations.pendienteDeCobro")}</span>
+                      <span className="text-danger text-sm font-mono">
                         {((linkedReservation.amountTotal - (linkedReservation.amountPaid ?? 0)) / 100).toFixed(2)} €
                       </span>
                     </div>
@@ -522,44 +522,44 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 2: Motivo ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.motivoDeAnulacion")}</h3>
-            <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4 space-y-2">
+            <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.motivoDeAnulacion")}</h3>
+            <div className="bg-muted rounded-xl border border-border/50 p-4 space-y-2">
               <div className="flex items-center gap-2">
                 <ReasonIcon reason={req.reason} />
-                <span className="text-gray-300 text-sm">{REASON_LABELS[req.reason] ? t(REASON_LABELS[req.reason]) : req.reason}</span>
+                <span className="text-foreground/80 text-sm">{REASON_LABELS[req.reason] ? t(REASON_LABELS[req.reason]) : req.reason}</span>
               </div>
             </div>
             {req.reasonDetail && (
-              <div className="mt-2 bg-[#1a1a1a] rounded-xl border border-white/5 p-4">
-                <p className="text-gray-400 text-xs mb-1">{t("crmCancellations.detalleDelMotivo")}</p>
-                <p className="text-gray-300 text-sm leading-relaxed">{req.reasonDetail}</p>
+              <div className="mt-2 bg-muted rounded-xl border border-border/50 p-4">
+                <p className="text-muted-foreground text-xs mb-1">{t("crmCancellations.detalleDelMotivo")}</p>
+                <p className="text-foreground/80 text-sm leading-relaxed">{req.reasonDetail}</p>
               </div>
             )}
           </section>
 
           {/* ── Bloque 3: Estado ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.estadoDelExpediente")}</h3>
+            <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.estadoDelExpediente")}</h3>
             <div className="grid grid-cols-3 gap-3">
-              <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-3 text-center">
-                <p className="text-gray-500 text-xs mb-2">{t("crmCancellations.operativo")}</p>
+              <div className="bg-muted rounded-xl border border-border/50 p-3 text-center">
+                <p className="text-muted-foreground text-xs mb-2">{t("crmCancellations.operativo")}</p>
                 <StatusBadge
                   label={OP_STATUS_LABELS[req.operationalStatus] ? t(OP_STATUS_LABELS[req.operationalStatus]) : req.operationalStatus}
-                  className="bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  className="bg-warning/10 text-warning border-warning/20"
                 />
               </div>
-              <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-3 text-center">
-                <p className="text-gray-500 text-xs mb-2">{t("crmCancellations.resolucion")}</p>
+              <div className="bg-muted rounded-xl border border-border/50 p-3 text-center">
+                <p className="text-muted-foreground text-xs mb-2">{t("crmCancellations.resolucion")}</p>
                 <StatusBadge
                   label={RES_STATUS_LABELS[req.resolutionStatus] ? t(RES_STATUS_LABELS[req.resolutionStatus]) : req.resolutionStatus}
-                  className="bg-blue-500/10 text-blue-400 border-blue-500/20"
+                  className="bg-info/10 text-info border-info/20"
                 />
               </div>
-              <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-3 text-center">
-                <p className="text-gray-500 text-xs mb-2">{t("crmCancellations.financiero")}</p>
+              <div className="bg-muted rounded-xl border border-border/50 p-3 text-center">
+                <p className="text-muted-foreground text-xs mb-2">{t("crmCancellations.financiero")}</p>
                 <StatusBadge
                   label={FIN_STATUS_LABELS[req.financialStatus] ? t(FIN_STATUS_LABELS[req.financialStatus]) : req.financialStatus}
-                  className="bg-purple-500/10 text-purple-400 border-purple-500/20"
+                  className="bg-primary/10 text-primary border-primary/20"
                 />
               </div>
             </div>
@@ -570,7 +570,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   key={s}
                   onClick={() => statusMut.mutate({ id: req.id, status: s })}
                   disabled={req.operationalStatus === s || statusMut.isPending}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 disabled:opacity-30 transition-all"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-foreground/5 disabled:opacity-30 transition-all"
                 >
                   → {OP_STATUS_LABELS[s] ? t(OP_STATUS_LABELS[s]) : s}
                 </button>
@@ -579,7 +579,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 <button
                   onClick={() => statusMut.mutate({ id: req.id, status: "en_revision" })}
                   disabled={statusMut.isPending}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/40 text-orange-400 hover:text-white hover:bg-orange-500/20 transition-all"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-warning/40 text-warning hover:text-foreground hover:bg-warning/20 transition-all"
                 >{t("crmCancellations.resolverIncidencia")}</button>
               )}
             </div>
@@ -588,20 +588,20 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
           {/* ── Bloque 4: Bono activo ── */}
           {voucher && (
             <section>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.bonoDeCompensacion")}</h3>
-              <div className="bg-purple-500/5 rounded-xl border border-purple-500/20 p-4 space-y-2">
+              <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.bonoDeCompensacion")}</h3>
+              <div className="bg-primary/5 rounded-xl border border-primary/20 p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Gift className="w-4 h-4 text-purple-400" />
-                    <span className="text-white font-mono font-semibold">{voucher.code}</span>
+                    <Gift className="w-4 h-4 text-primary" />
+                    <span className="text-foreground font-mono font-semibold">{voucher.code}</span>
                   </div>
-                  <StatusBadge label={voucher.status} className="bg-purple-500/10 text-purple-400 border-purple-500/20" />
+                  <StatusBadge label={voucher.status} className="bg-primary/10 text-primary border-primary/20" />
                 </div>
-                <p className="text-gray-400 text-xs">
+                <p className="text-muted-foreground text-xs">
                   {voucher.activityName ?? voc.voucherItem} · {parseFloat(voucher.value).toFixed(2)} {voucher.currency}
                 </p>
                 {voucher.expiresAt && (
-                  <p className="text-gray-500 text-xs">{t("crmCancellations.caduca")}{" "}{format.date(voucher.expiresAt, {})}
+                  <p className="text-muted-foreground text-xs">{t("crmCancellations.caduca")}{" "}{format.date(voucher.expiresAt, {})}
                   </p>
                 )}
                 {voucher.pdfUrl && (
@@ -609,7 +609,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     href={voucher.pdfUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary transition-colors"
                   >{t("crmCancellations.descargarPdf")}</a>
                 )}
               </div>
@@ -618,10 +618,10 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
           {/* ── Bloque 5: Timeline ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.historialDeActividad")}</h3>
-            <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4">
+            <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.historialDeActividad")}</h3>
+            <div className="bg-muted rounded-xl border border-border/50 p-4">
               {logs.length === 0 ? (
-                <p className="text-gray-600 text-sm">{t("crmCancellations.sinActividadRegistradaAun")}</p>
+                <p className="text-muted-foreground text-sm">{t("crmCancellations.sinActividadRegistradaAun")}</p>
               ) : (
                 <div className="space-y-0">
                   {logs.map((log) => (
@@ -635,16 +635,16 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
           {/* ── Bloque 6: Notas internas ── */}
           {req.adminNotes && (
             <section>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.notasInternas")}</h3>
-              <div className="bg-[#1a1a1a] rounded-xl border border-white/5 p-4">
-                <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{req.adminNotes}</p>
+              <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.notasInternas")}</h3>
+              <div className="bg-muted rounded-xl border border-border/50 p-4">
+                <p className="text-foreground/80 text-sm leading-relaxed whitespace-pre-wrap">{req.adminNotes}</p>
               </div>
             </section>
           )}
 
           {/* ── Bloque 7: Acciones operativas ── */}
           <section>
-            <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.acciones")}</h3>
+            <h3 className="text-muted-foreground text-xs font-semibold uppercase tracking-wide mb-3">{t("crmCancellations.acciones")}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
               <ActionButton label={t("crmCancellations.rechazar")} icon={<XCircle className="w-4 h-4" />} color="red" active={activePanel === "rechazar"} onClick={() => togglePanel("rechazar")} />
               <ActionButton label={t("crmCancellations.aceptar")} icon={<CheckCircle2 className="w-4 h-4" />} color="green" active={activePanel === "aceptar"} onClick={() => togglePanel("aceptar")} />
@@ -672,12 +672,12 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   onChange={(e) => setRejectNote(e.target.value)}
                   placeholder={t("crmCancellations.motivoDelRechazoSe")}
                   rows={3}
-                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
-                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
                   <input type="checkbox" checked={rejectSendEmail} onChange={(e) => setRejectSendEmail(e.target.checked)} className="rounded" />{t("crmCancellations.enviarEmailDeNotificacion")}</label>
                 <Button
-                  className="w-full bg-red-600 hover:bg-red-700 text-white"
+                  className="w-full bg-danger hover:bg-danger text-foreground"
                   disabled={rejectMut.isPending}
                   onClick={() => rejectMut.mutate({ id: req.id, adminText: rejectNote, sendEmail: rejectSendEmail })}
                 >
@@ -742,21 +742,21 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   {/* ── Paso 1: Ámbito ── */}
                   {hasExtras && (
                     <div>
-                      <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.n1QueSeAnula")}</p>
+                      <p className="text-muted-foreground text-xs font-semibold mb-2">{t("crmCancellations.n1QueSeAnula")}</p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => { setAcceptScope("total"); setSelectedLineQuantities(new Map()); }}
-                          className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "total" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                          className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "total" ? "border-success/50 bg-success/10 text-success" : "border-border text-muted-foreground hover:text-foreground/80"}`}
                         >
                           {t("crmCancellations.complet", { Order: voc.Order })}{voc.agree("o", "a")}
                         </button>
                         <button
                           onClick={() => setAcceptScope("lineas")}
-                          className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "lineas" ? "border-blue-500/50 bg-blue-500/10 text-blue-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                          className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "lineas" ? "border-info/50 bg-info/10 text-info" : "border-border text-muted-foreground hover:text-foreground/80"}`}
                         >{t("crmCancellations.lineasEspecificas")}</button>
                       </div>
                       {acceptScope === "lineas" && (
-                        <div className="mt-2 space-y-1.5 bg-[#111] rounded-lg border border-white/5 p-3">
+                        <div className="mt-2 space-y-1.5 bg-card rounded-lg border border-border/50 p-3">
                           {extras.map((ex, idx) => {
                             const isChecked = selectedLineQuantities.has(idx);
                             const selectedQty = selectedLineQuantities.get(idx) ?? ex.quantity;
@@ -766,30 +766,30 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                                   type="checkbox"
                                   checked={isChecked}
                                   onChange={() => toggleLine(idx, ex.quantity)}
-                                  className="rounded border-white/20 bg-transparent flex-shrink-0"
+                                  className="rounded border-border bg-transparent flex-shrink-0"
                                 />
-                                <span className="flex-1 text-xs text-gray-300 truncate">{ex.name}</span>
+                                <span className="flex-1 text-xs text-foreground/80 truncate">{ex.name}</span>
                                 {ex.quantity > 1 && isChecked ? (
                                   <div className="flex items-center gap-1 flex-shrink-0">
                                     <button
                                       type="button"
                                       onClick={() => setLineQty(idx, selectedQty - 1, ex.quantity)}
                                       disabled={selectedQty <= 1}
-                                      className="w-5 h-5 rounded bg-white/10 text-white text-xs disabled:opacity-30 hover:bg-white/20 flex items-center justify-center"
+                                      className="w-5 h-5 rounded bg-foreground/10 text-foreground text-xs disabled:opacity-30 hover:bg-foreground/20 flex items-center justify-center"
                                     >−</button>
-                                    <span className="text-xs text-white font-mono w-4 text-center">{selectedQty}</span>
+                                    <span className="text-xs text-foreground font-mono w-4 text-center">{selectedQty}</span>
                                     <button
                                       type="button"
                                       onClick={() => setLineQty(idx, selectedQty + 1, ex.quantity)}
                                       disabled={selectedQty >= ex.quantity}
-                                      className="w-5 h-5 rounded bg-white/10 text-white text-xs disabled:opacity-30 hover:bg-white/20 flex items-center justify-center"
+                                      className="w-5 h-5 rounded bg-foreground/10 text-foreground text-xs disabled:opacity-30 hover:bg-foreground/20 flex items-center justify-center"
                                     >+</button>
-                                    <span className="text-xs text-gray-500 font-mono ml-1">
+                                    <span className="text-xs text-muted-foreground font-mono ml-1">
                                       {((ex.priceCents * selectedQty) / 100).toFixed(2)} €
                                     </span>
                                   </div>
                                 ) : (
-                                  <span className="text-xs text-gray-500 font-mono flex-shrink-0">
+                                  <span className="text-xs text-muted-foreground font-mono flex-shrink-0">
                                     {ex.quantity > 1 && t("crmCancellations.texto4", { quantity: ex.quantity })}{((ex.priceCents * ex.quantity) / 100).toFixed(2)} €
                                   </span>
                                 )}
@@ -797,10 +797,10 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                             );
                           })}
                           {selectedLineQuantities.size === 0 && (
-                            <p className="text-gray-600 text-xs">{t("crmCancellations.seleccionaAlMenosUna")}</p>
+                            <p className="text-muted-foreground text-xs">{t("crmCancellations.seleccionaAlMenosUna")}</p>
                           )}
                           {selectedLineQuantities.size > 0 && (
-                            <p className="text-blue-400 text-xs font-medium pt-1 border-t border-white/5 mt-1">{t("crmCancellations.totalSeleccionado", { scopeAmountEur })}</p>
+                            <p className="text-info text-xs font-medium pt-1 border-t border-border/50 mt-1">{t("crmCancellations.totalSeleccionado", { scopeAmountEur })}</p>
                           )}
                         </div>
                       )}
@@ -809,16 +809,16 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
                   {/* ── Paso 2: Tipo de compensación ── */}
                   <div>
-                    <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.tipoDeCompensacion", { v: hasExtras ? "2." : "1." })}</p>
+                    <p className="text-muted-foreground text-xs font-semibold mb-2">{t("crmCancellations.tipoDeCompensacion", { v: hasExtras ? "2." : "1." })}</p>
                     <div className="flex gap-2">
                       <button
                         onClick={() => setAcceptCompType("devolucion")}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "devolucion" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "devolucion" ? "border-success/50 bg-success/10 text-success" : "border-border text-muted-foreground hover:text-foreground/80"}`}
                       >
                         <Banknote className="w-4 h-4" />{" "}{t("crmCancellations.devolucion")}</button>
                       <button
                         onClick={() => setAcceptCompType("bono")}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "bono" ? "border-purple-500/50 bg-purple-500/10 text-purple-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "bono" ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground/80"}`}
                       >
                         <Gift className="w-4 h-4" />{" "}{t("crmCancellations.bono")}</button>
                     </div>
@@ -826,56 +826,56 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
                   {/* ── Paso 3: Importe ── */}
                   <div>
-                    <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.importe", { v: hasExtras ? "3." : "2." })}</p>
+                    <p className="text-muted-foreground text-xs font-semibold mb-2">{t("crmCancellations.importe", { v: hasExtras ? "3." : "2." })}</p>
                     {acceptCompType === "devolucion" ? (
                       <>
                         <div className="flex items-center gap-2 mb-2">
-                          <Label className="text-gray-400 text-xs">{t("crmCancellations.importeADevolver")}</Label>
+                          <Label className="text-muted-foreground text-xs">{t("crmCancellations.importeADevolver")}</Label>
                           {scopeAmountCents > 0 && (
                             <button
                               onClick={() => setRefundAmount(scopeAmountEur)}
-                              className="text-xs text-blue-400 hover:text-blue-300 ml-auto"
+                              className="text-xs text-info hover:text-info ml-auto"
                             >{t("crmCancellations.usar", { scopeAmountEur })}</button>
                           )}
                         </div>
-                        <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white" />
-                        {isPartial && <p className="text-amber-400 text-xs mt-1">{t("crmCancellations.compensacionParcialDelImporte")}</p>}
+                        <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-card border-border text-foreground" />
+                        {isPartial && <p className="text-warning text-xs mt-1">{t("crmCancellations.compensacionParcialDelImporte")}</p>}
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">{t("crmCancellations.notaDeDevolucionOpcional")}</Label>
-                          <Input value={refundNote} onChange={(e) => setRefundNote(e.target.value)} placeholder={t("crmCancellations.ejTransferenciaEn5")} className="bg-[#111] border-white/10 text-white mt-1" />
+                          <Label className="text-muted-foreground text-xs">{t("crmCancellations.notaDeDevolucionOpcional")}</Label>
+                          <Input value={refundNote} onChange={(e) => setRefundNote(e.target.value)} placeholder={t("crmCancellations.ejTransferenciaEn5")} className="bg-card border-border text-foreground mt-1" />
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="flex items-center gap-2 mb-2">
-                          <Label className="text-gray-400 text-xs">{t("crmCancellations.valorDelBono")}</Label>
+                          <Label className="text-muted-foreground text-xs">{t("crmCancellations.valorDelBono")}</Label>
                           {scopeAmountCents > 0 && (
                             <button
                               onClick={() => setVoucherValue(scopeAmountEur)}
-                              className="text-xs text-blue-400 hover:text-blue-300 ml-auto"
+                              className="text-xs text-info hover:text-info ml-auto"
                             >{t("crmCancellations.usar", { scopeAmountEur })}</button>
                           )}
                         </div>
-                        <Input value={voucherValue} onChange={(e) => setVoucherValue(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white" />
-                        {isPartial && <p className="text-amber-400 text-xs mt-1">{t("crmCancellations.bonoParcialDelImporte")}</p>}
+                        <Input value={voucherValue} onChange={(e) => setVoucherValue(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-card border-border text-foreground" />
+                        {isPartial && <p className="text-warning text-xs mt-1">{t("crmCancellations.bonoParcialDelImporte")}</p>}
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">{t("crmCancellations.delBono", { voucherItem: voc.voucherItem })}</Label>
-                          <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder={voc.voucherItemExample} className="bg-[#111] border-white/10 text-white mt-1" />
+                          <Label className="text-muted-foreground text-xs">{t("crmCancellations.delBono", { voucherItem: voc.voucherItem })}</Label>
+                          <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder={voc.voucherItemExample} className="bg-card border-border text-foreground mt-1" />
                         </div>
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">{t("crmCancellations.caducidadOpcional")}</Label>
-                          <Input value={voucherExpires} onChange={(e) => setVoucherExpires(e.target.value)} type="date" className="bg-[#111] border-white/10 text-white mt-1" />
+                          <Label className="text-muted-foreground text-xs">{t("crmCancellations.caducidadOpcional")}</Label>
+                          <Input value={voucherExpires} onChange={(e) => setVoucherExpires(e.target.value)} type="date" className="bg-card border-border text-foreground mt-1" />
                         </div>
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">{t("crmCancellations.condicionesOpcional")}</Label>
-                          <Textarea value={voucherConditions} onChange={(e) => setVoucherConditions(e.target.value)} rows={2} placeholder={t("crmCancellations.condicionesDeUso")} className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none mt-1" />
+                          <Label className="text-muted-foreground text-xs">{t("crmCancellations.condicionesOpcional")}</Label>
+                          <Textarea value={voucherConditions} onChange={(e) => setVoucherConditions(e.target.value)} rows={2} placeholder={t("crmCancellations.condicionesDeUso")} className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none mt-1" />
                         </div>
                       </>
                     )}
                   </div>
 
                   <Button
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    className="w-full bg-success hover:bg-success/90 text-white"
                     disabled={
                       acceptMut.isPending ||
                       (acceptScope === "lineas" && selectedLineQuantities.size === 0)
@@ -923,12 +923,12 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   onChange={(e) => setDocsText(e.target.value)}
                   placeholder={t("crmCancellations.indicaQueDocumentosNecesitas")}
                   rows={3}
-                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
-                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
                   <input type="checkbox" checked={docsSendEmail} onChange={(e) => setDocsSendEmail(e.target.checked)} className="rounded" />{t("crmCancellations.enviarEmailAlCliente")}</label>
                 <Button
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  className="w-full bg-info hover:bg-info/90 text-white"
                   disabled={docsMut.isPending || docsText.trim().length < 10}
                   onClick={() => docsMut.mutate({ id: req.id, text: docsText, sendEmail: docsSendEmail })}
                 >
@@ -945,12 +945,12 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   onChange={(e) => setIncidenceNote(e.target.value)}
                   placeholder={t("crmCancellations.describeLaIncidenciaDetectada")}
                   rows={3}
-                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
-                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
                   <input type="checkbox" checked={incidenceEconomic} onChange={(e) => setIncidenceEconomic(e.target.checked)} className="rounded" />{t("crmCancellations.marcarComoIncidenciaEconomica")}</label>
                 <Button
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                  className="w-full bg-warning hover:bg-warning/90 text-white"
                   disabled={incidenceMut.isPending}
                   onClick={() => incidenceMut.mutate({ id: req.id, note: incidenceNote, economicIncidence: incidenceEconomic })}
                 >
@@ -967,10 +967,10 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   onChange={(e) => setInternalNote(e.target.value)}
                   placeholder={t("crmCancellations.escribeUnaNotaInterna")}
                   rows={3}
-                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
                 <Button
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                  className="w-full bg-primary hover:bg-primary text-foreground"
                   disabled={notesMut.isPending || !internalNote.trim()}
                   onClick={() => notesMut.mutate({ id: req.id, adminNotes: internalNote })}
                 >
@@ -982,16 +982,16 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             {/* ── Panel: Cerrar expediente ── */}
             {activePanel === "cerrar" && (
               <ActionPanelWrapper title={t("crmCancellations.cerrarExpediente")} color="gray">
-                <p className="text-xs text-gray-500">{t("crmCancellations.soloSePuedeCerrar")}</p>
+                <p className="text-xs text-muted-foreground">{t("crmCancellations.soloSePuedeCerrar")}</p>
                 <Textarea
                   value={closeNote}
                   onChange={(e) => setCloseNote(e.target.value)}
                   placeholder={t("crmCancellations.notasDeCierreDel")}
                   rows={2}
-                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
                 <Button
-                  className="w-full bg-gray-600 hover:bg-gray-700 text-white"
+                  className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground"
                   disabled={closeMut.isPending}
                   onClick={() => closeMut.mutate({ id: req.id, note: closeNote })}
                 >
@@ -1004,24 +1004,24 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             {activePanel === "vincular" && (
               <ActionPanelWrapper title={t("crmCancellations.vincular", { order: voc.order })} color="blue">
                 {req.linkedReservationId && (
-                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-2">
-                    <p className="text-xs text-blue-300 font-medium">{t("crmCancellations.ahora", { linkedLabel })}</p>
-                    <p className="text-blue-400 text-sm font-mono mt-0.5">{t("crmCancellations.id", { linkedReservationId: req.linkedReservationId })}</p>
+                  <div className="bg-info/10 border border-info/20 rounded-lg p-3 mb-2">
+                    <p className="text-xs text-info font-medium">{t("crmCancellations.ahora", { linkedLabel })}</p>
+                    <p className="text-info text-sm font-mono mt-0.5">{t("crmCancellations.id", { linkedReservationId: req.linkedReservationId })}</p>
                   </div>
                 )}
-                <p className="text-xs text-gray-500">{t("crmCancellations.buscaPorNumeroDe", { order: voc.order })}</p>
+                <p className="text-xs text-muted-foreground">{t("crmCancellations.buscaPorNumeroDe", { order: voc.order })}</p>
                 <div className="flex gap-2">
                   <Input
                     value={linkSearch}
                     onChange={(e) => setLinkSearch(e.target.value)}
                     placeholder={voc.licensed ? t("crmCancellations.numeroONombre") : t("crmCancellations.res20260001O")}
-                    className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 flex-1"
+                    className="bg-card border-border text-foreground placeholder:text-muted-foreground flex-1"
                     onKeyDown={(e) => { if (e.key === "Enter") setLinkSearchQuery(linkSearch); }}
                   />
                   <Button
                     variant="outline"
                     size="icon"
-                    className="border-white/10 text-gray-400 hover:text-white"
+                    className="border-border text-muted-foreground hover:text-foreground"
                     onClick={() => setLinkSearchQuery(linkSearch)}
                   >
                     <Search className="w-4 h-4" />
@@ -1034,23 +1034,23 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                         key={r.id}
                         onClick={() => linkMut.mutate({ requestId: req.id, reservationId: r.id })}
                         disabled={linkMut.isPending}
-                        className="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-all"
+                        className="w-full text-left px-3 py-2.5 rounded-lg border border-border hover:border-info/40 hover:bg-info/5 transition-all"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-white text-xs font-mono font-medium">{r.reservationNumber ?? `#${r.id}`}</span>
+                          <span className="text-foreground text-xs font-mono font-medium">{r.reservationNumber ?? `#${r.id}`}</span>
                           {r.cancellationRequestId && r.cancellationRequestId !== req.id && (
-                            <span className="text-xs text-orange-400 border border-orange-500/30 rounded px-1.5 py-0.5">{t("crmCancellations.yaVinculada")}</span>
+                            <span className="text-xs text-warning border border-warning/30 rounded px-1.5 py-0.5">{t("crmCancellations.yaVinculada")}</span>
                           )}
-                          <span className={`text-xs px-1.5 py-0.5 rounded border ${r.status === 'paid' ? 'text-green-400 border-green-500/20' : 'text-gray-400 border-white/10'}`}>{r.status}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded border ${r.status === 'paid' ? 'text-success border-success/20' : 'text-muted-foreground border-border'}`}>{r.status}</span>
                         </div>
-                        <p className="text-gray-300 text-xs mt-0.5">{r.customerName}</p>
-                        <p className="text-gray-500 text-xs">{r.productName} · {r.bookingDate}</p>
+                        <p className="text-foreground/80 text-xs mt-0.5">{r.customerName}</p>
+                        <p className="text-muted-foreground text-xs">{r.productName} · {r.bookingDate}</p>
                       </button>
                     ))}
                   </div>
                 )}
                 {searchResults && searchResults.length === 0 && linkSearchQuery && (
-                  <p className="text-gray-500 text-xs text-center py-2">{t("crmCancellations.sinResultadosPara", { linkSearchQuery })}</p>
+                  <p className="text-muted-foreground text-xs text-center py-2">{t("crmCancellations.sinResultadosPara", { linkSearchQuery })}</p>
                 )}
               </ActionPanelWrapper>
             )}
@@ -1058,36 +1058,36 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             {/* ── Panel: Marcar devolución realizada ── */}
             {activePanel === "marcar_devolucion" && (
               <ActionPanelWrapper title={t("crmCancellations.registrarDevolucionRealizada")} color="green">
-                <p className="text-xs text-gray-500">{t("crmCancellations.confirmaQueLaTransferencia")}</p>
+                <p className="text-xs text-muted-foreground">{t("crmCancellations.confirmaQueLaTransferencia")}</p>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.fechaDeLaTransferencia")}</Label>
+                  <Label className="text-muted-foreground text-xs mb-1 block">{t("crmCancellations.fechaDeLaTransferencia")}</Label>
                   <Input
                     type="date"
                     value={refundExecDate}
                     onChange={(e) => setRefundExecDate(e.target.value)}
-                    className="bg-[#111] border-white/10 text-white"
+                    className="bg-card border-border text-foreground"
                   />
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.urlDelComprobanteOpcional")}</Label>
+                  <Label className="text-muted-foreground text-xs mb-1 block">{t("crmCancellations.urlDelComprobanteOpcional")}</Label>
                   <Input
                     value={refundExecProofUrl}
                     onChange={(e) => setRefundExecProofUrl(e.target.value)}
                     placeholder="https://… o ruta al archivo"
-                    className="bg-[#111] border-white/10 text-white"
+                    className="bg-card border-border text-foreground"
                   />
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.notaInternaOpcional")}</Label>
+                  <Label className="text-muted-foreground text-xs mb-1 block">{t("crmCancellations.notaInternaOpcional")}</Label>
                   <Input
                     value={refundExecNote}
                     onChange={(e) => setRefundExecNote(e.target.value)}
                     placeholder={t("crmCancellations.ejTransferenciaBancoSantander")}
-                    className="bg-[#111] border-white/10 text-white"
+                    className="bg-card border-border text-foreground"
                   />
                 </div>
                 <Button
-                  className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  className="w-full bg-success hover:bg-success/90 text-white"
                   disabled={markRefundExecMut.isPending || !refundExecDate}
                   onClick={() => markRefundExecMut.mutate({
                     id: req.id,
@@ -1104,16 +1104,16 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             {/* ── Panel: Revertir resolución ── */}
             {activePanel === "revertir_resolucion" && (
               <ActionPanelWrapper title={t("crmCancellations.revertirResolucion")} color="orange">
-                <p className="text-xs text-gray-500">{t("crmCancellations.revierteLaResolucionActual")}<strong>{req.resolutionStatus}</strong>{t("crmCancellations.yDevuelveElExpediente")}</p>
+                <p className="text-xs text-muted-foreground">{t("crmCancellations.revierteLaResolucionActual")}<strong>{req.resolutionStatus}</strong>{t("crmCancellations.yDevuelveElExpediente")}</p>
                 <Textarea
                   value={revertReason}
                   onChange={(e) => setRevertReason(e.target.value)}
                   placeholder={t("crmCancellations.motivoDeLaReversion")}
                   rows={2}
-                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
                 <Button
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                  className="w-full bg-warning hover:bg-warning/90 text-white"
                   disabled={revertMut.isPending}
                   onClick={() => revertMut.mutate({ id: req.id, reason: revertReason || undefined })}
                 >
@@ -1125,11 +1125,11 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             {/* ── Panel: Cambiar estado financiero ── */}
             {activePanel === "cambiar_financiero" && (
               <ActionPanelWrapper title={t("crmCancellations.overrideEstadoFinanciero")} color="gray">
-                <p className="text-xs text-gray-500">{t("crmCancellations.cambioManualDelEstado")}</p>
+                <p className="text-xs text-muted-foreground">{t("crmCancellations.cambioManualDelEstado")}</p>
                 <select
                   value={financialOverrideStatus}
                   onChange={(e) => setFinancialOverrideStatus(e.target.value)}
-                  className="w-full bg-[#111] border border-white/10 text-white rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-card border border-border text-foreground rounded-lg px-3 py-2 text-sm"
                 >
                   <option value="">{t("crmCancellations.seleccionaEstado")}</option>
                   <option value="sin_compensacion">{t("crmCancellations.sinCompensacion")}</option>
@@ -1141,7 +1141,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   <option value="incidencia_economica">{t("crmCancellations.incidenciaEconomica")}</option>
                 </select>
                 <Button
-                  className="w-full bg-gray-600 hover:bg-gray-700 text-white"
+                  className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground"
                   disabled={financialOverrideMut.isPending || !financialOverrideStatus}
                   onClick={() => financialOverrideMut.mutate({ id: req.id, financialStatus: financialOverrideStatus as any })}
                 >
@@ -1153,16 +1153,16 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             {/* ── Panel: Reclamación post-cierre del cliente ── */}
             {activePanel === "reclamacion" && (
               <ActionPanelWrapper title={t("crmCancellations.registrarReclamacionDelCliente")} color="red">
-                <p className="text-xs text-gray-500">{t("crmCancellations.disponibleAunqueElExpediente")}</p>
+                <p className="text-xs text-muted-foreground">{t("crmCancellations.disponibleAunqueElExpediente")}</p>
                 <Textarea
                   value={reclamationText}
                   onChange={(e) => setReclamationText(e.target.value)}
                   placeholder={t("crmCancellations.describeLaReclamacionO")}
                   rows={4}
-                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                  className="bg-card border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
                 <Button
-                  className="w-full bg-rose-700 hover:bg-rose-800 text-white"
+                  className="w-full bg-danger hover:bg-danger text-foreground"
                   disabled={reclamationMut.isPending || reclamationText.trim().length === 0}
                   onClick={() => reclamationMut.mutate({ id: req.id, description: reclamationText.trim() })}
                 >
@@ -1174,42 +1174,42 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             {/* ── Panel: Reenviar emails ── */}
             {activePanel === "reenviar_emails" && (
               <ActionPanelWrapper title={t("crmCancellations.reenviarEmailsDelExpediente")} color="blue">
-                <p className="text-xs text-gray-500">{t("crmCancellations.reenviaTodosLosCorreos")}</p>
-                <div className="bg-[#111] rounded-lg border border-white/5 p-3 space-y-1">
-                  <p className="text-gray-400 text-xs font-semibold mb-2">{t("crmCancellations.emailsQueSeEnviaran")}</p>
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <Mail className="w-3 h-3 text-blue-400 flex-shrink-0" />{t("crmCancellations.acuseDeReciboDe")}</div>
+                <p className="text-xs text-muted-foreground">{t("crmCancellations.reenviaTodosLosCorreos")}</p>
+                <div className="bg-card rounded-lg border border-border/50 p-3 space-y-1">
+                  <p className="text-muted-foreground text-xs font-semibold mb-2">{t("crmCancellations.emailsQueSeEnviaran")}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Mail className="w-3 h-3 text-info flex-shrink-0" />{t("crmCancellations.acuseDeReciboDe")}</div>
                   {req.resolutionStatus !== "sin_resolver" && (
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <Mail className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Mail className="w-3 h-3 text-info flex-shrink-0" />
                       {req.resolutionStatus === "rechazada" ? t("crmCancellations.resolucionRechazada") :
                        req.compensationType === "bono" ? t("crmCancellations.resolucionCompensacionConBono") :
                        t("crmCancellations.resolucionDevolucionEconomica")}
                     </div>
                   )}
                   {voucher && (
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <Mail className="w-3 h-3 text-purple-400 flex-shrink-0" />{t("crmCancellations.envioDelBono", { code: voucher.code })}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Mail className="w-3 h-3 text-primary flex-shrink-0" />{t("crmCancellations.envioDelBono", { code: voucher.code })}
                     </div>
                   )}
                   {req.financialStatus === "devuelta_economicamente" && (
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <Mail className="w-3 h-3 text-green-400 flex-shrink-0" />{t("crmCancellations.confirmacionDeDevolucionEjecut")}</div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Mail className="w-3 h-3 text-success flex-shrink-0" />{t("crmCancellations.confirmacionDeDevolucionEjecut")}</div>
                   )}
                 </div>
                 <div>
-                  <Label className="text-gray-400 text-xs mb-1 block">{t("crmCancellations.destinatario")}</Label>
+                  <Label className="text-muted-foreground text-xs mb-1 block">{t("crmCancellations.destinatario")}</Label>
                   <Input
                     value={resendTo}
                     onChange={(e) => setResendTo(e.target.value)}
                     placeholder="email@ejemplo.com"
                     type="email"
-                    className="bg-[#111] border-white/10 text-white"
+                    className="bg-card border-border text-foreground"
                   />
-                  <p className="text-gray-600 text-xs mt-1">{t("crmCancellations.porDefectoElEmail")}</p>
+                  <p className="text-muted-foreground text-xs mt-1">{t("crmCancellations.porDefectoElEmail")}</p>
                 </div>
                 <Button
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  className="w-full bg-info hover:bg-info/90 text-white"
                   disabled={resendMut.isPending || !resendTo.trim()}
                   onClick={() => resendMut.mutate({ id: req.id, to: resendTo.trim() })}
                 >

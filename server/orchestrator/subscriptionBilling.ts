@@ -22,6 +22,12 @@ export interface StripeBilling {
   orderState: OrderState;
   /** Fin de la gracia por impago, si la hay. */
   graceEndsAt: number | null;
+  /** Estado de la suscripción en Stripe (trialing, active, past_due…), si se conoce (cobro por condiciones personalizadas). */
+  stripeStatus?: string | null;
+  /** Fin de la prueba de Stripe (ms): hasta entonces no se cobra. */
+  trialEnd?: number | null;
+  /** Plan Core de las condiciones vigentes (cobro por condiciones personalizadas). */
+  planName?: string | null;
   lastPayment: { status: PaymentStatus; purpose: PaymentPurpose; amountCents: number; currency: string; at: number; periodStart: number | null } | null;
 }
 export type SubscriptionBilling = StripeBilling | { source: "shadow" };

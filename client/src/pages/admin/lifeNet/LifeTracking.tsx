@@ -41,7 +41,7 @@ export default function LifeTracking() {
             <>
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {tr.data!.members.map((m) => (
-                  <li key={m.id} className="min-w-0 rounded-2xl border border-border bg-card p-4">
+                  <li key={m.id} className="min-w-0 rounded-xl border border-border bg-card p-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <MemberChip m={m} />
                       <span className="text-xs text-muted-foreground">{RELATIONSHIP_LABELS[m.relationship]}{m.hasAccess ? " · con acceso" : " · sin acceso propio"}</span>
@@ -61,7 +61,7 @@ export default function LifeTracking() {
                   </li>
                 ))}
               </ul>
-              <section aria-labelledby="life-hechas" className="rounded-2xl border border-border bg-card p-5">
+              <section aria-labelledby="life-hechas" className="rounded-xl border border-border bg-card p-5">
                 <h2 id="life-hechas" className="font-semibold text-foreground">Últimas tareas hechas</h2>
                 {tr.data!.recentDone.length === 0 ? (
                   <p className="mt-2 text-sm text-muted-foreground">Aún no se ha marcado ninguna tarea como hecha.</p>

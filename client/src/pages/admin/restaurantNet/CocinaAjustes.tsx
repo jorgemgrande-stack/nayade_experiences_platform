@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Archive, ArrowLeft, Pencil, Plus, RotateCcw } from "lucide-react";
+import { Archive, ArrowLeft, ChefHat, Clock, CheckCircle2, Flame, Pencil, Plus, RotateCcw, TriangleAlert, Utensils } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { useI18n } from "@/i18n/I18nProvider";
 import { TONE_BADGE } from "@/lib/panelTones";
 import { cn } from "@/lib/utils";
 import { INCIDENT_LABELS, STATION_TONES, STATION_TONE_LABELS, kdsSettingsProblem, type StationTone } from "@shared/restaurantKds";
@@ -25,6 +27,7 @@ const NO_ROUTE = "__plato";
 type StationForm = { id?: number; name: string; tone: StationTone; sla: string };
 
 export default function CocinaAjustes() {
+  const { t } = useI18n();
   const choice = useRestaurantChoice();
   const { canWrite, isAdmin } = useRestaurantNetWrite();
   const restaurantId = choice.restaurantId;
@@ -71,12 +74,13 @@ export default function CocinaAjustes() {
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-5">
         <PageHeader
+          icon={<ChefHat />}
           title="Partidas y métricas de cocina"
           description="Reparte los platos entre las pantallas de cocina, ajusta el semáforo y revisa los tiempos y las incidencias del día."
           actions={
             <>
               <RestaurantPicker choice={choice} />
-              <Button asChild variant="outline" size="sm"><Link href="/admin/restaurant-net/cocina"><ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />Cocina</Link></Button>
+              <Button asChild variant="outline" className="h-10"><Link href="/admin/restaurant-net/cocina"><ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />Cocina</Link></Button>
             </>
           }
         />
@@ -90,10 +94,10 @@ export default function CocinaAjustes() {
           <PanelError error={stations.error} onRetry={() => stations.refetch()} />
         ) : (
           <>
-            <section className="space-y-3 rounded-2xl border border-border bg-card p-4 sm:p-5" aria-labelledby="rnet-st-t">
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="rnet-st-t">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 id="rnet-st-t" className="text-lg font-bold text-foreground">Partidas</h2>
-                {canWrite && <Button size="sm" onClick={() => setForm({ name: "", tone: "neutral", sla: "15" })}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />Partida</Button>}
+                {canWrite && <Button className="h-10" onClick={() => setForm({ name: "", tone: "neutral", sla: "15" })}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />Partida</Button>}
               </div>
               {stations.isLoading ? (
                 <PanelLoading className="py-4" />
@@ -102,15 +106,15 @@ export default function CocinaAjustes() {
               ) : (
                 <ul className="divide-y divide-border rounded-xl border border-border">
                   {active.map((s) => (
-                    <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                    <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
                       <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
                         <span className={cn("rounded-full border px-2 py-0.5 text-xs font-medium", TONE_BADGE[s.tone])}>{s.name}</span>
                         objetivo {s.slaMinutes} min
                       </span>
                       {canWrite && (
                         <span className="flex gap-1">
-                          <Button size="sm" variant="ghost" aria-label={`Editar ${s.name}`} onClick={() => setForm({ id: s.id, name: s.name, tone: s.tone, sla: String(s.slaMinutes) })}><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
-                          <Button size="sm" variant="ghost" aria-label={`Archivar ${s.name}`} onClick={() => upsert.mutate({ id: s.id, restaurantId, name: s.name, tone: s.tone, slaMinutes: s.slaMinutes, isActive: false })}><Archive className="h-4 w-4" aria-hidden="true" /></Button>
+                          <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={`Editar ${s.name}`} onClick={() => setForm({ id: s.id, name: s.name, tone: s.tone, sla: String(s.slaMinutes) })}><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
+                          <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={`Archivar ${s.name}`} onClick={() => upsert.mutate({ id: s.id, restaurantId, name: s.name, tone: s.tone, slaMinutes: s.slaMinutes, isActive: false })}><Archive className="h-4 w-4" aria-hidden="true" /></Button>
                         </span>
                       )}
                     </li>
@@ -132,7 +136,7 @@ export default function CocinaAjustes() {
               )}
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-border bg-card p-4 sm:p-5" aria-labelledby="rnet-rt-t">
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="rnet-rt-t">
               <h2 id="rnet-rt-t" className="text-lg font-bold text-foreground">Qué partida prepara cada categoría</h2>
               <p className="text-sm text-muted-foreground">Se aplica a los platos que se pidan desde ahora. Sin elegir, cada plato va a la partida indicada en la carta.</p>
               {categories.length === 0 ? (
@@ -155,7 +159,7 @@ export default function CocinaAjustes() {
               )}
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-border bg-card p-4 sm:p-5" aria-labelledby="rnet-sm-t">
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="rnet-sm-t">
               <h2 id="rnet-sm-t" className="text-lg font-bold text-foreground">Semáforo</h2>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="space-y-1.5">
@@ -168,6 +172,7 @@ export default function CocinaAjustes() {
                 </div>
                 {canWrite && (
                   <Button
+                    className="h-10"
                     disabled={saveSettings.isPending}
                     onClick={() => {
                       const g = Number(green);
@@ -181,13 +186,18 @@ export default function CocinaAjustes() {
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">Después del ámbar, la comanda se ve en rojo.</p>
+              <div aria-hidden="true" className="flex h-3 w-full overflow-hidden rounded-full border border-border">
+                <span className="bg-success" style={{ flexGrow: Math.max(1, Number(green) || 1) }} />
+                <span className="bg-warning" style={{ flexGrow: Math.max(1, (Number(amber) || 2) - (Number(green) || 1)) }} />
+                <span className="bg-danger" style={{ flexGrow: Math.max(1, Math.round((Number(amber) || 2) / 2)) }} />
+              </div>
+              <p className="text-xs text-muted-foreground">{t("restaurantNet.ajustes.lightPreview", { green: Number(green) || 0, amber: Number(amber) || 0 })}</p>
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-border bg-card p-4 sm:p-5" aria-labelledby="rnet-mt-t">
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="rnet-mt-t">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 id="rnet-mt-t" className="text-lg font-bold text-foreground">Tiempos del día</h2>
-                <Input type="date" aria-label="Día" className="w-44" value={date} max={madridToday()} onChange={(e) => e.target.value && setDate(e.target.value)} />
+                <Input type="date" aria-label="Día" className="h-10 w-44" value={date} max={madridToday()} onChange={(e) => e.target.value && setDate(e.target.value)} />
               </div>
               {metrics.isLoading ? (
                 <PanelLoading className="py-4" />
@@ -197,20 +207,13 @@ export default function CocinaAjustes() {
                 <p className="text-sm text-muted-foreground">Ese día no se marchó ningún plato.</p>
               ) : metrics.data ? (
                 <>
-                  <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                    {[
-                      ["Platos", metrics.data.totals.plates],
-                      ["Preparación media", `${metrics.data.totals.avgCookMin.toLocaleString("es-ES")} min`],
-                      ["Pase medio", `${metrics.data.totals.avgServeMin.toLocaleString("es-ES")} min`],
-                      ["Fuera de tiempo", metrics.data.totals.lateCount],
-                      ["Incidencias", metrics.data.totals.incidents],
-                    ].map(([k, v]) => (
-                      <div key={String(k)} className="rounded-xl border border-border p-3">
-                        <dt className="text-xs text-muted-foreground">{k}</dt>
-                        <dd className="text-lg font-bold tabular-nums text-foreground">{v}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                    <MetricCard compact tone="brand" icon={<Utensils />} label="Platos" value={metrics.data.totals.plates} />
+                    <MetricCard compact tone="info" icon={<Clock />} label="Preparación media" value={`${metrics.data.totals.avgCookMin.toLocaleString("es-ES")} min`} />
+                    <MetricCard compact tone="success" icon={<CheckCircle2 />} label="Pase medio" value={`${metrics.data.totals.avgServeMin.toLocaleString("es-ES")} min`} />
+                    <MetricCard compact tone="warning" icon={<Flame />} label="Fuera de tiempo" value={metrics.data.totals.lateCount} />
+                    <MetricCard compact tone={metrics.data.totals.incidents > 0 ? "danger" : "neutral"} icon={<TriangleAlert />} label="Incidencias" value={metrics.data.totals.incidents} />
+                  </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="min-w-0">
                       <h3 className="mb-1 text-sm font-semibold text-foreground">Por partida</h3>
@@ -280,8 +283,8 @@ export default function CocinaAjustes() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setForm(null)}>Cancelar</Button>
-            <Button disabled={upsert.isPending} onClick={saveStation}>Guardar</Button>
+            <Button variant="outline" className="h-11" onClick={() => setForm(null)}>Cancelar</Button>
+            <Button className="h-11" disabled={upsert.isPending} onClick={saveStation}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

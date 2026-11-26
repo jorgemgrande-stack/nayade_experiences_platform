@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 
 const CATEGORY_COLORS: Record<string, string> = {
-  facturacion: "bg-blue-100 text-blue-800", presupuestos: "bg-purple-100 text-purple-800",
-  tpv: "bg-green-100 text-green-800", proveedores: "bg-orange-100 text-orange-800",
+  facturacion: "bg-info/10 text-info", presupuestos: "bg-primary/10 text-primary",
+  tpv: "bg-success/10 text-success", proveedores: "bg-warning/10 text-warning",
   general: "bg-gray-100 text-gray-800",
 };
 
@@ -203,12 +203,12 @@ export default function PdfTemplatesManager() {
                   className={`w-full text-left px-4 py-3 border-b transition-colors hover:bg-accent/50 ${selectedId === tpl.id && mode !== "create" ? "bg-accent" : ""}`}>
                   <div className="flex items-start justify-between gap-1">
                     <span className="text-sm font-medium leading-tight">{tpl.name}</span>
-                    {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("pdfTemplates.custom")}</span>}
+                    {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">{t("pdfTemplates.custom")}</span>}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{tpl.description}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
-                    {!(tplAny.isActive as boolean) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">{t("pdfTemplates.inactive")}</span>}
+                    <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
+                    {!(tplAny.isActive as boolean) && <span className="rounded-full bg-danger/10 px-1.5 py-0.5 text-xs font-medium text-danger">{t("pdfTemplates.inactive")}</span>}
                   </div>
                 </button>
               );
@@ -227,12 +227,12 @@ export default function PdfTemplatesManager() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>{t("pdfTemplates.create.uniqueId")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("pdfTemplates.create.uniqueId")} <span className="text-danger">*</span></Label>
                   <Input value={createForm.id} onChange={e => setCreateForm(p => ({ ...p, id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") }))} placeholder="mi_plantilla_pdf" />
                   <p className="text-xs text-muted-foreground">{t("pdfTemplates.create.idHint")}</p>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("pdfTemplates.create.nameRequired")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("pdfTemplates.create.nameRequired")} <span className="text-danger">*</span></Label>
                   <Input value={createForm.name} onChange={e => setCreateForm(p => ({ ...p, name: e.target.value }))} placeholder={t("pdfTemplates.create.namePlaceholder")} />
                 </div>
                 <div className="space-y-1.5 col-span-2">
@@ -284,7 +284,7 @@ export default function PdfTemplatesManager() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>{t("pdfTemplates.field.bodyHtml")} <span className="text-red-500">*</span></Label>
+                <Label>{t("pdfTemplates.field.bodyHtml")} <span className="text-danger">*</span></Label>
                 <p className="text-xs text-muted-foreground">{t("pdfTemplates.field.htmlHint", { token: "{{variable}}" })}</p>
                 <Textarea value={createForm.bodyHtml} onChange={e => setCreateForm(p => ({ ...p, bodyHtml: e.target.value }))} rows={20} className="font-mono text-xs" />
               </div>
@@ -413,7 +413,7 @@ export default function PdfTemplatesManager() {
                     <Pencil className="h-4 w-4 mr-1" /> {t("pdfTemplates.view.edit")}
                   </Button>
                   {templates?.find(t => t.id === selectedId) && !!(templates.find(t => t.id === selectedId) as Record<string, unknown>).isCustom && (
-                    <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => setShowDeleteConfirm(selectedId)}>
+                    <Button size="sm" variant="outline" className="text-danger hover:text-danger hover:bg-danger/10" onClick={() => setShowDeleteConfirm(selectedId)}>
                       <Trash2 className="h-4 w-4 mr-1" /> {t("pdfTemplates.view.delete")}
                     </Button>
                   )}
@@ -430,7 +430,7 @@ export default function PdfTemplatesManager() {
                     <div className="p-3 border-b bg-gray-50 flex items-center gap-2">
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm font-medium">{fullTemplate.name}</span>
-                      <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[(fullTemplate as Record<string, unknown>).category as string] ?? "bg-gray-100 text-gray-700"}`}>
+                      <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[(fullTemplate as Record<string, unknown>).category as string] ?? "bg-gray-100 text-gray-700"}`}>
                         {categoryLabels[(fullTemplate as Record<string, unknown>).category as string] ?? (fullTemplate as Record<string, unknown>).category as string}
                       </span>
                     </div>
@@ -495,7 +495,7 @@ export default function PdfTemplatesManager() {
       {/* Delete confirmation dialog */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-sm space-y-4">
+          <div className="bg-background rounded-lg shadow-md p-6 w-full max-w-sm space-y-4">
             <h3 className="font-semibold text-base">{t("pdfTemplates.deleteDialog.title")}</h3>
             <p className="text-sm text-muted-foreground">{t("pdfTemplates.deleteDialog.text")}</p>
             <div className="flex gap-2 justify-end">
@@ -512,7 +512,7 @@ export default function PdfTemplatesManager() {
       {/* Restore confirmation dialog */}
       {showRestoreConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-sm space-y-4">
+          <div className="bg-background rounded-lg shadow-md p-6 w-full max-w-sm space-y-4">
             <h3 className="font-semibold text-base">{t("pdfTemplates.restoreDialog.title")}</h3>
             <p className="text-sm text-muted-foreground">{t("pdfTemplates.restoreDialog.text")}</p>
             <div className="flex gap-2 justify-end">

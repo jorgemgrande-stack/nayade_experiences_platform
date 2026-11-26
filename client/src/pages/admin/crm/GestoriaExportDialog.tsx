@@ -12,11 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { toastError } from "@/lib/errorMessage";
-import { Download, RefreshCw } from "lucide-react";
+import { AlertCircle, CalendarRange, Download, FileArchive, RefreshCw } from "lucide-react";
 import { isEmptyExport, isEmptyExportMessage, madridDayKey, resolveExportPeriod, suggestedExportQuarter, type GestoriaExportPeriod } from "@shared/gestoriaExportPeriod";
 
 import { useI18n } from "@/i18n/I18nProvider";
-const selectClass = "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm";
+const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function downloadBase64(fileName: string, mimeType: string, contentBase64: string) {
   const bytes = Uint8Array.from(atob(contentBase64), (c) => c.charCodeAt(0));
@@ -95,21 +95,24 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("crmInvoices.exportarParaLaGestoria")}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileArchive className="h-4 w-4" aria-hidden="true" /></span>
+            {t("crmInvoices.exportarParaLaGestoria")}
+          </DialogTitle>
           <DialogDescription>{t("crmInvoices.unArchivoZipCon")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="flex gap-2" role="radiogroup" aria-label={t("crmInvoices.tipoDePeriodo")}>
-            {([["quarter", "Trimestre"], ["month", "Mes"], ["range", "Fechas"]] as const).map(([k, text]) => (
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-muted/50 p-1" role="radiogroup" aria-label={t("crmInvoices.tipoDePeriodo")}>
+            {([["quarter", t("crmInvoices.trimestre")], ["month", t("crmInvoices.mes")], ["range", t("crmInvoices.fechas")]] as const).map(([k, text]) => (
               <button
                 key={k}
                 type="button"
                 role="radio"
                 aria-checked={kind === k}
                 onClick={() => setKind(k)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-                  kind === k ? "bg-orange-600 text-white border-orange-600" : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  kind === k ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-background hover:text-foreground"
                 }`}
               >
                 {text}
@@ -117,54 +120,60 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
             ))}
           </div>
 
-          {kind !== "range" ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="gx-year">{t("crmInvoices.ano")}</Label>
-                <select id="gx-year" className={selectClass} value={year} onChange={(e) => { touched.current = true; setYear(Number(e.target.value)); }}>
-                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
-              {kind === "quarter" ? (
-                <div className="space-y-1">
-                  <Label htmlFor="gx-quarter">{t("crmInvoices.trimestre")}</Label>
-                  <select id="gx-quarter" className={selectClass} value={quarter} onChange={(e) => { touched.current = true; setQuarter(Number(e.target.value)); }}>
-                    <option value={1}>{t("crmInvoices.n1ErTrimestreEne")}</option>
-                    <option value={2}>{t("crmInvoices.n2TrimestreAbrJun")}</option>
-                    <option value={3}>{t("crmInvoices.n3ErTrimestreJul")}</option>
-                    <option value={4}>{t("crmInvoices.n4TrimestreOctDic")}</option>
+          <div className="rounded-xl border border-border bg-card p-4">
+            {kind !== "range" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="gx-year">{t("crmInvoices.ano")}</Label>
+                  <select id="gx-year" className={selectClass} value={year} onChange={(e) => { touched.current = true; setYear(Number(e.target.value)); }}>
+                    {years.map((y) => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
-              ) : (
-                <div className="space-y-1">
-                  <Label htmlFor="gx-month">{t("crmInvoices.mes")}</Label>
-                  <select id="gx-month" className={selectClass} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-                    {Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>{monthName(i)}</option>)}
-                  </select>
+                {kind === "quarter" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gx-quarter">{t("crmInvoices.trimestre")}</Label>
+                    <select id="gx-quarter" className={selectClass} value={quarter} onChange={(e) => { touched.current = true; setQuarter(Number(e.target.value)); }}>
+                      <option value={1}>{t("crmInvoices.n1ErTrimestreEne")}</option>
+                      <option value={2}>{t("crmInvoices.n2TrimestreAbrJun")}</option>
+                      <option value={3}>{t("crmInvoices.n3ErTrimestreJul")}</option>
+                      <option value={4}>{t("crmInvoices.n4TrimestreOctDic")}</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gx-month">{t("crmInvoices.mes")}</Label>
+                    <select id="gx-month" className={selectClass} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+                      {Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>{monthName(i)}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="gx-from">{t("crmInvoices.desde")}</Label>
+                  <Input id="gx-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="gx-from">{t("crmInvoices.desde")}</Label>
-                <Input id="gx-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="gx-to">{t("crmInvoices.hasta")}</Label>
+                  <Input id="gx-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="gx-to">{t("crmInvoices.hasta")}</Label>
-                <Input id="gx-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          <p className={`text-sm ${invalid ? "text-red-500" : "text-foreground/60"}`} aria-live="polite">
-            {invalid || t("crmInvoices.seIncluiranLasFacturas", { label })}
+          <p
+            className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${invalid ? "border-danger/40 bg-danger/10 text-danger" : "border-info/40 bg-info/10 text-foreground"}`}
+            aria-live="polite"
+          >
+            {invalid ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" /> : <CalendarRange className="mt-0.5 h-4 w-4 shrink-0 text-info" aria-hidden="true" />}
+            <span>{invalid || t("crmInvoices.seIncluiranLasFacturas", { label })}</span>
           </p>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>{t("crmInvoices.cancelar")}</Button>
-          <Button onClick={handleExport} disabled={busy || !!invalid} className="bg-orange-600 hover:bg-orange-700 text-white">
+          <Button onClick={handleExport} disabled={busy || !!invalid}>
             {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
             {busy ? t("crmInvoices.preparando") : t("crmInvoices.descargarZip")}
           </Button>

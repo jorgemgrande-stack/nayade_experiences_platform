@@ -220,7 +220,7 @@ describe("menú del panel", () => {
     const ac = resolveNav(LEGACY_SECTIONS, ctx).flatMap((s) => s.items).find((i) => i.label === "Atención Comercial");
     expect(ac?.children?.map((c) => c.label)).not.toContain("Email Comercial");
     expect(labels(resolveNav(LEGACY_SECTIONS, { ...allVisible, role: "adminrest" }))).toEqual(["Restaurantes"]);
-    expect(labels(resolveNav(LEGACY_SECTIONS, { ...allVisible, role: "controler" }))).toEqual(["Control Diario"]);
+    expect(labels(resolveNav(LEGACY_SECTIONS, { ...allVisible, role: "controler" }))).toEqual(["Control diario"]);
   });
 
   it("empresa Essential: grupos por tareas, sin módulos no contratados", () => {

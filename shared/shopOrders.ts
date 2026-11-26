@@ -14,6 +14,7 @@
 
 import { isValidSpanishTaxId, normalizeTaxId, validateEmail, validatePhone } from "./formValidation";
 import { isFixedOffer } from "./offerMode";
+import { siteUiText, type SiteUiText } from "./siteUiText";
 
 export type OrderStage = "pending_payment" | "paid" | "prepared" | "delivered" | "cancelled" | "failed";
 
@@ -103,17 +104,24 @@ export function stagePatch(to: OrderStage): { status?: "paid" | "cancelled"; sta
 /** Estados en los que se avisa al comprador por correo. */
 export const STAGES_NOTIFIED: OrderStage[] = ["prepared", "delivered", "cancelled"];
 
-export function stageEmailText(stage: OrderStage): { title: string; subject: string; paragraph: string } | null {
+export function stageEmailText(stage: OrderStage, locale?: string | null): { title: string; subject: string; paragraph: string } | null {
+  const t = siteUiText(locale);
   switch (stage) {
     case "prepared":
-      return { title: "Tu pedido está preparado", subject: "Tu pedido está preparado o en camino", paragraph: "Tu pedido ya está preparado o en camino. Te avisaremos cuando conste como entregado." };
+      return { title: t.emPreparedTitle, subject: t.emPreparedSubject, paragraph: t.emPreparedText };
     case "delivered":
-      return { title: "Pedido entregado", subject: "Tu pedido consta como entregado", paragraph: "Tu pedido consta como entregado. Gracias por tu compra." };
+      return { title: t.emDeliveredTitle, subject: t.emDeliveredSubject, paragraph: t.emDeliveredText };
     case "cancelled":
-      return { title: "Pedido cancelado", subject: "Tu pedido se ha cancelado", paragraph: "Tu pedido se ha cancelado. No se te ha cobrado ningún importe por él." };
+      return { title: t.emCancelledTitle, subject: t.emCancelledSubject, paragraph: t.emCancelledText };
     default:
       return null;
   }
+}
+
+/** Estado del pedido en el idioma del comprador (correos). */
+export function orderStageLabelIn(stage: OrderStage, t: SiteUiText): string {
+  const m: Record<OrderStage, string> = { pending_payment: t.emStagePending, paid: t.emStagePaid, prepared: t.emStagePrepared, delivered: t.emStageDelivered, cancelled: t.emStageCancelled, failed: t.emStageFailed };
+  return m[stage];
 }
 
 // ─── Datos del comprador ─────────────────────────────────────────────────────
@@ -138,21 +146,24 @@ export interface BuyerInput {
 export type BuyerErrors = Partial<Record<"name" | "email" | "phone" | "nif" | "billingName" | "billingAddress", string>>;
 
 /** Validación de los datos del comprador, con mensajes en español (la misma en el pago y en el servidor). */
-export function validateBuyer(b: BuyerInput): BuyerErrors {
+export function validateBuyer(b: BuyerInput, locale?: string | null): BuyerErrors {
   const e: BuyerErrors = {};
+  const t = siteUiText(locale);
+  // Los mensajes de correo y teléfono del validador común están en español: en otro idioma, los del diccionario
+  const es = t === siteUiText("es");
   const name = b.name.trim();
-  if (name.length < 2) e.name = "Escribe tu nombre y apellidos.";
-  else if (name.length > 120) e.name = "El nombre es demasiado largo.";
+  if (name.length < 2) e.name = t.coErrName;
+  else if (name.length > 120) e.name = t.coErrNameLong;
   const email = b.email.trim();
-  const emailError = email.length > 200 ? "El correo electrónico es demasiado largo." : validateEmail(email, true);
-  if (emailError) e.email = emailError;
+  const emailError = email.length > 200 ? t.coErrEmailLong : validateEmail(email, true);
+  if (emailError) e.email = es || email.length > 200 ? emailError : t.invalidEmail;
   const phoneError = validatePhone(b.phone ?? "");
-  if (phoneError) e.phone = phoneError;
+  if (phoneError) e.phone = es ? phoneError : t.invalidPhone;
   if (b.wantsInvoice) {
-    if (!(b.nif ?? "").trim()) e.nif = "Escribe el NIF, NIE o CIF para la factura.";
-    else if (!normalizeSpanishTaxId(b.nif)) e.nif = "El NIF, NIE o CIF no es válido. Revisa las cifras y la letra.";
-    if ((b.billingName ?? "").trim().length > 200) e.billingName = "La razón social es demasiado larga.";
-    if ((b.billingAddress ?? "").trim().length > 300) e.billingAddress = "La dirección es demasiado larga.";
+    if (!(b.nif ?? "").trim()) e.nif = t.coErrTaxIdMissing;
+    else if (!normalizeSpanishTaxId(b.nif)) e.nif = t.coErrTaxIdInvalid;
+    if ((b.billingName ?? "").trim().length > 200) e.billingName = t.coErrBillingNameLong;
+    if ((b.billingAddress ?? "").trim().length > 300) e.billingAddress = t.coErrBillingAddressLong;
   }
   return e;
 }
@@ -206,17 +217,17 @@ export function buyerCommentsFromNotes(notes: string | null | undefined): string
  * Mensaje para el comprador cuando no se puede iniciar el pago. Los avisos que el servidor redacta para el
  * comprador (producto agotado, precio, descuento) se muestran tal cual; lo técnico o de configuración, no.
  */
-export function checkoutErrorMessage(err: { code?: string | null; message?: string | null } | null | undefined): string {
+export function checkoutErrorMessage(err: { code?: string | null; message?: string | null } | null | undefined, locale?: string | null): string {
+  const t = siteUiText(locale);
   const code = err?.code ?? "";
   const msg = (err?.message ?? "").trim();
-  if (code === "PRECONDITION_FAILED" || code === "FORBIDDEN")
-    return "El pago con tarjeta no está disponible en este momento. Inténtalo más tarde o ponte en contacto con nosotros.";
-  if (code === "TOO_MANY_REQUESTS") return "Has hecho demasiados intentos seguidos. Espera un minuto y vuelve a intentarlo.";
+  if (code === "PRECONDITION_FAILED" || code === "FORBIDDEN") return t.coErrPayUnavailable;
+  if (code === "TOO_MANY_REQUESTS") return t.coErrTooMany;
   // Los errores de validación de formato llegan como JSON («[{…}]»): nunca se enseñan
   if (code === "BAD_REQUEST" && msg && !/^[[{]/.test(msg)) return msg;
-  if (code === "NOT_FOUND") return "Alguno de los artículos ya no está a la venta. Revisa el carrito y vuelve a intentarlo.";
-  if (!code || /fetch|network|Failed to/i.test(msg)) return "No hemos podido conectar para iniciar el pago. Revisa tu conexión y vuelve a intentarlo.";
-  return "No hemos podido iniciar el pago. Inténtalo de nuevo en unos minutos; no se te ha cobrado nada.";
+  if (code === "NOT_FOUND") return t.coErrNotFound;
+  if (!code || /fetch|network|Failed to/i.test(msg)) return t.coErrNetwork;
+  return t.coErrGeneric;
 }
 
 /** Aviso del servidor cuando una línea del carrito ya no se vende. */
