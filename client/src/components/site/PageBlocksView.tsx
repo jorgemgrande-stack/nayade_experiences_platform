@@ -2064,6 +2064,8 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
 const SECTION_GAP: Record<string, string> = { s: "gap-4 md:gap-6", m: "gap-6 md:gap-10", l: "gap-8 md:gap-16" };
 const SECTION_VALIGN: Record<string, string> = { top: "md:items-start", center: "md:items-center", bottom: "md:items-end" };
 const SECTION_WIDTH: Record<string, string> = { normal: "container", wide: "container max-w-[1400px]", full: "w-full px-4 md:px-8" };
+/** Espacio vertical propio de la sección: normal (el de siempre), reducido o ninguno. Solo cambia si la persona lo elige. */
+const SECTION_VSPACE: Record<string, string> = { normal: "py-8 md:py-10", compact: "py-3 md:py-4", none: "py-0" };
 /**
  * Dentro de una columna, los módulos no llevan el ancho ni el margen de página: ocupan su columna y con menos espacio
  * vertical (los mismos componentes, sin una versión aparte).
@@ -2087,7 +2089,7 @@ function SectionBlock({ b, preview, pageTitle }: { b: BlockOf<"section">; previe
         ? "md:[grid-template-columns:var(--studio-cols)]"
         : "md:grid-cols-2 lg:[grid-template-columns:var(--studio-cols)]";
   return (
-    <section className={cn(SECTION_WIDTH[b.data.width] ?? "container", "py-8 md:py-10")}>
+    <section className={cn(SECTION_WIDTH[b.data.width] ?? "container", SECTION_VSPACE[b.data.vspace] ?? SECTION_VSPACE.normal)}>
       <div
         className={cn(
           b.data.mobile === "reverse" ? cn("flex flex-col-reverse", tablet === "stack" ? "lg:grid" : "md:grid") : "grid grid-cols-1",
