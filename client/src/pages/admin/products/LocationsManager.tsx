@@ -131,7 +131,7 @@ export default function LocationsManager() {
       ) : (
         <div className="space-y-3">
           {sortedLocations.map((loc, idx) => (
-            <div key={loc.id} className="bg-card border border-border rounded-xl p-5 flex items-center gap-4">
+            <div key={loc.id} className="bg-card border border-border rounded-xl p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-3">
               <div className="flex flex-col items-center gap-0.5 shrink-0">
                 <button onClick={() => moveLoc(idx, "up")} disabled={idx === 0 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title={t("productsLocations.up")}>
                   <ChevronUp className="w-4 h-4 text-muted-foreground" />
@@ -144,15 +144,15 @@ export default function LocationsManager() {
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                 <MapPin className="w-6 h-6 text-primary" />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-foreground">{loc.name}</p>
+              <div className="flex-1 min-w-0 basis-40">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <p className="font-semibold text-foreground break-words min-w-0">{loc.name}</p>
                   <StatusBadge tone={loc.isActive ? "success" : "neutral"}>{loc.isActive ? t("productsLocations.active") : t("productsLocations.inactive")}</StatusBadge>
                 </div>
                 {loc.address && <p className="text-sm text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{loc.address}</p>}
                 {loc.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{loc.description}</p>}
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0 ml-auto">
                 <Button size="sm" variant="outline" onClick={() => openEdit(loc)}>
                   <Pencil className="w-3.5 h-3.5 mr-1" /> {t("productsLocations.edit")}
                 </Button>
