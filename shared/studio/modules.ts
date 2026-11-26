@@ -116,6 +116,7 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "mobile", label: "En el móvil", kind: "select", options: [{ value: "stack", label: "Una debajo de otra" }, { value: "reverse", label: "Una debajo de otra, al revés" }], advanced: true },
     { key: "tablet", label: "En la tableta", kind: "select", options: [{ value: "auto", label: "Automático" }, { value: "stack", label: "Una debajo de otra" }, { value: "columns", label: "Todas en fila" }], advanced: true },
     { key: "width", label: "Ancho", kind: "select", options: [{ value: "normal", label: "Normal" }, { value: "wide", label: "Amplio" }, { value: "full", label: "Toda la pantalla" }], advanced: true },
+    { key: "vspace", label: "Espacio vertical de la sección", kind: "select", options: [{ value: "normal", label: "Normal" }, { value: "compact", label: "Reducido" }, { value: "none", label: "Sin espacio" }] },
   ], { note: "Arrastra módulos de la biblioteca a cualquier columna, o usa «Añadir a la columna». Si quitas columnas, su contenido pasa a la última que queda. Dentro de una sección cabe otra sección (un nivel)." }),
   mod("modal", "estructura", "modal", "ventana emergente modal popup pop-up dialogo aviso ficha detalle", [
     { key: "title", label: "Título de la ventana", kind: "text", max: 200, inline: true },
@@ -541,7 +542,7 @@ export function libraryMatch(q: string, ...texts: string[]): boolean {
 export type InspectorTab = "content" | "design" | "behavior" | "advanced";
 
 /** Opciones de aspecto y distribución (pestaña Diseño). */
-const DESIGN_KEYS = new Set(["align", "size", "variant", "kind", "height", "overlay", "imagePosition", "layout", "columns", "perView", "grayscale", "gap", "valign", "width"]);
+const DESIGN_KEYS = new Set(["align", "size", "variant", "kind", "height", "overlay", "imagePosition", "layout", "columns", "perView", "grayscale", "gap", "valign", "width", "vspace"]);
 /** Lo que pasa al usarlo: avance, intervalos, interacciones y opciones funcionales (pestaña Comportamiento). */
 const BEHAVIOR_KEYS = new Set(["autoplay", "interval", "transition", "arrows", "dots", "zoom", "zoomAmount", "zoomSeconds", "animate", "lightbox", "redirectUrl", "consent", "showClose", "closeOnOverlay", "closeOnEsc", "autoOpen", "autoDelay", "rememberOption", "rememberDays"]);
 /** Ajustes técnicos, solo en el modo profesional (pestaña Avanzado). */
