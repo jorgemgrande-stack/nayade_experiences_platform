@@ -373,7 +373,7 @@ export function RowActions({ primary, menu = [], label }: { primary?: RowAction;
   return (
     <div className="flex items-center justify-end gap-1">
       {primary && (
-        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={primary.onSelect} disabled={primary.disabled}>
+        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 max-sm:h-10" onClick={primary.onSelect} disabled={primary.disabled}>
           {primary.icon}
           {primary.label}
         </Button>

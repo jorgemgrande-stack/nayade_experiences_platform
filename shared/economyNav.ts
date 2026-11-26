@@ -1,7 +1,7 @@
 /**
  * Estructura de navegación de Economía y contabilidad (lógica pura, sin React: la usan el cliente y las pruebas).
  *
- * Cuatro grupos (Hoy · Movimientos · TPV · Resultados) con las pantallas que YA existen, con sus rutas de siempre. La
+ * Cuatro grupos (Hoy · Movimientos · TPV · Resultados) con las pantallas que YA existen, con sus rutas de siempre. «Conciliación TPV» ya no es una pantalla aparte: es la cabecera de Remesas TPV (su ruta antigua redirige). La
  * visibilidad no inventa reglas: reutiliza las del menú lateral (`routeAccess` de `adminNav`, que mira las capacidades
  * del plan por ruta) y los roles del menú (administración; el rol «controler» solo ve el Control diario). Es solo
  * presentación: la autorización real se hace en el servidor en cada operación.
@@ -16,7 +16,7 @@ export const ECONOMY_GROUPS: readonly EconomyGroupId[] = ["today", "movements", 
 export type EconomyScreenId =
   | "summary" | "daily"
   | "transactions" | "expenses" | "recurring" | "suppliers" | "categories" | "costCenters" | "cash" | "bank"
-  | "pos" | "batches" | "conciliation"
+  | "pos" | "batches"
   | "profitLoss" | "reports" | "general" | "financeSync";
 
 export interface EconomyScreen {
@@ -43,7 +43,6 @@ export const ECONOMY_SCREENS: readonly EconomyScreen[] = [
   { id: "bank", href: `${C}/movimientos-bancarios`, group: "movements" },
   { id: "pos", href: `${C}/operaciones-tpv`, group: "pos" },
   { id: "batches", href: `${C}/remesas-tpv`, group: "pos" },
-  { id: "conciliation", href: `${C}/conciliacion-tpv`, group: "pos" },
   { id: "profitLoss", href: `${C}/cuenta-resultados`, group: "results" },
   { id: "reports", href: `${C}/informes`, group: "results" },
   { id: "general", href: `${C}/general`, group: "results" },
