@@ -30,6 +30,7 @@ import { useI18n, useFormat } from "@/i18n/I18nProvider";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
 import { EditionsPanel, UpcomingEditionsView } from "./EditionsPanel";
 import { SaleReadinessPanel } from "./SaleReadinessPanel";
+import { EconomyPager } from "../accounting/shared/EconomyParts";
 import { ProductTranslationsPanel } from "./ProductTranslationsPanel";
 import { isMultilingual } from "@shared/i18n";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
@@ -62,6 +63,8 @@ type ExpForm = {
   isSettlable: boolean;
   hasTimeSlots: boolean;
 };
+
+const EDITOR_SECTIONS = ["general", "price", "images", "availability", "content", "advanced"] as const;
 
 const emptyForm: ExpForm = {
   slug: "", title: "", shortDescription: "", description: "",
@@ -162,10 +165,13 @@ export default function ExperiencesManager() {
   const { t } = useI18n();
   const f = useFormat();
   const [showModal, setShowModal] = useState(false);
+  const [sec, setSec] = useState<(typeof EDITOR_SECTIONS)[number]>("general");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmReadiness, setConfirmReadiness] = useState(false);
   const [form, setForm] = useState<ExpForm>(emptyForm);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
   const [cloneModal, setCloneModal] = useState<{ id: number; originalName: string } | null>(null);
   const [cloneName, setCloneName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
@@ -215,6 +221,7 @@ export default function ExperiencesManager() {
   // Sincronizar orden local cuando llegan datos
   const utils = trpc.useUtils();
   const { data: categories } = trpc.products.getCategories.useQuery();
+  const { data: editorVariants } = trpc.products.getVariants.useQuery({ experienceId: editingId ?? 0 }, { enabled: showModal && !!editingId });
   const { data: locations } = trpc.products.getLocations.useQuery();
 
   // Acceso directo «Nuevo producto» (inicio del panel): ?nuevo=1
@@ -288,7 +295,7 @@ export default function ExperiencesManager() {
     onError: () => toast.error(t("productsCatalog.toast.reorderFailed")),
   });
 
-  const openCreate = () => { setEditingId(null); setForm({ ...emptyForm, ...newProductDefaults({ licensed: isNewCompany, can: sub.can }) }); setSubmitted(false); setServerError(null); setShowModal(true); };
+  const openCreate = () => { setEditingId(null); setForm({ ...emptyForm, ...newProductDefaults({ licensed: isNewCompany, can: sub.can }) }); setSubmitted(false); setServerError(null); setSec("general"); setShowModal(true); };
   const openEdit = (exp: Record<string, unknown>) => {
     setEditingId(Number(exp.id)); setConfirmReadiness(false);
     setForm({
@@ -335,6 +342,7 @@ export default function ExperiencesManager() {
     });
     setSubmitted(false);
     setServerError(null);
+    setSec("general");
     setShowModal(true);
   };
 
@@ -345,13 +353,25 @@ export default function ExperiencesManager() {
   const ErrorText = ({ k, id }: { k: keyof typeof formErrors; id: string }) =>
     err(k) ? <p id={`${id}-error`} className="text-xs text-destructive mt-1">{err(k)}</p> : null;
 
+  const SECTION_FIELDS: Record<(typeof EDITOR_SECTIONS)[number], readonly string[]> = {
+    general: ["title", "categoryId", "locationId"],
+    price: ["basePrice", "unitCapacity", "discountPercent"],
+    images: [],
+    availability: ["minPersons", "maxPersons"],
+    content: [],
+    advanced: [],
+  };
+  const sectionHasError = (s: (typeof EDITOR_SECTIONS)[number]) => SECTION_FIELDS[s].some((k) => (formErrors as Record<string, unknown>)[k]);
+  const secCls = (s: (typeof EDITOR_SECTIONS)[number]) => cn("contents", sec !== s && "hidden");
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
     setServerError(null);
     const firstError = (["title", "basePrice", "categoryId", "locationId", "minPersons", "maxPersons", "unitCapacity", "discountPercent"] as const).find((k) => formErrors[k]);
     if (firstError) {
-      document.getElementById(firstError)?.focus();
+      const target = EDITOR_SECTIONS.find((x) => SECTION_FIELDS[x].includes(firstError)) ?? "general";
+      setSec(target);
+      setTimeout(() => document.getElementById(firstError)?.focus(), 0);
       return;
     }
     const data = {
@@ -425,6 +445,9 @@ export default function ExperiencesManager() {
     (statusFilter === "all" || (statusFilter === "published" ? isPublishedOf(e) : statusFilter === "unpublished" ? !isPublishedOf(e) : !e.isActive))
   );
   const filtersActive = !!search.trim() || statusFilter !== "all";
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageItems = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   const moveItem = (index: number, direction: "up" | "down") => {
     const current = localOrder.length > 0 ? localOrder : sortedExperiences.map(e => e.id);
@@ -530,14 +553,14 @@ export default function ExperiencesManager() {
                 placeholder={isNewCompany ? t("productsCatalog.list.searchPlaceholderP") : t("productsCatalog.list.searchPlaceholderE")}
                 aria-label={isNewCompany ? t("productsCatalog.list.searchLabelP") : t("productsCatalog.list.searchLabelE")}
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPage(0); }}
                 className="w-full pl-9"
               />
             </div>
             <SegmentedTabs
               label={t("productsCatalog.list.filterLabel")}
               value={statusFilter}
-              onChange={setStatusFilter}
+              onChange={(v) => { setStatusFilter(v); setPage(0); }}
               options={[
                 { value: "all", label: t("productsCatalog.list.filterAll"), count: counts.all },
                 { value: "published", label: t("productsCatalog.list.published"), count: counts.published },
@@ -583,7 +606,7 @@ export default function ExperiencesManager() {
             </PanelEmpty>
           ) : layout === "grid" ? (
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label={isNewCompany ? t("productsCatalog.list.captionP") : t("productsCatalog.list.captionE")}>
-              {filtered.map((exp) => (
+              {pageItems.map((exp) => (
                 <li key={exp.id} className="group flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
                   <button type="button" onClick={() => openEdit(exp)} className="relative block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`${t("productsCatalog.list.edit")}: ${exp.title}`}>
                     <ProductThumb src={thumbOf(exp)} alt={exp.title} noImageLabel={t("productsCatalog.list.noImage")} className="w-full rounded-none" />
@@ -612,7 +635,7 @@ export default function ExperiencesManager() {
           ) : (
             <div className="overflow-hidden rounded-xl border border-border bg-card">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px]">
+                <table className="w-full min-w-[560px]">
                   <caption className="sr-only">{isNewCompany ? t("productsCatalog.list.captionP") : t("productsCatalog.list.captionE")}</caption>
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
@@ -621,11 +644,11 @@ export default function ExperiencesManager() {
                       <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colPrice")}</th>
                       {showDifficulty && <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colDifficulty")}</th>}
                       <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colStatus")}</th>
-                      <th scope="col" className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colActions")}</th>
+                      <th scope="col" className="sticky right-0 bg-card px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("productsCatalog.list.colActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((exp) => {
+                    {pageItems.map((exp) => {
                       const full = sortedExperiences.findIndex((e) => e.id === exp.id);
                       return (
                         <tr key={exp.id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
@@ -677,7 +700,7 @@ export default function ExperiencesManager() {
                             </td>
                           )}
                           <td className="px-4 py-2"><div className="flex flex-wrap items-center gap-1">{statusBadges(exp)}</div></td>
-                          <td className="px-4 py-2"><div className="flex items-center justify-end gap-1">{rowMenu(exp)}</div></td>
+                          <td className="sticky right-0 bg-card px-4 py-2"><div className="flex items-center justify-end gap-1">{rowMenu(exp)}</div></td>
                         </tr>
                       );
                     })}
@@ -685,6 +708,9 @@ export default function ExperiencesManager() {
                 </table>
               </div>
             </div>
+          )}
+          {!listLoading && !listIsError && filtered.length > 0 && (
+            <EconomyPager className="mt-3" page={safePage} pageSize={pageSize} total={filtered.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(0); }} />
           )}
         </>
       )}
@@ -695,28 +721,42 @@ export default function ExperiencesManager() {
 
       {/* Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex h-[92vh] max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="shrink-0 border-b border-border px-6 pb-3 pt-5 pr-12">
             <DialogTitle className="font-display">{editingId ? tn("editTitle") : isNewCompany ? t("productsCatalog.modal.newTitleP") : t("productsCatalog.modal.newTitleE")}</DialogTitle>
           </DialogHeader>
-          {editingId && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">{t("productsCatalog.modal.editionsHint")}</span>
-              <Button type="button" size="sm" variant="outline" onClick={() => setEditionsFor({ id: editingId, title: form.title })}>
-                <CalendarDays className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> {t("productsCatalog.list.editions")}
-              </Button>
+          <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+            <div className="shrink-0 space-y-2 border-b border-border px-6 py-2">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2" aria-label={t("productsCatalog.modal.stateBar")}>
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={form.isPublished}
+                  onCheckedChange={(v) => setForm({ ...form, isPublished: v })}
+                  className={form.isPublished ? "data-[state=checked]:bg-success" : ""}
+                />
+                <Label className="flex items-center gap-1.5">
+                  <span className={`inline-block w-2 h-2 rounded-full ${form.isPublished ? 'bg-success' : 'bg-muted-foreground'}`} />
+                  {form.isPublished ? t("productsCatalog.list.published") : t("productsCatalog.list.notPublished")}
+                  <span className="text-xs text-muted-foreground font-normal">{t("productsCatalog.modal.publicVisible")}</span>
+                </Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
+                <Label>{voc.licensed ? t("productsCatalog.list.onSale") : t("productsCatalog.list.active")}</Label>
+              </div>
+              </div>
+              <div role="tablist" aria-label={t("productsCatalog.modal.sections.label")} className="-mx-2 flex gap-1 overflow-x-auto px-2 pb-1">
+                {EDITOR_SECTIONS.map((s) => (
+  <button key={s} type="button" role="tab" aria-selected={sec === s} onClick={() => setSec(s)}
+    className={cn("relative shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", sec === s ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:text-foreground")}>
+    {t(`productsCatalog.modal.sections.${s}`)}
+    {submitted && sectionHasError(s) && <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-destructive align-middle" role="img" aria-label={t("productsCatalog.modal.sections.withErrors")} />}
+  </button>
+))}
+              </div>
             </div>
-          )}
-          {editingId && multilingual && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">{tn("translationsHint")}</span>
-              <Button type="button" size="sm" variant="outline" onClick={() => setTranslationsFor({ id: editingId, title: form.title })}>
-                <Languages className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> {t("productsCatalog.list.languages")}
-              </Button>
-            </div>
-          )}
-          <form onSubmit={handleSubmit} noValidate className="space-y-5 mt-2">
-            <p className="text-xs text-muted-foreground">{t("productsCatalog.modal.requiredNote")}</p>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              <div className="space-y-4">
             {serverError && (
               <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-foreground">
                 {serverError} {t("productsCatalog.modal.serverErrorTail")}
@@ -725,17 +765,9 @@ export default function ExperiencesManager() {
             {submitted && Object.keys(formErrors).length > 0 && (
               <p role="alert" className="text-sm text-destructive">{t("productsCatalog.modal.reviewFields")}</p>
             )}
-            {/* 4 zonas de upload de imágenes */}
-            <div>
-              <Label className="text-sm font-semibold mb-2 block">{t("productsCatalog.modal.imagesTitle")}</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <ImageUploadZone label={t("productsCatalog.image.n1")} value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
-                <ImageUploadZone label={t("productsCatalog.image.n2")} value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
-                <ImageUploadZone label={t("productsCatalog.image.n3")} value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
-                <ImageUploadZone label={t("productsCatalog.image.n4")} value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <p className="text-xs text-muted-foreground">{t("productsCatalog.modal.requiredNote")}</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div className={secCls("general")}>
               <div className="sm:col-span-2">
                 <Label htmlFor="title">{isNewCompany ? t("productsCatalog.modal.name") : t("productsCatalog.modal.titleField")} *</Label>
                 <Input id="title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-required="true" className="mt-1" {...errProps("title", "title")} />
@@ -746,36 +778,6 @@ export default function ExperiencesManager() {
                 <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="mt-1" placeholder={t("productsCatalog.modal.slugPlaceholder")} aria-describedby="slug-hint" />
                 <p id="slug-hint" className="text-xs text-muted-foreground mt-1">{t("productsCatalog.modal.slugHint")}</p>
               </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="offerMode">{t("productsCatalog.modal.offerMode")}</Label>
-                <Select value={form.offerMode} onValueChange={(v) => setForm({ ...form, offerMode: v as OfferMode })}>
-                  <SelectTrigger id="offerMode" className="mt-1" aria-describedby="offerMode-hint"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {OFFER_MODES.map((m) => <SelectItem key={m} value={m}>{t(`productsCatalog.offerMode.${m}.label`)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{t(`productsCatalog.offerMode.${form.offerMode}.help`)}</p>
-              </div>
-              {editingId && <SaleReadinessPanel experienceId={editingId} targetMode={form.offerMode} confirmed={confirmReadiness} onConfirmChange={setConfirmReadiness} />}
-              {form.offerMode === "fixed" || form.offerMode === "priced_request" ? (
-                <div>
-                  <Label htmlFor="basePrice">{isNewCompany ? t("productsCatalog.modal.priceLicensed") : t("productsCatalog.modal.priceOriginal")} *</Label>
-                  <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
-                  <ErrorText k="basePrice" id="basePrice" />
-                  {form.offerMode === "priced_request" && (
-                    <div className="mt-3">
-                      <Label htmlFor="requestCtaLabel">{t("productsCatalog.modal.ctaLabel")}</Label>
-                      <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <Label htmlFor="requestCtaLabel">{t("productsCatalog.modal.ctaLabel")}</Label>
-                  <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} aria-describedby="requestCta-hint" />
-                  <p id="requestCta-hint" className="text-xs text-muted-foreground mt-1">{t("productsCatalog.modal.ctaHint")}</p>
-                </div>
-              )}
               <div>
                 <Label htmlFor="categoryId">{t("productsCatalog.modal.category")} *</Label>
                 <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
@@ -806,35 +808,54 @@ export default function ExperiencesManager() {
                   </p>
                 )}
               </div>
-              <div>
-                <Label htmlFor="duration">{t("productsCatalog.modal.duration")}</Label>
-                <Input id="duration" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="mt-1" placeholder={isNewCompany ? t("productsCatalog.modal.durationPlaceholderP") : t("productsCatalog.modal.durationPlaceholderE")} />
+              <div className="sm:col-span-2">
+                <Label htmlFor="shortDescription">{t("productsCatalog.modal.shortDescription")}</Label>
+                <Input id="shortDescription" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} className="mt-1" />
               </div>
-              {showDifficulty && (
+              <div className="sm:col-span-2">
+                <Label htmlFor="description">{t("productsCatalog.modal.fullDescription")}</Label>
+                <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" rows={4} />
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
+                <Label>{voc.catalog.featured}</Label>
+              </div>
+              {voc.licensed && <p className="-mt-2 text-xs text-muted-foreground">{t("productsCatalog.modal.soldOutHint")}</p>}
+              <div className="flex items-center gap-3">
+                <Switch checked={form.isPresentialSale && presentialSaleAllowed(form.productType)} disabled={!presentialSaleAllowed(form.productType)} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
+                <Label className="flex items-center gap-1.5"><span className="text-primary font-bold" aria-hidden="true">&#9679;</span> {voc.licensed ? t("productsCatalog.modal.sellableCashier") : t("productsCatalog.modal.sellableTpv")}</Label>
+              </div>
+</div>
+<div className={secCls("price")}>
+              <div className="sm:col-span-2">
+                <Label htmlFor="offerMode">{t("productsCatalog.modal.offerMode")}</Label>
+                <Select value={form.offerMode} onValueChange={(v) => setForm({ ...form, offerMode: v as OfferMode })}>
+                  <SelectTrigger id="offerMode" className="mt-1" aria-describedby="offerMode-hint"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {OFFER_MODES.map((m) => <SelectItem key={m} value={m}>{t(`productsCatalog.offerMode.${m}.label`)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p id="offerMode-hint" className="text-xs text-muted-foreground mt-1">{t(`productsCatalog.offerMode.${form.offerMode}.help`)}</p>
+              </div>
+              {form.offerMode === "fixed" || form.offerMode === "priced_request" ? (
                 <div>
-                  <Label htmlFor="difficulty">{t("productsCatalog.modal.difficulty")}</Label>
-                  <Select value={form.difficulty} onValueChange={(v) => setForm({ ...form, difficulty: v })}>
-                    <SelectTrigger id="difficulty" className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="facil">{t("productsCatalog.difficulty.facil")}</SelectItem>
-                      <SelectItem value="moderado">{t("productsCatalog.difficulty.moderado")}</SelectItem>
-                      <SelectItem value="dificil">{t("productsCatalog.difficulty.dificil")}</SelectItem>
-                      <SelectItem value="experto">{t("productsCatalog.difficulty.experto")}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="basePrice">{isNewCompany ? t("productsCatalog.modal.priceLicensed") : t("productsCatalog.modal.priceOriginal")} *</Label>
+                  <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
+                  <ErrorText k="basePrice" id="basePrice" />
+                  {form.offerMode === "priced_request" && (
+                    <div className="mt-3">
+                      <Label htmlFor="requestCtaLabel">{t("productsCatalog.modal.ctaLabel")}</Label>
+                      <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="requestCtaLabel">{t("productsCatalog.modal.ctaLabel")}</Label>
+                  <Input id="requestCtaLabel" value={form.requestCtaLabel} maxLength={MAX_REQUEST_CTA_LENGTH} onChange={(e) => setForm({ ...form, requestCtaLabel: e.target.value })} className="mt-1" placeholder={DEFAULT_REQUEST_CTA} aria-describedby="requestCta-hint" />
+                  <p id="requestCta-hint" className="text-xs text-muted-foreground mt-1">{t("productsCatalog.modal.ctaHint")}</p>
                 </div>
               )}
-              <div>
-                <Label htmlFor="minPersons">{isNewCompany ? t("productsCatalog.modal.minP") : t("productsCatalog.modal.minE")}</Label>
-                <Input id="minPersons" type="number" inputMode="numeric" min="1" value={form.minPersons} onChange={(e) => setForm({ ...form, minPersons: e.target.value })} className="mt-1" {...errProps("minPersons", "minPersons")} />
-                <ErrorText k="minPersons" id="minPersons" />
-              </div>
-              <div>
-                <Label htmlFor="maxPersons">{isNewCompany ? t("productsCatalog.modal.maxP") : t("productsCatalog.modal.maxE")}</Label>
-                <Input id="maxPersons" type="number" inputMode="numeric" min="1" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" placeholder={isNewCompany ? t("productsCatalog.modal.noLimit") : undefined} {...errProps("maxPersons", "maxPersons")} />
-                <ErrorText k="maxPersons" id="maxPersons" />
-              </div>
-
               {/* Tipo de Pricing */}
               <div className="sm:col-span-2">
                 <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
@@ -880,41 +901,6 @@ export default function ExperiencesManager() {
                   )}
                 </div>
               </div>
-
-              <div className="sm:col-span-2">
-                <Label htmlFor="shortDescription">{t("productsCatalog.modal.shortDescription")}</Label>
-                <Input id="shortDescription" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} className="mt-1" />
-              </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="description">{t("productsCatalog.modal.fullDescription")}</Label>
-                <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" rows={4} />
-              </div>
-              <div className="flex items-center gap-3">
-                <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
-                <Label>{voc.catalog.featured}</Label>
-              </div>
-              <div className="flex items-center gap-3">
-                <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
-                <Label>{voc.licensed ? t("productsCatalog.list.onSale") : t("productsCatalog.list.active")}</Label>
-              </div>
-              {voc.licensed && <p className="-mt-2 text-xs text-muted-foreground">{t("productsCatalog.modal.soldOutHint")}</p>}
-              <div className="flex items-center gap-3">
-                <Switch
-                  checked={form.isPublished}
-                  onCheckedChange={(v) => setForm({ ...form, isPublished: v })}
-                  className={form.isPublished ? "data-[state=checked]:bg-success" : ""}
-                />
-                <Label className="flex items-center gap-1.5">
-                  <span className={`inline-block w-2 h-2 rounded-full ${form.isPublished ? 'bg-success' : 'bg-muted-foreground'}`} />
-                  {form.isPublished ? t("productsCatalog.list.published") : t("productsCatalog.list.notPublished")}
-                  <span className="text-xs text-muted-foreground font-normal">{t("productsCatalog.modal.publicVisible")}</span>
-                </Label>
-              </div>
-              <div className="flex items-center gap-3">
-                <Switch checked={form.isPresentialSale && presentialSaleAllowed(form.productType)} disabled={!presentialSaleAllowed(form.productType)} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
-                <Label className="flex items-center gap-1.5"><span className="text-primary font-bold" aria-hidden="true">&#9679;</span> {voc.licensed ? t("productsCatalog.modal.sellableCashier") : t("productsCatalog.modal.sellableTpv")}</Label>
-              </div>
-
               {/* Descuento */}
               <div className="col-span-2">
                 <div className={cn("border rounded-xl p-4", TONE_SURFACE.warning)}>
@@ -961,7 +947,6 @@ export default function ExperiencesManager() {
                   )}
                 </div>
               </div>
-
               {/* Régimen Fiscal */}
               <div className="col-span-2">
                 <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
@@ -1032,69 +1017,79 @@ export default function ExperiencesManager() {
                   </p>
                 )}
               </div>
-
-              {/* Proveedor y Liquidaciones (solo con el módulo de proveedores contratado) */}
-              {showSuppliers && (
-              <div className="sm:col-span-2">
-                <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
-                  <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.brand)} aria-hidden="true">🏢</span>
-                  {t("productsCatalog.modal.supplierSection")}
-                </Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.supplier")}</Label>
-                    <SupplierSelect
-                      value={form.supplierId}
-                      onChange={(v) => setForm({ ...form, supplierId: v != null ? String(v) : "" })}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.costType")}</Label>
-                    <select
-                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
-                      value={form.supplierCostType}
-                      onChange={(e) => setForm({ ...form, supplierCostType: e.target.value })}
-                    >
-                      <option value="comision_sobre_venta">{t("productsCatalog.modal.costCommission")}</option>
-                      <option value="precio_neto">{t("productsCatalog.modal.costNet")}</option>
-                      <option value="precio_neto_variable">{t("productsCatalog.modal.costNetVariable")}</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.commission")}</Label>
-                    <Input
-                      type="number" min="0" max="100" step="0.01"
-                      placeholder={t("productsCatalog.modal.example20")}
-                      value={form.supplierCommissionPercent}
-                      onChange={(e) => setForm({ ...form, supplierCommissionPercent: e.target.value })}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.settlementFrequency")}</Label>
-                    <select
-                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
-                      value={form.settlementFrequency}
-                      onChange={(e) => setForm({ ...form, settlementFrequency: e.target.value })}
-                    >
-                      <option value="mensual">{t("productsCatalog.modal.freqMonthly")}</option>
-                      <option value="quincenal">{t("productsCatalog.modal.freqBiweekly")}</option>
-                      <option value="semanal">{t("productsCatalog.modal.freqWeekly")}</option>
-                      <option value="por_reserva">{t("productsCatalog.modal.freqPerBooking")}</option>
-                      <option value="manual">{t("productsCatalog.modal.freqManual")}</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 mt-3">
-                  <Switch
-                    checked={form.isSettlable}
-                    onCheckedChange={(v) => setForm({ ...form, isSettlable: v })}
-                  />
-                  <Label className="text-sm text-slate-600">{t("productsCatalog.modal.autoSettle")}</Label>
-                </div>
+<div className="sm:col-span-2 rounded-xl border border-border bg-muted/40 p-4 space-y-2">
+  <div className="flex flex-wrap items-center justify-between gap-2">
+    <span className="text-sm font-semibold text-foreground">{t("productsCatalog.modal.variantsTitle")}</span>
+    {editingId && (
+      <Link href={`/admin/productos/variantes?producto=${editingId}`} className="text-sm underline underline-offset-4">{t("productsCatalog.modal.variantsManage")}</Link>
+    )}
+  </div>
+  {!editingId ? (
+    <p className="text-xs text-muted-foreground">{t("productsCatalog.modal.variantsSave")}</p>
+  ) : (editorVariants ?? []).length === 0 ? (
+    <p className="text-xs text-muted-foreground">{t("productsCatalog.modal.variantsNone")}</p>
+  ) : (
+    <ul className="divide-y divide-border text-sm">
+      {(editorVariants ?? []).map((v) => (
+        <li key={v.id} className="flex items-center justify-between gap-3 py-1.5">
+          <span className="min-w-0 break-words">{v.name}{v.isRequired ? <span className="ml-2 text-xs text-muted-foreground">{t("productsCatalog.modal.variantsRequired")}</span> : null}</span>
+          <span className="shrink-0 tabular-nums text-muted-foreground">{v.priceType === "percentage" ? `${v.priceModifier}%` : `${v.priceModifier} €`}</span>
+        </li>
+      ))}
+    </ul>
+  )}
+  <p className="text-xs text-muted-foreground">{t("productsCatalog.modal.variantsHint")}</p>
+</div>
+              {editingId && <div className="sm:col-span-2"><SaleReadinessPanel experienceId={editingId} targetMode={form.offerMode} confirmed={confirmReadiness} onConfirmChange={setConfirmReadiness} /></div>}
+</div>
+<div className={secCls("images")}>
+            <div className="sm:col-span-2">
+              <Label className="text-sm font-semibold mb-2 block">{t("productsCatalog.modal.imagesTitle")}</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <ImageUploadZone label={t("productsCatalog.image.n1")} value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
+                <ImageUploadZone label={t("productsCatalog.image.n2")} value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
+                <ImageUploadZone label={t("productsCatalog.image.n3")} value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
+                <ImageUploadZone label={t("productsCatalog.image.n4")} value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
               </div>
+            </div>
+</div>
+<div className={secCls("availability")}>
+              <div>
+                <Label htmlFor="duration">{t("productsCatalog.modal.duration")}</Label>
+                <Input id="duration" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="mt-1" placeholder={isNewCompany ? t("productsCatalog.modal.durationPlaceholderP") : t("productsCatalog.modal.durationPlaceholderE")} />
+              </div>
+              {showDifficulty && (
+                <div>
+                  <Label htmlFor="difficulty">{t("productsCatalog.modal.difficulty")}</Label>
+                  <Select value={form.difficulty} onValueChange={(v) => setForm({ ...form, difficulty: v })}>
+                    <SelectTrigger id="difficulty" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="facil">{t("productsCatalog.difficulty.facil")}</SelectItem>
+                      <SelectItem value="moderado">{t("productsCatalog.difficulty.moderado")}</SelectItem>
+                      <SelectItem value="dificil">{t("productsCatalog.difficulty.dificil")}</SelectItem>
+                      <SelectItem value="experto">{t("productsCatalog.difficulty.experto")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
-
+              <div>
+                <Label htmlFor="minPersons">{isNewCompany ? t("productsCatalog.modal.minP") : t("productsCatalog.modal.minE")}</Label>
+                <Input id="minPersons" type="number" inputMode="numeric" min="1" value={form.minPersons} onChange={(e) => setForm({ ...form, minPersons: e.target.value })} className="mt-1" {...errProps("minPersons", "minPersons")} />
+                <ErrorText k="minPersons" id="minPersons" />
+              </div>
+              <div>
+                <Label htmlFor="maxPersons">{isNewCompany ? t("productsCatalog.modal.maxP") : t("productsCatalog.modal.maxE")}</Label>
+                <Input id="maxPersons" type="number" inputMode="numeric" min="1" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" placeholder={isNewCompany ? t("productsCatalog.modal.noLimit") : undefined} {...errProps("maxPersons", "maxPersons")} />
+                <ErrorText k="maxPersons" id="maxPersons" />
+              </div>
+{editingId && (
+<div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+<span className="text-muted-foreground">{t("productsCatalog.modal.editionsHint")}</span>
+<Button type="button" size="sm" variant="outline" onClick={() => setEditionsFor({ id: editingId, title: form.title })}>
+<CalendarDays className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> {t("productsCatalog.list.editions")}
+</Button>
+</div>
+)}
               {/* Time Slots Panel */}
               {editingId && (
                 <TimeSlotsPanel
@@ -1103,7 +1098,16 @@ export default function ExperiencesManager() {
                   onToggle={(enabled) => setForm(f => ({ ...f, hasTimeSlots: enabled }))}
                 />
               )}
-
+</div>
+<div className={secCls("content")}>
+{editingId && multilingual && (
+<div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+<span className="text-muted-foreground">{tn("translationsHint")}</span>
+<Button type="button" size="sm" variant="outline" onClick={() => setTranslationsFor({ id: editingId, title: form.title })}>
+<Languages className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> {t("productsCatalog.list.languages")}
+</Button>
+</div>
+)}
               {/* Incluye */}
               <div className="col-span-2">
                 <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
@@ -1187,8 +1191,75 @@ export default function ExperiencesManager() {
                   </Button>
                 </div>
               </div>
+</div>
+<div className={secCls("advanced")}>
+              {/* Proveedor y Liquidaciones (solo con el módulo de proveedores contratado) */}
+              {showSuppliers && (
+              <div className="sm:col-span-2">
+                <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
+                  <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.brand)} aria-hidden="true">🏢</span>
+                  {t("productsCatalog.modal.supplierSection")}
+                </Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.supplier")}</Label>
+                    <SupplierSelect
+                      value={form.supplierId}
+                      onChange={(v) => setForm({ ...form, supplierId: v != null ? String(v) : "" })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.costType")}</Label>
+                    <select
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
+                      value={form.supplierCostType}
+                      onChange={(e) => setForm({ ...form, supplierCostType: e.target.value })}
+                    >
+                      <option value="comision_sobre_venta">{t("productsCatalog.modal.costCommission")}</option>
+                      <option value="precio_neto">{t("productsCatalog.modal.costNet")}</option>
+                      <option value="precio_neto_variable">{t("productsCatalog.modal.costNetVariable")}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.commission")}</Label>
+                    <Input
+                      type="number" min="0" max="100" step="0.01"
+                      placeholder={t("productsCatalog.modal.example20")}
+                      value={form.supplierCommissionPercent}
+                      onChange={(e) => setForm({ ...form, supplierCommissionPercent: e.target.value })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">{t("productsCatalog.modal.settlementFrequency")}</Label>
+                    <select
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
+                      value={form.settlementFrequency}
+                      onChange={(e) => setForm({ ...form, settlementFrequency: e.target.value })}
+                    >
+                      <option value="mensual">{t("productsCatalog.modal.freqMonthly")}</option>
+                      <option value="quincenal">{t("productsCatalog.modal.freqBiweekly")}</option>
+                      <option value="semanal">{t("productsCatalog.modal.freqWeekly")}</option>
+                      <option value="por_reserva">{t("productsCatalog.modal.freqPerBooking")}</option>
+                      <option value="manual">{t("productsCatalog.modal.freqManual")}</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mt-3">
+                  <Switch
+                    checked={form.isSettlable}
+                    onCheckedChange={(v) => setForm({ ...form, isSettlable: v })}
+                  />
+                  <Label className="text-sm text-slate-600">{t("productsCatalog.modal.autoSettle")}</Label>
+                </div>
+              </div>
+              )}
+{!showSuppliers && <p className="sm:col-span-2 text-sm text-muted-foreground">{t("productsCatalog.modal.advancedEmpty")}</p>}
+</div>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-3 pt-2">
+            <div className="flex shrink-0 gap-3 border-t border-border bg-background px-6 py-3 max-sm:pb-6">
               <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">{t("productsCatalog.modal.cancel")}</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="flex-1 font-semibold">
                 {editingId ? t("productsCatalog.modal.saveChanges") : isNewCompany ? t("productsCatalog.modal.createP") : t("productsCatalog.modal.createE")}

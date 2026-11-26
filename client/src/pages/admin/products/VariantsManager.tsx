@@ -44,7 +44,9 @@ const emptyForm = (): FormState => ({
 });
 
 export default function VariantsManager() {
-  const [selectedExp, setSelectedExp] = useState<string>("all");
+  const [selectedExp, setSelectedExp] = useState<string>(() => {
+    try { const v = new URLSearchParams(window.location.search).get("producto"); return v && /^\d+$/.test(v) ? v : "all"; } catch { return "all"; }
+  });
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
