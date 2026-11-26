@@ -36,7 +36,7 @@ export default function TpvCashPayment({
   const change = cashChange(total, tendered);
   const short = tendered !== null && !ok;
 
-  const confirm = () => {
+  const submitCharge = () => {
     if (ok && tendered !== null && !pending) onConfirm(tendered);
   };
 
@@ -54,12 +54,12 @@ export default function TpvCashPayment({
           className="space-y-4 pt-1"
           onSubmit={(e) => {
             e.preventDefault();
-            confirm();
+            submitCharge();
           }}
         >
-          <div className="bg-gray-800 rounded-lg p-3 flex justify-between items-center">
+          <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center">
             <span className="text-gray-300 text-sm">Total a cobrar</span>
-            <span className="text-xl font-bold text-white" data-testid="efectivo-total">{formatEur(total)}</span>
+            <span className="text-2xl font-bold text-white" data-testid="efectivo-total">{formatEur(total)}</span>
           </div>
 
           <div className="space-y-1.5">
@@ -74,7 +74,7 @@ export default function TpvCashPayment({
               onChange={(e) => setText(e.target.value)}
               aria-invalid={short || undefined}
               aria-describedby="tpv-entregado-ayuda"
-              className="h-12 text-lg bg-gray-800 border-gray-600 text-white"
+              className="h-14 text-2xl font-bold bg-gray-800 border-gray-600 text-white"
             />
             <div className="flex flex-wrap gap-2 pt-1">
               {quickTenders(total).map((v, i) => (
@@ -82,7 +82,7 @@ export default function TpvCashPayment({
                   key={v}
                   type="button"
                   onClick={() => setText(v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
-                  className="text-sm bg-gray-800 hover:bg-gray-700 text-gray-100 px-3 py-1.5 rounded-full border border-gray-600 transition-colors"
+                  className="min-h-11 text-base bg-gray-800 hover:bg-gray-700 text-gray-100 px-4 py-2 rounded-full border border-gray-600 transition-colors"
                 >
                   {i === 0 ? `Exacto (${formatEur(v)})` : formatEur(v)}
                 </button>
@@ -93,21 +93,21 @@ export default function TpvCashPayment({
           <div
             id="tpv-entregado-ayuda"
             role="status"
-            className={`rounded-lg p-3 flex justify-between items-center font-semibold border ${
+            className={`rounded-lg p-4 flex justify-between items-center font-semibold border ${
               ok ? "bg-success/10 text-success border-success/40" : short ? "bg-warning/10 text-warning border-warning/40" : "bg-gray-800 text-gray-300 border-gray-700"
             }`}
           >
             <span>{ok ? "Cambio" : short ? "Falta" : "Cambio"}</span>
-            <span className="text-lg" data-testid="efectivo-cambio">
+            <span className="text-2xl" data-testid="efectivo-cambio">
               {ok ? formatEur(change) : short && tendered !== null ? formatEur(total - tendered) : "—"}
             </span>
           </div>
 
           <div className="flex gap-2 pt-1">
-            <Button type="button" variant="ghost" className="flex-1 text-gray-200 hover:text-white border border-gray-600" onClick={onClose} disabled={pending}>
+            <Button type="button" variant="ghost" className="h-12 flex-1 text-gray-200 hover:text-white border border-gray-600" onClick={onClose} disabled={pending}>
               Cancelar
             </Button>
-            <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" disabled={!ok || pending}>
+            <Button type="submit" className="h-12 flex-1 text-base bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" disabled={!ok || pending}>
               {pending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Cobrando...</> : "Cobrar"}
             </Button>
           </div>

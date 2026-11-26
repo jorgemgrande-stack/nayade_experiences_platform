@@ -12,13 +12,18 @@ const T = {
     unavailable: "Die digitalen Kurse sind in diesem Unternehmen noch nicht aktiviert.",
     until: "Zugang bis", from: "Zugang ab", noEnd: "ohne Ablauf", progress: "Fortschritt", lessons: "Lektionen",
     cont: "Weiter", start: "Kurs öffnen", back: "Zurück zum Kurs", allCourses: "Alle Kurse",
-    status: { active: "Aktiv", scheduled: "Beginnt bald", expired: "Abgelaufen", suspended: "Pausiert", revoked: "Beendet" } as Record<string, string>,
+    accPendingNote: "Dein Zugang ist inklusive. Du entscheidest, wann du startest: vor, während oder nach dem Retreat. Deine {n} Tage beginnen erst, wenn du aktivierst.", accActivate: "Zugang jetzt aktivieren", accConfirm: "Deine {n} Tage beginnen jetzt und lassen sich danach nicht verschieben. Jetzt aktivieren?", accConfirmYes: "Ja, jetzt aktivieren", accCancel: "Abbrechen", accFail: "Der Zugang konnte nicht aktiviert werden.", accDone: "Dein Zugang ist aktiv.",
+    status: { pending_activation: "Zur Aktivierung bereit", active: "Aktiv", scheduled: "Beginnt bald", expired: "Abgelaufen", suspended: "Pausiert", revoked: "Beendet" } as Record<string, string>,
     expiredNote: "Dein Zugang ist abgelaufen. Dein Fortschritt bleibt gespeichert. Schreib uns, wenn du verlängern möchtest.",
     inactiveNote: "Dieser Kurs ist im Moment nicht zugänglich. Schreib uns, wenn du Fragen hast.",
     locked: "Nicht in deinem Paket enthalten", module: "Modul", markDone: "Lektion abschließen", done: "Abgeschlossen",
     pending: "Dieses Material wird bald bereitgestellt.", download: "Herunterladen", open: "Öffnen", external: "Externer Link (öffnet in neuem Tab)",
     exercise: "Übung", meditation: "Meditation", noAccess: "Für diese Lektion hast du keinen Zugang.",
     resumeNote: "Du kannst jederzeit dort weitermachen, wo du aufgehört hast.",
+    unlocksOn: "Wird freigeschaltet am {date}", accessUntilOn: "Zugang bis {date}", accessEndedOn: "Zugang beendet am {date}", accessEnded: "Zugang beendet",
+    endsSoon: "Dein Zugang zu diesem Modul endet bald: noch {n} Tage.", endsSoonOne: "Dein Zugang zu diesem Modul endet bald: noch 1 Tag.",
+    extendModule: "Dieses Modul verlängern", extendTitle: "Zugang zu diesem Modul verlängern", extend30: "+1 Monat (30 Tage)", extend60: "+2 Monate (60 Tage)",
+    extendPay: "Bezahlen und verlängern", extendNote: "Der Zugang wird verlängert, sobald die Zahlung bestätigt ist. Dein Fortschritt bleibt erhalten.", extendClose: "Schließen", extendFail: "Die Verlängerung konnte nicht gestartet werden.",
     activateTitle: "Konto aktivieren", activateText: "Lege dein Passwort fest, um deinen Kurs zu öffnen.", pw: "Passwort", pw2: "Passwort wiederholen", activate: "Aktivieren",
     pwShort: "Das Passwort muss mindestens 8 Zeichen haben.", pwDiff: "Die Passwörter stimmen nicht überein.", badLink: "Der Link ist ungültig. Verwende den Link aus der Einladungs-E-Mail.",
     activateFail: "Das Passwort konnte nicht festgelegt werden. Der Link ist möglicherweise abgelaufen.",
@@ -34,13 +39,18 @@ const T = {
     unavailable: "La formación digital todavía no está activada en esta empresa.",
     until: "Acceso hasta", from: "Acceso desde", noEnd: "sin caducidad", progress: "Progreso", lessons: "lecciones",
     cont: "Continuar", start: "Abrir curso", back: "Volver al curso", allCourses: "Todos los cursos",
-    status: { active: "Activo", scheduled: "Empieza pronto", expired: "Caducado", suspended: "En pausa", revoked: "Finalizado" } as Record<string, string>,
+    accPendingNote: "Tu acceso está incluido. Tú decides cuándo empezar: antes, durante o después del retiro. Tus {n} días no empiezan a contar hasta que lo actives.", accActivate: "Activar mi acceso ahora", accConfirm: "Tus {n} días empezarán ahora y después no se pueden mover. ¿Activar ahora?", accConfirmYes: "Sí, activar ahora", accCancel: "Cancelar", accFail: "No se ha podido activar el acceso.", accDone: "Tu acceso está activo.",
+    status: { pending_activation: "Pendiente de activar", active: "Activo", scheduled: "Empieza pronto", expired: "Caducado", suspended: "En pausa", revoked: "Finalizado" } as Record<string, string>,
     expiredNote: "Tu acceso ha caducado. Tu progreso se conserva. Escríbenos si quieres ampliarlo.",
     inactiveNote: "Este curso no está disponible ahora mismo. Escríbenos si tienes dudas.",
     locked: "No incluido en tu modalidad", module: "Módulo", markDone: "Marcar lección como completada", done: "Completada",
     pending: "Este material estará disponible próximamente.", download: "Descargar", open: "Abrir", external: "Enlace externo (se abre en otra pestaña)",
     exercise: "Ejercicio", meditation: "Meditación", noAccess: "No tienes acceso a esta lección.",
     resumeNote: "Puedes retomar cuando quieras donde lo dejaste.",
+    unlocksOn: "Se desbloquea el {date}", accessUntilOn: "Acceso hasta {date}", accessEndedOn: "Acceso finalizado el {date}", accessEnded: "Acceso finalizado",
+    endsSoon: "Tu acceso a este módulo termina pronto: quedan {n} días.", endsSoonOne: "Tu acceso a este módulo termina pronto: queda 1 día.",
+    extendModule: "Ampliar este módulo", extendTitle: "Ampliar el acceso a este módulo", extend30: "+1 mes (30 días)", extend60: "+2 meses (60 días)",
+    extendPay: "Pagar y ampliar", extendNote: "El acceso se amplía cuando se confirma el pago. Tu progreso se conserva.", extendClose: "Cerrar", extendFail: "No se ha podido iniciar la ampliación.",
     activateTitle: "Activar tu cuenta", activateText: "Crea tu contraseña para entrar en tu curso.", pw: "Contraseña", pw2: "Repite la contraseña", activate: "Activar",
     pwShort: "La contraseña debe tener al menos 8 caracteres.", pwDiff: "Las contraseñas no coinciden.", badLink: "El enlace no es válido. Usa el enlace del correo de invitación.",
     activateFail: "No se ha podido crear la contraseña. El enlace puede haber caducado.",
@@ -89,4 +99,14 @@ export function contentNotice(courseLanguage: string | null | undefined, ui: Aul
 /** Fecha corta del acceso, en el idioma del aula y en hora de Madrid. */
 export function formatAccessDate(ms: number, l: AulaLocale): string {
   return new Intl.DateTimeFormat(l === "de" ? "de-DE" : "es-ES", { timeZone: "Europe/Madrid", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(ms));
+}
+
+/** Rellena `{clave}` de un texto del aula. */
+export function fillAula(text: string, vars: Record<string, string | number>): string {
+  return text.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+}
+
+/** Importe en euros según el idioma del aula. */
+export function formatAulaPrice(cents: number, l: AulaLocale): string {
+  return new Intl.NumberFormat(l === "de" ? "de-DE" : "es-ES", { style: "currency", currency: "EUR" }).format(cents / 100);
 }

@@ -4,30 +4,35 @@
  * cursos y materiales (cobertura, recursos pendientes con subida de fichero, publicar), reglas por modalidad y demostración.
  * Toda acción sensible pide motivo y queda en el historial de la matrícula. Sin permisos globales de plataforma.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelDataList, PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 import { effectiveStatus } from "@shared/learning";
-import { BarChart3, BookPlus, Film, FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
+import { AlertTriangle, BarChart3, BookPlus, Film, FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
 import CourseEditor from "./CourseEditor";
 import Materials from "./Materials";
 import Authoring from "./Authoring";
 import Rules from "./Rules";
 import StudentProgress from "./StudentProgress";
+import { QuoteParticipantsManager, QuoteRefundReviews } from "./QuoteParticipants";
 
 function useFmt() {
   const { t, format } = useI18n();
   return (ms: number | null) => (ms ? format.dateTime(ms, { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }) : t("learningAdmin.noExpiry"));
 }
+const STATUS_KEYS = ["active", "scheduled", "expired", "suspended", "revoked"];
+const STATUS_TONE: Record<string, Tone> = { active: "success", scheduled: "info", expired: "neutral", suspended: "warning", revoked: "danger" };
 type Tab = "matriculas" | "progreso" | "cursos" | "crear" | "materiales" | "editor" | "reglas" | "demo" | "tecnica";
+const TABS: Tab[] = ["matriculas", "progreso", "cursos", "crear", "materiales", "editor", "reglas", "demo", "tecnica"];
 
 function ReasonDialog({ title, withDate, onClose, onSubmit }: { title: string; withDate?: boolean; onClose: () => void; onSubmit: (v: { reason: string; date: string }) => void }) {
   const { t } = useI18n();
@@ -47,6 +52,143 @@ function ReasonDialog({ title, withDate, onClose, onSubmit }: { title: string; w
   );
 }
 
+/**
+ * Cola de recuperación: pedidos de la tienda PAGADOS con regla de acceso activa y sin matrícula. «Reparar acceso» llama al
+ * procedimiento existente `grantForOrder`, que vuelve a aplicar las reglas del catálogo solo a líneas con pago confirmado
+ * (idempotente: no duplica matrículas ni correos). Aquí no se concede nada por libre ni se evita ninguna condición de pago.
+ */
+function PendingOrders() {
+  const { t, format } = useI18n();
+  const utils = trpc.useUtils();
+  const q = trpc.learning.admin.pendingOrders.useQuery();
+  const [busy, setBusy] = useState<string | null>(null);
+  const grantForOrder = trpc.learning.admin.grantForOrder.useMutation();
+  async function repair(merchantOrder: string) {
+    if (!(await confirmAction({ title: t("learningAdmin.pending.confirmTitle"), description: t("learningAdmin.pending.confirmDesc", { order: merchantOrder }), confirmLabel: t("learningAdmin.pending.repair") }))) return;
+    setBusy(merchantOrder);
+    try {
+      const r = await grantForOrder.mutateAsync({ merchantOrder });
+      if (r.status === "granted") toast.success(t("learningAdmin.pending.granted", { created: r.created, existing: r.existing }));
+      else toast.error(t(`learningAdmin.pending.skipped.${r.reason}`));
+      await Promise.all([utils.learning.admin.pendingOrders.invalidate(), utils.learning.admin.enrollments.invalidate()]);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+  if (q.isLoading) return null;
+  if (q.isError) return <PanelError title={t("learningAdmin.pending.errorTitle")} error={q.error} onRetry={() => q.refetch()} />;
+  if (!q.data!.length) return null;
+  return (
+    <section className="space-y-3 rounded-xl border border-warning/50 bg-warning/10 p-4" aria-labelledby="learning-pending-title">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
+        <div>
+          <h2 id="learning-pending-title" className="font-semibold text-foreground">{t("learningAdmin.pending.title", { n: q.data!.length })}</h2>
+          <p className="text-sm text-muted-foreground">{t("learningAdmin.pending.intro")}</p>
+        </div>
+      </div>
+      <PanelDataList
+        caption={t("learningAdmin.pending.title", { n: q.data!.length })}
+        rows={q.data!}
+        rowKey={(o) => o.reservationId}
+        columns={[
+          { key: "order", header: t("learningAdmin.pending.order"), cell: (o) => <span className="font-mono">{o.merchantOrder}</span> },
+          { key: "email", header: t("learningAdmin.pending.email"), cell: (o) => o.email ?? t("learningAdmin.pending.noEmail") },
+          { key: "paid", header: t("learningAdmin.pending.paidAt"), cell: (o) => (o.paidAt ? format.dateTime(o.paidAt, { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }) : "—") },
+          { key: "actions", header: t("learningAdmin.enrollments.actions"), align: "right", cell: (o) => <Button size="sm" variant="outline" disabled={busy != null} onClick={() => void repair(o.merchantOrder)}>{busy === o.merchantOrder ? t("learningAdmin.pending.repairing") : t("learningAdmin.pending.repair")}</Button> },
+        ]}
+      />
+    </section>
+  );
+}
+
+/**
+ * Retiros SIN convocatoria: presupuestos PAGADOS con regla de acceso activa y aún sin derecho. Los de duración variable piden
+ * confirmar los días contratados (nunca se conceden solos); el resto se concede en el barrido o con «Conceder ahora». Todo
+ * idempotente: el derecho nace pendiente de activar por la persona.
+ */
+function PendingQuotes() {
+  const { t, format } = useI18n();
+  const utils = trpc.useUtils();
+  const q = trpc.learning.admin.pendingQuotes.useQuery();
+  const [days, setDays] = useState<Record<number, string>>({});
+  const [open, setOpen] = useState<number | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const confirmDays = trpc.learning.admin.confirmContractedDays.useMutation();
+  const grantForQuote = trpc.learning.admin.grantForQuote.useMutation();
+  const refresh = () => Promise.all([utils.learning.admin.pendingQuotes.invalidate(), utils.learning.admin.enrollments.invalidate()]);
+  async function confirmTerms(p: { quoteId: number; quoteNumber: string }) {
+    const n = Number(days[p.quoteId]);
+    if (!Number.isInteger(n) || n < 1) return;
+    if (!(await confirmAction({ title: t("learningAdmin.pendingQuotes.confirmTitle"), description: t("learningAdmin.pendingQuotes.confirmDesc", { days: n, quote: p.quoteNumber }), confirmLabel: t("learningAdmin.pendingQuotes.confirm") }))) return;
+    setBusy(p.quoteId);
+    try {
+      const r = await confirmDays.mutateAsync({ quoteId: p.quoteId, days: n, reason: t("learningAdmin.pendingQuotes.reasonDefault") });
+      if (r.status === "granted") toast.success(t("learningAdmin.pendingQuotes.granted", { created: r.created, existing: r.existing }));
+      else if (r.status === "needs_terms") toast.info(t("learningAdmin.pendingQuotes.notYet"));
+      else toast.error(t("learningAdmin.pendingQuotes.skipped", { reason: r.reason }));
+      await refresh();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function grant(p: { quoteId: number }) {
+    setBusy(p.quoteId);
+    try {
+      const r = await grantForQuote.mutateAsync({ quoteId: p.quoteId });
+      if (r.status === "granted") toast.success(t("learningAdmin.pendingQuotes.granted", { created: r.created, existing: r.existing }));
+      else toast.error(t("learningAdmin.pendingQuotes.skipped", { reason: r.status === "skipped" ? r.reason : r.status }));
+      await refresh();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+  if (q.isLoading) return null;
+  if (q.isError) return <PanelError title={t("learningAdmin.pendingQuotes.errorTitle")} error={q.error} onRetry={() => q.refetch()} />;
+  if (!q.data!.length) return null;
+  return (
+    <section className="space-y-3 rounded-xl border border-warning/50 bg-warning/10 p-4" aria-labelledby="learning-pending-quotes-title">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
+        <div>
+          <h2 id="learning-pending-quotes-title" className="font-semibold text-foreground">{t("learningAdmin.pendingQuotes.title", { n: q.data!.length })}</h2>
+          <p className="text-sm text-muted-foreground">{t("learningAdmin.pendingQuotes.intro")}</p>
+        </div>
+      </div>
+      <PanelDataList
+        caption={t("learningAdmin.pendingQuotes.title", { n: q.data!.length })}
+        rows={q.data!}
+        rowKey={(p) => p.quoteId}
+        columns={[
+          { key: "quote", header: t("learningAdmin.pendingQuotes.quote"), cell: (p) => <span className="font-mono">{p.quoteNumber}</span> },
+          { key: "email", header: t("learningAdmin.pendingQuotes.email"), cell: (p) => p.email ?? t("learningAdmin.pending.noEmail") },
+          { key: "paid", header: t("learningAdmin.pending.paidAt"), cell: (p) => (p.paidAt ? format.dateTime(p.paidAt, { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }) : "—") },
+          { key: "seats", header: t("learningAdmin.pendingQuotes.seats"), cell: (p) => (
+            <Button size="sm" variant="ghost" onClick={() => setOpen(open === p.quoteId ? null : p.quoteId)} aria-expanded={open === p.quoteId}>{t("learningAdmin.pendingQuotes.seatsValue", { p: p.participants + 1, n: p.seats })}</Button>
+          ) },
+          { key: "state", header: "", cell: (p) => (p.needsTermsMinDays != null ? t("learningAdmin.pendingQuotes.needs", { n: p.needsTermsMinDays }) : t("learningAdmin.pendingQuotes.ready")) },
+          {
+            key: "actions", header: t("learningAdmin.enrollments.actions"), align: "right",
+            cell: (p) => p.needsTermsMinDays != null ? (
+              <span className="inline-flex items-center gap-2">
+                <input aria-label={t("learningAdmin.pendingQuotes.days")} type="number" min={1} max={365} className="h-8 w-16 rounded-md border bg-background px-2 text-sm" value={days[p.quoteId] ?? ""} onChange={(e) => setDays({ ...days, [p.quoteId]: e.target.value })} />
+                <Button size="sm" variant="outline" disabled={busy != null || !(Number(days[p.quoteId]) >= 1)} onClick={() => void confirmTerms(p)}>{t("learningAdmin.pendingQuotes.confirm")}</Button>
+              </span>
+            ) : <Button size="sm" variant="outline" disabled={busy != null} onClick={() => void grant(p)}>{t("learningAdmin.pendingQuotes.grant")}</Button>,
+          },
+        ]}
+      />
+      {open != null && q.data!.some((p) => p.quoteId === open) && <QuoteParticipantsManager quoteId={open} seats={q.data!.find((p) => p.quoteId === open)!.seats} onChanged={() => void refresh()} />}
+    </section>
+  );
+}
+
 function Enrollments() {
   const { t } = useI18n();
   const fmt = useFmt();
@@ -63,37 +205,35 @@ function Enrollments() {
   const invite = trpc.learning.admin.sendInvite.useMutation({ onSuccess: (r) => toast[r.sent ? "success" : "info"](r.sent ? t("learningAdmin.enrollments.inviteSent") : t("learningAdmin.enrollments.alreadyActive")), onError: (e) => toastError(e) });
   if (q.isLoading) return <PanelLoading />;
   if (q.isError) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
-  if (!q.data!.length) return <PanelEmpty title={t("learningAdmin.enrollments.emptyTitle")} description={t("learningAdmin.enrollments.emptyDesc")} />;
   const now = Date.now();
+  if (!q.data!.length) return <div className="space-y-4"><PendingOrders /><PendingQuotes /><QuoteRefundReviews /><PanelEmpty title={t("learningAdmin.enrollments.emptyTitle")} description={t("learningAdmin.enrollments.emptyDesc")} /></div>;
   return (
-    <>
-      <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left"><tr><th className="p-2">{t("learningAdmin.enrollments.person")}</th><th className="p-2">{t("learningAdmin.enrollments.state")}</th><th className="p-2">{t("learningAdmin.enrollments.modules")}</th><th className="p-2">{t("learningAdmin.enrollments.end")}</th><th className="p-2">{t("learningAdmin.enrollments.origin")}</th><th className="p-2" /></tr></thead>
-          <tbody>
-            {q.data!.map((e) => {
-              const st = effectiveStatus(e, now);
-              return (
-                <tr key={e.id} className="border-t align-top">
-                  <td className="p-2"><div className="font-medium">{e.userName ?? "—"}</div><div className="text-xs text-muted-foreground">{e.userEmail}</div></td>
-                  <td className="p-2"><Badge variant={st === "active" ? "default" : "secondary"}>{st === "active" ? t("learningAdmin.status.active") : st === "scheduled" ? t("learningAdmin.status.scheduled") : st === "expired" ? t("learningAdmin.status.expired") : st === "suspended" ? t("learningAdmin.status.suspended") : st === "revoked" ? t("learningAdmin.status.revoked") : st}</Badge></td>
-                  <td className="p-2">{e.moduleIds.length}</td>
-                  <td className="p-2">{fmt(e.endsAt)}</td>
-                  <td className="p-2 text-xs">{e.source === "payment" ? t("learningAdmin.enrollments.payment", { ref: e.paymentRef ?? "" }) : e.source === "demo" ? t("learningAdmin.enrollments.demo") : t("learningAdmin.enrollments.grant", { reason: e.grantReason ?? "" })}</td>
-                  <td className="p-2"><div className="flex flex-wrap gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "extend" })}>{t("learningAdmin.enrollments.extend")}</Button>
-                    {e.status === "active" && <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "suspend" })}>{t("learningAdmin.enrollments.suspend")}</Button>}
-                    {e.status !== "revoked" && <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "revoke" })}>{t("learningAdmin.enrollments.revoke")}</Button>}
-                    {e.status !== "active" && <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "reactivate" })}>{t("learningAdmin.enrollments.reactivate")}</Button>}
-                    <Button size="sm" variant="ghost" onClick={() => invite.mutate({ userId: e.userId })}>{t("learningAdmin.enrollments.invite")}</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setHistory(e.id)}>{t("learningAdmin.enrollments.history")}</Button>
-                  </div></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+    <div className="space-y-4">
+      <PendingOrders />
+      <PendingQuotes />
+      <QuoteRefundReviews />
+      <PanelDataList
+        caption={t("learningAdmin.tabs.enrollments")}
+        rows={q.data!}
+        rowKey={(e) => e.id}
+        columns={[
+          { key: "person", header: t("learningAdmin.enrollments.person"), cell: (e) => <><span className="font-medium">{e.userName ?? "—"}</span><span className="block break-all text-xs font-normal text-muted-foreground">{e.userEmail}</span></> },
+          { key: "state", header: t("learningAdmin.enrollments.state"), cell: (e) => { const st = effectiveStatus(e, now); return <StatusBadge tone={STATUS_TONE[st] ?? "neutral"}>{STATUS_KEYS.includes(st) ? t(`learningAdmin.status.${st}`) : st}</StatusBadge>; } },
+          { key: "modules", header: t("learningAdmin.enrollments.modules"), cell: (e) => e.moduleIds.length },
+          { key: "end", header: t("learningAdmin.enrollments.end"), cell: (e) => fmt(e.endsAt) },
+          { key: "origin", header: t("learningAdmin.enrollments.origin"), className: "text-xs", cell: (e) => e.source === "payment" ? t("learningAdmin.enrollments.payment", { ref: e.paymentRef ?? "" }) : e.source === "demo" ? t("learningAdmin.enrollments.demo") : t("learningAdmin.enrollments.grant", { reason: e.grantReason ?? "" }) },
+          { key: "actions", header: t("learningAdmin.enrollments.actions"), cell: (e) => (
+            <div className="flex flex-wrap justify-end gap-1">
+              <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "extend" })}>{t("learningAdmin.enrollments.extend")}</Button>
+              {e.status === "active" && <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "suspend" })}>{t("learningAdmin.enrollments.suspend")}</Button>}
+              {e.status !== "revoked" && <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "revoke" })}>{t("learningAdmin.enrollments.revoke")}</Button>}
+              {e.status !== "active" && <Button size="sm" variant="outline" onClick={() => setDialog({ id: e.id, kind: "reactivate" })}>{t("learningAdmin.enrollments.reactivate")}</Button>}
+              <Button size="sm" variant="ghost" onClick={() => invite.mutate({ userId: e.userId })}>{t("learningAdmin.enrollments.invite")}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setHistory(e.id)}>{t("learningAdmin.enrollments.history")}</Button>
+            </div>
+          ) },
+        ]}
+      />
       {dialog && (
         <ReasonDialog
           title={{ extend: t("learningAdmin.enrollments.extendTitle"), revoke: t("learningAdmin.enrollments.revokeTitle"), suspend: t("learningAdmin.enrollments.suspendTitle"), reactivate: t("learningAdmin.enrollments.reactivateTitle") }[dialog.kind]}
@@ -115,11 +255,11 @@ function Enrollments() {
           </ul>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
-function Courses() {
+function Courses({ onCreate }: { onCreate: () => void }) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
   const q = trpc.learning.admin.courses.useQuery();
@@ -143,17 +283,18 @@ function Courses() {
   }
   if (q.isLoading) return <PanelLoading />;
   if (q.isError) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
-  if (!q.data!.length) return <PanelEmpty title={t("learningAdmin.courses.emptyTitle")} description={t("learningAdmin.courses.emptyDesc")} />;
+  if (!q.data!.length) return <PanelEmpty title={t("learningAdmin.courses.emptyTitle")} description={t("learningAdmin.courses.emptyDesc")}><Button onClick={onCreate}>{t("learningAdmin.createCourse")}</Button></PanelEmpty>;
   return (
     <div className="space-y-5">
+      <p className="text-sm text-muted-foreground">{t("learningAdmin.courses.visibilityNote")}</p>
       {q.data!.map((c) => (
-        <section key={c.id} className="rounded-xl border p-4">
+        <section key={c.id} className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">{c.title} <Badge variant="secondary">{c.status === "draft" ? t("learningAdmin.courseStatus.draft") : c.status === "published" ? t("learningAdmin.courseStatus.published") : t("learningAdmin.courseStatus.archived")}</Badge></h2>
+            <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold">{c.title} <StatusBadge tone={c.status === "published" ? "success" : c.status === "draft" ? "warning" : "neutral"}>{c.status === "draft" ? t("learningAdmin.courseStatus.draft") : c.status === "published" ? t("learningAdmin.courseStatus.published") : t("learningAdmin.courseStatus.archived")}</StatusBadge></h2>
             <div className="flex gap-2">
-              <Button size="sm" variant="secondary" asChild><a href={`/admin/formacion/vista-previa/curso/${c.id}`}>{t("learningAdmin.courses.preview")}</a></Button>
-              {c.status !== "published" && <Button size="sm" disabled={c.coverage.files.pending > 0 && false} onClick={() => confirm(t("learningAdmin.courses.publishConfirm", { title: c.title, missing: c.coverage.files.pending ? t("learningAdmin.courses.missingFiles", { n: c.coverage.files.pending }) : "" })) && setStatus.mutate({ courseId: c.id, status: "published" })}>{t("learningAdmin.courses.publish")}</Button>}
-              {c.status === "published" && <Button size="sm" variant="outline" onClick={() => setStatus.mutate({ courseId: c.id, status: "draft" })}>{t("learningAdmin.courses.backToDraft")}</Button>}
+              <Button size="sm" variant="outline" asChild><a href={`/admin/formacion/vista-previa/curso/${c.id}`}>{t("learningAdmin.courses.preview")}</a></Button>
+              {c.status !== "published" && <Button size="sm" onClick={async () => (await confirmAction({ description: t("learningAdmin.courses.publishConfirm", { title: c.title, missing: c.coverage.files.pending ? t("learningAdmin.courses.missingFiles", { n: c.coverage.files.pending }) : "" }) })) && setStatus.mutate({ courseId: c.id, status: "published" })}>{t("learningAdmin.courses.publish")}</Button>}
+              {c.status === "published" && <Button size="sm" variant="outline" onClick={async () => (await confirmAction({ description: t("learningAdmin.courses.draftConfirm", { title: c.title }) })) && setStatus.mutate({ courseId: c.id, status: "draft" })}>{t("learningAdmin.courses.backToDraft")}</Button>}
             </div>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{t("learningAdmin.courses.summary", { modules: c.modules.length, verified: c.coverage.files.verified, pending: c.coverage.files.pending })}</p>
@@ -242,23 +383,59 @@ function Tecnica() {
 
 export default function LearningAdmin() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<Tab>("matriculas");
+  const [tab, setTab] = useState<Tab>(() => {
+    // La pestaña vive en la URL (?tab=): recargar o volver desde la vista previa no pierde el sitio
+    try { const v = new URLSearchParams(window.location.search).get("tab"); if (v && TABS.includes(v as Tab)) return v as Tab; } catch { /* sin URL */ }
+    return "matriculas";
+  });
+  const selectTab = (k: Tab) => {
+    setTab(k);
+    try { const u = new URL(window.location.href); u.searchParams.set("tab", k); window.history.replaceState(null, "", u); } catch { /* sin historial */ }
+  };
   // Uso diario a la izquierda; las herramientas técnicas (pruebas y auditoría) quedan aparte, a la derecha
   const tabs: Array<[Tab, string, LucideIcon]> = [["matriculas", t("learningAdmin.tabs.enrollments"), Users], ["progreso", t("learningAdmin.tabs.progress"), BarChart3], ["editor", t("learningAdmin.tabs.editor"), PenSquare], ["cursos", t("learningAdmin.tabs.courses"), FolderOpen], ["crear", t("learningAdmin.tabs.create"), BookPlus], ["materiales", t("learningAdmin.tabs.materials"), Film], ["reglas", t("learningAdmin.tabs.rules"), ShieldCheck], ["demo", t("learningAdmin.tabs.demo"), PlayCircle]];
   const tech: [Tab, string, LucideIcon] = ["tecnica", t("learningAdmin.tabs.tech"), Wrench];
+  const allTabs = Object.fromEntries([...tabs, tech].map((x) => [x[0], x])) as Record<Tab, [Tab, string, LucideIcon]>;
+  const groups: Array<{ key: string; label: string; icon: LucideIcon; tabs: Tab[] }> = [
+    { key: "courses", label: t("learningAdmin.groups.courses"), icon: FolderOpen, tabs: ["cursos", "editor", "crear"] },
+    { key: "content", label: t("learningAdmin.groups.content"), icon: Film, tabs: ["materiales"] },
+    { key: "students", label: t("learningAdmin.groups.students"), icon: Users, tabs: ["matriculas"] },
+    { key: "tracking", label: t("learningAdmin.groups.tracking"), icon: BarChart3, tabs: ["progreso"] },
+    { key: "settings", label: t("learningAdmin.groups.settings"), icon: Wrench, tabs: ["reglas", "demo", "tecnica"] },
+  ];
+  const current = groups.find((g) => g.tabs.includes(tab));
   const tabButton = ([k, label, Icon]: [Tab, string, LucideIcon]) => (
-    <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm ${tab === k ? "border-b-2 border-primary font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}><Icon className="h-4 w-4" aria-hidden />{label}</button>
+    <button key={k} role="tab" aria-selected={tab === k} onClick={() => selectTab(k)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm ${tab === k ? "border-b-2 border-primary font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}><Icon className="h-4 w-4" aria-hidden />{label}</button>
   );
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div><h1 className="flex items-center gap-2 text-2xl font-bold"><GraduationCap className="h-6 w-6 text-primary" aria-hidden />{t("learningAdmin.title")}</h1><p className="text-sm text-muted-foreground">{t("learningAdmin.subtitle")}</p></div>
-        <div role="tablist" className="flex flex-wrap gap-1 border-b">
-          {tabs.map(tabButton)}
-          <span className="ml-auto">{tabButton(tech)}</span>
-        </div>
+        <PanelPageHeader className="mb-0" icon={<GraduationCap />} title={t("learningAdmin.title")} description={t("learningAdmin.subtitle")} actions={tab !== "crear" ? <Button onClick={() => selectTab("crear")}><BookPlus className="mr-1.5 h-4 w-4" aria-hidden />{t("learningAdmin.createCourse")}</Button> : undefined} />
+        {/* Cinco grupos funcionales; las páginas de cada grupo (si hay varias) en una segunda fila. Las rutas y el parámetro ?tab= no cambian */}
+        <nav aria-label={t("learningAdmin.groups.aria")} className="flex flex-wrap gap-1 rounded-xl border border-border bg-muted/40 p-1">
+          {groups.map((g) => {
+            const on = g.tabs.includes(tab);
+            return (
+              <button
+                key={g.key}
+                type="button"
+                aria-current={on ? "page" : undefined}
+                onClick={() => selectTab(on ? tab : g.tabs[0])}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${on ? "bg-card font-semibold text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <g.icon className="h-4 w-4" aria-hidden />
+                {g.label}
+              </button>
+            );
+          })}
+        </nav>
+        {current && current.tabs.length > 1 && (
+          <div role="tablist" aria-label={t("learningAdmin.groups.subAria")} className="-mt-2 flex gap-1 overflow-x-auto border-b border-border">
+            {current.tabs.map((k) => tabButton(allTabs[k]))}
+          </div>
+        )}
         {tab === "matriculas" && <Enrollments />}
-        {tab === "cursos" && <Courses />}
+        {tab === "cursos" && <Courses onCreate={() => selectTab("crear")} />}
         {tab === "editor" && <CourseEditor />}
         {tab === "progreso" && <StudentProgress />}
         {tab === "crear" && <Authoring />}

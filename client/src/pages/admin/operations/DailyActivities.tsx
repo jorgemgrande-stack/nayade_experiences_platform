@@ -8,6 +8,9 @@ import { useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import {
   Waves, User, Users, Phone, Clock, AlertTriangle, CheckCircle2,
   Calendar, ChevronLeft, ChevronRight, RefreshCw, UserCheck, CalendarDays,
@@ -38,7 +41,7 @@ type TFn = ReturnType<typeof useI18n>["t"];
 function rich(s: string, vals: Record<string, ReactNode>) {
   return s.split(/(\{\w+\})/).map((p, i) => {
     const m = /^\{(\w+)\}$/.exec(p);
-    return m && m[1] in vals ? <strong key={i} className="text-white">{vals[m[1]]}</strong> : p;
+    return m && m[1] in vals ? <strong key={i} className="text-foreground">{vals[m[1]]}</strong> : p;
   });
 }
 
@@ -66,11 +69,11 @@ function getReservationOpState(res: any): OpState {
 }
 
 const OP_CONFIG: Record<OpState, { label: string; dot: string; border: string; bg: string }> = {
-  completa:    { label: "opsDaily.op.completa",  dot: "bg-emerald-400", border: "border-l-emerald-500", bg: "bg-emerald-500/10" },
-  sin_monitor: { label: "opsDaily.op.sin_monitor",         dot: "bg-red-400",     border: "border-l-red-500",     bg: "bg-red-500/10" },
-  sin_hora:    { label: "opsDaily.op.sin_hora",    dot: "bg-amber-400",   border: "border-l-amber-500",   bg: "bg-amber-500/10" },
-  incidencia:  { label: "opsDaily.op.incidencia",          dot: "bg-orange-400",  border: "border-l-orange-500",  bg: "bg-orange-500/10" },
-  heredado:    { label: "opsDaily.op.heredado",     dot: "bg-blue-400",    border: "border-l-blue-500",    bg: "bg-blue-500/10" },
+  completa:    { label: "opsDaily.op.completa",  dot: "bg-success", border: "border-l-emerald-500", bg: "bg-success/10" },
+  sin_monitor: { label: "opsDaily.op.sin_monitor",         dot: "bg-danger",     border: "border-l-red-500",     bg: "bg-danger/10" },
+  sin_hora:    { label: "opsDaily.op.sin_hora",    dot: "bg-warning",   border: "border-l-amber-500",   bg: "bg-warning/10" },
+  incidencia:  { label: "opsDaily.op.incidencia",          dot: "bg-warning",  border: "border-l-orange-500",  bg: "bg-warning/10" },
+  heredado:    { label: "opsDaily.op.heredado",     dot: "bg-info",    border: "border-l-blue-500",    bg: "bg-info/10" },
 };
 
 type FilterType = "all" | "sin_monitor" | "sin_hora" | "incidencia" | "completa";
@@ -133,33 +136,33 @@ function ActivitySubItem({
     <div className={cn(
       "flex items-start justify-between gap-3 rounded-lg p-3 border",
       op.consolidated
-        ? "bg-emerald-950/30 border-emerald-700/40"
-        : "bg-slate-900/60 border-slate-700/50",
+        ? "bg-success/10 border-success/40"
+        : "bg-muted/40 border-border/50",
     )}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium text-white/90 truncate">{title}</p>
-          <span className="text-[10px] text-slate-500">{pax} {t("opsDaily.pax")}</span>
+          <p className="text-sm font-medium text-foreground/90 overflow-hidden text-ellipsis whitespace-nowrap">{title}</p>
+          <span className="text-xs text-muted-foreground">{pax} {t("opsDaily.pax")}</span>
           {op.isInherited && (
-            <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/30">{t("opsDaily.inherited")}</Badge>
+            <Badge className="text-xs bg-info/10 text-info border-info/30">{t("opsDaily.inherited")}</Badge>
           )}
           {op.consolidated && (
-            <Badge className="text-[9px] bg-emerald-500/15 text-emerald-400 border-emerald-500/40 flex items-center gap-0.5">
+            <Badge className="text-xs bg-success/15 text-success border-success/40 flex items-center gap-0.5">
               <CheckCheck className="w-2.5 h-2.5" />{t("opsDaily.consolidated")}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-3 mt-1.5 flex-wrap text-[11px]">
-          <span className={cn("flex items-center gap-1", monitorName ? "text-emerald-400" : "text-red-400")}>
+        <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs">
+          <span className={cn("flex items-center gap-1", monitorName ? "text-success" : "text-danger")}>
             <User className="w-3 h-3" />
             {monitorName || t("opsDaily.noMonitor")}
           </span>
-          <span className={cn("flex items-center gap-1", op.arrivalTime ? "text-cyan-400" : "text-amber-400")}>
+          <span className={cn("flex items-center gap-1", op.arrivalTime ? "text-info" : "text-warning")}>
             <Clock className="w-3 h-3" />
             {op.arrivalTime || t("opsDaily.noTime")}
           </span>
           {op.opNotes && (
-            <span className="flex items-center gap-1 text-slate-400 italic truncate max-w-xs">
+            <span className="flex items-center gap-1 text-muted-foreground italic overflow-hidden text-ellipsis whitespace-nowrap max-w-xs">
               <StickyNote className="w-3 h-3 shrink-0" />
               {op.opNotes}
             </span>
@@ -168,14 +171,14 @@ function ActivitySubItem({
       </div>
       <div className="shrink-0 flex flex-col gap-1">
         <Button size="sm" variant="outline" onClick={onConsolidate}
-          className={cn("text-[10px] h-7 px-2 gap-1", op.consolidated
-            ? "border-slate-600 text-slate-400 hover:bg-slate-700"
-            : "border-emerald-600/50 text-emerald-400 hover:bg-emerald-500/10")}>
+          className={cn("text-xs h-7 px-2 gap-1", op.consolidated
+            ? "border-border text-muted-foreground hover:bg-muted"
+            : "border-success/50 text-success hover:bg-success/10")}>
           <CheckCheck className="w-3 h-3" />
           {op.consolidated ? t("opsDaily.unmark") : t("opsDaily.consolidate")}
         </Button>
         <Button size="sm" variant="outline" onClick={onEdit}
-          className="border-slate-600 text-slate-400 hover:bg-slate-700 text-[10px] h-7 px-2 gap-1">
+          className="border-border text-muted-foreground hover:bg-muted text-xs h-7 px-2 gap-1">
           <ClipboardList className="w-3 h-3" /> {t("opsDaily.editBtn")}
         </Button>
       </div>
@@ -252,8 +255,8 @@ function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, mon
   const { t } = useI18n();
   if (!lines || lines.length === 0) return null;
   return (
-    <div className="ml-6 pl-3 border-l-2 border-cyan-700/40 space-y-1.5 py-1">
-      <p className="text-[9px] text-cyan-500/80 uppercase tracking-wide font-semibold">{t("opsDaily.packExperiences")}</p>
+    <div className="ml-6 pl-3 border-l-2 border-info/40 space-y-1.5 py-1">
+      <p className="text-xs text-info/80 uppercase tracking-wide font-semibold">{t("opsDaily.packExperiences")}</p>
       {lines.map((line) => {
         const op = getLineOp(parentIndex, line.lineId, activitiesOpJson, res);
         const monitorName = op.monitorId ? (monitors.find(m => m.id === op.monitorId)?.fullName || t("opsDaily.monitorNum", { id: op.monitorId })) : null;
@@ -261,38 +264,38 @@ function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, mon
         return (
           <div key={line.lineId} className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap min-w-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-              <span className="text-sm text-white/85 truncate">{line.title}</span>
-              <span className="text-[11px] font-semibold text-cyan-300 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-info shrink-0" />
+              <span className="text-sm text-foreground/85 overflow-hidden text-ellipsis whitespace-nowrap">{line.title}</span>
+              <span className="text-xs font-semibold text-info shrink-0">
                 {(packQty || 1) * (line.quantity || 1)} {t("opsDaily.pax")}
               </span>
               {line.isOptional && (
-                <Badge className="text-[9px] bg-amber-500/10 text-amber-400 border-amber-500/30">{t("opsDaily.optional")}</Badge>
+                <Badge className="text-xs bg-warning/10 text-warning border-warning/30">{t("opsDaily.optional")}</Badge>
               )}
               {ownDate && (
-                <Badge className="text-[9px] bg-violet-500/10 text-violet-300 border-violet-500/30 flex items-center gap-0.5">
+                <Badge className="text-xs bg-primary/10 text-primary border-primary/30 flex items-center gap-0.5">
                   <CalendarDays className="w-2.5 h-2.5" />{ownDate}
                 </Badge>
               )}
-              <span className={cn("flex items-center gap-0.5 text-[10px]", monitorName ? "text-emerald-400" : "text-red-400")}>
+              <span className={cn("flex items-center gap-0.5 text-xs", monitorName ? "text-success" : "text-danger")}>
                 <User className="w-2.5 h-2.5" />{monitorName || t("opsDaily.noMonitor")}
               </span>
-              <span className={cn("flex items-center gap-0.5 text-[10px]", op.arrivalTime ? "text-cyan-400" : "text-amber-400")}>
+              <span className={cn("flex items-center gap-0.5 text-xs", op.arrivalTime ? "text-info" : "text-warning")}>
                 <Clock className="w-2.5 h-2.5" />{op.arrivalTime || t("opsDaily.noTime")}
               </span>
               {op.isInherited && (
-                <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/30">{t("opsDaily.inherited")}</Badge>
+                <Badge className="text-xs bg-info/10 text-info border-info/30">{t("opsDaily.inherited")}</Badge>
               )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <Button size="sm" variant="outline" onClick={() => onConsolidateLine(line, op)}
-                className={cn("text-[9px] h-6 px-1.5 gap-1", op.consolidated
-                  ? "border-slate-600 text-slate-400 hover:bg-slate-700"
-                  : "border-emerald-600/50 text-emerald-400 hover:bg-emerald-500/10")}>
+                className={cn("text-xs h-6 px-1.5 gap-1", op.consolidated
+                  ? "border-border text-muted-foreground hover:bg-muted"
+                  : "border-success/50 text-success hover:bg-success/10")}>
                 <CheckCheck className="w-2.5 h-2.5" />{op.consolidated ? t("opsDaily.unmark") : t("opsDaily.consolidate")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => onEditLine(line, op)}
-                className="border-slate-600 text-slate-400 hover:bg-slate-700 text-[9px] h-6 px-1.5 gap-1">
+                className="border-border text-muted-foreground hover:bg-muted text-xs h-6 px-1.5 gap-1">
                 <ClipboardList className="w-2.5 h-2.5" />{t("opsDaily.editBtn")}
               </Button>
             </div>
@@ -329,7 +332,7 @@ export default function DailyActivities() {
 
   const dateStr = formatDate(currentDate);
 
-  const { data, isLoading, refetch } = trpc.operations.activities.getForDate.useQuery(
+  const { data, isLoading, isError, error, refetch } = trpc.operations.activities.getForDate.useQuery(
     { date: dateStr },
     { refetchOnWindowFocus: false }
   );
@@ -473,60 +476,52 @@ export default function DailyActivities() {
 
   return (
     <AdminLayout title={t("opsDaily.pageTitle")}>
-      <div className="min-h-screen bg-[#0a0f1a] text-white p-6 -m-6">
+      <div className="text-foreground">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Waves className="w-6 h-6 text-blue-400" />
-              {t("opsDaily.heading")}
-            </h1>
-            <p className="text-slate-400 text-sm mt-1">{t("opsDaily.subtitle")}</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="border-slate-700 text-slate-300 hover:bg-slate-800">
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-        </div>
+        <PanelPageHeader
+          className="mb-5"
+          icon={<Waves />}
+          title={t("opsDaily.heading")}
+          description={t("opsDaily.subtitle")}
+          actions={
+            <Button variant="outline" size="icon" onClick={() => refetch()} aria-label={t("panelStates.retry")}>
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+          }
+        />
 
         {/* Navegación de fecha */}
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <Button variant="outline" size="icon" onClick={() => setCurrentDate(d => addDays(d, -1))}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8">
-            <ChevronLeft className="w-4 h-4" />
+            aria-label={t("opsDaily.prevDay")} className="h-10 w-10">
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 text-xs">
+            className="h-10">
             {t("opsDaily.today")}
           </Button>
           <Button variant="outline" size="icon" onClick={() => setCurrentDate(d => addDays(d, 1))}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8">
-            <ChevronRight className="w-4 h-4" />
+            aria-label={t("opsDaily.nextDay")} className="h-10 w-10">
+            <ChevronRight className="w-4 h-4" aria-hidden="true" />
           </Button>
-          <div className="flex items-center gap-2 border border-slate-700 rounded-md px-3 h-8 bg-transparent hover:bg-slate-800 transition-colors">
-            <CalendarDays className="w-4 h-4 text-blue-400 shrink-0" />
-            <input type="date" value={dateStr}
+          <div className="flex items-center gap-2 border border-border rounded-md px-3 h-10 bg-transparent hover:bg-muted transition-colors">
+            <CalendarDays className="w-4 h-4 text-info shrink-0" />
+            <input type="date" aria-label={t("opsDaily.pickDate")} value={dateStr}
               onChange={(e) => { if (e.target.value) { const [y, m, d] = e.target.value.split("-").map(Number); setCurrentDate(new Date(y, m - 1, d)); } }}
-              className="bg-transparent text-slate-300 text-sm border-none outline-none cursor-pointer [color-scheme:dark]" />
+              className="bg-transparent text-foreground/80 text-sm border-none outline-none cursor-pointer [color-scheme:light_dark]" />
           </div>
-          <h2 className="text-base font-semibold text-white capitalize">
+          <h2 className="text-base font-semibold text-foreground first-letter:uppercase" aria-live="polite">
             {f.date(currentDate, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </h2>
         </div>
 
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          {[
-            { label: t("opsDaily.kpi.reservations"), value: reservations.length, color: "text-white", bg: "bg-slate-800" },
-            { label: t("opsDaily.noMonitor"), value: sinMonitor, color: sinMonitor > 0 ? "text-red-400" : "text-emerald-400", bg: sinMonitor > 0 ? "bg-red-500/10" : "bg-slate-800" },
-            { label: t("opsDaily.op.sin_hora"), value: sinHora, color: sinHora > 0 ? "text-amber-400" : "text-emerald-400", bg: sinHora > 0 ? "bg-amber-500/10" : "bg-slate-800" },
-            { label: t("opsDaily.arrivalConfirmed"), value: confirmados, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-          ].map(k => (
-            <div key={k.label} className={`${k.bg} rounded-xl border border-slate-700 p-4`}>
-              <div className={`text-3xl font-bold ${k.color}`}>{k.value}</div>
-              <div className="text-slate-400 text-sm mt-1">{k.label}</div>
-            </div>
-          ))}
+        {/* Indicadores del día */}
+        <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <MetricCard tone="info" icon={<ClipboardList />} label={t("opsDaily.kpi.reservations")} value={reservations.length} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone={sinMonitor > 0 ? "danger" : "success"} icon={sinMonitor > 0 ? <AlertTriangle /> : <CheckCircle2 />} label={t("opsDaily.noMonitor")} value={sinMonitor} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone={sinHora > 0 ? "warning" : "success"} icon={<Clock />} label={t("opsDaily.op.sin_hora")} value={sinHora} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard tone="success" icon={<UserCheck />} label={t("opsDaily.arrivalConfirmed")} value={confirmados} className="bg-gradient-to-br from-primary/5 to-card" />
         </div>
 
         {/* Filtros operativos */}
@@ -535,10 +530,10 @@ export default function DailyActivities() {
             <button key={opt.value}
               onClick={() => setOpFilter(opt.value)}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
+                "min-h-9 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
                 opFilter === opt.value
-                  ? "bg-blue-600 border-blue-600 text-white"
-                  : "bg-transparent border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-300"
+                  ? "bg-primary border-info text-primary-foreground"
+                  : "bg-transparent border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground/80"
               )}>
               {opt.label}
               {opt.value !== "all" && (
@@ -555,16 +550,16 @@ export default function DailyActivities() {
 
         {/* Resumen operativo del día: personas por actividad (agregado entre reservas) */}
         {!isLoading && daySummary.length > 0 && (
-          <div className="mb-4 bg-[#111827] border border-cyan-800/40 rounded-xl p-4">
-            <p className="text-[11px] text-cyan-400 uppercase tracking-wide font-semibold mb-2 flex items-center gap-1.5">
+          <div className="mb-4 bg-card border border-info/40 rounded-xl p-4">
+            <p className="text-xs text-info uppercase tracking-wide font-semibold mb-2 flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5" />{t("opsDaily.summary")}
             </p>
             <div className="flex flex-wrap gap-2">
               {daySummary.map((a) => (
-                <div key={a.title} className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5">
-                  <span className="text-sm text-white/90">{a.title}</span>
-                  <span className="text-sm font-bold text-cyan-300">{a.pax}</span>
-                  {a.anyOptional && <span className="text-[9px] text-amber-400" title={t("opsDaily.includesOptionalTitle")}>{t("opsDaily.includesOptional")}</span>}
+                <div key={a.title} className="flex items-center gap-2 bg-muted/60 border border-border rounded-lg px-3 py-1.5">
+                  <span className="text-sm text-foreground/90">{a.title}</span>
+                  <span className="text-sm font-bold text-info">{a.pax}</span>
+                  {a.anyOptional && <span className="text-xs text-warning" title={t("opsDaily.includesOptionalTitle")}>{t("opsDaily.includesOptional")}</span>}
                 </div>
               ))}
             </div>
@@ -573,14 +568,11 @@ export default function DailyActivities() {
 
         {/* Lista de reservas */}
         {isLoading ? (
-          <div className="flex items-center justify-center h-48 text-slate-400">
-            <RefreshCw className="w-5 h-5 animate-spin mr-2" />{t("opsDaily.loading")}
-          </div>
+          <PanelLoading label={t("opsDaily.loading")} />
+        ) : isError ? (
+          <PanelError error={error} onRetry={() => refetch()} title={t("opsDaily.loadError")} />
         ) : filtered.length === 0 ? (
-          <div className="text-center py-20 text-slate-500">
-            <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>{reservations.length === 0 ? t("opsDaily.emptyDay") : t("opsDaily.emptyFilter")}</p>
-          </div>
+          <PanelEmpty icon={<Calendar />} title={reservations.length === 0 ? t("opsDaily.emptyDay") : t("opsDaily.emptyFilter")} />
         ) : (
           <div className="space-y-4">
             {filtered.map((res: any) => {
@@ -665,52 +657,52 @@ export default function DailyActivities() {
 
               return (
                 <div key={res.id} className={cn(
-                  "bg-[#111827] border border-slate-800 rounded-xl overflow-hidden border-l-4",
+                  "bg-card border border-border rounded-xl overflow-hidden border-l-4",
                   cfg.border.replace("border-l-", "border-l-4 border-"),
                 )}>
                   {/* ── NIVEL 1: Cabecera de reserva ── */}
                   <div className="p-5">
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       {/* Info principal */}
-                      <div className="flex items-start gap-4 flex-1 min-w-0">
+                      <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
                         <div className={cn("w-11 h-11 rounded-full flex items-center justify-center shrink-0",
-                          res.clientConfirmed ? "bg-emerald-500/20" : "bg-blue-500/20")}>
+                          res.clientConfirmed ? "bg-success/20" : "bg-info/20")}>
                           {res.clientConfirmed
-                            ? <CheckCheck className="w-5 h-5 text-emerald-400" />
-                            : <Waves className="w-5 h-5 text-blue-400" />}
+                            ? <CheckCheck className="w-5 h-5 text-success" />
+                            : <Waves className="w-5 h-5 text-info" />}
                         </div>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold text-white text-base">{res.clientName}</h3>
+                            <h3 className="font-semibold text-foreground text-base">{res.clientName}</h3>
                             {res.reservationNumber && (
-                              <span className="text-[10px] font-mono text-blue-400/80 bg-blue-500/10 border border-blue-500/20 rounded px-1.5 py-0.5">
+                              <span className="text-xs font-mono text-info/80 bg-info/10 border border-info/20 rounded px-1.5 py-0.5">
                                 {res.reservationNumber}
                               </span>
                             )}
                             {!isMadreToday && (
-                              <span className="text-[10px] text-violet-300 bg-violet-500/10 border border-violet-500/30 rounded px-1.5 py-0.5 flex items-center gap-1">
+                              <span className="text-xs text-primary bg-primary/10 border border-primary/30 rounded px-1.5 py-0.5 flex items-center gap-1">
                                 <CalendarDays className="w-2.5 h-2.5" />{t("opsDaily.reservationOf", { date: res.scheduledDate })}
                               </span>
                             )}
-                            <span className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", cfg.bg, cfg.dot.replace("bg-", "border-").replace("400", "500/40"))}>
+                            <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border", cfg.bg, cfg.dot.replace("bg-", "border-").replace("400", "500/40"))}>
                               <span className={cn("w-1.5 h-1.5 rounded-full", cfg.dot)} />
                               {t(cfg.label)}
                             </span>
                             {isSoon && !res.clientConfirmed && (
-                              <Badge className="bg-red-500/20 text-red-300 border-red-500 text-[10px] animate-pulse">{t("opsDaily.imminent")}</Badge>
+                              <Badge className="bg-danger/20 text-danger border-danger text-xs animate-pulse">{t("opsDaily.imminent")}</Badge>
                             )}
                           </div>
 
                           {/* Contacto */}
-                          <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs text-slate-400">
+                          <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs text-muted-foreground">
                             {res.clientPhone && (
-                              <a href={`tel:${res.clientPhone}`} className="flex items-center gap-1 text-blue-400 hover:text-blue-300">
+                              <a href={`tel:${res.clientPhone}`} className="flex items-center gap-1 text-info hover:text-info">
                                 <Phone className="w-3 h-3" />{res.clientPhone}
                               </a>
                             )}
                             {res.clientEmail && (
-                              <span className="flex items-center gap-1 truncate max-w-xs">
+                              <span className="flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap max-w-xs">
                                 <Mail className="w-3 h-3" />{res.clientEmail}
                               </span>
                             )}
@@ -725,42 +717,42 @@ export default function DailyActivities() {
                           {/* Datos operativos generales */}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
                             <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded border",
-                              res.monitorName ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-red-400 bg-red-500/10 border-red-500/20")}>
+                              res.monitorName ? "text-success bg-success/10 border-success/20" : "text-danger bg-danger/10 border-danger/20")}>
                               <UserCheck className="w-3 h-3" />
                               {res.monitorName || t("opsDaily.noMonitor")}
                             </span>
                             <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded border",
-                              res.arrivalTime ? "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20")}>
+                              res.arrivalTime ? "text-info bg-info/10 border-info/20" : "text-warning bg-warning/10 border-warning/20")}>
                               <Clock className="w-3 h-3" />
                               {res.arrivalTime || t("opsDaily.filter.sin_hora")}
                             </span>
                             {res.clientConfirmed ? (
-                              <span className="flex items-center gap-1 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-2 py-0.5">
+                              <span className="flex items-center gap-1 text-xs text-success bg-success/10 border border-success/20 rounded px-2 py-0.5">
                                 <CheckCircle2 className="w-3 h-3" />{t("opsDaily.arrivalConfirmed")}
                               </span>
                             ) : (
-                              <span className="flex items-center gap-1 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-0.5">
+                              <span className="flex items-center gap-1 text-xs text-warning bg-warning/10 border border-warning/20 rounded px-2 py-0.5">
                                 <AlertTriangle className="w-3 h-3" />{t("opsDaily.unconfirmed")}
                               </span>
                             )}
                             <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded border",
                               totalUnits > 0 && consolidatedUnits === totalUnits
-                                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                                ? "text-success bg-success/10 border-success/20"
                                 : consolidatedUnits > 0
-                                  ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
-                                  : "text-slate-500 bg-slate-800/60 border-slate-700")}>
+                                  ? "text-warning bg-warning/10 border-warning/20"
+                                  : "text-muted-foreground bg-muted/60 border-border")}>
                               <CheckCheck className="w-3 h-3" />
                               {t("opsDaily.consolidatedCount", { done: consolidatedUnits, total: totalUnits })}
                             </span>
                             {res.merchantOrder && (
-                              <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
                                 <Hash className="w-3 h-3" />{res.merchantOrder}
                               </span>
                             )}
                           </div>
 
                           {res.opNotes && (
-                            <p className="text-xs text-slate-500 italic mt-1.5 flex items-center gap-1">
+                            <p className="text-xs text-muted-foreground italic mt-1.5 flex items-center gap-1">
                               <StickyNote className="w-3 h-3 shrink-0" />"{res.opNotes}"
                             </p>
                           )}
@@ -768,7 +760,7 @@ export default function DailyActivities() {
                       </div>
 
                       {/* Acciones lado derecho */}
-                      <div className="shrink-0 flex flex-col gap-1.5 items-end">
+                      <div className="flex flex-row flex-wrap gap-1.5 sm:shrink-0 sm:flex-col sm:items-end">
                         {!res.clientConfirmed && (
                           <Button size="sm"
                             onClick={() => setConfirmArrivalTarget({
@@ -776,23 +768,23 @@ export default function DailyActivities() {
                               time: new Date().toTimeString().slice(0, 5),
                             })}
                             disabled={confirmArrivalMutation.isPending}
-                            className="bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs gap-1 h-7">
+                            className="bg-success/80 hover:bg-success/90 text-primary-foreground text-xs gap-1 h-9 sm:h-7">
                             <CheckCircle2 className="w-3.5 h-3.5" />{t("opsDaily.confirmArrival")}
                           </Button>
                         )}
                         <Button size="sm" variant="outline"
                           onClick={() => openEditReservation(res)}
-                          className="border-slate-600 text-slate-300 hover:bg-slate-700 text-xs gap-1 h-7">
+                          className="border-border text-foreground/80 hover:bg-muted text-xs gap-1 h-9 sm:h-7">
                           <ClipboardList className="w-3.5 h-3.5" />{t("opsDaily.editGeneral")}
                         </Button>
                         <Link href={`/admin/crm?tab=reservas&id=${res.id}`}>
-                          <span className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 border border-violet-500/20 rounded px-2 py-1 cursor-pointer transition-colors">
+                          <span className="flex items-center gap-1 text-xs text-primary hover:text-primary bg-primary/10 border border-primary/20 rounded px-2 py-1 cursor-pointer transition-colors">
                             <ExternalLink className="w-3 h-3" />{t("opsDaily.viewCrm")}
                           </span>
                         </Link>
                         <Button size="sm" variant="outline"
                           onClick={() => setCancelTarget({ id: res.id, title: res.activityTitle || t("opsDaily.activityFallback") })}
-                          className="border-red-700/40 text-red-400 hover:bg-red-500/10 text-xs gap-1 h-7">
+                          className="border-danger/40 text-danger hover:bg-danger/10 text-xs gap-1 h-9 sm:h-7">
                           <XCircle className="w-3.5 h-3.5" />{t("opsDaily.cancel")}
                         </Button>
                       </div>
@@ -801,7 +793,7 @@ export default function DailyActivities() {
                     {/* Botón desplegar actividades — solo si hay extras */}
                     {totalActivities > 1 && (
                       <button onClick={() => toggleExpand(res.id)}
-                        className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 rounded-lg py-1.5 hover:bg-slate-800 transition-colors">
+                        className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg py-1.5 hover:bg-muted transition-colors">
                         {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         {isExpanded ? t("opsDaily.hideN", { n: totalActivities }) : t("opsDaily.showN", { n: totalActivities })}
                       </button>
@@ -810,8 +802,8 @@ export default function DailyActivities() {
 
                   {/* ── NIVEL 2: Actividades de la reserva que ocurren HOY (desplegable) ── */}
                   {isExpanded && totalActivities > 1 && (
-                    <div className="px-5 pb-5 space-y-2 border-t border-slate-800 pt-4">
-                      <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold mb-3">
+                    <div className="px-5 pb-5 space-y-2 border-t border-border pt-4">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-3">
                                         {t("opsDaily.todayActivities")}
                       </p>
                       {shownComponents.map((c) => (
@@ -841,7 +833,7 @@ export default function DailyActivities() {
                   )}
                   {/* Si solo hay 1 actividad hoy, mostrar siempre */}
                   {totalActivities === 1 && (
-                    <div className="px-5 pb-5 border-t border-slate-800 pt-4 space-y-1.5">
+                    <div className="px-5 pb-5 border-t border-border pt-4 space-y-1.5">
                       <ActivitySubItem
                         index={shownComponents[0].index}
                         title={shownComponents[0].title}
@@ -872,21 +864,21 @@ export default function DailyActivities() {
 
       {/* Modal de edición operativa (reserva general o actividad específica) */}
       <Dialog open={!!editTarget} onOpenChange={() => setEditTarget(null)}>
-        <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">
+            <DialogTitle className="text-foreground">
               {editTarget?.activityIndex === -1 ? t("opsDaily.edit.titleGeneral") : editTarget?.lineId != null ? t("opsDaily.edit.titleLine") : t("opsDaily.edit.titleActivity")}
             </DialogTitle>
           </DialogHeader>
           {editTarget && (
             <div className="space-y-4 mt-2">
-              <div className="bg-slate-800 rounded-lg p-3">
-                <p className="font-semibold text-white text-sm">{editTarget.title}</p>
+              <div className="bg-muted rounded-lg p-3">
+                <p className="font-semibold text-foreground text-sm">{editTarget.title}</p>
                 {editTarget.activityIndex === -1 && (
-                  <p className="text-xs text-slate-400 mt-1">{t("opsDaily.edit.inheritNote")}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("opsDaily.edit.inheritNote")}</p>
                 )}
                 {editTarget.activityIndex >= 0 && editTarget.current.isInherited && (
-                  <p className="text-xs text-blue-400 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-info mt-1 flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" />
                     {t("opsDaily.edit.inheritingNote")}
                   </p>
@@ -895,55 +887,55 @@ export default function DailyActivities() {
 
               {editTarget.activityIndex >= 0 && (
                 <div>
-                  <label className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                    <CalendarDays className="w-3.5 h-3.5 text-violet-400" />{t("opsDaily.edit.serviceDate")}
+                  <label className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                    <CalendarDays className="w-3.5 h-3.5 text-primary" />{t("opsDaily.edit.serviceDate")}
                   </label>
                   <Input type="date" value={editServiceDate} onChange={(e) => setEditServiceDate(e.target.value)}
-                    className="bg-slate-800 border-slate-600 text-white [color-scheme:dark]" />
-                  <p className="text-[11px] text-slate-500 mt-1">
+                    className="bg-muted border-border text-foreground [color-scheme:dark]" />
+                  <p className="text-xs text-muted-foreground mt-1">
                     {t("opsDaily.edit.serviceDateHelp")}
                   </p>
                 </div>
               )}
 
               <div>
-                <label className="text-sm text-slate-400 mb-2 block">{t("opsDaily.edit.assignedMonitor")}</label>
+                <label className="text-sm text-muted-foreground mb-2 block">{t("opsDaily.edit.assignedMonitor")}</label>
                 <Select value={editMonitorId} onValueChange={setEditMonitorId}>
-                  <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
+                  <SelectTrigger className="bg-muted border-border text-foreground">
                     <SelectValue placeholder={t("opsDaily.edit.selectMonitor")} />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    <SelectItem value="none" className="text-slate-400">{t("opsDaily.noMonitor")}</SelectItem>
+                  <SelectContent className="bg-muted border-border">
+                    <SelectItem value="none" className="text-muted-foreground">{t("opsDaily.noMonitor")}</SelectItem>
                     {monitors.map((m: any) => (
-                      <SelectItem key={m.id} value={String(m.id)} className="text-white">{m.fullName}</SelectItem>
+                      <SelectItem key={m.id} value={String(m.id)} className="text-foreground">{m.fullName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <label className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-cyan-400" />{t("opsDaily.edit.clientArrival")}
+                <label className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-info" />{t("opsDaily.edit.clientArrival")}
                 </label>
                 <Input type="time" value={editArrivalTime} onChange={(e) => setEditArrivalTime(e.target.value)}
-                  className="bg-slate-800 border-slate-600 text-white [color-scheme:dark]" />
+                  className="bg-muted border-border text-foreground [color-scheme:dark]" />
               </div>
 
               <div>
-                <label className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                  <StickyNote className="w-3.5 h-3.5 text-amber-400" />{t("opsDaily.edit.opNotes")}
+                <label className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                  <StickyNote className="w-3.5 h-3.5 text-warning" />{t("opsDaily.edit.opNotes")}
                 </label>
                 <Textarea value={editOpNotes} onChange={(e) => setEditOpNotes(e.target.value)}
                   placeholder={t("opsDaily.edit.notesPlaceholder")} rows={3}
-                  className="bg-slate-800 border-slate-600 text-white resize-none" />
+                  className="bg-muted border-border text-foreground resize-none" />
               </div>
 
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setEditTarget(null)} className="border-slate-600 text-slate-300">{t("opsDaily.dialogCancel")}</Button>
+                <Button variant="outline" onClick={() => setEditTarget(null)} className="border-border text-foreground/80">{t("opsDaily.dialogCancel")}</Button>
                 <Button
                   disabled={updateDetailsMutation.isPending || updateActivityOpMutation.isPending}
                   onClick={handleSave}
-                  className="bg-blue-600 hover:bg-blue-700 text-white">
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground">
                   {updateDetailsMutation.isPending || updateActivityOpMutation.isPending ? t("opsDaily.saving") : t("opsDaily.save")}
                 </Button>
               </div>
@@ -954,16 +946,16 @@ export default function DailyActivities() {
 
       {/* Modal confirmación anulación */}
       <AlertDialog open={!!cancelTarget} onOpenChange={() => setCancelTarget(null)}>
-        <AlertDialogContent className="bg-[#111827] border-slate-700 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">{t("opsDaily.cancelDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
+            <AlertDialogTitle className="text-foreground">{t("opsDaily.cancelDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
               {rich(t("opsDaily.cancelDialog.text", { title: "{title}" }), { title: cancelTarget?.title })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-slate-600 text-slate-300 hover:bg-slate-800">{t("opsDaily.dialogCancel")}</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700 text-white"
+            <AlertDialogCancel className="border-border text-foreground/80 hover:bg-muted">{t("opsDaily.dialogCancel")}</AlertDialogCancel>
+            <AlertDialogAction className="bg-danger hover:bg-danger/90 text-primary-foreground"
               onClick={() => cancelTarget && cancelActivityMutation.mutate({ reservationId: cancelTarget.id })}>
               {t("opsDaily.cancelDialog.confirm")}
             </AlertDialogAction>
@@ -973,15 +965,15 @@ export default function DailyActivities() {
 
       {/* ── Modal consolidar / desmarcar actividad ───────────────────────── */}
       <Dialog open={!!consolidateTarget} onOpenChange={() => setConsolidateTarget(null)}>
-        <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-xs">
+        <DialogContent className="bg-card border-border text-foreground max-w-xs">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCheck className="w-4 h-4 text-emerald-400" />
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <CheckCheck className="w-4 h-4 text-success" />
               {consolidateTarget?.currentValue ? t("opsDaily.consDialog.titleUnmark") : t("opsDaily.consDialog.titleMark")}
             </DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-muted-foreground">
               {consolidateTarget?.lineIds
                 ? (consolidateTarget.currentValue
                     ? <>{rich(t("opsDaily.consDialog.unmarkLines", { n: "{n}", title: "{title}" }), { n: consolidateTarget.lineIds.length, title: consolidateTarget.title })}</>
@@ -993,14 +985,14 @@ export default function DailyActivities() {
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" size="sm" onClick={() => setConsolidateTarget(null)}
-              className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              className="border-border text-foreground/80 hover:bg-muted">
               {t("opsDaily.dialogCancel")}
             </Button>
             <Button size="sm"
               disabled={updateActivityOpMutation.isPending}
               className={consolidateTarget?.currentValue
-                ? "bg-slate-600 hover:bg-slate-700 text-white"
-                : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+                ? "bg-muted hover:bg-muted text-foreground"
+                : "bg-success hover:bg-success/90 text-primary-foreground"}
               onClick={() => {
                 if (!consolidateTarget) return;
                 if (consolidateTarget.lineIds) {
@@ -1023,29 +1015,29 @@ export default function DailyActivities() {
 
       {/* ── Modal confirmar llegada con hora ──────────────────────────────── */}
       <Dialog open={!!confirmArrivalTarget} onOpenChange={() => setConfirmArrivalTarget(null)}>
-        <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-xs">
+        <DialogContent className="bg-card border-border text-foreground max-w-xs">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-success" />
               {t("opsDaily.confirmArrival")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-slate-400">{t("opsDaily.arrivalDialog.text")}</p>
+            <p className="text-sm text-muted-foreground">{t("opsDaily.arrivalDialog.text")}</p>
             <Input
               type="time"
               value={confirmArrivalTarget?.time ?? ""}
               onChange={(e) => setConfirmArrivalTarget((prev) => prev ? { ...prev, time: e.target.value } : prev)}
-              className="bg-slate-800 border-slate-600 text-white"
+              className="bg-muted border-border text-foreground"
             />
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" size="sm" onClick={() => setConfirmArrivalTarget(null)}
-              className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              className="border-border text-foreground/80 hover:bg-muted">
               {t("opsDaily.dialogCancel")}
             </Button>
             <Button size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-success hover:bg-success/90 text-primary-foreground"
               disabled={confirmArrivalMutation.isPending}
               onClick={() => {
                 if (!confirmArrivalTarget) return;

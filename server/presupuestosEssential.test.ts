@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { ORIGINAL, restosEn, visibleText } from "../shared/sinNayade";
 import { buildVocabulary } from "../shared/vocabulary";
 
@@ -31,7 +32,7 @@ describe("texto legal y condiciones del presupuesto", () => {
   });
 
   it("el panel toma las condiciones por defecto del vocabulario (y siguen a las licencias hasta que se editan)", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/CRMDashboard.tsx"), "utf8");
+    const src = crmDashboardFuentes();
     expect(src).not.toContain("Sujeto a disponibilidad");
     expect(src.split("useVocabularyDefault(voc.quoteConditions)").length - 1).toBe(2);
   });

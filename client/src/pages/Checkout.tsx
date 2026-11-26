@@ -5,6 +5,7 @@
  * y lanza el pago Redsys con un único formulario POST.
  */
 import { useState, useEffect, useRef } from "react";
+import { supplementIdsFor } from "../../../shared/supplementCart";
 import { Link, useLocation } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { useCart } from "@/contexts/CartContext";
@@ -13,7 +14,10 @@ import { trackEvent } from "@/lib/meta-pixel/client";
 import { getFbp, getFbc } from "@/lib/meta-pixel/cookies";
 import { trpc } from "@/lib/trpc";
 import { usePublicSite } from "@/hooks/usePublicSite";
-import { cartItemDate } from "@shared/publicSite";
+import { useBuyerLocale, useCheckoutConfig } from "@/hooks/useBuyerLocale";
+import { cartItemDate, quantityText } from "@shared/publicSite";
+import { fillUiText, siteUiText } from "@shared/siteUiText";
+import { consentSentenceParts } from "@shared/checkoutExtras";
 import { usePageTitle } from "@/components/TenantTheme";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,8 +36,8 @@ const eur = (n: number) => formatEuros(n) ?? "0,00 €";
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Fecha del artículo; null si no tiene (productos de la tienda sin fecha): no se muestra. */
-function formatDate(dateStr: string): string | null {
-  return cartItemDate(dateStr, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+function formatDate(dateStr: string, locale: string): string | null {
+  return cartItemDate(dateStr, { weekday: "long", day: "numeric", month: "long", year: "numeric" }, locale === "de" ? "de-DE" : locale === "en" ? "en-GB" : "es-ES");
 }
 
 // ─── Checkout ─────────────────────────────────────────────────────────────────
@@ -42,9 +46,15 @@ export default function Checkout() {
   const { items, totalItems, totalEstimated, removeItem, clearCart } = useCart();
   const [, navigate] = useLocation();
   // Textos de la empresa: genéricos en una pyme (tienda, pedido), los de siempre en la instalación propia
-  const { features: site, text } = usePublicSite();
+  const locale = useBuyerLocale();
+  const t = siteUiText(locale);
+  const { features: site, text } = usePublicSite(locale);
   const shopHref = site?.licensed && !site.store ? "/" : text.shopHref;
-  usePageTitle("Finalizar compra");
+  usePageTitle(t.coCheckoutTitle);
+  // Condiciones y participantes: solo si la empresa los ha configurado (sin configurar, el pago de siempre)
+  const cfg = useCheckoutConfig();
+  const [consent, setConsent] = useState(false);
+  const [participants, setParticipants] = useState<Record<string, string[]>>({});
   const hasConsent = useMarketingConsent();
   const initiateCheckoutFired = useRef(false);
 
@@ -94,6 +104,8 @@ export default function Checkout() {
       : Math.round(subtotalAfterRules * promoData.discountPercent) / 100
     : 0;
   const finalTotal = Math.max(0, subtotalAfterRules - promoDiscount);
+  const countLabel = `${totalItems} ${site?.licensed ? (totalItems === 1 ? t.coArticle1 : t.coArticleN) : totalItems === 1 ? t.coExperience1 : t.coExperienceN}`;
+  const participantItems = cfg.participantsEnabled ? items.filter((i) => i.people > 1) : [];
 
   const cartCheckout = trpc.reservations.cartCheckout.useMutation();
 
@@ -128,7 +140,8 @@ export default function Checkout() {
   }, [hasConsent]);
 
   function validate(): boolean {
-    const errs: Record<string, string> = { ...validateBuyer({ name, email, phone, wantsInvoice, nif, billingName, billingAddress }) };
+    const errs: Record<string, string> = { ...validateBuyer({ name, email, phone, wantsInvoice, nif, billingName, billingAddress }, locale) };
+    if (cfg.consentRequired && !consent) errs.consent = t.coConsentMissing;
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -144,10 +157,15 @@ export default function Checkout() {
           bookingDate: i.bookingDate,
           people: i.people,
           variantId: i.variantId,
+          supplementIds: i.supplements?.length ? supplementIdsFor(i.supplements, i.people) : undefined,
+          editionId: i.editionId,
           extras: i.extras,
           legoPackLineIds: i.legoPackLineIds,
           legoPackLinePeople: i.legoPackLinePeople,
+          participants: cfg.participantsEnabled && i.people > 1 ? (participants[i.cartItemId] ?? []).slice(0, i.people).map((n) => n.trim()).filter(Boolean) : undefined,
         })),
+        locale,
+        consentAccepted: cfg.consentRequired ? consent : undefined,
         customerName: name.trim(),
         customerEmail: email.trim(),
         customerPhone: phone.trim() || undefined,
@@ -208,7 +226,7 @@ export default function Checkout() {
       form.submit();
     } catch (err: unknown) {
       const e = err as { message?: string; data?: { code?: string } | null } | null;
-      setSubmitError(checkoutErrorMessage({ code: e?.data?.code ?? null, message: e?.message ?? null }));
+      setSubmitError(checkoutErrorMessage({ code: e?.data?.code ?? null, message: e?.message ?? null }, locale));
     }
   }
 
@@ -223,11 +241,11 @@ export default function Checkout() {
         <div className="bg-white border-b border-slate-200">
           <div className="container max-w-5xl py-4">
             <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
-              <Link href="/" className="hover:text-primary transition-colors">Inicio</Link>
+              <Link href="/" className="hover:text-primary transition-colors">{t.home}</Link>
               <ChevronRight className="w-3.5 h-3.5" />
               <Link href={shopHref} className="hover:text-primary transition-colors">{text.shopLabel}</Link>
               <ChevronRight className="w-3.5 h-3.5" />
-              <span className="text-slate-900 font-medium">Finalizar compra</span>
+              <span className="text-slate-900 font-medium">{t.coCheckoutTitle}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -235,16 +253,16 @@ export default function Checkout() {
                   <ShoppingCart className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-black text-slate-900">Finalizar compra</h1>
+                  <h1 className="text-xl font-black text-slate-900">{t.coCheckoutTitle}</h1>
                   <p className="text-xs text-slate-500">
-                    {site?.licensed ? `${totalItems} ${totalItems === 1 ? "artículo" : "artículos"}` : `${totalItems} ${totalItems === 1 ? "experiencia" : "experiencias"}`} · Total estimado: <span className="font-bold text-primary">{eur(totalEstimated)}</span>
+                    {countLabel} · {t.coEstimatedTotal}: <span className="font-bold text-primary">{eur(totalEstimated)}</span>
                   </p>
                 </div>
               </div>
               <Link href={shopHref}>
                 <button className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors">
                   <ArrowLeft className="w-4 h-4" />
-                  Seguir comprando
+                  {t.coContinueShopping}
                 </button>
               </Link>
             </div>
@@ -261,14 +279,14 @@ export default function Checkout() {
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                   <h2 className="font-bold text-slate-900 flex items-center gap-2">
                     <ShoppingCart className="w-4 h-4 text-primary" />
-                    Resumen del pedido
+                    {t.coOrderSummary}
                   </h2>
                   <button
                     onClick={() => { clearCart(); navigate(shopHref); }}
                     className="text-xs text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1"
                   >
                     <Trash2 className="w-3 h-3" />
-                    Vaciar carrito
+                    {t.coEmptyCart}
                   </button>
                 </div>
 
@@ -302,26 +320,29 @@ export default function Checkout() {
                                   {item.variantName}
                                 </p>
                               )}
+                              {item.supplements?.map((s) => (
+                                <p key={s.group} className="text-xs text-slate-500 mt-0.5">+ {s.name}</p>
+                              ))}
                             </div>
                             <button
                               onClick={() => removeItem(item.cartItemId)}
                               className="flex-shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                              aria-label={`Eliminar ${item.productName}`}
+                              aria-label={fillUiText(t.coRemoveItem, { name: item.productName })}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
 
                           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-600">
-                            {formatDate(item.bookingDate) && (
+                            {formatDate(item.bookingDate, locale) && (
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3 text-primary" />
-                                {formatDate(item.bookingDate)}
+                                {formatDate(item.bookingDate, locale)}
                               </span>
                             )}
                             <span className="flex items-center gap-1">
                               <QtyIcon className="w-3 h-3 text-primary" aria-hidden="true" />
-                              {text.quantity(item.people)}
+                              {item.quantityKind === "participants" ? quantityText(t, item.people, "participants") : text.quantity(item.people)}
                             </span>
                           </div>
 
@@ -338,7 +359,7 @@ export default function Checkout() {
 
                           {rule && (
                             <p className="mt-2 text-xs font-medium text-green-700">
-                              {rule.savings >= 0 ? "Promoción" : "Suplemento"}: {rule.rules.join(" + ")}
+                              {rule.savings >= 0 ? t.coPromotion : t.coSurcharge}: {rule.rules.join(" + ")}
                             </p>
                           )}
                           <div className="flex items-center justify-between mt-3">
@@ -349,7 +370,7 @@ export default function Checkout() {
                                   {eur(rule.unitPrice)}
                                 </>
                               ) : eur(item.pricePerPerson)}{text.perUnitLong.replace("€", "")}
-                              {extrasTotal > 0 && ` + ${eur(extrasTotal)} extras`}
+                              {extrasTotal > 0 && ` + ${eur(extrasTotal)} ${t.coExtras}`}
                             </span>
                             <span className="font-black text-base text-primary">
                               {eur(rule ? Math.max(0, item.estimatedTotal - rule.savings) : item.estimatedTotal)}
@@ -364,7 +385,7 @@ export default function Checkout() {
                 {/* Código promocional */}
                 <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-                    <Tag className="w-3 h-3 text-primary" /> Código promocional
+                    <Tag className="w-3 h-3 text-primary" /> {t.coPromoCode}
                   </label>
                   {promoData ? (
                     <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2">
@@ -372,15 +393,15 @@ export default function Checkout() {
                         <span className="font-mono font-bold text-green-700 text-sm">{promoData.code}</span>
                         <span className="text-xs text-green-600 ml-2">
                           {promoData.discountType === "fixed"
-                            ? `-${eur(promoData.discountAmount)} aplicado`
-                            : `-${promoData.discountPercent}% aplicado`}
+                            ? fillUiText(t.coPromoFixed, { amount: eur(promoData.discountAmount) })
+                            : fillUiText(t.coPromoPct, { n: promoData.discountPercent })}
                         </span>
                       </div>
                       <button
                         onClick={() => { setPromoData(null); setPromoInput(""); }}
                         className="text-slate-400 hover:text-red-500 transition-colors ml-2"
                       >
-                        <span className="text-xs">× Quitar</span>
+                        <span className="text-xs">{t.coRemovePromo}</span>
                       </button>
                     </div>
                   ) : (
@@ -398,7 +419,7 @@ export default function Checkout() {
                         disabled={validatePromo.isPending || !promoInput.trim()}
                         className="px-3 py-2 text-sm font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl disabled:opacity-50 transition-colors"
                       >
-                        {validatePromo.isPending ? "..." : "Aplicar"}
+                        {validatePromo.isPending ? "..." : t.coApply}
                       </button>
                     </div>
                   )}
@@ -408,38 +429,38 @@ export default function Checkout() {
                 {/* Subtotal */}
                 <div className="px-5 py-4 bg-slate-50 border-t border-slate-100">
                   <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
-                    <span>Subtotal ({totalItems} {totalItems === 1 ? "artículo" : "artículos"})</span>
+                    <span>{fillUiText(t.coSubtotalOf, { count: countLabel })}</span>
                     <span>{eur(totalEstimated)}</span>
                   </div>
                   {ruleSavings !== 0 && (
                     <div className={`flex items-center justify-between text-sm mb-1 ${ruleSavings > 0 ? "text-green-600" : "text-slate-600"}`}>
-                      <span>{ruleSavings > 0 ? "Ahorro por promociones" : "Suplementos"}</span>
+                      <span>{ruleSavings > 0 ? t.coSavings : t.coSurcharges}</span>
                       <span>{ruleSavings > 0 ? `-${eur(ruleSavings)}` : `+${eur(-ruleSavings)}`}</span>
                     </div>
                   )}
                   {promoDiscount > 0 && (
                     <div className="flex items-center justify-between text-sm text-green-600 mb-1">
-                      <span>Descuento {promoData?.code}</span>
+                      <span>{fillUiText(t.coDiscountCode, { code: promoData?.code ?? "" })}</span>
                       <span>-{eur(promoDiscount)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between font-black text-lg text-slate-900 border-t border-slate-200 pt-2 mt-2">
-                    <span>Total</span>
+                    <span>{t.total}</span>
                     <span className="text-primary">{eur(finalTotal)}</span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1.5">{site?.licensed ? "Precios con IVA incluido. El importe definitivo se comprueba antes de pagar." : "* El precio final se calculará en el servidor antes del pago."}</p>
+                  <p className="text-xs text-slate-500 mt-1.5">{site?.licensed ? t.coVatNoteGeneric : t.coVatNoteLegacy}</p>
                 </div>
               </div>
 
               {/* Garantías */}
               <div className={`grid gap-3 ${text.showCancellationBadge ? "grid-cols-3" : "grid-cols-2"}`}>
                 {[
-                  { icon: Shield, label: "Pago seguro", desc: text.secureBadge },
+                  { icon: Shield, label: t.coSecurePay, desc: text.secureBadge },
                   // Política de cancelación de la instalación propia: una pyme tiene la suya (no se inventa)
-                  ...(text.showCancellationBadge ? [{ icon: Clock, label: "Cancelación", desc: "Hasta 48h antes" }] : []),
+                  ...(text.showCancellationBadge ? [{ icon: Clock, label: t.coCancellation, desc: t.coUpTo48h }] : []),
                   buyerEmails
-                    ? { icon: CheckCircle2, label: "Confirmación", desc: site?.licensed ? "Por correo al pagar" : "Email inmediato" }
-                    : { icon: CheckCircle2, label: "Confirmación", desc: "Número de pedido al pagar" },
+                    ? { icon: CheckCircle2, label: t.coConfirmation, desc: site?.licensed ? t.coConfByEmail : t.coConfEmailNow }
+                    : { icon: CheckCircle2, label: t.coConfirmation, desc: t.coConfOrderNumber },
                 ].map(({ icon: Icon, label, desc }) => (
                   <div key={label} className="bg-white rounded-xl border border-slate-200 p-3 text-center">
                     <Icon className="w-5 h-5 text-primary mx-auto mb-1" />
@@ -456,16 +477,16 @@ export default function Checkout() {
                 <div className="px-5 py-4 border-b border-slate-100">
                   <h2 className="font-bold text-slate-900 flex items-center gap-2">
                     <User className="w-4 h-4 text-primary" />
-                    Tus datos de contacto
+                    {t.coContactTitle}
                   </h2>
-                  <p className="text-xs text-slate-600 mt-0.5">{buyerEmails ? text.contactHint : "Para identificar tu pedido y poder contactarte."}</p>
+                  <p className="text-xs text-slate-600 mt-0.5">{buyerEmails ? text.contactHint : t.coContactHintOrder}</p>
                 </div>
 
                 <div className="px-5 py-5 space-y-4">
                   {/* Nombre */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Nombre completo <span className="text-red-500">*</span>
+                      {t.coFullName} <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -473,7 +494,7 @@ export default function Checkout() {
                         type="text"
                         value={name}
                         onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: "" })); }}
-                        placeholder="Carlos García López"
+                        placeholder={t.coNamePlaceholder}
                         className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors ${errors.name ? "border-red-400 bg-red-50" : "border-slate-300"}`}
                       />
                     </div>
@@ -483,7 +504,7 @@ export default function Checkout() {
                   {/* Email */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Email <span className="text-red-500">*</span>
+                      {t.coEmailField} <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -501,7 +522,7 @@ export default function Checkout() {
                   {/* Teléfono */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Teléfono <span className="text-slate-500 font-normal">(opcional)</span>
+                      {t.coPhoneField} <span className="text-slate-500 font-normal">{t.coOptional}</span>
                     </label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -520,22 +541,22 @@ export default function Checkout() {
                   <div className="rounded-xl border border-slate-200 p-3">
                     <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
                       <input type="checkbox" checked={wantsInvoice} onChange={e => { setWantsInvoice(e.target.checked); setErrors(p => ({ ...p, nif: "" })); }} className="mt-0.5 h-4 w-4 accent-primary" />
-                      <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 shrink-0 text-primary" aria-hidden="true" />Quiero la factura con mi NIF o el de mi empresa</span>
+                      <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 shrink-0 text-primary" aria-hidden="true" />{t.coWantInvoice}</span>
                     </label>
                     {wantsInvoice && (
                       <div className="mt-3 space-y-3">
                         <div>
-                          <label htmlFor="checkout-nif" className="block text-xs font-semibold text-slate-700 mb-1.5">NIF, NIE o CIF <span className="text-red-500">*</span></label>
+                          <label htmlFor="checkout-nif" className="block text-xs font-semibold text-slate-700 mb-1.5">{t.coTaxId} <span className="text-red-500">*</span></label>
                           <input id="checkout-nif" type="text" value={nif} autoComplete="off" onChange={e => { setNif(e.target.value.toUpperCase()); setErrors(p => ({ ...p, nif: "" })); }} placeholder="12345678Z" className={`w-full px-3 py-2.5 text-sm border rounded-xl bg-white uppercase focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors ${errors.nif ? "border-red-400 bg-red-50" : "border-slate-300"}`} />
                           {errors.nif && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.nif}</p>}
                         </div>
                         <div>
-                          <label htmlFor="checkout-billing-name" className="block text-xs font-semibold text-slate-700 mb-1.5">Nombre o razón social <span className="text-slate-500 font-normal">(si es distinto)</span></label>
-                          <input id="checkout-billing-name" type="text" value={billingName} onChange={e => setBillingName(e.target.value)} placeholder="Mi Empresa, S.L." className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors" />
+                          <label htmlFor="checkout-billing-name" className="block text-xs font-semibold text-slate-700 mb-1.5">{t.coBillingName} <span className="text-slate-500 font-normal">{t.coIfDifferent}</span></label>
+                          <input id="checkout-billing-name" type="text" value={billingName} onChange={e => setBillingName(e.target.value)} placeholder={t.coBillingNamePlaceholder} className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors" />
                         </div>
                         <div>
-                          <label htmlFor="checkout-billing-address" className="block text-xs font-semibold text-slate-700 mb-1.5">Dirección fiscal <span className="text-slate-500 font-normal">(opcional)</span></label>
-                          <input id="checkout-billing-address" type="text" value={billingAddress} onChange={e => setBillingAddress(e.target.value)} placeholder="Calle, número, código postal y ciudad" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors" />
+                          <label htmlFor="checkout-billing-address" className="block text-xs font-semibold text-slate-700 mb-1.5">{t.coBillingAddress} <span className="text-slate-500 font-normal">{t.coOptional}</span></label>
+                          <input id="checkout-billing-address" type="text" value={billingAddress} onChange={e => setBillingAddress(e.target.value)} placeholder={t.coBillingAddressPlaceholder} className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors" />
                         </div>
                       </div>
                     )}
@@ -544,7 +565,7 @@ export default function Checkout() {
                   {/* Comentarios */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Comentarios <span className="text-slate-500 font-normal">(opcional)</span>
+                      {t.coComments} <span className="text-slate-500 font-normal">{t.coOptional}</span>
                     </label>
                     <textarea
                       value={comments}
@@ -554,6 +575,35 @@ export default function Checkout() {
                       className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors resize-none"
                     />
                   </div>
+
+                  {/* Participantes (opcional, solo si la empresa lo ha activado y la cantidad es mayor que 1) */}
+                  {participantItems.length > 0 && (
+                    <fieldset className="rounded-xl border border-slate-200 p-3 space-y-3">
+                      <legend className="px-1 text-xs font-semibold text-slate-700">{t.coParticipantsTitle} <span className="text-slate-500 font-normal">{t.coOptional}</span></legend>
+                      <p className="text-xs text-slate-600">{t.coParticipantsHint}</p>
+                      {participantItems.map((item) => (
+                        <div key={item.cartItemId} className="space-y-2">
+                          <p className="text-xs font-semibold text-slate-800 break-words">{item.productName}</p>
+                          {Array.from({ length: Math.min(item.people, 100) }, (_, n) => (
+                            <input
+                              key={n}
+                              type="text"
+                              maxLength={120}
+                              value={participants[item.cartItemId]?.[n] ?? ""}
+                              aria-label={`${item.productName} · ${fillUiText(t.coParticipantNumber, { n: n + 1 })}`}
+                              placeholder={`${fillUiText(t.coParticipantNumber, { n: n + 1 })} · ${t.coParticipantPlaceholder}`}
+                              onChange={(e) => setParticipants((p) => {
+                                const list = [...(p[item.cartItemId] ?? [])];
+                                list[n] = e.target.value;
+                                return { ...p, [item.cartItemId]: list };
+                              })}
+                              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors"
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </fieldset>
+                  )}
 
                   {/* Error de envío */}
                   {submitError && (
@@ -566,21 +616,46 @@ export default function Checkout() {
                   {/* Total + botón pagar */}
                   <div className="border-t border-slate-100 pt-4">
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-sm font-semibold text-slate-700">Total a pagar</span>
+                      <span className="text-sm font-semibold text-slate-700">{t.coTotalToPay}</span>
                       <span className="text-2xl font-black text-primary">
                         {eur(finalTotal)}
                       </span>
                     </div>
 
                     {stripeOffered && redsysOffered && (
-                      <fieldset className="mb-4 space-y-2" aria-label="Método de pago">
+                      <fieldset className="mb-4 space-y-2" aria-label={t.coPayMethod}>
                         {(["redsys", "stripe"] as const).map((m) => (
                           <label key={m} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                             <input type="radio" name="payWith" checked={payWith === m} onChange={() => setChosen(m)} />
-                            {m === "redsys" ? "Tarjeta (pasarela del banco)" : "Tarjeta (Stripe)"}
+                            {m === "redsys" ? t.coPayBank : t.coPayStripe}
                           </label>
                         ))}
                       </fieldset>
+                    )}
+                    {/* Aceptación de condiciones: solo si la empresa la ha configurado (el servidor también la exige) */}
+                    {cfg.consentRequired && (
+                      <div className="mb-4">
+                        <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={consent}
+                            onChange={(e) => { setConsent(e.target.checked); setErrors((p) => ({ ...p, consent: "" })); }}
+                            aria-invalid={!!errors.consent}
+                            data-testid="checkout-consent"
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                          />
+                          <span>
+                            {consentSentenceParts(cfg, t).map((part, i) =>
+                              part.href ? (
+                                <a key={i} href={part.href} target="_blank" rel="noopener noreferrer" className="underline text-primary">{part.text}</a>
+                              ) : (
+                                <span key={i}>{part.text}</span>
+                              ),
+                            )}
+                          </span>
+                        </label>
+                        {errors.consent && <p className="text-xs text-red-500 mt-1 flex items-center gap-1" role="alert"><AlertCircle className="w-3 h-3" />{errors.consent}</p>}
+                      </div>
                     )}
                     <Button
                       size="lg"
@@ -594,12 +669,12 @@ export default function Checkout() {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                           </svg>
-                          Procesando...
+                          {t.coProcessing}
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
                           <CreditCard className="w-5 h-5" />
-                          Pagar con tarjeta
+                          {t.coPayCard}
                           <Lock className="w-4 h-4 ml-1 opacity-70" />
                         </span>
                       )}

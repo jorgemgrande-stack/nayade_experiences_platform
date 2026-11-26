@@ -70,7 +70,7 @@ export default function LifeHome() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  <section aria-labelledby="life-mis-tareas" className="min-w-0 rounded-2xl border border-border bg-card p-5">
+                  <section aria-labelledby="life-mis-tareas" className="min-w-0 rounded-xl border border-border bg-card p-5">
                     <h2 id="life-mis-tareas" className="font-semibold text-foreground">{d.memberId ? "Mis tareas" : "Tareas del hogar"}</h2>
                     {d.myTasks.length === 0 ? (
                       <p className="mt-3 text-sm text-muted-foreground">Nada pendiente. Cuando haya tareas para ti, aparecerán aquí.</p>
@@ -98,7 +98,7 @@ export default function LifeHome() {
                     </Link>
                   </section>
 
-                  <section aria-labelledby="life-mi-agenda" className="min-w-0 rounded-2xl border border-border bg-card p-5">
+                  <section aria-labelledby="life-mi-agenda" className="min-w-0 rounded-xl border border-border bg-card p-5">
                     <h2 id="life-mi-agenda" className="font-semibold text-foreground">{d.memberId ? "Mi agenda: próximos 7 días" : "Agenda del hogar: próximos 7 días"}</h2>
                     {d.myEvents.length === 0 ? (
                       <p className="mt-3 text-sm text-muted-foreground">No hay actividades en los próximos días.</p>

@@ -8,17 +8,20 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty, toastError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Percent, RefreshCw } from "lucide-react";
-import { eur } from "./taxLabels";
+import { useGestoriaLabels } from "./gestoriaLabels";
+import { EstimateNotice, FiscalTable, FootNote, KeyValueRow, PeriodTabs, ResultBanner, SectionCard, YearSelect } from "./GestoriaParts";
 
 type Tab = "T1" | "T2" | "T3" | "T4" | "anual";
 const QUARTERS: Tab[] = ["T1", "T2", "T3", "T4"];
 
 export default function GestoriaIVA() {
+  const { t, money } = useGestoriaLabels();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [tab, setTab] = useState<Tab>("T1");
@@ -32,206 +35,131 @@ export default function GestoriaIVA() {
 
   const recalcMut = trpc.gestoria.iva.recalculate.useMutation({
     onSuccess: () => {
-      toast.success("IVA del ejercicio recalculado");
+      toast.success(t("gestoria.iva.recalculated"));
       utils.gestoria.iva.preview303.invalidate();
       utils.gestoria.iva.preview390.invalidate();
       utils.gestoria.obligations.list.invalidate();
       utils.gestoria.dashboard.summary.invalidate();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toastError(e),
   });
 
-  const yearOptions = [currentYear - 1, currentYear, currentYear + 1];
+  const resultBanner = (result: number, annual: boolean) => {
+    const toPay = result >= 0;
+    return (
+      <ResultBanner
+        tone={toPay ? "warning" : "success"}
+        label={annual ? t("gestoria.iva.resultAnnual") : t("gestoria.iva.resultQuarter")}
+        hint={toPay ? t("gestoria.iva.toPay") : t("gestoria.iva.toOffset")}
+        value={money(Math.abs(result))}
+      />
+    );
+  };
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6 max-w-4xl mx-auto">
-        {/* Cabecera */}
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Percent className="w-6 h-6 text-primary" /> Tributación de IVA
-            </h1>
-            <p className="text-sm text-muted-foreground">Modelos 303 y 390 · estimación</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>Ejercicio {y}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
-              {recalcMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Recalcular ejercicio
-            </Button>
-          </div>
-        </div>
+      <div className="mx-auto max-w-4xl space-y-6 p-6">
+        <PanelPageHeader
+          icon={<Percent />}
+          title={t("gestoria.iva.title")}
+          description={t("gestoria.iva.description")}
+          actions={
+            <>
+              <YearSelect year={year} onChange={setYear} />
+              <Button onClick={() => recalcMut.mutate({ year })} disabled={recalcMut.isPending} className="gap-2">
+                <RefreshCw className={`h-4 w-4 ${recalcMut.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+                {t("gestoria.common.recalc")}
+              </Button>
+            </>
+          }
+        />
 
-        {/* Pestañas de periodo */}
-        <div className="flex gap-1 border-b border-border">
-          {QUARTERS.map((q) => (
-            <TabButton key={q} active={tab === q} onClick={() => setTab(q)}>{q}</TabButton>
-          ))}
-          <TabButton active={tab === "anual"} onClick={() => setTab("anual")}>Anual · 390</TabButton>
-        </div>
+        <EstimateNotice tone="info">{t("gestoria.iva.estimateNotice")}</EstimateNotice>
+
+        <PeriodTabs
+          label={t("gestoria.common.periodLabel")}
+          value={tab}
+          onChange={setTab}
+          options={[...QUARTERS.map((q) => ({ value: q, label: q })), { value: "anual" as Tab, label: t("gestoria.iva.tabAnnual") }]}
+        />
 
         {/* Detalle trimestral */}
-        {!isAnnual && (
-          q303.isLoading ? <Loading /> : q303.data ? (
+        {!isAnnual &&
+          (q303.isLoading ? (
+            <PanelLoading />
+          ) : q303.isError ? (
+            <PanelError error={q303.error} onRetry={() => q303.refetch()} />
+          ) : q303.data ? (
             <div className="space-y-4">
-              {/* IVA repercutido */}
-              <Panel title="IVA repercutido — facturas emitidas">
+              {resultBanner(q303.data.result, false)}
+
+              <SectionCard title={t("gestoria.iva.outputTitle")} description={t("gestoria.iva.outputHelp")}>
                 {q303.data.outputByRate.length === 0 ? (
-                  <Empty>Sin facturas emitidas en el periodo.</Empty>
+                  <p className="py-2 text-sm text-muted-foreground">{t("gestoria.iva.outputEmpty")}</p>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-xs text-muted-foreground border-b border-border">
-                        <th className="text-left py-1.5">Tipo</th>
-                        <th className="text-right py-1.5">Base imponible</th>
-                        <th className="text-right py-1.5">Cuota IVA</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {q303.data.outputByRate.map((l) => (
-                        <tr key={l.rate} className="border-b border-border/40 last:border-0">
-                          <td className="py-1.5 text-foreground/80">{l.rate}%</td>
-                          <td className="py-1.5 text-right text-foreground/70">{eur(l.base)}</td>
-                          <td className="py-1.5 text-right font-medium text-foreground">{eur(l.amount)}</td>
-                        </tr>
-                      ))}
-                      <tr className="font-semibold">
-                        <td className="py-1.5">Total repercutido</td>
-                        <td className="py-1.5 text-right">{eur(q303.data.outputBase)}</td>
-                        <td className="py-1.5 text-right">{eur(q303.data.outputAmount)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <FiscalTable
+                    caption={t("gestoria.iva.outputTitle")}
+                    rows={q303.data.outputByRate}
+                    rowKey={(l) => l.rate}
+                    totalLabel={t("gestoria.iva.outputTotal")}
+                    columns={[
+                      { key: "rate", header: t("gestoria.iva.colRate"), cell: (l) => `${l.rate} %`, total: t("gestoria.iva.outputTotal") },
+                      { key: "base", header: t("gestoria.iva.colBase"), num: true, cell: (l) => money(l.base), total: money(q303.data.outputBase) },
+                      { key: "amount", header: t("gestoria.iva.colQuota"), num: true, strong: true, cell: (l) => money(l.amount), total: money(q303.data.outputAmount) },
+                    ]}
+                  />
                 )}
-              </Panel>
+              </SectionCard>
 
-              {/* REAV */}
-              <Panel title="IVA REAV — régimen especial de agencias de viaje">
-                <Row label={`Margen tributable (base)`} value={eur(q303.data.reavBase)} />
-                <Row label="Cuota IVA REAV (sobre margen)" value={eur(q303.data.reavAmount)} strong />
-              </Panel>
-
-              {/* Soportado */}
-              <Panel title="IVA soportado deducible — gastos">
-                <Row label="Base imponible deducible" value={eur(q303.data.inputBase)} />
-                <Row label="Cuota IVA soportado deducible" value={eur(q303.data.inputAmount)} strong />
-              </Panel>
-
-              {/* Resultado */}
-              <ResultBox result={q303.data.result} />
+              <div className="grid gap-4 md:grid-cols-2">
+                <SectionCard title={t("gestoria.iva.reavTitle")} description={t("gestoria.iva.reavHelp")}>
+                  <dl className="divide-y divide-border">
+                    <KeyValueRow label={t("gestoria.iva.reavBase")} value={money(q303.data.reavBase)} />
+                    <KeyValueRow label={t("gestoria.iva.reavQuota")} value={money(q303.data.reavAmount)} strong />
+                  </dl>
+                </SectionCard>
+                <SectionCard title={t("gestoria.iva.inputTitle")} description={t("gestoria.iva.inputHelp")}>
+                  <dl className="divide-y divide-border">
+                    <KeyValueRow label={t("gestoria.iva.inputBase")} value={money(q303.data.inputBase)} />
+                    <KeyValueRow label={t("gestoria.iva.inputQuota")} value={money(q303.data.inputAmount)} strong />
+                  </dl>
+                </SectionCard>
+              </div>
             </div>
-          ) : <Empty>No hay datos.</Empty>
-        )}
+          ) : (
+            <PanelEmpty title={t("gestoria.common.noData")} />
+          ))}
 
         {/* Resumen anual 390 */}
-        {isAnnual && (
-          q390.isLoading ? <Loading /> : q390.data ? (
+        {isAnnual &&
+          (q390.isLoading ? (
+            <PanelLoading />
+          ) : q390.isError ? (
+            <PanelError error={q390.error} onRetry={() => q390.refetch()} />
+          ) : q390.data ? (
             <div className="space-y-4">
-              <Panel title={`Resumen anual de IVA ${year} — por trimestre`}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground border-b border-border">
-                      <th className="text-left py-1.5">Trimestre</th>
-                      <th className="text-right py-1.5">Repercutido</th>
-                      <th className="text-right py-1.5">REAV</th>
-                      <th className="text-right py-1.5">Soportado</th>
-                      <th className="text-right py-1.5">Resultado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {q390.data.quarters.map((r, i) => (
-                      <tr key={i} className="border-b border-border/40 last:border-0">
-                        <td className="py-1.5 text-foreground/80">{i + 1}.º trimestre</td>
-                        <td className="py-1.5 text-right text-foreground/70">{eur(r.outputAmount)}</td>
-                        <td className="py-1.5 text-right text-foreground/70">{eur(r.reavAmount)}</td>
-                        <td className="py-1.5 text-right text-foreground/70">{eur(r.inputAmount)}</td>
-                        <td className="py-1.5 text-right font-medium text-foreground">{eur(r.result)}</td>
-                      </tr>
-                    ))}
-                    <tr className="font-semibold">
-                      <td className="py-1.5">Total ejercicio</td>
-                      <td className="py-1.5 text-right">{eur(q390.data.outputAmount)}</td>
-                      <td className="py-1.5 text-right">{eur(q390.data.reavAmount)}</td>
-                      <td className="py-1.5 text-right">{eur(q390.data.inputAmount)}</td>
-                      <td className="py-1.5 text-right">{eur(q390.data.result)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </Panel>
-              <ResultBox result={q390.data.result} annual />
+              {resultBanner(q390.data.result, true)}
+              <SectionCard title={t("gestoria.iva.annualTitle", { year })}>
+                <FiscalTable
+                  caption={t("gestoria.iva.annualTitle", { year })}
+                  rows={q390.data.quarters.map((r, i) => ({ ...r, n: i + 1 }))}
+                  rowKey={(r) => r.n}
+                  columns={[
+                    { key: "q", header: t("gestoria.common.colQuarter"), cell: (r) => t("gestoria.common.quarterN", { n: r.n }), total: t("gestoria.common.totalYear") },
+                    { key: "out", header: t("gestoria.iva.colOutput"), num: true, cell: (r) => money(r.outputAmount), total: money(q390.data.outputAmount) },
+                    { key: "reav", header: t("gestoria.iva.colReav"), num: true, cell: (r) => money(r.reavAmount), total: money(q390.data.reavAmount) },
+                    { key: "in", header: t("gestoria.iva.colInput"), num: true, cell: (r) => money(r.inputAmount), total: money(q390.data.inputAmount) },
+                    { key: "res", header: t("gestoria.iva.colResult"), num: true, strong: true, cell: (r) => money(r.result), total: money(q390.data.result) },
+                  ]}
+                />
+              </SectionCard>
             </div>
-          ) : <Empty>No hay datos.</Empty>
-        )}
+          ) : (
+            <PanelEmpty title={t("gestoria.common.noData")} />
+          ))}
 
-        <p className="text-xs text-muted-foreground">
-          Estimación calculada sobre facturas emitidas no anuladas, expedientes REAV y gastos con
-          desglose fiscal. Pulsa «Recalcular ejercicio» para volcar la estimación a las obligaciones
-          del calendario fiscal. La liquidación oficial la realiza la gestoría.
-        </p>
+        <FootNote>{t("gestoria.iva.footNote")}</FootNote>
       </div>
     </AdminLayout>
   );
-}
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-        active ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h2 className="text-sm font-semibold text-foreground mb-2">{title}</h2>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between text-sm py-1">
-      <span className="text-foreground/70">{label}</span>
-      <span className={strong ? "font-semibold text-foreground" : "text-foreground/80"}>{value}</span>
-    </div>
-  );
-}
-
-function ResultBox({ result, annual }: { result: number; annual?: boolean }) {
-  const toPay = result >= 0;
-  return (
-    <div className={`rounded-lg p-4 border ${toPay ? "bg-amber-500/10 border-amber-500/30" : "bg-emerald-500/10 border-emerald-500/30"}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-foreground">
-          Resultado {annual ? "anual" : "del trimestre"} (Modelo {annual ? "390" : "303"})
-        </span>
-        <span className={`text-xl font-bold ${toPay ? "text-amber-400" : "text-emerald-400"}`}>
-          {eur(Math.abs(result))}
-        </span>
-      </div>
-      <div className="text-xs text-muted-foreground mt-0.5">
-        {toPay ? "A ingresar en Hacienda" : "A compensar / devolver"}
-      </div>
-    </div>
-  );
-}
-
-function Loading() {
-  return <div className="py-12 text-center"><RefreshCw className="w-5 h-5 animate-spin mx-auto text-muted-foreground" /></div>;
-}
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-muted-foreground py-2">{children}</p>;
 }

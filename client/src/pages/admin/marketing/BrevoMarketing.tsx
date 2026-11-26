@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 
 const SOURCES: Record<string, string> = {
@@ -328,16 +329,7 @@ export default function BrevoMarketing() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">Email marketing con Brevo</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Envía tus campañas desde tu propia cuenta de Brevo a los clientes que han aceptado recibirlas. Las bajas que se produzcan en Brevo se respetan aquí.</p>
-          <p className="text-sm">
-            <Link href="/admin/marketing/campanas" className="text-primary underline-offset-4 hover:underline">
-              Redactar y enviar campañas desde el panel
-            </Link>
-          </p>
-        </header>
+        <PanelPageHeader icon={<Mail />} title="Email marketing con Brevo" description="Envía tus campañas desde tu propia cuenta de Brevo a los clientes que han aceptado recibirlas. Las bajas que se produzcan en Brevo se respetan aquí." actions={<Link href="/admin/marketing/campanas" className="text-sm font-medium text-primary underline-offset-4 hover:underline"> Redactar y enviar campañas desde el panel </Link>} />
         <Connection />
         <Runs />
         <Consents />

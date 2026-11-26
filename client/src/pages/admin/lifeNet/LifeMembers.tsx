@@ -94,7 +94,7 @@ export default function LifeMembers() {
           ) : (
             d && (
               <>
-                <section aria-labelledby="life-hogar" className="rounded-2xl border border-border bg-card p-5">
+                <section aria-labelledby="life-hogar" className="rounded-xl border border-border bg-card p-5">
                   <h2 id="life-hogar" className="flex items-center gap-2 font-semibold text-foreground"><Home className="h-4 w-4" aria-hidden="true" />Datos del hogar</h2>
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">

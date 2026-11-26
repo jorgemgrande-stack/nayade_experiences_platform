@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { PanelLoading } from "@/components/admin/PanelStates";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,7 +32,7 @@ function GuestDetailDialog({ id, onClose }: { id: number; onClose: () => void })
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{d?.guest.displayName ?? "Huésped"}</DialogTitle></DialogHeader>
-        {!d || !form ? <p className="text-sm text-muted-foreground py-4">Cargando…</p> : (
+        {!d || !form ? <PanelLoading /> : (
           <div className="space-y-4">
             {d.guest.anonymized && <p className="text-sm text-muted-foreground">Ficha anonimizada por la política de conservación: sus datos personales se borraron.</p>}
             {d.guest.clientId && <Badge variant="secondary">Vinculado al cliente n.º {d.guest.clientId} del CRM</Badge>}
@@ -93,10 +95,7 @@ export default function HotelGuests() {
   return (
     <AdminLayout title="Huéspedes">
       <div className="space-y-5 max-w-full">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="h-6 w-6 shrink-0" /> Huéspedes</h1>
-          <p className="text-muted-foreground text-sm">Fichas del registro de viajeros y su historial de estancias. Se rellenan en recepción, al hacer el check-in.</p>
-        </div>
+        <PanelPageHeader icon={<Users />} title="Huéspedes" description={"Fichas del registro de viajeros y su historial de estancias. Se rellenan en recepción, al hacer el check-in."} />
         <GdprNotice />
         {isPmsNotInstalled(q.error) ? <PmsNotInstalled /> : (
           <>
@@ -106,7 +105,7 @@ export default function HotelGuests() {
             </div>
             <Card>
               <CardContent className="p-0">
-                {q.isLoading ? <p className="p-6 text-sm text-muted-foreground">Cargando…</p> : list.length === 0 ? (
+                {q.isLoading ? <PanelLoading /> : list.length === 0 ? (
                   <EmptyStep title={query ? "Ningún huésped coincide" : "Aún no hay fichas"} text={query ? "Prueba con otro dato." : "Registra a los huéspedes desde Recepción, con el botón de huéspedes de cada llegada."} href={query ? undefined : "/admin/hotel/recepcion"} action={query ? undefined : "Ir a recepción"} />
                 ) : (
                   <div className="overflow-x-auto">

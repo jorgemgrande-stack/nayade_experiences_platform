@@ -1,0 +1,9 @@
+-- Condiciones del pago online y participantes: ajustes editables desde /admin (Configuración). Solo datos y aditivo (0087; 0086 la reserva #986):
+-- no altera el esquema y, con todo vacío, el pago se comporta exactamente como hasta ahora.
+-- Las direcciones de las condiciones de compra, la privacidad y la cancelación las aporta la empresa (pendiente de Quantum/Dirección).
+INSERT IGNORE INTO `system_settings` (`key`, `value`, `value_type`, `category`, `label`, `description`, `is_sensitive`, `is_public`) VALUES
+  ('checkout_terms_url', '', 'string', 'pago_online', 'Condiciones de compra (dirección)', 'Dirección de la página de condiciones de compra (por ejemplo /condiciones). Si se indica alguna dirección de condiciones, el pago exige aceptarlas antes de pagar.', false, true),
+  ('checkout_privacy_url', '', 'string', 'pago_online', 'Política de privacidad (dirección)', 'Dirección de la página de privacidad que se enlaza en la casilla de aceptación del pago.', false, true),
+  ('checkout_cancellation_url', '', 'string', 'pago_online', 'Condiciones de cancelación (dirección)', 'Dirección de la página de cancelación y devoluciones que se enlaza en la casilla de aceptación del pago.', false, true),
+  ('checkout_consent_required', 'false', 'boolean', 'pago_online', 'Exigir aceptar las condiciones al pagar', 'Si está activo, el pago exige marcar la casilla aunque aún no haya direcciones configuradas (el texto sale sin enlaces). También se exige si hay alguna dirección configurada.', false, true),
+  ('checkout_participants_enabled', 'false', 'boolean', 'pago_online', 'Pedir el nombre de cada participante', 'Si está activo y la cantidad de una línea es mayor que 1, el pago permite indicar (de forma opcional) el nombre de cada participante. Se guarda en el pedido y sale en el correo.', false, true);

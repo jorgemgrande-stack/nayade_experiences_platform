@@ -74,7 +74,7 @@ export function LeftPanel(props: {
             role="tab"
             aria-selected={props.tab === t.key}
             onClick={() => props.onTab(t.key)}
-            className={cn("rounded-md px-2 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", props.tab === t.key ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            className={cn("rounded-md px-2 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", props.tab === t.key ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
           >
             {t.label}
           </button>
@@ -138,7 +138,7 @@ function readOpen(): Partial<Record<GroupKey, boolean>> {
 }
 
 const tileClass =
-  "group flex flex-col items-stretch gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-all hover:-translate-y-px hover:border-[#5b5bf6]/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]";
+  "group flex flex-col items-stretch gap-1.5 rounded-lg border border-border bg-background p-1.5 text-left transition-all hover:-translate-y-px hover:border-primary/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function Group({ id, label, hint, count, open, onToggle, children }: { id: GroupKey; label: string; hint: string; count: number; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   const tx = useStudioText();
@@ -149,14 +149,14 @@ function Group({ id, label, hint, count, open, onToggle, children }: { id: Group
         aria-expanded={open}
         aria-controls={`biblioteca-${id}`}
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b5bf6]"
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} aria-hidden />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">{label}</span>
           {!open && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{hint}</span>}
         </span>
-        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground" aria-label={tx("{count} disponibles", { count: count })}>
+        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground" aria-label={tx("{count} disponibles", { count: count })}>
           {count}
         </span>
       </button>
@@ -235,7 +235,7 @@ function Library({
       <button type="button" draggable onDragStart={(e) => startDrag(e, payload)} onClick={() => onInsert(payload)} aria-label={tx("{label}: {description}", { label: label, description: description })} className={cn(tileClass, "cursor-grab active:cursor-grabbing")}>
         <BlockThumb blocks={blocks} width={106} ratio={16 / 10} />
         <span className="px-0.5 text-xs font-medium leading-tight">{label}</span>
-        {sub && <span className="-mt-1 px-0.5 text-[11px] leading-tight text-muted-foreground">{sub}</span>}
+        {sub && <span className="-mt-1 px-0.5 text-xs leading-tight text-muted-foreground">{sub}</span>}
       </button>
     </Preview>
   );
@@ -245,7 +245,7 @@ function Library({
       <div className="sticky top-0 z-10 border-b border-border bg-background p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx("Buscar: foto, precios, contacto…")} aria-label={tx("Buscar en la biblioteca")} className="h-9 pl-8" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx("Buscar: foto, precios, contacto…")} aria-label={tx("Buscar en la biblioteca")} className="h-10 pl-8" />
         </div>
       </div>
       {nothing && <p className="p-4 text-sm text-muted-foreground">{tx("Nada coincide con «{q}». Prueba con otra palabra, como «foto», «precio» o «contacto».", { q: q })}</p>}
@@ -271,7 +271,7 @@ function Library({
             {g.key === "sections" &&
               categories.map((c) => (
                 <div key={c.key} className="space-y-2">
-                  <h3 className="px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tx(c.label)}</h3>
+                  <h3 className="px-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tx(c.label)}</h3>
                   <div className="grid grid-cols-2 gap-2">
                     {c.presetList.map((p) => {
                       const blocks = presetSamples.get(p.key) ?? [];
@@ -295,10 +295,10 @@ function Library({
                         aria-label={tx("{label}: {description}", { label: tx(m.label), description: tx(m.description) })}
                         className={cn(tileClass, "cursor-grab items-center gap-1 px-1 py-2 text-center active:cursor-grabbing")}
                       >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-[#5b5bf6]/10 group-hover:text-[#5b5bf6]">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
                           <Icon className="h-4 w-4" />
                         </span>
-                        <span className="text-[11px] font-medium leading-tight">{tx(m.label)}</span>
+                        <span className="text-xs font-medium leading-tight">{tx(m.label)}</span>
                       </button>
                     </Preview>
                   );
@@ -311,14 +311,14 @@ function Library({
               ) : (
                 <div className="space-y-1.5">
                   {savedList.map((s) => (
-                    <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-[#5b5bf6]/60">
+                    <div key={s.id} className="flex items-center gap-1 rounded-lg border border-border bg-background pr-1 transition-colors hover:border-primary/60">
                       <Preview blocks={[s.block]} title={s.name} description={tx("{type} con su diseño. Arrástralo a la página o haz clic para añadir una copia.", { type: tx(blockLabel(s.block.type)) })}>
                         <button
                           type="button"
                           draggable
                           onDragStart={(e) => startDrag(e, `saved:${s.id}`)}
                           onClick={() => onInsert(`saved:${s.id}`)}
-                          className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 rounded-lg px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6] active:cursor-grabbing"
+                          className="flex min-w-0 flex-1 cursor-grab items-center gap-2.5 rounded-lg px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
                         >
                           <BlockThumb blocks={[s.block]} width={56} ratio={16 / 10} />
                           <span className="min-w-0">
@@ -392,15 +392,15 @@ function Structure({ blocks, selectedId, device, onSelect, onMove, onDuplicate, 
             }}
             className={cn("group relative", dragId === b.id && "opacity-40")}
           >
-            {over?.index === i && <span className="absolute inset-x-1 -top-px h-0.5 rounded bg-[#5b5bf6]" aria-hidden />}
-            {over?.index === i + 1 && i === blocks.length - 1 && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded bg-[#5b5bf6]" aria-hidden />}
-            <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors", selected ? "bg-[#5b5bf6]/10 text-foreground" : "hover:bg-muted")}>
+            {over?.index === i && <span className="absolute inset-x-1 -top-px h-0.5 rounded bg-primary" aria-hidden />}
+            {over?.index === i + 1 && i === blocks.length - 1 && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded bg-primary" aria-hidden />}
+            <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors", selected ? "bg-primary/10 text-foreground" : "hover:bg-muted")}>
               <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground/60" aria-hidden />
               <button type="button" onClick={() => onSelect(b.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-current={selected || undefined}>
-                <Icon className={cn("h-4 w-4 shrink-0", selected ? "text-[#5b5bf6]" : "text-muted-foreground")} />
+                <Icon className={cn("h-4 w-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
                 <span className="min-w-0">
                   <span className="block text-xs font-medium">{tx(blockLabel(b.type))}</span>
-                  <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
+                  <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
                 </span>
               </button>
               {hidden && <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={tx("Oculto en este dispositivo")} />}
@@ -428,20 +428,20 @@ function SectionRows({ section, selectedId, device, onSelect, onDuplicate, onDel
     <div className="ml-4 border-l border-border pl-2">
       {section.data.columns.map((col, ci) => (
         <div key={ci} className="py-0.5">
-          <span className="block px-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">{section.type === "modal" ? tx("Contenido de la ventana") : tx("Columna {v}", { v: ci + 1 })}</span>
-          {!col.blocks.length && <span className="block px-1.5 py-1 text-[11px] italic text-muted-foreground">{tx("Vacía")}</span>}
+          <span className="block px-1.5 pt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">{section.type === "modal" ? tx("Contenido de la ventana") : tx("Columna {v}", { v: ci + 1 })}</span>
+          {!col.blocks.length && <span className="block px-1.5 py-1 text-xs italic text-muted-foreground">{tx("Vacía")}</span>}
           <ol aria-label={tx("Columna {v}", { v: ci + 1 })}>
             {col.blocks.map((b) => {
               const Icon = moduleIcon(moduleDef(b.type)?.icon);
               const selected = b.id === selectedId;
               return (
                 <li key={b.id} className="group">
-                  <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors", selected ? "bg-[#5b5bf6]/10 text-foreground" : "hover:bg-muted")}>
+                  <div className={cn("flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors", selected ? "bg-primary/10 text-foreground" : "hover:bg-muted")}>
                     <button type="button" onClick={() => onSelect(b.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-current={selected || undefined}>
-                      <Icon className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-[#5b5bf6]" : "text-muted-foreground")} />
+                      <Icon className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
                       <span className="min-w-0">
                         <span className="block text-xs font-medium">{tx(blockLabel(b.type))}</span>
-                        <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
+                        <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{blockSummary(b, tx) || tx("Sin texto todavía")}</span>
                       </span>
                     </button>
                     {b.style?.hideOn.includes(device) && <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={tx("Oculto en este dispositivo")} />}
@@ -474,8 +474,8 @@ const SITE_SETTINGS = [
 /** Estado de una página con lo que ya sabe el sistema (publicada, borrador, cambios pendientes de publicar). */
 function pageStatus(p: SitePage): { label: string; className: string } {
   if (!p.isPublished) return { label: "Borrador", className: "bg-muted text-muted-foreground" };
-  if (p.hasDraft) return { label: "Cambios pendientes", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" };
-  return { label: "Publicada", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+  if (p.hasDraft) return { label: "Cambios pendientes", className: "bg-warning/15 text-warning" };
+  return { label: "Publicada", className: "bg-success/15 text-success" };
 }
 
 function PageRow({ p, current, onOpen }: { p: SitePage; current: boolean; onOpen: () => void }) {
@@ -487,17 +487,17 @@ function PageRow({ p, current, onOpen }: { p: SitePage; current: boolean; onOpen
       onClick={onOpen}
       aria-current={current || undefined}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]",
-        current ? "bg-[#5b5bf6]/10 font-medium" : "hover:bg-muted",
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        current ? "bg-primary/10 font-medium" : "hover:bg-muted",
       )}
     >
-      {p.isHome ? <Home className="h-3.5 w-3.5 shrink-0 text-[#5b5bf6]" aria-hidden /> : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+      {p.isHome ? <Home className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden /> : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
       <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
         {p.title}
         {current && <span className="sr-only">{" "}{tx("(abierta)")}</span>}
       </span>
       {p.isHome && <span className="sr-only">{" "}{tx("(página de inicio)")}</span>}
-      <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", st.className)} title={p.hasDraft && p.isPublished ? tx("Has guardado cambios que aún no se ven en tu web") : undefined}>{tx(st.label)}</span>
+      <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-xs font-medium", st.className)} title={p.hasDraft && p.isPublished ? tx("Has guardado cambios que aún no se ven en tu web") : undefined}>{tx(st.label)}</span>
     </button>
   );
 }
@@ -511,19 +511,19 @@ function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: {
   const sub = (title: string, list: SitePage[]) =>
     list.length > 0 && (
       <div className="space-y-0.5">
-        <h4 className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground">{title}</h4>
+        <h4 className="px-2 pb-0.5 pt-2 text-xs font-medium text-muted-foreground">{title}</h4>
         {list.map((p) => (
           <PageRow key={p.slug} p={p} current={p.slug === currentSlug} onOpen={() => onOpenPage(p.slug)} />
         ))}
       </div>
     );
-  const settingClass = "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]";
+  const settingClass = "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   return (
     <div className="space-y-4 p-3">
       <section className="rounded-xl border border-border p-1.5" aria-labelledby="sitio-paginas">
         <div className="flex items-center justify-between px-2 pb-1 pt-1">
           <h3 id="sitio-paginas" className="text-sm font-semibold">{tx("Páginas")}</h3>
-          <Link href="/admin/cms/paginas?nueva=1" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-[#7c7cff] hover:bg-muted">
+          <Link href="/admin/cms/paginas?nueva=1" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-primary hover:bg-muted">
             <Plus className="h-3.5 w-3.5" />{" "}{tx("Nueva página")}</Link>
         </div>
         {sub(tx("Página de inicio"), home)}
@@ -535,14 +535,14 @@ function Site({ pages, currentSlug, onOpenPage, onGlobalStyle, onSiteChrome }: {
         <h3 id="sitio-ajustes" className="px-2 pb-1 pt-1 text-sm font-semibold">{tx("Configuración del sitio")}</h3>
         <p className="px-2 pb-1 text-xs text-muted-foreground">{tx("Afecta a todas las páginas de tu web.")}</p>
         <button type="button" onClick={onGlobalStyle} className={settingClass}>
-          <Palette className="mt-0.5 h-4 w-4 shrink-0 text-[#7c7cff]" aria-hidden />
+          <Palette className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
           <span>
             <span className="block text-sm font-medium">{tx("Estilo global")}</span>
             <span className="block text-xs text-muted-foreground">{tx("Colores, tipo de letra y bordes")}</span>
           </span>
         </button>
         <button type="button" onClick={onSiteChrome} className={settingClass}>
-          <PanelsTopLeft className="mt-0.5 h-4 w-4 shrink-0 text-[#7c7cff]" aria-hidden />
+          <PanelsTopLeft className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
           <span>
             <span className="block text-sm font-medium">{tx("Cabecera y pie")}</span>
             <span className="block text-xs text-muted-foreground">{tx("Botón principal, menús que muestran y estilo")}</span>

@@ -85,7 +85,7 @@ export function BlockInspector({
         <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
           <span className="text-muted-foreground">{inside.modal ? tx("Dentro de una ventana emergente") : tx("Dentro de una sección · columna {v}", { v: inside.col + 1 })}</span>
           {onSelectBlock && (
-            <button type="button" className="font-medium text-[#5b5bf6] hover:underline" onClick={() => onSelectBlock(inside.id)}>
+            <button type="button" className="font-medium text-primary hover:underline" onClick={() => onSelectBlock(inside.id)}>
               {inside.modal ? tx("Seleccionar la ventana") : tx("Seleccionar la sección")}
             </button>
           )}
@@ -100,9 +100,9 @@ export function BlockInspector({
             aria-selected={current === t}
             onClick={() => onTab(t)}
             className={cn(
-              "min-w-0 flex-auto rounded-md py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]",
-              tabs.length > 3 ? "px-1 text-[11px]" : "px-1.5 text-xs",
-              current === t ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground",
+              "min-h-9 min-w-0 flex-auto rounded-md py-2 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tabs.length > 3 ? "px-1 text-xs" : "px-1.5 text-xs",
+              current === t ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground",
             )}
           >
             {tx(TAB_LABEL[t])}
@@ -211,7 +211,7 @@ function RangeField({ label, value, min, max, step, unit, zeroLabel, onChange }:
         <label htmlFor={id} className="text-sm font-medium">{label}</label>
         <span className="text-xs tabular-nums text-muted-foreground">{value === 0 && zeroLabel ? zeroLabel : `${value}${unit}`}</span>
       </div>
-      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[#5b5bf6]" />
+      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-primary" />
     </div>
   );
 }
@@ -229,7 +229,7 @@ export function Segmented({ label, value, options, onChange }: { label: string; 
             role="radio"
             aria-checked={value === o.value}
             onClick={() => onChange(o.value)}
-            className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]", value === o.value ? "bg-[#5b5bf6]/20 text-foreground shadow-sm ring-1 ring-inset ring-[#5b5bf6]/50" : "text-muted-foreground hover:text-foreground")}
+            className={cn("flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", value === o.value ? "bg-primary/20 text-foreground shadow-sm ring-1 ring-inset ring-primary/50" : "text-muted-foreground hover:text-foreground")}
           >
             {tx(o.label)}
           </button>
@@ -554,11 +554,32 @@ const FONT_OPTIONS = [
   { value: "serif", label: "Clásica (Playfair Display)" },
 ] as const;
 
+/** Qué secciones del inspector están plegadas (se recuerda mientras dure la sesión, también al cambiar de bloque). */
+const COLLAPSED = new Set<string>();
+
+/** Sección plegable del inspector: el título es el botón que la abre y la cierra. */
 function StyleGroup({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(!COLLAPSED.has(title));
+  const bodyId = useId();
   return (
-    <section className="space-y-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      {children}
+    <section className="border-t border-border pt-2 first:border-t-0 first:pt-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => {
+          if (open) COLLAPSED.add(title);
+          else COLLAPSED.delete(title);
+          setOpen(!open);
+        }}
+        className="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <h3 className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{title}</h3>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", !open && "-rotate-90")} aria-hidden />
+      </button>
+      <div id={bodyId} hidden={!open} className="space-y-3 pt-2">
+        {children}
+      </div>
     </section>
   );
 }
@@ -588,7 +609,7 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
               role="radio"
               aria-checked={style.background === bg.value}
               onClick={() => setStyle({ background: bg.value })}
-              className={cn("flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[11px] leading-tight transition-colors", style.background === bg.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
+              className={cn("flex flex-col items-center gap-1.5 rounded-lg border p-2 text-xs leading-tight transition-colors", style.background === bg.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
             >
               <span className={cn("h-7 w-full rounded-md border border-border", bg.swatch)} aria-hidden />
               {tx(bg.label)}
@@ -604,7 +625,7 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
                 role="radio"
                 aria-checked={style.gradient === g.value}
                 onClick={() => setStyle({ gradient: g.value })}
-                className={cn("flex flex-col gap-1.5 rounded-lg border p-2 text-left text-[11px] transition-colors", style.gradient === g.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
+                className={cn("flex flex-col gap-1.5 rounded-lg border p-2 text-left text-xs transition-colors", style.gradient === g.value ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/30")}
               >
                 <span className="h-8 w-full rounded-md border border-border" style={{ backgroundImage: g.css }} aria-hidden />
                 {tx(g.label)}
@@ -703,7 +724,7 @@ function StyleEditor({ style, setStyle, pro, part }: { style: BlockStyle; setSty
           <button
             type="button"
             onClick={() => setStyle({ minHeight: "full", contentY: "center", overlayDir: "bottom", bgMotion: "on", bgMotionAmount: 9, bgMotionSeconds: 20 })}
-            className="w-full rounded-lg border border-dashed border-[#5b5bf6]/60 px-3 py-2 text-left text-xs font-medium hover:bg-[#5b5bf6]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5bf6]"
+            className="w-full rounded-lg border border-dashed border-primary/60 px-3 py-2 text-left text-xs font-medium hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >{tx("Hero cinematográfico de pantalla completa")}<span className="mt-0.5 block font-normal text-muted-foreground">{tx("Ocupa toda la primera pantalla, con degradado inferior y acercamiento lento de la foto. Se ajusta después en los controles de abajo.")}</span>
           </button>
         )}

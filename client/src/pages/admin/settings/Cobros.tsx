@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelLoading, PanelError, PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, CircleDashed, Loader2, Lock, ShieldCheck, XCircle } from "lucide-react";
@@ -23,13 +25,14 @@ interface Mode {
   verifiedAt: number | null;
   lastEventAt: number | null;
   lastEventType: string | null;
+  checkedAt?: number | null;
 }
 
 const STATUS_STYLE: Record<string, { icon: typeof CheckCircle2; className: string }> = {
   no_conectada: { icon: CircleDashed, className: "text-muted-foreground" },
-  pendiente: { icon: CircleDashed, className: "text-amber-600 dark:text-amber-400" },
-  verificada: { icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-400" },
-  restringida: { icon: AlertTriangle, className: "text-red-600 dark:text-red-400" },
+  pendiente: { icon: CircleDashed, className: "text-warning" },
+  verificada: { icon: CheckCircle2, className: "text-success" },
+  restringida: { icon: AlertTriangle, className: "text-danger" },
 };
 
 function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boolean; onChanged: () => void }) {
@@ -65,7 +68,7 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
   const Icon = s.icon;
 
   return (
-    <section className="bg-card border border-border/50 rounded-2xl p-5 space-y-4" aria-labelledby={`cobros-${m.mode}`}>
+    <section className="bg-card border border-border/50 rounded-xl p-5 space-y-4" aria-labelledby={`cobros-${m.mode}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id={`cobros-${m.mode}`} className="text-lg font-semibold">
@@ -94,31 +97,38 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
             </p>
           )}
           {m.accountHint && (
-            <dl className="grid grid-cols-2 gap-2 text-sm">
+            <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-x-4 gap-y-1.5 text-sm">
               <dt className="text-muted-foreground">{t("settingsPayments.linkedAccount")}</dt>
-              <dd className="font-mono">{m.accountHint}</dd>
+              <dd className="font-mono break-all">{m.accountHint}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.linkedOn")}</dt>
-              <dd>{fmt(m.connectedAt)}</dd>
+              <dd className="break-words">{fmt(m.connectedAt)}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.canCharge")}</dt>
               <dd>{m.chargesEnabled ? t("settingsPayments.yes") : t("settingsPayments.no")}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.canPayout")}</dt>
               <dd>{m.payoutsEnabled ? t("settingsPayments.yes") : t("settingsPayments.no")}</dd>
               <dt className="text-muted-foreground">{t("settingsPayments.lastEvent")}</dt>
-              <dd>{m.lastEventAt ? `${fmt(m.lastEventAt)} (${m.lastEventType})` : t("settingsPayments.noEventYet")}</dd>
+              <dd>{m.lastEventAt ? `${fmt(m.lastEventAt)} (${m.lastEventType})` : m.checkedAt ? t("settingsPayments.noEventChecked", { date: fmt(m.checkedAt) }) : t("settingsPayments.noEventYet")}</dd>
             </dl>
           )}
           {m.requirementsDue.length > 0 && (
-            <div role="alert" className="text-sm rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+            <div role="alert" className="text-sm rounded-xl border border-warning/40 bg-warning/10 p-3">
               {t("settingsPayments.requirementsDue", { n: m.requirementsDue.length })}
             </div>
           )}
           {m.disabledReason && (
-            <div role="alert" className="text-sm rounded-xl border border-red-500/40 bg-red-500/10 p-3">
+            <div role="alert" className="text-sm rounded-xl border border-danger/40 bg-danger/10 p-3">
               {t("settingsPayments.disabledReason", { reason: m.disabledReason })}
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
+          {/* Acciones: la secundaria (comprobar) a la izquierda y la principal a la derecha */}
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            {m.accountHint && (
+              <Button variant="outline" onClick={() => refresh.mutate({ mode: m.mode })} disabled={refresh.isPending}>
+                {refresh.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {t("settingsPayments.checkStatus")}
+              </Button>
+            )}
             {isLive ? (
               <Button onClick={() => connectLive.mutate()} disabled={connectLive.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
                 {connectLive.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -128,12 +138,6 @@ function ModeCard({ m, platformReady, onChanged }: { m: Mode; platformReady: boo
               <Button onClick={() => connect.mutate()} disabled={!platformReady || connect.isPending} variant={m.status === "verificada" ? "outline" : "default"}>
                 {connect.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {m.accountHint ? t("settingsPayments.continueReview") : t("settingsPayments.connectAccount")}
-              </Button>
-            )}
-            {m.accountHint && (
-              <Button variant="outline" onClick={() => refresh.mutate({ mode: m.mode })} disabled={refresh.isPending}>
-                {refresh.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {t("settingsPayments.checkStatus")}
               </Button>
             )}
           </div>
@@ -205,26 +209,17 @@ export default function Cobros() {
   return (
     <AdminLayout>
       <div className="max-w-3xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">{t("settingsPayments.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("settingsPayments.intro")}
-          </p>
-        </div>
+        <PanelPageHeader title={t("settingsPayments.title")} description={t("settingsPayments.intro")} />
 
         {status.isLoading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
+          <PanelLoading />
         ) : status.error ? (
-          <div role="alert" className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400">
-            <XCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden /> {status.error.message}
-          </div>
+          <PanelError error={status.error} onRetry={() => void status.refetch()} />
         ) : (
           status.data && (
             <>
               {!status.data.platformReady && (
-                <div role="alert" className="text-sm rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                <div role="alert" className="text-sm rounded-xl border border-warning/40 bg-warning/10 p-3">
                   {t("settingsPayments.platformNotReady", { problem: status.data.platformProblem })}
                 </div>
               )}

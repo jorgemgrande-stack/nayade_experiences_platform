@@ -10,6 +10,7 @@ import {
   Briefcase, Euro, AlertCircle, Banknote, Receipt, TrendingUp,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { KpiCard } from "@/components/KpiCard";
 import { trpc } from "@/lib/trpc";
 import PeopleFirstSteps from "@/components/people/PeopleFirstSteps";
@@ -34,26 +35,24 @@ export default function HRDashboard() {
 
   return (
     <AdminLayout title="Personal / RRHH">
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
+      <div className="min-h-screen bg-background text-foreground">
         {/* Header */}
-        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
-          <div className="flex items-center justify-between mb-1">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-orange-400" />
-                Personal / RRHH
-              </h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">
-                Empleados, contratos, nóminas, fichajes, vacaciones y costes laborales
-              </p>
-            </div>
-            <Link
-              href="/admin/personal/empleados"
-              className="text-xs px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/30 text-orange-300 hover:bg-orange-500/20 transition-colors"
-            >
-              Ver empleados →
-            </Link>
-          </div>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6">
+          <PanelPageHeader
+            icon={<Briefcase />}
+            title="Personal / RRHH"
+            description="Empleados, contratos, nóminas, fichajes, vacaciones y costes laborales"
+            actions={
+              <>
+                <Link
+                  href="/admin/personal/empleados"
+                  className="text-xs px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-colors"
+                >
+                  Ver empleados →
+                </Link>
+              </>
+            }
+          />
         </div>
 
         <div className="px-4 sm:px-6 pt-5 empty:hidden">
@@ -62,7 +61,7 @@ export default function HRDashboard() {
 
         {/* Sección 1: Plantilla */}
         <div className="px-4 sm:px-6 py-5">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
             <Users className="w-3.5 h-3.5" /> Plantilla
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -101,7 +100,7 @@ export default function HRDashboard() {
 
         {/* Sección 2: Tiempos y vacaciones */}
         <div className="px-4 sm:px-6 py-5 border-t border-foreground/[0.05]">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
             <Clock className="w-3.5 h-3.5" /> Tiempos y vacaciones
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -177,7 +176,7 @@ export default function HRDashboard() {
 
         {/* Sección 3: Coste laboral */}
         <div className="px-4 sm:px-6 py-5 border-t border-foreground/[0.05]">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
             <Euro className="w-3.5 h-3.5" /> Coste laboral · {fiscalSummary?.period ?? "–"}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -225,7 +224,7 @@ export default function HRDashboard() {
 
         {/* Sección 3b: Bonus e Incentivos (Fase 6) */}
         <div className="px-4 sm:px-6 py-5 border-t border-foreground/[0.05]">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
             <TrendingUp className="w-3.5 h-3.5" /> Bonus e incentivos · {bonusSummary?.period ?? "–"}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -267,7 +266,7 @@ export default function HRDashboard() {
 
         {/* Sección 4: Control fiscal y alertas */}
         <div className="px-4 sm:px-6 py-5 border-t border-foreground/[0.05]">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
             <Receipt className="w-3.5 h-3.5" /> Control fiscal
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

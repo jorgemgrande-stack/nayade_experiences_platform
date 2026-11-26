@@ -98,7 +98,7 @@ export default function CustomRolesPanel({ users, canWrite }: { users: PanelUser
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1 text-red-700"
+                        className="gap-1 text-danger"
                         disabled={r.users.length > 0 || remove.isPending}
                         title={r.users.length > 0 ? t("customRoles.deleteBlocked") : undefined}
                         onClick={() => remove.mutate({ id: r.id })}
@@ -110,10 +110,10 @@ export default function CustomRolesPanel({ users, canWrite }: { users: PanelUser
                 </div>
                 <div className="flex flex-wrap gap-1.5 text-xs">
                   {r.grants.map((k) => (
-                    <span key={k} className="rounded-full bg-green-50 text-green-800 border border-green-200 px-2 py-0.5">+ {labelOf(k, t)}</span>
+                    <span key={k} className="rounded-full bg-success/10 text-success border border-success/40 px-2 py-0.5">+ {labelOf(k, t)}</span>
                   ))}
                   {r.revokes.map((k) => (
-                    <span key={k} className="rounded-full bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5">− {labelOf(k, t)}</span>
+                    <span key={k} className="rounded-full bg-warning/10 text-warning border border-warning/40 px-2 py-0.5">− {labelOf(k, t)}</span>
                   ))}
                   {r.grants.length === 0 && r.revokes.length === 0 && <span className="text-gray-500">{t("customRoles.samePermissions", { role: rl(r.baseRole) })}</span>}
                 </div>
@@ -124,7 +124,7 @@ export default function CustomRolesPanel({ users, canWrite }: { users: PanelUser
                     <div key={u.id} className="flex items-center justify-between gap-2 text-sm">
                       <span>
                         {u.name || u.email}
-                        {!u.applies && <span className="ml-2 text-xs text-amber-700">{t("customRoles.notApplied", { role: rl(r.baseRole) })}</span>}
+                        {!u.applies && <span className="ml-2 text-xs text-warning">{t("customRoles.notApplied", { role: rl(r.baseRole) })}</span>}
                       </span>
                       {canWrite && (
                         <Button variant="ghost" size="sm" className="gap-1" disabled={assign.isPending} onClick={() => assign.mutate({ userId: u.id, roleId: null })}>
@@ -173,7 +173,7 @@ export default function CustomRolesPanel({ users, canWrite }: { users: PanelUser
               <div className="space-y-1.5">
                 <Label htmlFor="rol-nombre">{t("customRoles.name")}</Label>
                 <Input id="rol-nombre" maxLength={CUSTOM_ROLE_NAME_MAX} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-                {editing.name !== "" && nameCheck && !nameCheck.ok && <p className="text-xs text-red-600">{editing.name.trim() === "" ? t("customRoles.nameEmpty") : t("customRoles.nameTooLong", { max: CUSTOM_ROLE_NAME_MAX })}</p>}
+                {editing.name !== "" && nameCheck && !nameCheck.ok && <p className="text-xs text-danger">{editing.name.trim() === "" ? t("customRoles.nameEmpty") : t("customRoles.nameTooLong", { max: CUSTOM_ROLE_NAME_MAX })}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>{t("customRoles.baseRole")}</Label>
@@ -205,7 +205,7 @@ export default function CustomRolesPanel({ users, canWrite }: { users: PanelUser
                             }
                           />
                           <span>{t(`customRoles.perm.${d.key.replace(/\./g, "_")}`)}</span>
-                          {checked !== inBase && <span className="text-xs text-blue-700">{checked ? t("customRoles.added") : t("customRoles.removed")}</span>}
+                          {checked !== inBase && <span className="text-xs text-info">{checked ? t("customRoles.added") : t("customRoles.removed")}</span>}
                         </label>
                       );
                     })}

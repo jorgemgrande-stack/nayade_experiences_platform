@@ -43,6 +43,9 @@ import {
   Plus,
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
+import { PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
 
 // ── Categorías predefinidas ────────────────────────────────────────────────────
@@ -85,7 +88,7 @@ export default function GalleryManager() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Queries ────────────────────────────────────────────────────────────────
-  const { data: items = [], isLoading } = trpc.gallery.adminGetAll.useQuery();
+  const { data: items = [], isLoading, isError, error, refetch } = trpc.gallery.adminGetAll.useQuery();
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const createMutation = trpc.gallery.adminCreate.useMutation({
@@ -180,12 +183,13 @@ export default function GalleryManager() {
     <AdminLayout>
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{tx("Galería")}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{tx("{itemsN, plural, one {# foto · Arrastra para reordenar} other {# fotos · Arrastra para reordenar}}", { itemsN: items.length })}</p>
-        </div>
-        <div className="flex gap-2">
+      <CmsSectionNav />
+      <PanelPageHeader
+        className="mb-0"
+        icon={<ImagePlus />}
+        title={tx("Galería")}
+        description={tx("{itemsN, plural, one {# foto · Arrastra para reordenar} other {# fotos · Arrastra para reordenar}}", { itemsN: items.length })}
+        actions={<>
           <Button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
@@ -205,8 +209,8 @@ export default function GalleryManager() {
             className="hidden"
             onChange={(e) => handleFilesSelected(e.target.files)}
           />
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Filtros de categoría */}
       <div className="flex flex-wrap gap-2">
@@ -240,7 +244,9 @@ export default function GalleryManager() {
         <Upload className="w-5 h-5 mx-auto mb-1 opacity-50" />{tx("Arrastra imágenes aquí o haz clic para seleccionar (múltiple)")}</div>
 
       {/* Grid de fotos */}
-      {isLoading ? (
+      {isError ? (
+        <PanelError error={error} onRetry={() => void refetch()} />
+      ) : isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {Array.from({ length: 10 }).map((_, i) => (
             <div key={i} className="aspect-square rounded-xl bg-muted animate-pulse" />
@@ -293,7 +299,7 @@ export default function GalleryManager() {
                     </button>
                     <button
                       onClick={() => setDeleteId(item.id)}
-                      className="p-1 rounded-md bg-red-500/70 hover:bg-red-500 text-white transition-colors"
+                      className="p-1 rounded-md bg-destructive/80 hover:bg-destructive text-white transition-colors"
                       title={tx("Eliminar")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -304,7 +310,7 @@ export default function GalleryManager() {
                   {item.title && (
                     <p className="text-white text-xs font-medium truncate">{item.title}</p>
                   )}
-                  <Badge variant="secondary" className="text-[10px] mt-0.5 px-1.5 py-0">
+                  <Badge variant="secondary" className="text-xs mt-0.5 px-1.5 py-0">
                     {item.category}
                   </Badge>
                 </div>
@@ -312,7 +318,7 @@ export default function GalleryManager() {
               {/* Indicador inactivo */}
               {!item.isActive && (
                 <div className="absolute top-1.5 left-1.5">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background/80">{tx("Oculta")}</Badge>
+                  <Badge variant="outline" className="text-xs px-1.5 py-0 bg-background/80">{tx("Oculta")}</Badge>
                 </div>
               )}
             </div>

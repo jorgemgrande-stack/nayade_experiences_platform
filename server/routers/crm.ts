@@ -1065,6 +1065,7 @@ export const crmRouter = router({
         variantId: z.number().int().positive().optional(),
         seats: z.number().int().min(1).max(50).optional(),
         lang: z.string().max(5).optional(),
+        startDate: z.string().max(10).optional(),
         name: z.string().min(2).max(200),
         email: z.string().max(320),
         message: z.string().max(2000).optional(),
@@ -1079,7 +1080,7 @@ export const crmRouter = router({
         try {
           const base = await defaultRequestContext("modo-pruebas");
           const r = await processProductRequest(
-            { experienceId: input.experienceId, editionId: input.editionId, variantId: input.variantId, seats: input.seats, lang: input.lang, name: input.name, email: input.email, message: input.message, consent: true, elapsedMs: 60_000, page: "/modo-pruebas" },
+            { experienceId: input.experienceId, editionId: input.editionId, variantId: input.variantId, seats: input.seats, startDate: input.startDate, lang: input.lang, name: input.name, email: input.email, message: input.message, consent: true, elapsedMs: 60_000, page: "/modo-pruebas" },
             { ...base, testMode: true, notifyOwner: undefined },
           );
           if (r.leadId) await logActivity("lead", r.leadId, "test_mode_no_notices", null, null, { note: "Solicitud de prueba: no se avisó a nadie ni se sincronizó con integraciones externas" });
@@ -7264,7 +7265,7 @@ export const crmRouter = router({
           isRequired: experienceVariants.isRequired,
           sortOrder: experienceVariants.sortOrder,
         }).from(experienceVariants)
-          .where(inArray(experienceVariants.experienceId, expIds))
+          .where(and(inArray(experienceVariants.experienceId, expIds), isNull(experienceVariants.supplementGroup)))
           .orderBy(experienceVariants.sortOrder);
         for (const v of varRows) {
           if (!variantsByExpId[v.experienceId]) variantsByExpId[v.experienceId] = [];

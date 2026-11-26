@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 import { usePortalLook } from "../employee/usePortalLook";
-import { aulaText, contentNotice, formatAccessDate, resolveAulaLocale, withLang, type AulaLocale, type AulaText } from "@shared/learningText";
+import { aulaText, contentNotice, fillAula, formatAccessDate, formatAulaPrice, resolveAulaLocale, withLang, type AulaLocale, type AulaText } from "@shared/learningText";
+import { moduleAccessNotice } from "@shared/learning";
 
 const BASE = "/mi-formacion";
 /** Vista previa de administración: mismas pantallas, sin matrícula ni progreso (ruta propia, solo administradores). */
@@ -109,11 +110,36 @@ function Notice({ t, error, onRetry }: { t: AulaText; error: unknown; onRetry: (
   );
 }
 
+/** Activación voluntaria: el derecho está concedido y los días empiezan solo cuando el alumno lo confirma aquí (dos pasos, sin fecha automática). */
+function ActivateAccess({ pending, t, onDone }: { pending: { enrollmentId: number; days: number }; t: AulaText; onDone: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const activate = trpc.learning.my.activate.useMutation({ onSuccess: onDone, onError: () => { setError(t.accFail); setConfirming(false); } });
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" data-testid="activar-acceso">
+      <p>{fillAula(t.accPendingNote, { n: String(pending.days) })}</p>
+      {!confirming ? (
+        <Button size="sm" onClick={() => { setError(null); setConfirming(true); }}>{t.accActivate}</Button>
+      ) : (
+        <div className="space-y-2" role="alertdialog" aria-label={t.accActivate}>
+          <p className="font-medium">{fillAula(t.accConfirm, { n: String(pending.days) })}</p>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={activate.isPending} onClick={() => activate.mutate({ enrollmentId: pending.enrollmentId })}>{activate.isPending ? t.loading : t.accConfirmYes}</Button>
+            <Button size="sm" variant="outline" disabled={activate.isPending} onClick={() => setConfirming(false)}>{t.accCancel}</Button>
+          </div>
+        </div>
+      )}
+      {error && <p role="alert" className="text-red-700">{error}</p>}
+    </div>
+  );
+}
+
 // ── Mis cursos ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function AulaHome() {
   const { t, locale, href } = useAulaLocale();
   const q = trpc.learning.my.courses.useQuery(undefined, { retry: false });
+  const utils = trpc.useUtils();
   return (
     <Shell>
       <h1 className="mb-4 text-2xl font-bold">{t.title}</h1>
@@ -127,7 +153,8 @@ export function AulaHome() {
                   <h2 className="text-lg font-semibold">{c.title}</h2>
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${open ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-700"}`}>{t.status[c.status] ?? c.status}</span>
                 </div>
-                <p className="mt-1 text-sm text-slate-600">
+                {c.pendingActivation && <ActivateAccess pending={c.pendingActivation} t={t} onDone={() => { void utils.learning.my.invalidate(); }} />}
+                <p className="mt-1 text-sm text-slate-600" hidden={!!c.pendingActivation}>
                   {c.status === "scheduled" ? `${t.from} ${formatAccessDate(c.startsAt, locale)}` : c.endsAt ? `${t.until} ${formatAccessDate(c.endsAt, locale)}` : t.noEnd}
                 </p>
                 <div className="mt-3" aria-label={t.progress}>
@@ -151,6 +178,70 @@ export function AulaHome() {
   );
 }
 
+// ── Aviso de acceso por módulo y ampliación ─────────────────────────────────────────────────────────────────────────
+
+type ModuleInfo = { id: number; state?: "open" | "locked" | "closed" | "not_included" | "pending_activation"; unlocksAt?: number | null; endsAt?: number | null; canExtend?: boolean };
+type RedsysForm = { url: string; Ds_SignatureVersion: string; Ds_MerchantParameters: string; Ds_Signature: string };
+
+/** Envía el formulario firmado de Redsys (mismo mecanismo que el pago del carrito). */
+function submitRedsys(f: RedsysForm) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = f.url;
+  form.style.display = "none";
+  for (const [k, v] of Object.entries({ Ds_SignatureVersion: f.Ds_SignatureVersion, Ds_MerchantParameters: f.Ds_MerchantParameters, Ds_Signature: f.Ds_Signature })) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = k;
+    input.value = v;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+}
+
+/** «Se desbloquea el …», «Acceso hasta …», «Acceso finalizado el …» (fechas en horario de Madrid) y el aviso suave de los últimos 7 días. */
+function ModuleNotice({ m, courseId, offers, t, locale, preview }: { m: ModuleInfo; courseId: number; offers: Array<{ days: number; priceCents: number }>; t: AulaText; locale: AulaLocale; preview: boolean }) {
+  const notice = moduleAccessNotice({ state: m.state === "pending_activation" ? "locked" : (m.state ?? "not_included"), unlocksAt: m.unlocksAt ?? null, endsAt: m.endsAt ?? null }, Date.now());
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const start = trpc.learning.my.startExtension.useMutation({
+    onSuccess: (r) => {
+      if (r.stripeUrl) window.location.href = r.stripeUrl;
+      else if (r.redsysForm) submitRedsys(r.redsysForm as RedsysForm);
+    },
+    onError: () => setError(t.extendFail),
+  });
+  const canExtend = !preview && !!m.canExtend && offers.length > 0;
+  if (notice.kind === "none" && !canExtend) return null;
+  return (
+    <div className="space-y-2 border-b border-stone-100 px-4 py-2 text-sm" data-testid={`module-access-${m.id}`}>
+      {notice.kind === "locked" && <p className="flex items-center gap-1 text-slate-600"><Lock className="h-3.5 w-3.5" aria-hidden />{fillAula(t.unlocksOn, { date: formatAccessDate(notice.date, locale) })}</p>}
+      {notice.kind === "until" && <p className="text-slate-600">{fillAula(t.accessUntilOn, { date: formatAccessDate(notice.date, locale) })}</p>}
+      {notice.kind === "until" && notice.soon && (
+        <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">{notice.daysLeft === 1 ? t.endsSoonOne : fillAula(t.endsSoon, { n: notice.daysLeft })}</p>
+      )}
+      {notice.kind === "closed" && <p className="text-slate-600">{notice.date != null ? fillAula(t.accessEndedOn, { date: formatAccessDate(notice.date, locale) }) : t.accessEnded}</p>}
+      {canExtend && !open && <Button size="sm" variant="outline" onClick={() => setOpen(true)}>{t.extendModule}</Button>}
+      {canExtend && open && (
+        <div className="space-y-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
+          <p className="font-medium">{t.extendTitle}</p>
+          <div className="flex flex-wrap gap-2">
+            {offers.map((o) => (
+              <Button key={o.days} size="sm" disabled={start.isPending} onClick={() => { setError(null); start.mutate({ courseId, moduleId: m.id, days: o.days as 30 | 60 }); }}>
+                {start.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />}{o.days === 30 ? t.extend30 : t.extend60} · {formatAulaPrice(o.priceCents, locale)}
+              </Button>
+            ))}
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>{t.extendClose}</Button>
+          </div>
+          <p className="text-xs text-slate-500">{t.extendNote}</p>
+          {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Índice del curso ────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function AulaCurso({ preview = false }: { preview?: boolean }) {
@@ -162,6 +253,7 @@ export function AulaCurso({ preview = false }: { preview?: boolean }) {
   const mine = trpc.learning.my.course.useQuery({ courseId }, { enabled: valid && !preview, retry: false });
   const prev = trpc.learning.admin.previewCourse.useQuery({ courseId }, { enabled: valid && preview, retry: false });
   const q = (preview ? prev : mine) as typeof mine;
+  const utils = trpc.useUtils();
   return (
     <Shell preview={preview}>
       <Link href={href(preview ? "/admin/formacion" : BASE)} className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600"><ChevronLeft className="h-4 w-4" aria-hidden />{t.allCourses}</Link>
@@ -170,13 +262,17 @@ export function AulaCurso({ preview = false }: { preview?: boolean }) {
           <h1 className="mb-1 text-2xl font-bold">{q.data!.course.title}</h1>
           <p className="mb-3 text-sm text-slate-500">{t.resumeNote}</p>
           <ContentNotice courseLanguage={q.data!.course.language} locale={locale} />
+          {!preview && (q.data as { pendingActivation?: { enrollmentId: number; days: number } | null }).pendingActivation && (
+            <div className="mb-4"><ActivateAccess pending={(q.data as { pendingActivation: { enrollmentId: number; days: number } }).pendingActivation} t={t} onDone={() => { void utils.learning.my.invalidate(); }} /></div>
+          )}
           <div className="space-y-5">
             {q.data!.modules.map((m) => (
               <section key={m.id} aria-labelledby={`m${m.id}`} className="rounded-xl border border-stone-200 bg-white">
                 <h2 id={`m${m.id}`} className="flex items-center justify-between gap-2 border-b border-stone-100 px-4 py-3 font-semibold">
                   <span>{m.title}</span>
-                  {!m.unlocked && <span className="flex items-center gap-1 text-xs font-normal text-slate-500"><Lock className="h-3.5 w-3.5" aria-hidden />{t.locked}</span>}
+                  {!m.unlocked && (!(m as ModuleInfo).state || (m as ModuleInfo).state === "not_included") && <span className="flex items-center gap-1 text-xs font-normal text-slate-500"><Lock className="h-3.5 w-3.5" aria-hidden />{t.locked}</span>}
                 </h2>
+                <ModuleNotice m={m as ModuleInfo} courseId={courseId} offers={(q.data as { extensionOffers?: Array<{ days: number; priceCents: number }> }).extensionOffers ?? []} t={t} locale={locale} preview={preview} />
                 <ol className="divide-y divide-stone-100">
                   {m.lessons.map((l) => (
                     <li key={l.id}>

@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 
 const read = (p: string) => fs.readFileSync(path.join(__dirname, "../client/src", p), "utf8");
 
@@ -19,7 +20,7 @@ describe("pantallas del menú con el marco del panel", () => {
 });
 
 describe("enlaces internos del CRM con contrato de URL (UX-05)", () => {
-  const crm = read("pages/admin/crm/CRMDashboard.tsx");
+  const crm = crmDashboardFuentes();
   it("CRMDashboard acepta los alias de pestaña que emiten otras pantallas", () => {
     expect(crm).toMatch(/raw === "reservas" \? "reservations"/);
     expect(crm).toMatch(/raw === "presupuestos" \? "quotes"/);

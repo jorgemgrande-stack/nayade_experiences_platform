@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { crmDashboardFuentes } from "./crmDashboardFuentes";
 import { ORIGINAL } from "../shared/sinNayade";
 
 const ROOT = path.join(__dirname, "../client/src");
@@ -99,7 +100,7 @@ describe("vocabulario sectorial y jerga en el panel", () => {
     ["pages/admin/crm/CRMDashboard.tsx", /Fecha de servicio \(opcional\)|"oportunidades en total" :|ganadas de \{/, 0],
   ];
   it.each(SECTORAL)("%s: textos sectoriales fijos dentro de la línea base", (file, re, max) => {
-    const unguarded = fs.readFileSync(path.join(ROOT, file), "utf8").split(/\r?\n/).filter((l) => !/licensed/.test(l)).join("\n");
+    const unguarded = (file === "pages/admin/crm/CRMDashboard.tsx" ? crmDashboardFuentes() : fs.readFileSync(path.join(ROOT, file), "utf8")).split(/\r?\n/).filter((l) => !/licensed/.test(l)).join("\n");
     expect(count(unguarded, re)).toBeLessThanOrEqual(max);
   });
 

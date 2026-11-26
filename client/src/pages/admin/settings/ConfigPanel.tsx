@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { configSectionsFor, type SectionDef, type SectionId } from "./configSections";
@@ -95,17 +96,17 @@ function DangerousSettingModal({ settingKey, label, newValue, warning, onConfirm
   const canConfirm = typed === "CONFIRMAR";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-background border border-border rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+      <div className="bg-background border border-border rounded-xl shadow-md p-6 max-w-sm w-full mx-4">
         <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 bg-red-100 rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
+          <div className="p-2 bg-danger/10 rounded-lg shrink-0">
+            <AlertTriangle className="w-5 h-5 text-danger" />
           </div>
           <div>
             <h3 className="font-semibold text-foreground">{t("settingsConfig.dangerous.title")}</h3>
             <p className="text-sm text-muted-foreground mt-1">
               {t("settingsConfig.dangerous.youWillSave")}<strong>{label}</strong>{t("settingsConfig.dangerous.withValue")}<code className="text-xs bg-muted px-1 rounded">{newValue}</code>.
             </p>
-            <p className="text-sm text-red-600 mt-2">{t(warning)}</p>
+            <p className="text-sm text-danger mt-2">{t(warning)}</p>
           </div>
         </div>
         <div className="mb-4">
@@ -147,10 +148,10 @@ function ConfirmModal({ pending, onConfirm, onClose }: {
   const canConfirm = !requireTyping || typed === "CONFIRMAR";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-background border border-border rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+      <div className="bg-background border border-border rounded-xl shadow-md p-6 max-w-sm w-full mx-4">
         <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 bg-red-100 rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
+          <div className="p-2 bg-danger/10 rounded-lg shrink-0">
+            <AlertTriangle className="w-5 h-5 text-danger" />
           </div>
           <div>
             <h3 className="font-semibold text-foreground">{t("settingsConfig.flagModal.title")}</h3>
@@ -239,7 +240,7 @@ function SettingField({ settingKey, label, description, value, isSensitive, tech
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-medium text-foreground">{label}</span>
-            {isDangerous && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title={t("settingsConfig.criticalChangeTitle")} />}
+            {isDangerous && <AlertTriangle className="w-3.5 h-3.5 text-warning" title={t("settingsConfig.criticalChangeTitle")} />}
           </div>
           {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
           {technical && <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>}
@@ -282,9 +283,9 @@ function SettingField({ settingKey, label, description, value, isSensitive, tech
 // ─── Flag Toggle ───────────────────────────────────────────────────────────────
 
 const RISK_COLORS: Record<string, string> = {
-  low:    "bg-emerald-100 text-emerald-700",
-  medium: "bg-amber-100 text-amber-700",
-  high:   "bg-red-100 text-red-700",
+  low:    "bg-success/10 text-success",
+  medium: "bg-warning/10 text-warning",
+  high:   "bg-danger/10 text-danger",
 };
 const RISK_LABELS: Record<string, string> = {
   low: "settingsConfig.risk.low", medium: "settingsConfig.risk.medium", high: "settingsConfig.risk.high",
@@ -327,8 +328,8 @@ function FlagRow({ flagKey, name, description, enabled, riskLevel, onRequestChan
 // ─── Status dot ───────────────────────────────────────────────────────────────
 
 function StatusDot({ status }: { status: "ok" | "warning" | "neutral" }) {
-  if (status === "ok") return <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />;
-  if (status === "warning") return <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />;
+  if (status === "ok") return <span className="w-2 h-2 rounded-full bg-success shrink-0" />;
+  if (status === "warning") return <span className="w-2 h-2 rounded-full bg-warning shrink-0" />;
   return <span className="w-2 h-2 rounded-full bg-border shrink-0" />;
 }
 
@@ -433,15 +434,15 @@ function AuditLog() {
                   <td className="py-2 pr-4">
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                       log.entityType === "feature_flag"
-                        ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                        ? "bg-info/10 text-info"
                         : "bg-muted text-muted-foreground"
                     }`}>
                       {log.entityType === "feature_flag" ? t("settingsConfig.audit.flag") : t("settingsConfig.audit.setting")}
                     </span>
                   </td>
                   <td className="py-2 pr-4 font-mono text-xs">{log.key}</td>
-                  <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[120px] truncate">{log.oldValue ?? "—"}</td>
-                  <td className="py-2 pr-4 text-xs max-w-[120px] truncate">{log.newValue ?? "—"}</td>
+                  <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">{log.oldValue ?? "—"}</td>
+                  <td className="py-2 pr-4 text-xs max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">{log.newValue ?? "—"}</td>
                   <td className="py-2 text-xs text-muted-foreground">{log.changedByName ?? "—"}</td>
                 </tr>
               ))}
@@ -478,9 +479,9 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
   if (section.id === "avanzado") {
     return (
       <div className="space-y-6">
-        <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
-          <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-800 dark:text-amber-300">
+        <div className="flex items-start gap-3 p-4 bg-warning/10 border border-warning/40 rounded-xl">
+          <Shield className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+          <p className="text-sm text-warning">
             <strong>{t("settingsConfig.advanced.notice")}</strong>{t("settingsConfig.advanced.noticeText")}
           </p>
         </div>
@@ -507,7 +508,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
           </a>
         </div>
 
-        <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+        <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
           <div className="px-5 py-3 bg-muted/30 border-b border-border/50 flex items-center gap-2">
             <History className="w-4 h-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold text-foreground">{t("settingsConfig.advanced.history")}</h3>
@@ -547,7 +548,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
     <div className="space-y-5">
       {sectionLink}
       {sectionSettings.length > 0 && (
-        <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+        <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
           <div className="px-5 py-3 bg-muted/30 border-b border-border/50">
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">{t("settingsConfig.settingsHeading")}</h3>
           </div>
@@ -587,9 +588,9 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
       )}
 
       {sectionFlags.length > 0 && (
-        <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+        <div className="bg-card border border-border/50 rounded-xl overflow-hidden">
           <div className="px-5 py-3 bg-muted/30 border-b border-border/50 flex items-center gap-2">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+            <AlertTriangle className="w-3.5 h-3.5 text-warning" />
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">{t("settingsConfig.flagsHeading")}</h3>
           </div>
           <div className="px-5">
@@ -673,12 +674,7 @@ export default function ConfigPanel() {
   return (
     <AdminLayout>
       <div className="max-w-5xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-heading font-bold text-foreground">{t("settingsConfig.title")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {licensed ? t("settingsConfig.introLicensed") : t("settingsConfig.introLegacy")}
-          </p>
-        </div>
+        <PanelPageHeader title={t("settingsConfig.title")} description={licensed ? t("settingsConfig.introLicensed") : t("settingsConfig.introLegacy")} />
         <WorkplaceLocks place="admin" className="mb-6" />
 
         {isLoading && (
@@ -688,7 +684,7 @@ export default function ConfigPanel() {
         )}
 
         {!isLoading && (
-          <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
+          <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-xl overflow-hidden">
             {/* Selector de sección en móvil */}
             <div className="md:hidden p-3 border-b border-border/50">
               <label htmlFor="config-section" className="sr-only">{t("settingsConfig.section")}</label>
@@ -722,9 +718,9 @@ export default function ConfigPanel() {
                     }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
-                    <span className="text-sm flex-1 truncate">{tx(section.label, SECTION_LABEL_KEYS)}</span>
+                    <span className="text-sm flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{tx(section.label, SECTION_LABEL_KEYS)}</span>
                     {section.id === "avanzado"
-                      ? <Shield className="w-3.5 h-3.5 shrink-0 text-amber-500" title={t("settingsConfig.techOnly")} />
+                      ? <Shield className="w-3.5 h-3.5 shrink-0 text-warning" title={t("settingsConfig.techOnly")} />
                       : <StatusDot status={status} />
                     }
                   </button>

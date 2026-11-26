@@ -16,7 +16,7 @@
  *                 cuenta en la ocupación y la reconciliación la lista para gestión manual.
  */
 
-export type InventoryKind = "spa_slot" | "hotel_room";
+export type InventoryKind = "spa_slot" | "hotel_room" | "edition_seat";
 export type HoldStatus = "retenida" | "confirmada" | "liberada" | "conflicto";
 export type ReleaseReason = "pago_fallido" | "cancelada" | "caducada";
 

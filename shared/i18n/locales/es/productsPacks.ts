@@ -1,6 +1,8 @@
 /** Productos: gestor de Lego Packs (packs compuestos por líneas). */
 export default {
   pageTitle: "Lego Packs",
+  loadError: "No se han podido cargar los Lego Packs",
+  noImage: "Sin imagen",
   searchPlaceholder: "Buscar Lego Pack...",
   new: "Nuevo Lego Pack",
   edit: "Editar",

@@ -332,7 +332,7 @@ function History({ data }: { data: Overview }) {
       {list.isLoading ? <PanelLoading label={t("productsInventory.history.loading")} /> : list.isError ? <PanelError error={list.error} onRetry={() => list.refetch()} title={t("productsInventory.history.loadError")} /> : !list.data?.items.length ? (
         <PanelEmpty icon={<Boxes className="h-6 w-6" />} title={t("productsInventory.history.emptyTitle")} description={t("productsInventory.history.emptyText")} />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr className="border-b border-border">
@@ -462,7 +462,7 @@ export default function Inventory() {
               {data.items.length === 0 ? (
                 <PanelEmpty icon={<Boxes className="h-6 w-6" />} title={t("productsInventory.page.emptyTitle")} description={data.canManage ? t("productsInventory.page.emptyManage") : t("productsInventory.page.emptyReadonly")} />
               ) : (
-                <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
                   <table className="w-full text-sm">
                     <thead className="text-left text-xs text-muted-foreground">
                       <tr className="border-b border-border">

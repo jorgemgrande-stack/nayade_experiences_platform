@@ -16,6 +16,9 @@ import { Label } from "@/components/ui/label";
 import { toastError } from "@/components/admin/PanelStates";
 import { localeAutonym } from "@/hooks/useSiteLocale";
 import { useStudioText } from "@/components/admin/studio/useStudioText";
+import { PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 
 export default function Idiomas() {
   const tx = useStudioText();
@@ -37,10 +40,14 @@ export default function Idiomas() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl space-y-8 p-4 md:p-6">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><Languages className="h-6 w-6" />{" "}{tx("Idiomas de tu web")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{tx("El idioma principal es «{v}». Añade otros y traduce tus páginas a mano: no se traduce nada automáticamente y un idioma solo se ve en tu web cuando lo validas, página a página.", { v: localeAutonym(cfg.data?.defaultLocale ?? "es") })}</p>
-        </div>
+        <CmsSectionNav />
+        <PanelPageHeader
+          className="mb-0"
+          icon={<Languages />}
+          title={tx("Idiomas de tu web")}
+          description={tx("El idioma principal es «{v}». Añade otros y traduce tus páginas a mano: no se traduce nada automáticamente y un idioma solo se ve en tu web cuando lo validas, página a página.", { v: localeAutonym(cfg.data?.defaultLocale ?? "es") })}
+        />
+        {cfg.isError && <PanelError error={cfg.error} onRetry={() => void cfg.refetch()} />}
 
         <section aria-labelledby="idiomas-h" className="space-y-3">
           <h2 id="idiomas-h" className="text-lg font-semibold">{tx("Idiomas")}</h2>
@@ -117,7 +124,7 @@ function PageRow({ slug, title, locales }: { slug: string; title: string; locale
         return (
           <td key={loc} className="p-2">
             <Link href={`/admin/cms/idiomas/${slug}/${loc}`} className="underline-offset-2 hover:underline">{label}</Link>
-            {s?.principalChanged && <span className="ml-2 text-xs text-amber-700">{tx("el original ha cambiado")}</span>}
+            {s?.principalChanged && <span className="ml-2 text-xs text-warning">{tx("el original ha cambiado")}</span>}
           </td>
         );
       })}

@@ -4,8 +4,8 @@
  *   if (!(await confirmAction({ description: "¿Eliminar este gasto?", destructive: true }))) return;
  *
  * `<ConfirmHost />` vive en `AdminLayout`; `confirmAction` devuelve una promesa que resuelve `true` al confirmar y `false`
- * al cancelar, cerrar o pulsar Esc. Si no hay anfitrión montado (p. ej. una pantalla fuera del marco) resuelve `false`:
- * nunca se ejecuta una acción sin confirmar.
+ * al cancelar, cerrar o pulsar Esc. Si no hay anfitrión montado (p. ej. una pantalla fuera del marco) usa la confirmación
+ * nativa del navegador: nunca se ejecuta una acción sin confirmar.
  */
 import { useEffect, useState } from "react";
 import {
@@ -28,7 +28,8 @@ let host: ((p: Pending) => void) | null = null;
 
 export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
-    if (!host) { resolve(false); return; }
+    // Pantalla fuera del marco del panel (sin anfitrión): confirmación nativa, nunca se ejecuta sin confirmar
+    if (!host) { resolve(typeof window !== "undefined" ? window.confirm(opts.description) : false); return; }
     host({ ...opts, resolve });
   });
 }

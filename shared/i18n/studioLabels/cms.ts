@@ -9,6 +9,7 @@ export const STUDIO_DE_CMS: Record<string, string> = {
   "A dónde lleva el enlace": "Wohin der Link führt",
   "A dónde lleva: /contacto, www.tuweb.es o un correo": "Wohin er führt: /kontakt, www.deinewebsite.de oder eine E-Mail-Adresse",
   "Abrir Elephant Studio": "Elephant Studio öffnen",
+  Contenidos: "Inhalte",
   Acciones: "Aktionen",
   Activa: "Aktiv",
   Activo: "Aktiv",

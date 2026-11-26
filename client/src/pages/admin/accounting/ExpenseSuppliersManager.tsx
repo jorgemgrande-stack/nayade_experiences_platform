@@ -1,14 +1,18 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { toastError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
+import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Building2, ArrowLeft } from "lucide-react";
 import { useLocation } from "wouter";
+import { EconomyTable, FormFooter, FormField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { ListSearch, filterByText } from "./shared/EconomyParts";
 
 type SupplierForm = {
   name: string; fiscalName: string; vatNumber: string;
@@ -17,39 +21,46 @@ type SupplierForm = {
 const emptyForm: SupplierForm = { name: "", fiscalName: "", vatNumber: "", address: "", email: "", phone: "", iban: "" };
 
 export default function ExpenseSuppliersManager() {
-  
+  const { t } = useI18n();
   const [, setLocation] = useLocation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<SupplierForm>(emptyForm);
+  const [showErrors, setShowErrors] = useState(false);
 
   const listQ = trpc.financial.suppliers.list.useQuery();
   const utils = trpc.useUtils();
 
   const createMut = trpc.financial.suppliers.create.useMutation({
-    onSuccess: () => { utils.financial.suppliers.list.invalidate(); toast.success("Proveedor creado"); setDialogOpen(false); },
+    onSuccess: () => { utils.financial.suppliers.list.invalidate(); toast.success(t("accountingConfig.suppliers.created")); setDialogOpen(false); },
+    onError: (e) => toastError(e),
   });
   const updateMut = trpc.financial.suppliers.update.useMutation({
-    onSuccess: () => { utils.financial.suppliers.list.invalidate(); toast.success("Proveedor actualizado"); setDialogOpen(false); },
+    onSuccess: () => { utils.financial.suppliers.list.invalidate(); toast.success(t("accountingConfig.suppliers.updated")); setDialogOpen(false); },
+    onError: (e) => toastError(e),
   });
   const deleteMut = trpc.financial.suppliers.delete.useMutation({
-    onSuccess: () => { utils.financial.suppliers.list.invalidate(); toast.success("Proveedor eliminado"); },
+    onSuccess: () => { utils.financial.suppliers.list.invalidate(); toast.success(t("accountingConfig.suppliers.deleted")); },
+    onError: (e) => toastError(e),
   });
 
   const items = listQ.data ?? [];
+  const [q, setQ] = useState("");
+  const shown = filterByText(items, q, [(i) => i.name, (i) => i.fiscalName, (i) => i.vatNumber, (i) => i.email]);
 
-  function openCreate() { setEditingId(null); setForm(emptyForm); setDialogOpen(true); }
+  function openCreate() { setEditingId(null); setForm(emptyForm); setShowErrors(false); setDialogOpen(true); }
   function openEdit(item: typeof items[number]) {
     setEditingId(item.id);
     setForm({
       name: item.name, fiscalName: item.fiscalName ?? "", vatNumber: item.vatNumber ?? "",
       address: item.address ?? "", email: item.email ?? "", phone: item.phone ?? "", iban: item.iban ?? "",
     });
+    setShowErrors(false);
     setDialogOpen(true);
   }
 
   async function handleSave() {
-    if (!form.name) { toast.error("El nombre es requerido"); return; }
+    if (!form.name) { setShowErrors(true); toast.error(t("accountingConfig.suppliers.nameRequired")); return; }
     const payload = { ...form, email: form.email || undefined };
     if (editingId) {
       await updateMut.mutateAsync({ id: editingId, ...payload });
@@ -58,83 +69,97 @@ export default function ExpenseSuppliersManager() {
     }
   }
 
+  async function handleDelete(item: typeof items[number]) {
+    if (await confirmAction({ description: t("accountingConfig.suppliers.confirmDelete", { name: item.name }), destructive: true })) deleteMut.mutate({ id: item.id });
+  }
+
+  const dash = <span className="text-muted-foreground">—</span>;
+  const columns: EconomyColumn<typeof items[number]>[] = [
+    {
+      key: "name",
+      header: t("accountingConfig.suppliers.colName"),
+      mobile: "title",
+      cell: (i) => (
+        <span>
+          <span className="block font-medium text-foreground">{i.name}</span>
+          {i.fiscalName && <span className="block text-xs font-normal text-muted-foreground">{i.fiscalName}</span>}
+        </span>
+      ),
+    },
+    { key: "vat", header: t("accountingConfig.suppliers.colVat"), cell: (i) => i.vatNumber ?? dash },
+    { key: "email", header: t("accountingConfig.suppliers.colEmail"), priority: "md", cell: (i) => (i.email ? <span className="break-all">{i.email}</span> : dash) },
+    { key: "phone", header: t("accountingConfig.suppliers.colPhone"), priority: "lg", cell: (i) => i.phone ?? dash },
+  ];
+
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos")}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2"><Building2 className="w-6 h-6 text-blue-500" /> Proveedores de Gastos</h1>
-              <p className="text-sm text-muted-foreground">{items.length} proveedores</p>
-            </div>
-          </div>
-          <Button onClick={openCreate} className="gap-2"><Plus className="w-4 h-4" /> Nuevo proveedor</Button>
-        </div>
+      <EconomyShell screen="suppliers"
+        description={t("accountingConfig.suppliers.description", { count: items.length })}
+        action={
+            <>
+              <Button variant="outline" onClick={() => setLocation("/admin/contabilidad/gastos")} className="gap-1.5"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.common.backToExpenses")}</Button>
+              <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.suppliers.new")}</Button>
+            </>
+          }>
+      <div className="space-y-6">
 
-        <div className="border rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left p-3 font-medium">Nombre</th>
-                  <th className="text-left p-3 font-medium">Razón social</th>
-                  <th className="text-left p-3 font-medium">NIF/CIF</th>
-                  <th className="text-left p-3 font-medium">Email</th>
-                  <th className="text-left p-3 font-medium">Teléfono</th>
-                  <th className="text-center p-3 font-medium">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center p-8 text-muted-foreground">No hay proveedores. Crea el primero.</td></tr>
-                ) : items.map((item) => (
-                  <tr key={item.id} className="border-t hover:bg-muted/20">
-                    <td className="p-3 font-medium">{item.name}</td>
-                    <td className="p-3 text-muted-foreground">{item.fiscalName ?? "—"}</td>
-                    <td className="p-3">{item.vatNumber ?? "—"}</td>
-                    <td className="p-3">{item.email ?? "—"}</td>
-                    <td className="p-3">{item.phone ?? "—"}</td>
-                    <td className="p-3 text-center">
-                      <div className="flex gap-1 justify-center">
-                        <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Pencil className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => { if (confirm("¿Eliminar?")) deleteMut.mutate({ id: item.id }); }}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {items.length > 15 && <ListSearch value={q} onChange={setQ} />}
+
+        <EconomyTable
+          rows={shown}
+          columns={columns}
+          rowKey={(i) => i.id}
+          caption={t("accountingConfig.suppliers.title")}
+          loading={listQ.isLoading}
+          error={listQ.error}
+          onRetry={() => void listQ.refetch()}
+          emptyTitle={items.length > 0 ? t("accountingConfig.common.noMatches") : t("accountingConfig.suppliers.emptyTitle")}
+          emptyDescription={t("accountingConfig.suppliers.emptyHelp")}
+          emptyAction={<Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" aria-hidden="true" /> {t("accountingConfig.suppliers.new")}</Button>}
+          actions={(i) => (
+            <RowActions
+              label={i.name}
+              primary={{ label: t("common.edit"), icon: <Pencil className="h-3.5 w-3.5" aria-hidden="true" />, onSelect: () => openEdit(i) }}
+              menu={[{ label: t("common.delete"), icon: <Trash2 />, destructive: true, onSelect: () => void handleDelete(i) }]}
+            />
+          )}
+        />
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editingId ? "Editar proveedor" : "Nuevo proveedor"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Nombre comercial *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Razón social</Label><Input value={form.fiscalName} onChange={(e) => setForm({ ...form, fiscalName: e.target.value })} /></div>
-              <div><Label>NIF/CIF</Label><Input value={form.vatNumber} onChange={(e) => setForm({ ...form, vatNumber: e.target.value })} /></div>
-            </div>
-            <div><Label>Dirección</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-              <div><Label>Teléfono</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-            </div>
-            <div><Label>IBAN</Label><Input value={form.iban} onChange={(e) => setForm({ ...form, iban: e.target.value })} placeholder="ES00 0000 0000 00 0000000000" /></div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending}>{editingId ? "Guardar" : "Crear"}</Button>
-            </div>
-          </div>
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId ? t("accountingConfig.suppliers.editTitle") : t("accountingConfig.suppliers.newTitle")}</DialogTitle>
+            <DialogDescription>{t("accountingConfig.suppliers.dialogHelp")}</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void handleSave(); }}>
+            <FormSection title={t("accountingConfig.suppliers.sectionIdentity")}>
+              <FormField label={t("accountingConfig.suppliers.tradeName")} required error={showErrors && !form.name ? t("accountingConfig.suppliers.nameRequired") : null}>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus autoComplete="off" />
+              </FormField>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField label={t("accountingConfig.suppliers.fiscalName")}><Input value={form.fiscalName} onChange={(e) => setForm({ ...form, fiscalName: e.target.value })} autoComplete="off" /></FormField>
+                <FormField label={t("accountingConfig.suppliers.vat")}><Input value={form.vatNumber} onChange={(e) => setForm({ ...form, vatNumber: e.target.value })} autoComplete="off" /></FormField>
+              </div>
+              <FormField label={t("accountingConfig.suppliers.address")}><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} autoComplete="off" /></FormField>
+            </FormSection>
+            <FormSection title={t("accountingConfig.suppliers.sectionContact")}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField label={t("accountingConfig.suppliers.email")}><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} autoComplete="off" /></FormField>
+                <FormField label={t("accountingConfig.suppliers.phone")}><Input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} autoComplete="off" /></FormField>
+              </div>
+              <FormField label={t("accountingConfig.suppliers.iban")} hint={t("accountingConfig.suppliers.ibanHint")}>
+                <Input value={form.iban} onChange={(e) => setForm({ ...form, iban: e.target.value })} placeholder="ES00 0000 0000 00 0000000000" className="tabular-nums" autoComplete="off" />
+              </FormField>
+            </FormSection>
+            <FormFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{t("common.cancel")}</Button>
+              <Button type="submit" disabled={createMut.isPending || updateMut.isPending}>{editingId ? t("common.save") : t("common.create")}</Button>
+            </FormFooter>
+          </form>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

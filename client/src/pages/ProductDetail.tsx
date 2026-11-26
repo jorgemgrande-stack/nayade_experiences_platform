@@ -6,6 +6,7 @@
  * traducción validada o, si falta, en el del principal con un aviso y su `lang` real.
  */
 import { useEffect, useState } from "react";
+import { applicableSupplements, supplementEuros, supplementTierFor, supplementsTotalEuros, type CartSupplement } from "../../../shared/supplementCart";
 import { Link, Redirect, useParams } from "wouter";
 import { ChevronLeft, ChevronRight, CheckCircle, Clock, Mail, Minus, Phone, Plus, ShoppingCart, XCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -20,7 +21,10 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { isPurchasable } from "@shared/shopOrders";
 import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
-import { ProductEditionsSection } from "@/components/site/Editions";
+import { requestDatesOfProduct } from "@shared/requestDates";
+import { ProductEditionsSection, type PublicEditionItem } from "@/components/site/Editions";
+import { editionLocalDate } from "@shared/editionPurchase";
+import { formatEditionDates } from "@shared/editions";
 import { offerModeOf, requestCtaLabel, showsPrice } from "@shared/offerMode";
 import { fillUiText, offerBadgeText, siteUiText, untranslatedNotice } from "@shared/siteUiText";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
@@ -30,6 +34,7 @@ import {
   FALLBACK_GENERIC_STOREFRONT,
   formatEuros,
   fromPrice,
+  isParticipantsProduct,
   MAX_QUANTITY,
   needsServiceDate,
   SHOP_PATH,
@@ -38,6 +43,8 @@ import {
 
 type Row = Record<string, unknown>;
 
+/** Periodo en el que el producto admite pedir una fecha de inicio (dato del producto; null = sin calendario) */
+const requestDatesOf = requestDatesOfProduct;
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0) : []);
 
@@ -68,10 +75,19 @@ export default function ProductDetail() {
   // se usa si es una opción real de este producto (abajo)
   const [variantId, setVariantId] = useState<number | undefined>(() => initialOption(typeof window === "undefined" ? "" : window.location.search));
   const [date, setDate] = useState("");
+  const [editionId, setEditionId] = useState<number | undefined>(undefined);
   const [requestOpen, setRequestOpen] = useState(false);
+  const [pickedSupps, setPickedSupps] = useState<string[]>([]);
 
   const { data: product, isLoading } = trpc.public.getExperienceBySlug.useQuery({ slug: slug ?? "", ...localeArg }, { enabled: !!slug, retry: false });
   const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery({ experienceId: product?.id ?? 0, ...localeArg }, { enabled: !!product?.id });
+  // Suplementos opcionales (alimentación…): aparte del programa; solo se ofrecen en la solicitud y siempre desmarcados
+  const { data: supplements = [] } = trpc.public.getSupplementsByExperience.useQuery({ experienceId: product?.id ?? 0, ...localeArg }, { enabled: !!product?.id });
+  // Convocatorias del producto: si las tiene, la compra exige elegir una fecha abierta (el servidor lo vuelve a validar)
+  const { data: editionsData } = trpc.public.getExperiences.useQuery({ limit: 12, offset: 0, editions: { experienceId: product?.id ?? 0 } }, { enabled: !!product?.id, staleTime: 60_000, retry: false });
+  const editions = ((editionsData ?? []) as unknown as PublicEditionItem[]).filter((e) => e.experienceId === product?.id);
+  const openEditions = editions.filter((e) => e.state === "open");
+  const pickedEdition = openEditions.find((e) => e.id === editionId);
   // Idioma de la ficha (solo en la ruta localizada): `contentLang` es el idioma real del contenido mostrado
   const i18n = product && "i18n" in product ? product.i18n : undefined;
   const contentLang = i18n ? (i18n.translated ? i18n.locale : i18n.contentLocale) : undefined;
@@ -131,7 +147,10 @@ export default function ProductDetail() {
   const variant = variants.find((v) => v.id === variantId);
   const unit = variantUnitPrice(basePrice, variant);
   const shownPrice = variant || !variants.length ? unit : fromPrice(basePrice, variants);
-  const total = unit * clampQuantity(quantity);
+  const suppOffers = applicableSupplements(supplements as CartSupplement[], variant?.id);
+  const chosenSupps = suppOffers.filter((s) => pickedSupps.includes(s.group));
+  const suppTotal = supplementsTotalEuros(chosenSupps, clampQuantity(quantity));
+  const total = unit * clampQuantity(quantity) + suppTotal;
   const dated = needsServiceDate(product, shop);
   const includes = list(product.includes);
   const excludes = list(product.excludes);
@@ -141,17 +160,25 @@ export default function ProductDetail() {
 
   // Publicado pero no a la venta: se enseña como agotado y no se puede añadir (el pago también lo rechaza)
   const soldOut = buyable && !isPurchasable(product);
+  const needsEdition = buyable && editions.length > 0;
 
   const add = () => {
     if (soldOut) return;
-    const r = buildGenericCartLine({ product: { ...product, coverImageUrl: str(p.coverImageUrl), image1: str(p.image1) }, variant, quantity, date, storefront: shop }, variants);
+    if (needsEdition && !pickedEdition) {
+      toast.info(t.chooseDateBeforeCart);
+      return;
+    }
+    const r = buildGenericCartLine({ product: { ...product, coverImageUrl: str(p.coverImageUrl), image1: str(p.image1) }, variant, quantity, date: pickedEdition ? editionLocalDate(pickedEdition.startsAt, pickedEdition.timezone) : date, storefront: shop }, variants);
     if (!r.ok) {
       if (r.reason === "variant_required") toast.info(t.chooseOptionBeforeCart);
       else if (r.reason === "date_required") toast.info(t.chooseDateBeforeCart);
       else toast.info(t.noOnlinePrice);
       return;
     }
-    addItem(r.line);
+    // Con convocatoria: la fecha y el precio son los de la edición (el servidor los recalcula)
+    const unitEd = pickedEdition && pickedEdition.price != null && !variant ? pickedEdition.price : null;
+    const withSupps = <L extends { estimatedTotal: number }>(line: L): L => (chosenSupps.length ? { ...line, supplements: chosenSupps, estimatedTotal: Math.round((line.estimatedTotal + suppTotal) * 100) / 100 } : line);
+    addItem(withSupps(pickedEdition ? { ...r.line, bookingDate: editionLocalDate(pickedEdition.startsAt, pickedEdition.timezone), editionId: pickedEdition.id, editionLabel: pickedEdition.label, ...(unitEd != null ? { pricePerPerson: unitEd, estimatedTotal: Math.round(unitEd * r.line.people * 100) / 100 } : {}) } : r.line));
     openCart();
   };
 
@@ -259,7 +286,7 @@ export default function ProductDetail() {
 
               {buyable && (
                 <div>
-                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">{t.quantity}</label>
+                  <label htmlFor="cantidad" className="text-sm font-medium text-foreground mb-2 block">{isParticipantsProduct(str(p.productType)) ? t.participants : t.quantity}</label>
                   <div className="flex items-center gap-3">
                     <button type="button" aria-label={t.removeUnit} disabled={quantity <= 1} onClick={() => setQuantity((q) => clampQuantity(q - 1))} className="w-10 h-10 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-40">
                       <Minus className="w-4 h-4" />
@@ -281,7 +308,23 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              {buyable && dated && (
+              {needsEdition && (
+                <div data-testid="elegir-convocatoria">
+                  <label htmlFor="convocatoria" className="text-sm font-medium text-foreground mb-2 block">{t.serviceDate}</label>
+                  {openEditions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay fechas abiertas ahora mismo. Solicita información para la próxima convocatoria.</p>
+                  ) : (
+                    <select id="convocatoria" value={editionId ?? ""} onChange={(e) => setEditionId(e.target.value ? Number(e.target.value) : undefined)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background">
+                      <option value="">{t.chooseDateBeforeCart}</option>
+                      {openEditions.map((e) => (
+                        <option key={e.id} value={e.id}>{e.label} · {formatEditionDates(e.startsAt, e.endsAt, e.timezone)}{e.seatsLeft != null ? ` · ${e.seatsLeft}` : ""}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {buyable && dated && !needsEdition && (
                 <div>
                   <label htmlFor="fecha" className="text-sm font-medium text-foreground mb-2 block">{t.serviceDate}</label>
                   <input id="fecha" type="date" value={date} min={todayIso()} onChange={(e) => setDate(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background" />
@@ -290,6 +333,22 @@ export default function ProductDetail() {
 
               {buyable ? (
                 <>
+                  {suppOffers.map((o) => {
+                    const cur = supplementTierFor(o, clampQuantity(quantity));
+                    return (
+                      <div key={o.group} className="rounded-lg border border-dashed p-3" data-testid="suplemento">
+                        <label className="flex items-start gap-2 text-sm">
+                          <input type="checkbox" checked={pickedSupps.includes(o.group)} disabled={!cur} onChange={(e) => setPickedSupps(e.target.checked ? [...pickedSupps, o.group] : pickedSupps.filter((g) => g !== o.group))} className="mt-0.5 h-4 w-4" />
+                          <span>
+                            <span className="font-medium">{t.supplementOptional}: {o.name}</span>
+                            {cur && <span className="ml-1 text-muted-foreground">· {formatEuros(supplementEuros(o, clampQuantity(quantity)))}</span>}
+                          </span>
+                        </label>
+                        {o.description && <p className="mt-1 pl-6 text-xs text-muted-foreground">{o.description}</p>}
+                        <p className="mt-1 pl-6 text-xs text-muted-foreground">{t.supplementAddsToTotal}</p>
+                      </div>
+                    );
+                  })}
                   {(variant || !variants.some((v) => v.isRequired)) && (
                     <div className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3 font-semibold">
                       <span>{t.total}</span>
@@ -302,7 +361,7 @@ export default function ProductDetail() {
                       <p className="text-sm text-muted-foreground">{t.soldOutHelp}</p>
                     </>
                   ) : (
-                    <Button onClick={add} className="w-full h-12 text-base font-semibold">
+                    <Button onClick={add} disabled={needsEdition && openEditions.length === 0} className="w-full h-12 text-base font-semibold">
                       <ShoppingCart className="mr-2 w-4 h-4" /> {t.addToCart}
                     </Button>
                   )}
@@ -368,7 +427,7 @@ export default function ProductDetail() {
         )}
       </div>
 
-      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id }} open={requestOpen} onOpenChange={setRequestOpen} />}
+      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0], supplements: supplements.filter((o) => !o.forVariantIds?.length || (variant != null && o.forVariantIds.includes(variant.id))) }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Opiniones reales del producto (sin cifras fijas) */}
       <section className="py-12 bg-muted border-t border-border">

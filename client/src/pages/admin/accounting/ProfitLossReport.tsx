@@ -1,38 +1,41 @@
 /**
- * ProfitLossReport — Cuenta de Resultados + Capa de Inteligencia Financiera
+ * ProfitLossReport — Cuenta de Resultados (EBITDA y cierre fiscal estimado).
+ * Composición: periodo y «Ver como» con etiqueta persistente, tres cifras, evolución mensual (gráfico y tabla), una
+ * tarjeta «Del EBITDA al resultado neto» y el desglose en pestañas. Solo presentación: los cálculos del informe no cambian.
  */
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { EconomyShell } from "@/components/admin/EconomyShell";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  TrendingUp, TrendingDown, Euro, BarChart3, Download, RefreshCw,
-  ArrowUpRight, ArrowDownRight, Minus, Wallet, AlertTriangle, CheckCircle2,
-} from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PanelError } from "@/components/admin/PanelStates";
+import { Download, RefreshCw, AlertTriangle, Eye } from "lucide-react";
+import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { EconomyTable, FitFigure, type EconomyColumn } from "./shared/EconomyUi";
+import { SegmentedTabs } from "@/components/admin/PanelVisual";
+import { useUrlParam } from "./shared/EconomyParts";
+import { CHART_TICK, CHART_TOOLTIP_STYLE, DeltaPct, KeyBand, KeyFigure, MoreLink, ReportCard } from "./shared/EconomyReport";
+import { buildProfitLossCsv } from "./shared/profitLossCsv";
+import { useMoney } from "@/lib/useMoney";
+import { useFormat, useI18n } from "@/i18n/I18nProvider";
+import { cn } from "@/lib/utils";
 
-const CHANNEL_LABELS: Record<string, string> = {
-  web: "Web", tpv: "TPV", phone: "Teléfono", agency: "Agencia", direct: "Directo", admin: "Admin",
-};
+const CHANNEL_KEYS = ["web", "tpv", "phone", "agency", "direct", "admin"];
+const DESGLOSE = ["canal", "producto", "categoria", "centro"] as const;
+type Desglose = (typeof DESGLOSE)[number];
+type View = "operational" | "fiscal";
+type Row = { id: string; label: string; amount: number; count?: number; ticket?: number };
 
-function fmt(n: number) { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " €"; }
-
-function DeltaBadge({ current, prev }: { current: number; prev: number }) {
-  if (prev === 0) return null;
-  const pct = ((current - prev) / Math.abs(prev)) * 100;
-  const up = pct >= 0;
-  return (
-    <span className={`text-xs font-medium flex items-center gap-0.5 ${up ? "text-emerald-600" : "text-red-500"}`}>
-      {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-      {Math.abs(pct).toFixed(1)}%
-    </span>
-  );
-}
+/** Variación porcentual respecto al periodo anterior (la misma fórmula de siempre; sin periodo anterior, nada). */
+const deltaOf = (current: number, prev: number): number | null => (prev === 0 ? null : ((current - prev) / Math.abs(prev)) * 100);
 
 export default function ProfitLossReport() {
+  const { t } = useI18n();
+  const money = useMoney();
+  const f = useFormat();
   const now = new Date();
   const firstOfYear = `${now.getFullYear()}-01-01`;
   const today = now.toISOString().slice(0, 10);
@@ -43,11 +46,12 @@ export default function ProfitLossReport() {
   // Vista del P&L:
   //   - "operational" (default) → excluye gastos solo fiscales → realidad del negocio.
   //   - "fiscal" → incluye todos los gastos → cifra contable/fiscal (coherente con IS).
-  const [view, setView] = useState<"operational" | "fiscal">("operational");
+  const [view, setView] = useState<View>("operational");
+  const [desgloseRaw, setDesglose] = useUrlParam("desglose", DESGLOSE, "canal");
+  const desglose = desgloseRaw as Desglose;
 
   const reportQ = trpc.financial.profitLoss.report.useQuery({ dateFrom, dateTo, conciliatedOnly, view });
   const distortionQ = trpc.financial.expenses.distortionKpi.useQuery({}, { staleTime: 60_000 });
-  const cashflowQ = trpc.bankMovements.getCashflowForecast.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
   // Cierre fiscal del ejercicio: del EBITDA al resultado neto (estimación anual).
   const execYear = Number(dateFrom.slice(0, 4)) || new Date().getFullYear();
   const execQ = trpc.gestoria.executiveSummary.useQuery({ year: execYear }, { staleTime: 5 * 60 * 1000 });
@@ -55,528 +59,301 @@ export default function ProfitLossReport() {
   const costCentersQ = trpc.financial.costCenters.list.useQuery();
 
   const report = reportQ.data;
-  const cf = cashflowQ.data;
   const categories = categoriesQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
 
-  function getCategoryName(id: number) { return categories.find((c) => c.id === id)?.name ?? `Cat. ${id}`; }
-  function getCostCenterName(id: number) { return costCenters.find((c) => c.id === id)?.name ?? `CC ${id}`; }
+  const channelLabel = (c: string) => (CHANNEL_KEYS.includes(c) ? t(`economyPl.channel.${c}`) : c);
+  const getCategoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? t("economyPl.catFallback", { id });
+  const getCostCenterName = (id: number) => costCenters.find((c) => c.id === id)?.name ?? t("economyPl.ccFallback", { id });
 
   const prev = report?.prevSummary;
 
   // EBITDA ≈ grossProfit (sin D&A ni intereses financieros registrados)
   const ebitda = report?.summary.grossProfit ?? 0;
-  const ebitdaMargin = report?.summary.totalRevenue
-    ? (ebitda / report.summary.totalRevenue) * 100
-    : 0;
+  const ebitdaMargin = report?.summary.totalRevenue ? (ebitda / report.summary.totalRevenue) * 100 : 0;
 
   function exportCSV() {
     if (!report) return;
-    const lines: string[] = [
-      "CUENTA DE RESULTADOS",
-      `Período: ${dateFrom} — ${dateTo}`,
-      `Vista: ${view === "operational" ? "Operativa (excluye gastos solo fiscales)" : "Fiscal/contable (incluye todos los gastos)"}`,
-      `Modo: ${conciliatedOnly ? "Solo conciliado" : "Todos los datos"}`,
-      "",
-      "RESUMEN",
-      `Ingresos totales,${report.summary.totalRevenue.toFixed(2)}`,
-      `Gastos totales,${report.summary.totalExpenses.toFixed(2)}`,
-      `EBITDA,${ebitda.toFixed(2)}`,
-      `Margen EBITDA,${ebitdaMargin.toFixed(1)}%`,
-      `Nº reservas,${report.summary.reservationCount}`,
-      "",
-      "PERÍODO ANTERIOR",
-      `Ingresos,${prev?.totalRevenue.toFixed(2) ?? "—"}`,
-      `Gastos,${prev?.totalExpenses.toFixed(2) ?? "—"}`,
-      `Resultado,${prev?.grossProfit.toFixed(2) ?? "—"}`,
-      "",
-      "INGRESOS POR CANAL",
-      "Canal,Importe,Operaciones,Ticket medio",
-      ...report.revenueByChannel.map((r) =>
-        `${CHANNEL_LABELS[r.channel] ?? r.channel},${r.amount.toFixed(2)},${r.count},${r.ticketMedio.toFixed(2)}`),
-      "",
-      "INGRESOS POR PRODUCTO (TOP 20)",
-      "Producto,Importe",
-      ...report.revenueByProduct.map((r) => `"${r.product}",${r.amount.toFixed(2)}`),
-      "",
-      "GASTOS POR CATEGORÍA",
-      "Categoría,Importe",
-      ...report.expensesByCategory.map((r) => `${getCategoryName(r.categoryId)},${r.amount.toFixed(2)}`),
-      "",
-      "EVOLUCIÓN MENSUAL",
-      "Mes,Ingresos,Gastos,Resultado",
-      ...report.monthly.map((r) => `${r.month},${r.revenue.toFixed(2)},${r.expenses.toFixed(2)},${r.profit.toFixed(2)}`),
-    ];
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const csv = buildProfitLossCsv({ report, prev, ebitda, ebitdaMargin, dateFrom, dateTo, view, conciliatedOnly, channelLabel, categoryName: getCategoryName, t });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `cuenta-resultados-${dateFrom}-${dateTo}.csv`;
     a.click(); URL.revokeObjectURL(url);
   }
 
-  function BarChart({ data, maxVal, colorClass }: { data: { label: string; value: number }[]; maxVal: number; colorClass: string }) {
-    return (
-      <div className="space-y-2">
-        {data.map((d, i) => (
-          <div key={i} className="flex items-center gap-2 text-sm">
-            <span className="w-32 truncate text-muted-foreground text-xs" title={d.label}>{d.label}</span>
-            <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
-              <div className={`h-full rounded-full ${colorClass} transition-all`}
-                style={{ width: `${maxVal > 0 ? (d.value / maxVal) * 100 : 0}%` }} />
-            </div>
-            <span className="w-24 text-right font-medium text-xs">{fmt(d.value)}</span>
+  const mode = `${view}:${conciliatedOnly ? "reconciled" : "all"}`;
+  const onMode = (v: string) => {
+    const [vw, mo] = v.split(":");
+    setView(vw as View);
+    setConciliatedOnly(mo === "reconciled");
+  };
+  const modeLabel = t("economyPl.tag", { view: t(`economyPl.view.${view}`), mode: t(conciliatedOnly ? "economyPl.mode.reconciled" : "economyPl.mode.all") });
+  const periodLabel = `${f.date(`${dateFrom}T12:00:00`)} – ${f.date(`${dateTo}T12:00:00`)}`;
+
+  const presets = [
+    { label: t("economyPl.preset.month"), from: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`, to: today },
+    { label: t("economyPl.preset.year"), from: firstOfYear, to: today },
+    { label: t("economyPl.preset.quarter"), from: new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().slice(0, 10), to: today },
+  ];
+
+  // Evolución mensual
+  const monthLabel = (m: string) => f.date(`${m}-01T12:00:00`, { month: "short", year: "2-digit" });
+  const monthly = (report?.monthly ?? []).map((m) => ({ ...m, label: monthLabel(m.month), total: false }));
+  type Month = (typeof monthly)[number];
+  const monthRows = report ? [...monthly, { month: "__total", label: t("economyPl.monthly.total"), revenue: report.summary.totalRevenue, expenses: report.summary.totalExpenses, profit: ebitda, total: true }] : monthly;
+  const monthColumns: EconomyColumn<Month>[] = [
+    { key: "month", header: t("economyPl.monthly.month"), mobile: "title", cell: (m) => <span className="font-medium">{m.label}</span> },
+    { key: "revenue", header: t("economyPl.monthly.revenue"), align: "right", num: true, cell: (m) => <span className="text-success">{money.eur(m.revenue)}</span> },
+    { key: "expenses", header: t("economyPl.monthly.expenses"), align: "right", num: true, cell: (m) => <span className="text-danger">{money.eur(m.expenses)}</span> },
+    { key: "profit", header: "EBITDA", align: "right", num: true, mobile: "amount", cell: (m) => <span className={cn("font-bold", m.profit >= 0 ? "text-info" : "text-danger")}>{money.eur(m.profit)}</span> },
+    { key: "margin", header: t("economyPl.monthly.margin"), align: "right", num: true, cell: (m) => <span className="text-xs text-muted-foreground">{m.total ? money.pct(ebitdaMargin) : m.revenue > 0 ? money.pct((m.profit / m.revenue) * 100) : "—"}</span> },
+  ];
+  // Desglose: la misma tabla para canal, producto, categoría y centro de coste
+  const breakdown = useMemo<{ rows: Row[]; tone: "success" | "danger" | "warning" }>(() => {
+    if (!report) return { rows: [], tone: "success" };
+    if (desglose === "canal") return { tone: "success", rows: report.revenueByChannel.map((r) => ({ id: r.channel, label: channelLabel(r.channel), amount: r.amount, count: r.count, ticket: r.ticketMedio })) };
+    if (desglose === "producto") return { tone: "success", rows: report.revenueByProduct.slice(0, 10).map((r) => ({ id: r.product, label: r.product, amount: r.amount })) };
+    if (desglose === "categoria") return { tone: "danger", rows: [...report.expensesByCategory].sort((a, b) => b.amount - a.amount).map((r) => ({ id: String(r.categoryId), label: getCategoryName(r.categoryId), amount: r.amount })) };
+    return { tone: "warning", rows: [...report.expensesByCostCenter].sort((a, b) => b.amount - a.amount).map((r) => ({ id: String(r.costCenterId), label: getCostCenterName(r.costCenterId), amount: r.amount })) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report, desglose, categories, costCenters, t]);
+  const maxAmount = Math.max(0, ...breakdown.rows.map((r) => r.amount));
+  const barTone = { success: "bg-success", danger: "bg-danger", warning: "bg-warning" }[breakdown.tone];
+  const breakdownColumns: EconomyColumn<Row>[] = [
+    {
+      key: "label", header: t(`economyPl.breakdown.col.${desglose}`), mobile: "title",
+      cell: (r) => (
+        <div className="min-w-0">
+          <p className="break-words text-sm font-medium text-foreground">{r.label}</p>
+          <div className="mt-1 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <div className={cn("h-full rounded-full", barTone)} style={{ width: `${maxAmount > 0 ? (r.amount / maxAmount) * 100 : 0}%` }} />
           </div>
-        ))}
-      </div>
-    );
-  }
+        </div>
+      ),
+    },
+    ...(desglose === "canal" ? [
+      { key: "count", header: t("economyPl.breakdown.ops"), align: "right", num: true, cell: (r: Row) => <span>{r.count}</span> },
+      { key: "ticket", header: t("economyPl.breakdown.ticket"), align: "right", num: true, cell: (r: Row) => <span>{money.eur(r.ticket ?? 0)}</span> },
+    ] as EconomyColumn<Row>[] : []),
+    { key: "amount", header: t("economyPl.breakdown.amount"), align: "right", num: true, mobile: "amount", cell: (r) => <span className="font-semibold">{money.eur(r.amount)}</span> },
+  ];
+  const tabs = DESGLOSE.map((k) => ({ key: k, label: t(`economyPl.breakdown.tab.${k}`) }));
+
+  const dist = distortionQ.data;
+  const excluded = report?.summary.excludedTaxOnly;
+  const showBridge = !!execQ.data || (dist && dist.year_.count > 0) || (view === "operational" && excluded && excluded.count > 0) || view === "fiscal";
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-indigo-500" />
-              Cuenta de Resultados
-            </h1>
-            <p className="text-sm text-muted-foreground">Análisis financiero integrado · EBITDA · Previsión de tesorería</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => reportQ.refetch()} disabled={reportQ.isFetching}>
-              <RefreshCw className={`w-4 h-4 mr-1 ${reportQ.isFetching ? "animate-spin" : ""}`} />
-              Actualizar
+      <EconomyShell screen="profitLoss"
+        description={t("economyPl.description")}
+        action={
+          <>
+            <Button variant="outline" size="sm" className="max-sm:h-10" onClick={() => reportQ.refetch()} disabled={reportQ.isFetching}>
+              <RefreshCw className={cn("mr-1 h-4 w-4", reportQ.isFetching && "animate-spin")} aria-hidden="true" />
+              {t("economyPl.refresh")}
             </Button>
-            <Button variant="outline" size="sm" onClick={exportCSV} disabled={!report}>
-              <Download className="w-4 h-4 mr-1" /> Exportar CSV
+            <Button variant="outline" size="sm" className="max-sm:h-10" onClick={exportCSV} disabled={!report}>
+              <Download className="mr-1 h-4 w-4" aria-hidden="true" /> {t("economyPl.exportCsv")}
             </Button>
-          </div>
-        </div>
+          </>
+        }>
 
-        {/* Filtros + Toggle */}
-        <div className="flex flex-wrap gap-4 items-end p-4 bg-muted/30 rounded-lg border">
-          <div>
-            <Label className="text-xs">Desde</Label>
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" />
+        {/* Periodo y «Ver como» */}
+        <section aria-label={t("economyPl.filters")} className="space-y-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="grid min-w-0 grow grid-cols-2 gap-3 sm:grow-0">
+              <div className="min-w-0 space-y-1">
+                <Label className="text-xs text-muted-foreground" htmlFor="pl-from">{t("economyPl.from")}</Label>
+                <Input id="pl-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-10 w-full sm:w-40" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <Label className="text-xs text-muted-foreground" htmlFor="pl-to">{t("economyPl.to")}</Label>
+                <Input id="pl-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-10 w-full sm:w-40" />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {presets.map((p) => (
+                <Button key={p.label} variant="outline" size="sm" className="h-10 sm:h-9" onClick={() => { setDateFrom(p.from); setDateTo(p.to); }}>{p.label}</Button>
+              ))}
+            </div>
+            <div className="min-w-0 space-y-1 max-sm:w-full sm:ml-auto">
+              <Label className="flex items-center gap-1 text-xs text-muted-foreground" htmlFor="pl-mode"><Eye className="h-3.5 w-3.5" aria-hidden="true" />{t("economyPl.viewAs")}</Label>
+              <Select value={mode} onValueChange={onMode}>
+                <SelectTrigger id="pl-mode" className="h-10 w-full sm:w-[22rem]" aria-label={t("economyPl.viewAs")}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(["operational", "fiscal"] as const).flatMap((vw) => (["all", "reconciled"] as const).map((mo) => (
+                    <SelectItem key={`${vw}:${mo}`} value={`${vw}:${mo}`}>{t("economyPl.tag", { view: t(`economyPl.view.${vw}`), mode: t(`economyPl.mode.${mo}`) })}</SelectItem>
+                  )))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div>
-            <Label className="text-xs">Hasta</Label>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-sm">
+            <span data-testid="pl-mode-tag" className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-foreground">{modeLabel}</span>
+            <span className="tabular-nums text-muted-foreground">{periodLabel}</span>
+            {report?.prevPeriod && (
+              <span className="text-xs text-muted-foreground">{t("economyPl.comparing", { from: report.prevPeriod.dateFrom, to: report.prevPeriod.dateTo })}</span>
+            )}
           </div>
-          <div className="flex gap-2">
-            {[
-              { label: "Este mes", from: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`, to: today },
-              { label: "Este año", from: firstOfYear, to: today },
-              { label: "Último trim.", from: new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().slice(0, 10), to: today },
-            ].map((p) => (
-              <Button key={p.label} variant="outline" size="sm" onClick={() => { setDateFrom(p.from); setDateTo(p.to); }}>
-                {p.label}
-              </Button>
-            ))}
-          </div>
-          {/* Toggle Vista operativa / fiscal */}
-          <div className="flex items-center gap-2 text-sm">
-            <button
-              onClick={() => setView("operational")}
-              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${view === "operational" ? "bg-emerald-600 text-white border-emerald-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
-              title="Vista operativa: excluye gastos solo fiscales. Refleja el rendimiento real del negocio."
-            >
-              Vista operativa
-            </button>
-            <button
-              onClick={() => setView("fiscal")}
-              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${view === "fiscal" ? "bg-amber-600 text-white border-amber-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
-              title="Vista fiscal/contable: incluye TODOS los gastos. Coherente con la base del Impuesto de Sociedades."
-            >
-              Vista fiscal
-            </button>
-          </div>
+        </section>
 
-          {/* Toggle conciliado */}
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <button
-              onClick={() => setConciliatedOnly(false)}
-              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${!conciliatedOnly ? "bg-indigo-600 text-white border-indigo-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
-            >
-              Incluir pendientes
-            </button>
-            <button
-              onClick={() => setConciliatedOnly(true)}
-              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${conciliatedOnly ? "bg-indigo-600 text-white border-indigo-600" : "bg-foreground/[0.04] text-foreground/70 border-foreground/[0.15] hover:bg-foreground/[0.08]"}`}
-            >
-              <CheckCircle2 className="w-3 h-3" /> Solo conciliado
-            </button>
-          </div>
-        </div>
-
-        {report?.prevPeriod && (
-          <p className="text-xs text-muted-foreground">
-            Comparando con período anterior: {report.prevPeriod.dateFrom} — {report.prevPeriod.dateTo}
-          </p>
-        )}
-
-        {reportQ.isLoading && (
-          <div className="text-center p-12 text-muted-foreground">Calculando resultados...</div>
-        )}
+        {reportQ.error && <PanelError title={t("economyPl.loadError")} error={reportQ.error} onRetry={() => void reportQ.refetch()} />}
+        {reportQ.isLoading && <div className="p-12 text-center text-muted-foreground">{t("economyPl.loading")}</div>}
 
         {report && (
           <>
-            {/* KPI Cards — fila 1: financieros */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Ingresos */}
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-green-600 mb-1">
-                    <TrendingUp className="w-4 h-4" />
-                    <span className="text-xs font-medium">Ingresos</span>
-                    {prev && <DeltaBadge current={report.summary.totalRevenue} prev={prev.totalRevenue} />}
-                  </div>
-                  <p className="text-2xl font-bold text-green-700">{fmt(report.summary.totalRevenue)}</p>
-                  <p className="text-xs text-muted-foreground">{report.summary.reservationCount} reservas</p>
-                  {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.totalRevenue)}</p>}
-                </CardContent>
-              </Card>
-
-              {/* Gastos */}
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-red-600 mb-1">
-                    <TrendingDown className="w-4 h-4" />
-                    <span className="text-xs font-medium">Gastos</span>
-                    {prev && <DeltaBadge current={-report.summary.totalExpenses} prev={-prev.totalExpenses} />}
-                  </div>
-                  <p className="text-2xl font-bold text-red-700">{fmt(report.summary.totalExpenses)}</p>
-                  <p className="text-xs text-muted-foreground">{conciliatedOnly ? "Solo conciliados" : "Total registrado"}</p>
-                  {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.totalExpenses)}</p>}
-                </CardContent>
-              </Card>
-
-              {/* EBITDA */}
-              <Card className={`md:col-span-1 border-2 ${ebitda >= 0 ? "border-indigo-200 bg-indigo-50/30" : "border-red-200 bg-red-50/30"}`}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <BarChart3 className={`w-4 h-4 ${ebitda >= 0 ? "text-indigo-600" : "text-red-600"}`} />
-                    <span className="text-xs font-medium">EBITDA</span>
-                    {prev && <DeltaBadge current={ebitda} prev={prev.grossProfit} />}
-                  </div>
-                  <p className={`text-2xl font-bold ${ebitda >= 0 ? "text-indigo-700" : "text-red-700"}`}>{fmt(ebitda)}</p>
-                  <p className="text-xs text-muted-foreground">Margen {ebitdaMargin.toFixed(1)}%</p>
-                  {prev && <p className="text-xs text-muted-foreground mt-0.5">Anterior: {fmt(prev.grossProfit)}</p>}
-                </CardContent>
-              </Card>
-
-              {/* Ticket medio */}
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-orange-600 mb-1">
-                    <Euro className="w-4 h-4" />
-                    <span className="text-xs font-medium">Ticket medio</span>
-                  </div>
-                  <p className="text-2xl font-bold text-orange-700">
-                    {report.summary.reservationCount > 0
-                      ? fmt(report.summary.totalRevenue / report.summary.reservationCount)
-                      : "—"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Por reserva</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* KPI permanente de distorsión fiscal (mes + año) */}
-            {distortionQ.data && distortionQ.data.year_.count > 0 && (
-              <Card className="border border-amber-500/30 bg-amber-500/[0.08]">
-                <CardContent className="pt-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-400" />
-                      <span className="text-sm font-semibold text-foreground">Distorsión fiscal</span>
-                      <span className="text-[11px] text-muted-foreground">Gastos solo fiscales · {distortionQ.data.year}</span>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
-                      <div>
-                        <div className="text-[11px] text-muted-foreground">Este mes</div>
-                        <div className="font-semibold text-amber-400">
-                          {fmt(distortionQ.data.month_.amount)}
-                          <span className="text-[11px] text-muted-foreground font-normal ml-1">
-                            ({distortionQ.data.month_.count} gasto{distortionQ.data.month_.count !== 1 ? "s" : ""})
-                          </span>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-muted-foreground">Este año</div>
-                        <div className="font-semibold text-amber-400">
-                          {fmt(distortionQ.data.year_.amount)}
-                          <span className="text-[11px] text-muted-foreground font-normal ml-1">
-                            ({distortionQ.data.year_.count} gasto{distortionQ.data.year_.count !== 1 ? "s" : ""})
-                          </span>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-muted-foreground">Sobre gasto operativo</div>
-                        <div className="font-semibold text-amber-400">
-                          {distortionQ.data.pctOfOperational.toFixed(1)} %
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Aviso de transparencia contextual al periodo filtrado */}
-            {view === "operational" && report.summary.excludedTaxOnly && report.summary.excludedTaxOnly.count > 0 && (
-              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
-                <div className="flex-1 text-foreground/80 leading-snug">
-                  Esta cuenta de resultados excluye <strong>{report.summary.excludedTaxOnly.count} gasto(s)</strong> marcados
-                  como <span className="font-semibold text-amber-400">Solo fiscal</span> por un importe total
-                  de <strong>{fmt(report.summary.excludedTaxOnly.amount)}</strong> en el periodo seleccionado. Estos gastos sí computan
-                  en gestoría, IVA, Impuesto de Sociedades y tesorería, pero no afectan al rendimiento operativo del negocio.
-                  Usa <span className="font-semibold">Vista fiscal</span> arriba para incluirlos.
-                </div>
-              </div>
-            )}
-            {view === "fiscal" && (
-              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/50 bg-amber-500/10 text-xs">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
-                <div className="flex-1 text-foreground/90 leading-snug">
-                  <strong>Vista fiscal activa.</strong> Esta cuenta de resultados incluye TODOS los gastos
-                  (operativos + solo fiscales). Las cifras de EBITDA y margen mostradas son la base contable
-                  coherente con el cálculo del Impuesto de Sociedades, NO el rendimiento operativo del negocio.
-                  Usa <span className="font-semibold">Vista operativa</span> para volver a la realidad del negocio.
-                </div>
-              </div>
-            )}
-
-            {/* Del EBITDA al resultado neto — cierre fiscal del ejercicio */}
-            {execQ.data && (
-              <Card className="border border-amber-500/30 bg-amber-500/[0.08]">
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-semibold text-foreground">
-                      Del EBITDA al resultado neto · ejercicio {execYear}
+            <KeyBand cols={3} label={t("economyPl.key.label")} className="!grid-cols-1 min-[460px]:!grid-cols-2 lg:!grid-cols-3">
+              <KeyFigure
+                label={t("economyPl.key.revenue")}
+                value={money.eur(report.summary.totalRevenue)}
+                tone="success"
+                detail={
+                  <span className="flex flex-col gap-0.5">
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      {prev && <DeltaPct pct={deltaOf(report.summary.totalRevenue, prev.totalRevenue)} />}
+                      <span>{t("economyPl.key.reservations", { count: report.summary.reservationCount })}</span>
                     </span>
-                    <span className="text-[11px] text-muted-foreground">Estimación · incluye Impuesto de Sociedades</span>
+                    {report.summary.reservationCount > 0 && <span>{t("economyPl.key.avgTicket", { amount: money.eur(report.summary.totalRevenue / report.summary.reservationCount) })}</span>}
+                    {prev && <span>{t("economyPl.key.previous", { amount: money.eur(prev.totalRevenue) })}</span>}
+                  </span>
+                }
+              />
+              <KeyFigure
+                label={t("economyPl.key.expenses")}
+                value={money.eur(report.summary.totalExpenses)}
+                tone="danger"
+                detail={
+                  <span className="flex flex-col gap-0.5">
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      {prev && <DeltaPct pct={deltaOf(-report.summary.totalExpenses, -prev.totalExpenses)} />}
+                      <span>{conciliatedOnly ? t("economyPl.key.onlyReconciled") : t("economyPl.key.registered")}</span>
+                    </span>
+                    {prev && <span>{t("economyPl.key.previous", { amount: money.eur(prev.totalExpenses) })}</span>}
+                  </span>
+                }
+              />
+              <KeyFigure
+                label="EBITDA"
+                value={money.eur(ebitda)}
+                tone={ebitda >= 0 ? "info" : "danger"}
+                className={cn("border-2 min-[460px]:col-span-2 lg:col-span-1", ebitda >= 0 ? "border-info/40 bg-info/10" : "border-danger/40 bg-danger/10")}
+                detail={
+                  <span className="flex flex-col gap-0.5">
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      {prev && <DeltaPct pct={deltaOf(ebitda, prev.grossProfit)} />}
+                      <span>{t("economyPl.key.margin", { value: money.pct(ebitdaMargin) })}</span>
+                    </span>
+                    {prev && <span>{t("economyPl.key.previous", { amount: money.eur(prev.grossProfit) })}</span>}
+                  </span>
+                }
+              />
+            </KeyBand>
+
+            {/* Evolución mensual: gráfico y tabla */}
+            {monthly.length > 0 && (
+              <>
+                <ReportCard title={t("economyPl.monthly.title")}>
+                  <div role="img" aria-label={t("economyPl.monthly.chartAria")}>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <ComposedChart data={monthly} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barGap={2} barCategoryGap="16%">
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                        <XAxis dataKey="label" tick={{ ...CHART_TICK, fontSize: 11 }} tickLine={false} interval="preserveStartEnd" minTickGap={6} />
+                        <YAxis tick={CHART_TICK} tickLine={false} axisLine={false} width={76} tickFormatter={(v: number) => money.axis(v)} />
+                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "var(--muted)", opacity: 0.4 }} formatter={(v: number, name: string) => [money.eur(v), name]} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar isAnimationActive={false} dataKey="revenue" name={t("economyPl.monthly.revenue")} fill="var(--success)" radius={[4, 4, 0, 0]} />
+                        <Bar isAnimationActive={false} dataKey="expenses" name={t("economyPl.monthly.expenses")} fill="var(--danger)" radius={[4, 4, 0, 0]} />
+                        <Line isAnimationActive={false} dataKey="profit" name="EBITDA" type="linear" stroke="var(--info)" strokeWidth={2} dot={{ r: 3, fill: "var(--info)" }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    <div>
-                      <div className="text-xs text-muted-foreground">EBITDA del ejercicio</div>
-                      <div className="text-xl font-bold text-foreground">{fmt(execQ.data.ebitda)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">− Impuesto de Sociedades</div>
-                      <div className="text-xl font-bold text-amber-400">{fmt(execQ.data.corporateTax)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Carga fiscal total (IVA+IRPF+IS)</div>
-                      <div className="text-xl font-bold text-foreground/70">{fmt(execQ.data.fiscalTotal)}</div>
-                    </div>
-                    <div className={`rounded-lg px-3 py-1.5 ${execQ.data.netResult >= 0 ? "bg-emerald-100/60" : "bg-red-100/60"}`}>
-                      <div className="text-xs text-muted-foreground">= Resultado neto estimado</div>
-                      <div className={`text-xl font-bold ${execQ.data.netResult >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                        {fmt(execQ.data.netResult)}
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-2">
-                    El coste laboral ({fmt(execQ.data.laborCost)} · {execQ.data.laborPctOfRevenue.toFixed(1)} % de
-                    ingresos) ya está incluido en los gastos del EBITDA. La liquidación oficial la realiza la gestoría.
-                  </p>
-                </CardContent>
-              </Card>
+                </ReportCard>
+                <EconomyTable
+                  rows={monthRows}
+                  columns={monthColumns}
+                  rowKey={(m) => m.month}
+                  caption={t("economyPl.monthly.title")}
+                  emptyTitle={t("economyPl.monthly.empty")}
+                  maxHeightClass="max-h-none"
+                  rowClassName={(m) => (m.total ? "bg-muted/40 font-bold" : undefined)}
+                />
+              </>
             )}
 
-            {/* KPI Cards — fila 2: tesorería */}
-            {cf && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="border border-blue-200 bg-blue-50/20">
-                  <CardContent className="pt-4">
-                    <div className="flex items-center gap-2 text-blue-600 mb-1">
-                      <Wallet className="w-4 h-4" />
-                      <span className="text-xs font-medium">Saldo bancario</span>
-                    </div>
-                    <p className="text-2xl font-bold text-blue-700">{fmt(cf.currentBalance)}</p>
-                    <p className="text-xs text-muted-foreground">Último mov. {cf.lastBalanceDate}</p>
-                  </CardContent>
-                </Card>
+            {/* Del EBITDA al resultado neto + distorsión fiscal */}
+            {showBridge && (
+              <ReportCard
+                title={t("economyPl.bridge.title", { year: execYear })}
+                hint={t("economyPl.bridge.hint")}
+                className="border-warning/30 bg-warning/[0.06]"
+              >
+                <div className="space-y-4">
+                  {execQ.data && (
+                    <>
+                      <div className="grid grid-cols-1 gap-3 min-[460px]:grid-cols-2 lg:grid-cols-4">
+                        <div className="min-w-0"><p className="text-xs text-muted-foreground">{t("economyPl.bridge.ebitda")}</p><div className="text-xl font-bold text-foreground"><FitFigure>{money.eur(execQ.data.ebitda)}</FitFigure></div></div>
+                        <div className="min-w-0"><p className="text-xs text-muted-foreground">{t("economyPl.bridge.tax")}</p><div className="text-xl font-bold text-warning"><FitFigure>{money.eur(execQ.data.corporateTax)}</FitFigure></div></div>
+                        <div className="min-w-0"><p className="text-xs text-muted-foreground">{t("economyPl.bridge.fiscal")}</p><div className="text-xl font-bold text-foreground/70"><FitFigure>{money.eur(execQ.data.fiscalTotal)}</FitFigure></div></div>
+                        <div className={cn("min-w-0 rounded-lg px-3 py-1.5", execQ.data.netResult >= 0 ? "bg-success/10" : "bg-danger/10")}>
+                          <p className="text-xs text-muted-foreground">{t("economyPl.bridge.net")}</p>
+                          <div className={cn("text-xl font-bold", execQ.data.netResult >= 0 ? "text-success" : "text-danger")}><FitFigure>{money.eur(execQ.data.netResult)}</FitFigure></div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t("economyPl.bridge.labor", { amount: money.eur(execQ.data.laborCost), pct: money.pct(execQ.data.laborPctOfRevenue) })}</p>
+                    </>
+                  )}
 
-                <Card className="border border-emerald-200 bg-emerald-50/20">
-                  <CardContent className="pt-4">
-                    <div className="flex items-center gap-2 text-emerald-600 mb-1">
-                      <ArrowUpRight className="w-4 h-4" />
-                      <span className="text-xs font-medium">Ingresos pendientes</span>
+                  {dist && dist.year_.count > 0 && (
+                    <div className="border-t border-warning/30 pt-3">
+                      <p className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-foreground">
+                        <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
+                        {t("economyPl.distortion.title")}
+                        <span className="text-xs font-normal text-muted-foreground">{t("economyPl.distortion.subtitle", { year: dist.year })}</span>
+                      </p>
+                      <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-2 min-[460px]:grid-cols-3">
+                        <div><dt className="text-xs text-muted-foreground">{t("economyPl.distortion.month")}</dt><dd className="font-semibold text-warning">{money.eur(dist.month_.amount)} <span className="text-xs font-normal text-muted-foreground">({t("economyPl.distortion.count", { count: dist.month_.count })})</span></dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t("economyPl.distortion.year")}</dt><dd className="font-semibold text-warning">{money.eur(dist.year_.amount)} <span className="text-xs font-normal text-muted-foreground">({t("economyPl.distortion.count", { count: dist.year_.count })})</span></dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t("economyPl.distortion.pct")}</dt><dd className="font-semibold text-warning">{money.pct(dist.pctOfOperational)}</dd></div>
+                      </dl>
                     </div>
-                    <p className="text-2xl font-bold text-emerald-700">{fmt(cf.pendingIncome)}</p>
-                    <p className="text-xs text-muted-foreground">{cf.pendingReservationCount} reservas confirmadas</p>
-                  </CardContent>
-                </Card>
+                  )}
 
-                <Card className="border border-amber-500/30 bg-amber-500/[0.08]">
-                  <CardContent className="pt-4">
-                    <div className="flex items-center gap-2 text-amber-400 mb-1">
-                      <AlertTriangle className="w-4 h-4" />
-                      <span className="text-xs font-medium">Gastos pendientes</span>
-                    </div>
-                    <p className="text-2xl font-bold text-amber-400">{fmt(cf.pendingExpenses)}</p>
-                    <p className="text-xs text-muted-foreground">Sin pagar (pending/justified)</p>
-                  </CardContent>
-                </Card>
-
-                <Card className={`border-2 ${cf.estimatedBalance >= 0 ? "border-teal-300 bg-teal-50/30" : "border-red-300 bg-red-50/30"}`}>
-                  <CardContent className="pt-4">
-                    <div className={`flex items-center gap-2 mb-1 ${cf.estimatedBalance >= 0 ? "text-teal-600" : "text-red-600"}`}>
-                      <Wallet className="w-4 h-4" />
-                      <span className="text-xs font-medium">Caja estimada 30d</span>
-                    </div>
-                    <p className={`text-2xl font-bold ${cf.estimatedBalance >= 0 ? "text-teal-700" : "text-red-700"}`}>
-                      {fmt(cf.estimatedBalance)}
+                  {view === "operational" && excluded && excluded.count > 0 && (
+                    <p className="flex items-start gap-2 border-t border-warning/30 pt-3 text-xs leading-snug text-foreground/80">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                      <span>{t("economyPl.notice.excluded", { count: excluded.count, amount: money.eur(excluded.amount) })}</span>
                     </p>
-                    <p className="text-xs text-muted-foreground">Saldo + ingresos − gastos</p>
-                  </CardContent>
-                </Card>
-              </div>
+                  )}
+                  {view === "fiscal" && (
+                    <p className="flex items-start gap-2 border-t border-warning/30 pt-3 text-xs leading-snug text-foreground/90">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                      <span>{t("economyPl.notice.fiscal")}</span>
+                    </p>
+                  )}
+                </div>
+              </ReportCard>
             )}
 
-            {/* Monthly Evolution */}
-            {report.monthly.length > 0 && (
-              <Card>
-                <CardHeader><CardTitle className="text-base">Evolución mensual</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-2 font-medium">Mes</th>
-                          <th className="text-right p-2 font-medium text-green-700">Ingresos</th>
-                          <th className="text-right p-2 font-medium text-red-700">Gastos</th>
-                          <th className="text-right p-2 font-medium">EBITDA</th>
-                          <th className="text-right p-2 font-medium text-muted-foreground">Margen</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {report.monthly.map((m) => (
-                          <tr key={m.month} className="border-b hover:bg-muted/20">
-                            <td className="p-2 font-medium">{m.month}</td>
-                            <td className="p-2 text-right text-green-700">{fmt(m.revenue)}</td>
-                            <td className="p-2 text-right text-red-700">{fmt(m.expenses)}</td>
-                            <td className={`p-2 text-right font-bold ${m.profit >= 0 ? "text-indigo-700" : "text-red-700"}`}>
-                              {fmt(m.profit)}
-                            </td>
-                            <td className="p-2 text-right text-muted-foreground text-xs">
-                              {m.revenue > 0 ? ((m.profit / m.revenue) * 100).toFixed(1) + "%" : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-muted/30 font-bold">
-                          <td className="p-2">TOTAL</td>
-                          <td className="p-2 text-right text-green-700">{fmt(report.summary.totalRevenue)}</td>
-                          <td className="p-2 text-right text-red-700">{fmt(report.summary.totalExpenses)}</td>
-                          <td className={`p-2 text-right ${ebitda >= 0 ? "text-indigo-700" : "text-red-700"}`}>{fmt(ebitda)}</td>
-                          <td className="p-2 text-right text-muted-foreground text-xs">{ebitdaMargin.toFixed(1)}%</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Revenue & Expenses breakdown */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Revenue by channel */}
-              <Card>
-                <CardHeader><CardTitle className="text-base text-green-700">Ingresos por canal · ticket medio</CardTitle></CardHeader>
-                <CardContent>
-                  {report.revenueByChannel.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Sin datos en el período</p>
-                  ) : (
-                    <div className="space-y-3">
-                      <BarChart
-                        data={report.revenueByChannel.map((r) => ({ label: CHANNEL_LABELS[r.channel] ?? r.channel, value: r.amount }))}
-                        maxVal={Math.max(...report.revenueByChannel.map((r) => r.amount))}
-                        colorClass="bg-green-500"
-                      />
-                      <div className="overflow-x-auto mt-2">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left p-1 text-muted-foreground">Canal</th>
-                              <th className="text-right p-1 text-muted-foreground">Ops.</th>
-                              <th className="text-right p-1 text-muted-foreground">Ticket medio</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {report.revenueByChannel.map((r) => (
-                              <tr key={r.channel} className="border-b hover:bg-muted/20">
-                                <td className="p-1 font-medium">{CHANNEL_LABELS[r.channel] ?? r.channel}</td>
-                                <td className="p-1 text-right">{r.count}</td>
-                                <td className="p-1 text-right font-semibold">{fmt(r.ticketMedio)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Expenses by category */}
-              <Card>
-                <CardHeader><CardTitle className="text-base text-red-700">Gastos por categoría</CardTitle></CardHeader>
-                <CardContent>
-                  {report.expensesByCategory.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Sin gastos en el período</p>
-                  ) : (
-                    <BarChart
-                      data={report.expensesByCategory.sort((a, b) => b.amount - a.amount)
-                        .map((r) => ({ label: getCategoryName(r.categoryId), value: r.amount }))}
-                      maxVal={Math.max(...report.expensesByCategory.map((r) => r.amount))}
-                      colorClass="bg-red-500"
-                    />
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Revenue by product */}
-              <Card>
-                <CardHeader><CardTitle className="text-base text-green-700">Ingresos por producto (top 10)</CardTitle></CardHeader>
-                <CardContent>
-                  {report.revenueByProduct.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Sin datos en el período</p>
-                  ) : (
-                    <BarChart
-                      data={report.revenueByProduct.slice(0, 10).map((r) => ({ label: r.product, value: r.amount }))}
-                      maxVal={Math.max(...report.revenueByProduct.slice(0, 10).map((r) => r.amount))}
-                      colorClass="bg-emerald-500"
-                    />
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Expenses by cost center */}
-              <Card>
-                <CardHeader><CardTitle className="text-base text-red-700">Gastos por centro de coste</CardTitle></CardHeader>
-                <CardContent>
-                  {report.expensesByCostCenter.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Sin gastos en el período</p>
-                  ) : (
-                    <BarChart
-                      data={report.expensesByCostCenter.sort((a, b) => b.amount - a.amount)
-                        .map((r) => ({ label: getCostCenterName(r.costCenterId), value: r.amount }))}
-                      maxVal={Math.max(...report.expensesByCostCenter.map((r) => r.amount))}
-                      colorClass="bg-orange-500"
-                    />
-                  )}
-                </CardContent>
-              </Card>
+            {/* Desglose en pestañas */}
+            <div className="space-y-3">
+              <SegmentedTabs value={desglose} onChange={(k) => setDesglose(k)} options={tabs.map((x) => ({ value: x.key, label: x.label }))} label={t("economyPl.breakdown.label")} />
+              <EconomyTable
+                rows={breakdown.rows}
+                columns={breakdownColumns}
+                rowKey={(r) => r.id}
+                caption={t(`economyPl.breakdown.tab.${desglose}`)}
+                emptyTitle={t(desglose === "canal" || desglose === "producto" ? "economyPl.breakdown.emptyIncome" : "economyPl.breakdown.emptyExpenses")}
+                maxHeightClass="max-h-none"
+              />
+              <p className="text-sm text-muted-foreground">
+                {t("economyPl.cashflowMoved")} <MoreLink href="/admin/contabilidad/dashboard">{t("economyPl.cashflowLink")}</MoreLink>
+              </p>
             </div>
           </>
         )}
-      </div>
+      </EconomyShell>
     </AdminLayout>
   );
 }

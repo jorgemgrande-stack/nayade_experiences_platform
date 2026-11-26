@@ -784,6 +784,22 @@ describe("panel de la empresa («Mi plan»): solo lectura y con la presentación
     ]);
   });
 
+  it("Contratación formalizada — la empresa ve el plan y las extensiones del acuerdo ACEPTADO y su cobro real; sin lectura o sin aceptar, nada", async () => {
+    const sub = await newSub();
+    await withTenant(sub.id, "acme");
+    await apply(sub.id, input([cat("essential", "essM"), cat("hotel-net", "hotM", { negotiatedUnitCents: 9900 })]));
+    const stage = (o: Record<string, unknown> = {}) => (async () => ({ stage: "activation_scheduled", label: "x", termsId: 1, acceptedAt: clock - 1000, paymentMethodAuthorized: true, chargeable: true, nextChargeAt: clock + 5000, activationAt: null, recurring: { netCents: 5200, taxRateBp: 2100, taxCents: 1092, totalCents: 6292, currency: "EUR" }, stripeStatus: "trialing", billingStatus: "active", paymentEnabled: true, trialActive: true, trialEndsAt: clock + 5000, renewalAt: null, incident: null, ...o })) as never;
+    const seen = (await tenantTermsReader(terms, termsStore, store, () => clock, stage())("acme", 1))!;
+    expect(seen.contracting).toMatchObject({ planName: "Essential", extensions: ["Hotel Net"], paymentMethodAuthorized: true, trialActive: true, stage: "activation_scheduled", recurring: { netCents: 5200, taxCents: 1092, totalCents: 6292, currency: "EUR" } });
+    // Método de pago sin autorizar por Stripe: no se afirma
+    expect((await tenantTermsReader(terms, termsStore, store, () => clock, stage({ paymentMethodAuthorized: false, stage: "payment_pending", nextChargeAt: null }))("acme", 1))!.contracting).toMatchObject({ paymentMethodAuthorized: false, nextChargeAt: null });
+    // Sin aceptación registrada, o si la lectura falla: no hay contratación que mostrar y «Mi plan» sigue funcionando
+    expect((await tenantTermsReader(terms, termsStore, store, () => clock, stage({ acceptedAt: null }))("acme", 1))!.contracting).toBeNull();
+    expect((await tenantTermsReader(terms, termsStore, store, () => clock, (async () => { throw new Error("caída"); }) as never)("acme", 1))!.contracting).toBeNull();
+    // Nunca la de otra empresa
+    expect(await tenantTermsReader(terms, termsStore, store, () => clock, stage())("otra", 2)).toBeNull();
+  });
+
   it("Caso 29 — una empresa no ve las condiciones de otra; sin acuerdo no se muestra nada", async () => {
     const one = await newSub(1);
     const two = await newSub(2);

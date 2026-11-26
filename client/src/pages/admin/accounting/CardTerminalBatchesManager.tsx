@@ -1,24 +1,30 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { SummaryStrip, type SummaryStripItem } from "@/components/admin/SalesFamilyShell";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
+import { toastError } from "@/lib/errorMessage";
+import { useI18n, useFormat } from "@/i18n/I18nProvider";
+import { useMoney } from "@/lib/useMoney";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EconomyFilterBar, EconomyTable, FilterField, FormField, FormFooter, RowActions, type EconomyColumn, type FilterChip } from "./shared/EconomyUi";
+import { EconomyPager } from "./shared/EconomyParts";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   Package,
   CheckCircle2,
   AlertTriangle,
-  Clock,
-  Ban,
   RefreshCw,
-  Unlink,
   Link2,
-  Trash2,
   ChevronRight,
   ArrowUpRight,
   ArrowDownLeft,
@@ -26,73 +32,48 @@ import {
   ThumbsUp,
   ThumbsDown,
   Zap,
+  Unlink,
+  Ban,
+  Trash2,
   X,
   FileCheck,
+  MoreHorizontal,
 } from "lucide-react";
 
 type BatchStatus = "pending" | "suggested" | "auto_ready" | "reconciled" | "difference" | "ignored" | "review_required";
+const STATUS_KEYS: readonly BatchStatus[] = ["pending", "suggested", "auto_ready", "reconciled", "difference", "ignored", "review_required"];
 
-const STATUS_LABELS: Record<BatchStatus, string> = {
-  pending: "Pendiente",
-  suggested: "Sugerido",
-  auto_ready: "Listo auto",
-  reconciled: "Conciliada",
-  difference: "Con diferencia",
-  ignored: "Ignorada",
-  review_required: "Revisar",
+const STATUS_TONES: Record<BatchStatus, Tone> = {
+  pending: "warning",
+  suggested: "info",
+  auto_ready: "success",
+  reconciled: "success",
+  difference: "warning",
+  ignored: "neutral",
+  review_required: "danger",
 };
 
-const STATUS_COLORS: Record<BatchStatus, string> = {
-  pending: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  suggested: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  auto_ready: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  reconciled: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  difference: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  ignored: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
-  review_required: "bg-red-500/15 text-red-400 border-red-500/30",
-};
-
-function scoreIcon(score: number | null | undefined): string {
-  if (score == null) return "";
-  if (score >= 80) return "🟢";
-  if (score >= 50) return "🟡";
-  return "🔴";
-}
-
-function fmt(v: string | number | null | undefined): string {
-  if (v == null) return "—";
-  const n = parseFloat(String(v));
-  if (isNaN(n)) return "—";
-  return n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-}
-
-function fmtDate(s: string | null | undefined): string {
-  if (!s) return "—";
-  try {
-    const [y, m, d] = s.split("-");
-    return `${d}/${m}/${y}`;
-  } catch {
-    return s;
-  }
-}
+const matchTone = (score: number): Tone => (score >= 80 ? "success" : score >= 50 ? "warning" : "danger");
+const isSuggested = (s: string) => s === "suggested" || s === "auto_ready";
+const isReconciled = (s: string) => s === "reconciled" || s === "difference";
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const monthStart = () => { const d = new Date(); d.setDate(1); return iso(d); };
+const today = () => iso(new Date());
 
 export default function CardTerminalBatchesManager() {
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const { t } = useI18n();
+  const f = useFormat();
+  const money = useMoney();
+  const [fromDate, setFromDate] = useState(monthStart);
+  const [toDate, setToDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState<BatchStatus | "">("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const [genOpen, setGenOpen] = useState(false);
-  const [genFrom, setGenFrom] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  });
-  const [genTo, setGenTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [genFrom, setGenFrom] = useState(monthStart);
+  const [genTo, setGenTo] = useState(today);
 
   const [recOpen, setRecOpen] = useState(false);
   const [recBmId, setRecBmId] = useState<number | null>(null);
@@ -109,12 +90,10 @@ export default function CardTerminalBatchesManager() {
 
   const utils = trpc.useUtils();
 
-  const listQ = trpc.cardTerminalBatches.list.useQuery({
-    fromDate: fromDate || undefined,
-    toDate: toDate || undefined,
-    status: statusFilter || undefined,
-    limit: 100,
-  });
+  // El listado y el estado de la conciliación comparten el periodo; el listado, además, el estado elegido
+  const period = { fromDate: fromDate || undefined, toDate: toDate || undefined };
+  const listQ = trpc.cardTerminalBatches.listPage.useQuery({ ...period, status: statusFilter || undefined, page: page + 1, pageSize });
+  const summaryQ = trpc.cardTerminalBatches.summary.useQuery({ ...period, status: statusFilter || undefined });
 
   const detailQ = trpc.cardTerminalBatches.getById.useQuery(
     { id: selectedId! },
@@ -132,820 +111,767 @@ export default function CardTerminalBatchesManager() {
   );
 
   function invalidateAll() {
-    utils.cardTerminalBatches.list.invalidate();
+    utils.cardTerminalBatches.listPage.invalidate();
+    utils.cardTerminalBatches.summary.invalidate();
     if (selectedId) utils.cardTerminalBatches.getById.invalidate({ id: selectedId });
   }
 
   const generateMut = trpc.cardTerminalBatches.generate.useMutation({
     onSuccess: (res) => {
-      toast.success(`${res.batchesCreated} remesa(s) generada(s) con ${res.operationsIncluded} operación(es)`);
+      toast.success(t("economyBatches.toast.generated", { batches: res.batchesCreated, ops: res.operationsIncluded }));
       setGenOpen(false);
-      utils.cardTerminalBatches.list.invalidate();
+      utils.cardTerminalBatches.listPage.invalidate();
+      utils.cardTerminalBatches.summary.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const runMatchingMut = trpc.cardTerminalBatches.runMatching.useMutation({
     onSuccess: (res) => {
-      toast.success(
-        `Matching ejecutado: ${res.processed} remesas · ${res.suggested} sugeridas · ${res.autoReady} listas · ${res.autoReconciled} auto-conciliadas`
-      );
+      toast.success(t("economyBatches.toast.matching", { processed: res.processed, suggested: res.suggested, ready: res.autoReady, auto: res.autoReconciled }));
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const acceptMut = trpc.cardTerminalBatches.acceptSuggestion.useMutation({
     onSuccess: (res) => {
       if (res.hasDifference) {
-        toast.warning(`Conciliada con diferencia de ${res.differenceAmount?.toFixed(2)} €`);
+        toast.warning(t("economyBatches.toast.reconciledDiff", { amount: money.eur(res.differenceAmount) }));
       } else {
-        toast.success("Sugerencia aceptada — remesa conciliada");
+        toast.success(t("economyBatches.toast.accepted"));
       }
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const rejectMut = trpc.cardTerminalBatches.rejectSuggestion.useMutation({
     onSuccess: () => {
-      toast.success("Sugerencia rechazada");
+      toast.success(t("economyBatches.toast.rejected"));
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const reconcileMut = trpc.cardTerminalBatches.reconcile.useMutation({
     onSuccess: (res) => {
       if (res.hasDifference) {
-        toast.warning(`Conciliada con diferencia de ${res.differenceAmount?.toFixed(2)} €`);
+        toast.warning(t("economyBatches.toast.reconciledDiff", { amount: money.eur(res.differenceAmount) }));
       } else {
-        toast.success("Remesa conciliada correctamente");
+        toast.success(t("economyBatches.toast.reconciled"));
       }
       setRecOpen(false);
       setRecBmId(null);
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const unreconcileMut = trpc.cardTerminalBatches.unreconcile.useMutation({
     onSuccess: () => {
-      toast.success("Conciliación deshecha");
+      toast.success(t("economyBatches.toast.unreconciled"));
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const ignoreMut = trpc.cardTerminalBatches.markIgnored.useMutation({
     onSuccess: () => {
-      toast.success("Remesa marcada como ignorada");
+      toast.success(t("economyBatches.toast.ignored"));
       setIgnOpen(false);
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const deleteMut = trpc.cardTerminalBatches.deleteBatch.useMutation({
     onSuccess: () => {
-      toast.success("Remesa eliminada");
+      toast.success(t("economyBatches.toast.deleted"));
       setSelectedId(null);
-      utils.cardTerminalBatches.list.invalidate();
+      utils.cardTerminalBatches.listPage.invalidate();
+      utils.cardTerminalBatches.summary.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const removeOpMut = trpc.cardTerminalBatches.removeOperation.useMutation({
     onSuccess: (res) => {
-      toast.success(`Operación eliminada. Nuevo neto: ${res.newTotalNet.toFixed(2)} € · ${res.remainingOps} operaciones restantes`);
+      toast.success(t("economyBatches.toast.opRemoved", { net: money.eur(res.newTotalNet), remaining: res.remainingOps }));
       setDelOpOpen(false);
       setDelOpTarget(null);
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const justifyMut = trpc.cardTerminalBatches.justifyDifference.useMutation({
     onSuccess: () => {
-      toast.success("Diferencia justificada — remesa marcada como conciliada");
+      toast.success(t("economyBatches.toast.justified"));
       setJustifyOpen(false);
       setJustifyText("");
       invalidateAll();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
-  const batches = listQ.data ?? [];
+  const batches = listQ.data?.data ?? [];
+  const total = listQ.data?.total ?? 0;
   const detail = detailQ.data ?? null;
   const suggestions = suggestQ.data ?? [];
+  const conc = summaryQ.data?.conciliation;
 
-  const stats = {
-    total: batches.length,
-    pending: batches.filter(b => ["pending", "review_required"].includes(b.status)).length,
-    needsAction: batches.filter(b => ["suggested", "auto_ready"].includes(b.status)).length,
-    reconciled: batches.filter(b => ["reconciled", "difference"].includes(b.status)).length,
-  };
+  type Batch = (typeof batches)[number];
+  const statusLabel = (s: string) => ((STATUS_KEYS as readonly string[]).includes(s) ? t(`economyBatches.status.${s}`) : s);
+  const statusBadge = (s: string) => <StatusBadge tone={STATUS_TONES[s as BatchStatus] ?? "neutral"}>{statusLabel(s)}</StatusBadge>;
+  const fmtDate = (s: string | null | undefined) => (s ? f.date(new Date(`${s.slice(0, 10)}T00:00:00`)) : "—");
+  const fmt = (v: string | number | null | undefined) => money.eur(v, { nullAs: "—" });
+  const matchBadge = (score: number) => <StatusBadge tone={matchTone(score)}>{t("economyBatches.match", { score })}</StatusBadge>;
 
-  const isSuggested = (s: string) => s === "suggested" || s === "auto_ready";
-  const isReconciled = (s: string) => s === "reconciled" || s === "difference";
+  const defaultFrom = monthStart();
+  const defaultTo = today();
+  const clearFilters = () => { setFromDate(defaultFrom); setToDate(defaultTo); setStatusFilter(""); setPage(0); };
+  const chips: FilterChip[] = [
+    ...(statusFilter ? [{ id: "status", label: t("economyBatches.chip.status", { value: statusLabel(statusFilter) }), onRemove: () => { setStatusFilter(""); setPage(0); } }] : []),
+    ...(fromDate !== defaultFrom ? [{ id: "from", label: fromDate ? t("economyBatches.chip.from", { value: fmtDate(fromDate) }) : t("economyBatches.chip.noFrom"), onRemove: () => { setFromDate(defaultFrom); setPage(0); } }] : []),
+    ...(toDate !== defaultTo ? [{ id: "to", label: toDate ? t("economyBatches.chip.to", { value: fmtDate(toDate) }) : t("economyBatches.chip.noTo"), onRemove: () => { setToDate(defaultTo); setPage(0); } }] : []),
+  ];
+
+  const periodLabel = fromDate && toDate
+    ? t("economyBatches.conc.period", { from: fmtDate(fromDate), to: fmtDate(toDate) })
+    : fromDate
+      ? t("economyBatches.conc.periodFrom", { from: fmtDate(fromDate) })
+      : toDate
+        ? t("economyBatches.conc.periodTo", { to: fmtDate(toDate) })
+        : t("economyBatches.conc.periodAll");
+
+  const toggleStatus = (s: BatchStatus) => { setStatusFilter((cur) => (cur === s ? "" : s)); setPage(0); };
+  const dash = "—";
+  const stripItems: SummaryStripItem[] = [
+    {
+      key: "pct",
+      label: t("economyBatches.conc.pct"),
+      value: conc ? `${conc.pctReconciled}%` : dash,
+      detail: conc ? t("economyBatches.conc.pctDetail", { done: conc.reconciled.count, total: conc.total.count }) : undefined,
+      primary: true,
+      tone: !conc ? undefined : conc.pctReconciled >= 80 ? "success" : conc.pctReconciled >= 50 ? "warning" : "danger",
+    },
+    {
+      key: "reconciled",
+      label: t("economyBatches.conc.reconciledAmount"),
+      value: conc ? money.eur(conc.reconciled.amount) : dash,
+      tone: "success",
+    },
+    {
+      key: "pending",
+      label: conc ? t("economyBatches.conc.pendingLabel", { count: conc.pending.count }) : t("economyBatches.conc.pendingAmount"),
+      value: conc ? money.eur(conc.pending.amount) : dash,
+      tone: conc && conc.pending.count > 0 ? "warning" : "success",
+    },
+    {
+      key: "differences",
+      label: conc ? t("economyBatches.conc.differencesLabel", { count: conc.difference.count }) : t("economyBatches.conc.differences"),
+      value: conc ? money.eur(conc.difference.amount) : dash,
+      tone: conc && conc.difference.count > 0 ? "warning" : "success",
+      onClick: () => toggleStatus("difference"),
+      active: statusFilter === "difference",
+    },
+  ];
+
+  const attention: Array<{ status: BatchStatus; icon: typeof Zap; tone: string; text: string; amount: string; count: number }> = conc
+    ? [
+        { status: "auto_ready" as const, icon: Zap, tone: "border-success/30 bg-success/10 text-success", text: t("economyBatches.conc.autoReady", { count: conc.attention.autoReady.count }), amount: conc.attention.autoReady.amount, count: conc.attention.autoReady.count },
+        { status: "suggested" as const, icon: CheckCircle2, tone: "border-info/30 bg-info/10 text-info", text: t("economyBatches.conc.suggested", { count: conc.attention.suggested.count }), amount: conc.attention.suggested.amount, count: conc.attention.suggested.count },
+        { status: "review_required" as const, icon: AlertTriangle, tone: "border-danger/30 bg-danger/10 text-danger", text: t("economyBatches.conc.reviewRequired", { count: conc.attention.reviewRequired.count }), amount: conc.attention.reviewRequired.amount, count: conc.attention.reviewRequired.count },
+      ].filter((l) => l.count > 0)
+    : [];
+
+  const columns: EconomyColumn<Batch>[] = [
+    {
+      key: "fecha",
+      header: t("economyBatches.col.date"),
+      mobile: "title",
+      cell: (b) => <span className="whitespace-nowrap">{fmtDate(b.batchDate)}</span>,
+    },
+    { key: "estado", header: t("economyBatches.col.state"), cell: (b) => statusBadge(b.status) },
+    { key: "match", header: t("economyBatches.col.match"), priority: "md", cell: (b) => (b.suggestedScore != null ? matchBadge(b.suggestedScore) : <span className="text-muted-foreground">—</span>) },
+    { key: "terminal", header: t("economyBatches.col.terminal"), priority: "md", cell: (b) => <span className="text-xs text-muted-foreground">{b.terminalCode ?? "—"}</span> },
+    { key: "ops", header: t("economyBatches.col.ops"), align: "right", num: true, priority: "md", cell: (b) => b.operationCount },
+    {
+      key: "dif",
+      header: t("economyBatches.col.diff"),
+      align: "right",
+      num: true,
+      priority: "lg",
+      cell: (b) => (b.differenceAmount ? <span className="text-warning">Δ {fmt(b.differenceAmount)}</span> : <span className="text-muted-foreground">—</span>),
+    },
+    { key: "neto", header: t("economyBatches.col.net"), align: "right", num: true, mobile: "amount", cell: (b) => <span className="font-semibold text-success">{fmt(b.totalNet)}</span> },
+  ];
+
+  const open = (id: number) => setSelectedId(id);
+  const hasSuggestion = !!detail && isSuggested(detail.status) && !!detail.suggestedBankMovementId;
+  const suggestedMovement = detail?.suggestedBankMovementId ? suggestions.find((s) => s.id === detail.suggestedBankMovementId) : undefined;
+  const chosenMovement = recBmId ? suggestions.find((s) => s.id === recBmId) : undefined;
+  const canReconcile = !!detail && !isReconciled(detail.status) && detail.status !== "ignored";
+  const menuItems = detail
+    ? [
+        ...(hasSuggestion ? [{ key: "reject", label: t("economyBatches.action.reject"), icon: ThumbsDown, danger: true, onSelect: () => rejectMut.mutate({ batchId: selectedId! }) }] : []),
+        ...(isReconciled(detail.status) ? [{ key: "unreconcile", label: t("economyBatches.action.unreconcile"), icon: Unlink, danger: false, onSelect: () => unreconcileMut.mutate({ batchId: selectedId! }) }] : []),
+        ...(detail.status === "pending" ? [{ key: "ignore", label: t("economyBatches.action.ignore"), icon: Ban, danger: false, onSelect: () => { setIgnNotes(""); setIgnOpen(true); } }] : []),
+        ...(!isReconciled(detail.status)
+          ? [{
+              key: "delete",
+              label: t("economyBatches.action.delete"),
+              icon: Trash2,
+              danger: true,
+              onSelect: async () => {
+                if ((await confirmAction({ description: t("economyBatches.deleteConfirm"), destructive: true }))) {
+                  deleteMut.mutate({ batchId: selectedId! });
+                }
+              },
+            }]
+          : []),
+      ]
+    : [];
 
   return (
     <AdminLayout>
-      <div className="flex flex-col gap-6 p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Remesas TPV</h1>
-            <p className="text-sm text-zinc-400 mt-1">
-              Agrupa operaciones TPV diarias y concília con movimientos bancarios
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => runMatchingMut.mutate()}
-              disabled={runMatchingMut.isPending}
-              className="border-zinc-700 text-zinc-300 hover:text-white text-sm"
-            >
-              <Play className="w-4 h-4 mr-2" />
-              {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
+      <EconomyShell screen="batches"
+        description={t("economyBatches.description")}
+        action={
+          <>
+            <Button variant="outline" onClick={() => runMatchingMut.mutate()} disabled={runMatchingMut.isPending}>
+              <Play className="w-4 h-4 mr-2" aria-hidden="true" />
+              {runMatchingMut.isPending ? t("economyBatches.running") : t("economyBatches.runMatching")}
             </Button>
-            <Button onClick={() => setGenOpen(true)} className="bg-orange-600 hover:bg-orange-500 text-white">
-              <Package className="w-4 h-4 mr-2" />
-              Generar remesas
+            <Button onClick={() => setGenOpen(true)}>
+              <Package className="w-4 h-4 mr-2" aria-hidden="true" />
+              {t("economyBatches.generate")}
             </Button>
+          </>
+        }>
+      <div className="flex flex-col gap-4">
+
+        {/* Estado de la conciliación del periodo (la antigua pantalla «Conciliación TPV», integrada) */}
+        <section aria-label={t("economyBatches.conc.title")} className="space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <h2 className="text-sm font-semibold text-foreground">{t("economyBatches.conc.title")}</h2>
+            <p className="text-xs text-muted-foreground">{periodLabel}</p>
           </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "Total", value: stats.total, icon: Package, color: "text-zinc-300" },
-            { label: "Pendientes", value: stats.pending, icon: Clock, color: "text-yellow-400" },
-            { label: "Acción requerida", value: stats.needsAction, icon: Zap, color: "text-blue-400" },
-            { label: "Conciliadas", value: stats.reconciled, icon: CheckCircle2, color: "text-emerald-400" },
-          ].map(s => (
-            <Card key={s.label} className="bg-zinc-900 border-zinc-800">
-              <CardContent className="p-4 flex items-center gap-3">
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-                <div>
-                  <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                  <div className="text-xs text-zinc-500">{s.label}</div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Filters */}
-        <Card className="bg-zinc-900 border-zinc-800">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-3 items-end">
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Desde</Label>
-                <Input
-                  type="date"
-                  value={fromDate}
-                  onChange={e => setFromDate(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white w-40"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Hasta</Label>
-                <Input
-                  type="date"
-                  value={toDate}
-                  onChange={e => setToDate(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white w-40"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Estado</Label>
-                <select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value as BatchStatus | "")}
-                  className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded-md px-3 py-2 h-10"
-                >
-                  <option value="">Todos</option>
-                  {(Object.keys(STATUS_LABELS) as BatchStatus[]).map(s => (
-                    <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                  ))}
-                </select>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => utils.cardTerminalBatches.list.invalidate()}
-                className="border-zinc-700 text-zinc-300 hover:text-white"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Main content: list + detail */}
-        <div className="flex gap-4">
-          {/* Batch list */}
-          <div className="flex-1 min-w-0">
-            <Card className="bg-zinc-900 border-zinc-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-zinc-300">
-                  {batches.length} remesa(s)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {listQ.isLoading ? (
-                  <div className="flex items-center justify-center py-12 text-zinc-500 text-sm">Cargando...</div>
-                ) : batches.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-2 text-zinc-500">
-                    <Package className="w-8 h-8" />
-                    <span className="text-sm">No hay remesas en este período</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setGenOpen(true)}
-                      className="mt-2 border-zinc-700 text-zinc-300"
-                    >
-                      Generar remesas
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-zinc-800">
-                    {batches.map(batch => (
-                      <button
-                        key={batch.id}
-                        onClick={() => setSelectedId(batch.id === selectedId ? null : batch.id)}
-                        className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-zinc-800/50 transition-colors ${
-                          selectedId === batch.id ? "bg-zinc-800/70" : ""
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-medium text-white">{fmtDate(batch.batchDate)}</span>
-                            <Badge className={`text-xs border px-1.5 py-0 ${STATUS_COLORS[batch.status as BatchStatus] ?? ""}`}>
-                              {STATUS_LABELS[batch.status as BatchStatus] ?? batch.status}
-                            </Badge>
-                            {batch.suggestedScore != null && (
-                              <span className="text-xs text-zinc-400">
-                                {scoreIcon(batch.suggestedScore)} {batch.suggestedScore}%
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-zinc-400">
-                            <span>Terminal: {batch.terminalCode ?? "—"}</span>
-                            <span>{batch.operationCount} ops</span>
-                            {batch.differenceAmount && (
-                              <span className="text-orange-400">Δ {fmt(batch.differenceAmount)}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-sm font-semibold text-emerald-400">{fmt(batch.totalNet)}</div>
-                          <div className="text-xs text-zinc-500">neto</div>
-                        </div>
-                        <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform ${selectedId === batch.id ? "rotate-90" : ""}`} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Detail panel */}
-          {selectedId && detail && (
-            <div className="w-[420px] shrink-0 flex flex-col gap-3">
-              {/* Batch header */}
-              <Card className="bg-zinc-900 border-zinc-800">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-base text-white">
-                        Remesa {fmtDate(detail.batchDate)}
-                      </CardTitle>
-                      <div className="text-xs text-zinc-400 mt-0.5">
-                        Terminal {detail.terminalCode ?? "—"} · Comercio {detail.commerceCode ?? "—"}
-                      </div>
-                    </div>
-                    <Badge className={`text-xs border px-1.5 py-0.5 ${STATUS_COLORS[detail.status as BatchStatus] ?? ""}`}>
-                      {STATUS_LABELS[detail.status as BatchStatus] ?? detail.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-2">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-zinc-800/60 rounded p-2">
-                      <div className="text-emerald-400 font-semibold text-sm">{fmt(detail.totalSales)}</div>
-                      <div className="text-xs text-zinc-500">Ventas</div>
-                    </div>
-                    <div className="bg-zinc-800/60 rounded p-2">
-                      <div className="text-red-400 font-semibold text-sm">{fmt(detail.totalRefunds)}</div>
-                      <div className="text-xs text-zinc-500">Devol.</div>
-                    </div>
-                    <div className="bg-zinc-800/60 rounded p-2">
-                      <div className="text-white font-bold text-sm">{fmt(detail.totalNet)}</div>
-                      <div className="text-xs text-zinc-500">Neto</div>
-                    </div>
-                  </div>
-
-                  {detail.differenceAmount && (
-                    <div className="bg-orange-500/10 border border-orange-500/30 rounded p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
-                        <span className="text-xs text-orange-300">
-                          Diferencia con banco: {fmt(detail.differenceAmount)}
-                        </span>
-                      </div>
-                      {detail.notes && (
-                        <div className="text-xs text-zinc-400 italic border-t border-orange-500/20 pt-2">
-                          Justificación: {detail.notes}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Suggested bank movement (auto-matching) */}
-                  {isSuggested(detail.status) && detail.suggestedBankMovementId && (
-                    <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-blue-300 font-medium">
-                          {scoreIcon(detail.suggestedScore)} Match automático · Score {detail.suggestedScore}%
-                        </span>
-                      </div>
-                      <div className="text-xs text-zinc-400">
-                        Mov. bancario ID: <span className="text-zinc-200">{detail.suggestedBankMovementId}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => acceptMut.mutate({ batchId: selectedId })}
-                          disabled={acceptMut.isPending}
-                          className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white text-xs h-7"
-                        >
-                          <ThumbsUp className="w-3 h-3 mr-1" />
-                          Aceptar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => rejectMut.mutate({ batchId: selectedId })}
-                          disabled={rejectMut.isPending}
-                          className="flex-1 border-red-900/50 text-red-400 hover:text-red-300 text-xs h-7"
-                        >
-                          <ThumbsDown className="w-3 h-3 mr-1" />
-                          Rechazar
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Review required alert */}
-                  {detail.status === "review_required" && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                      <span className="text-xs text-red-300">
-                        Sin movimiento bancario coincidente. Concilia manualmente.
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Bank movement linked */}
-                  {detail.bankMovement && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded p-2">
-                      <div className="text-xs text-emerald-300 font-medium mb-1">Movimiento bancario vinculado</div>
-                      <div className="text-xs text-zinc-300">
-                        {detail.bankMovement.fecha} · {fmt(detail.bankMovement.importe)}
-                      </div>
-                      <div className="text-xs text-zinc-500 truncate">
-                        {detail.bankMovement.movimiento ?? "—"}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {!isReconciled(detail.status) && detail.status !== "ignored" && (
-                      <Button
-                        size="sm"
-                        onClick={() => { setRecBmId(null); setRecNotes(""); setRecOpen(true); }}
-                        className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs h-7"
-                      >
-                        <Link2 className="w-3 h-3 mr-1" />
-                        Conciliar
-                      </Button>
+          <SummaryStrip items={stripItems} label={t("economyBatches.conc.summaryLabel")} />
+          <p className="text-xs text-muted-foreground">{t("economyBatches.conc.pendingHelp")}</p>
+          {conc && attention.length > 0 && (
+            <div role="group" aria-label={t("economyBatches.conc.attentionLabel")} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              {attention.map((l) => {
+                const Icon = l.icon;
+                const on = statusFilter === l.status;
+                return (
+                  <button
+                    key={l.status}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggleStatus(l.status)}
+                    className={cn(
+                      "flex min-h-10 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      l.tone,
+                      on && "ring-2 ring-ring",
                     )}
-                    {detail.status === "difference" && (
-                      <Button
-                        size="sm"
-                        onClick={() => { setJustifyText(""); setJustifyOpen(true); }}
-                        className="bg-amber-700 hover:bg-amber-600 text-white text-xs h-7"
-                      >
-                        <FileCheck className="w-3 h-3 mr-1" />
-                        Justificar diferencia
-                      </Button>
-                    )}
-                    {isReconciled(detail.status) && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => unreconcileMut.mutate({ batchId: selectedId })}
-                        disabled={unreconcileMut.isPending}
-                        className="border-zinc-600 text-zinc-300 hover:text-white text-xs h-7"
-                      >
-                        <Unlink className="w-3 h-3 mr-1" />
-                        Desconciliar
-                      </Button>
-                    )}
-                    {detail.status === "pending" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => { setIgnNotes(""); setIgnOpen(true); }}
-                        className="border-zinc-600 text-zinc-300 hover:text-white text-xs h-7"
-                      >
-                        <Ban className="w-3 h-3 mr-1" />
-                        Ignorar
-                      </Button>
-                    )}
-                    {!isReconciled(detail.status) && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          if (confirm("¿Eliminar esta remesa? Las operaciones volverán a estado Pendiente.")) {
-                            deleteMut.mutate({ batchId: selectedId });
-                          }
-                        }}
-                        disabled={deleteMut.isPending}
-                        className="border-red-900/50 text-red-400 hover:text-red-300 text-xs h-7"
-                      >
-                        <Trash2 className="w-3 h-3 mr-1" />
-                        Eliminar
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Operations */}
-              <Card className="bg-zinc-900 border-zinc-800">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
-                    Operaciones ({detail.operations?.length ?? 0})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="max-h-48 overflow-y-auto divide-y divide-zinc-800">
-                    {(detail.operations ?? []).map(op => (
-                      <div key={op.batchOpId} className="px-3 py-2 flex items-center gap-2">
-                        {op.batchOpType === "VENTA" ? (
-                          <ArrowUpRight className="w-3 h-3 text-emerald-400 shrink-0" />
-                        ) : (
-                          <ArrowDownLeft className="w-3 h-3 text-red-400 shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs text-zinc-300 truncate">Op. {op.operationNumber}</div>
-                          <div className="text-xs text-zinc-500">
-                            {op.card ? `****${op.card.slice(-4)}` : "—"} ·{" "}
-                            {op.operationDatetime
-                              ? new Date(op.operationDatetime).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
-                              : "—"}
-                          </div>
-                        </div>
-                        <div className={`text-xs font-medium shrink-0 ${op.batchOpType === "VENTA" ? "text-emerald-400" : "text-red-400"}`}>
-                          {fmt(op.amount)}
-                        </div>
-                        {op.linkedEntityId && (
-                          <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs px-1 py-0">
-                            {op.linkedEntityType}
-                          </Badge>
-                        )}
-                        <button
-                          onClick={() => { setDelOpTarget({ batchOpId: op.batchOpId, operationNumber: op.operationNumber ?? null, amount: String(op.amount) }); setDelOpOpen(true); }}
-                          className="shrink-0 p-1 rounded hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors"
-                          title="Eliminar operación de la remesa"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Bank movement suggestions (manual search) */}
-              {!isReconciled(detail.status) && detail.status !== "ignored" && (
-                <Card className="bg-zinc-900 border-zinc-800">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
-                      Movimientos bancarios sugeridos
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    {suggestQ.isLoading ? (
-                      <div className="px-4 py-3 text-xs text-zinc-500">Buscando...</div>
-                    ) : suggestions.length === 0 ? (
-                      <div className="px-4 py-3 text-xs text-zinc-500">
-                        No se encontraron movimientos bancarios compatibles en ±4 días
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-zinc-800 max-h-56 overflow-y-auto">
-                        {suggestions.map(bm => {
-                          const score = bm.confidenceScore;
-                          const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-yellow-400" : "text-zinc-400";
-                          const isSelected = recBmId === bm.id;
-                          return (
-                            <button
-                              key={bm.id}
-                              onClick={() => setRecBmId(isSelected ? null : bm.id)}
-                              className={`w-full text-left px-4 py-2.5 flex items-center gap-2 hover:bg-zinc-800/50 transition-colors ${isSelected ? "bg-zinc-800/70 ring-1 ring-emerald-500/40 ring-inset" : ""}`}
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-zinc-300">{bm.fecha}</span>
-                                  <span className="text-xs font-semibold text-white">{fmt(bm.importe)}</span>
-                                </div>
-                                <div className="text-xs text-zinc-500 truncate">{bm.movimiento ?? "—"}</div>
-                              </div>
-                              <div className={`text-xs font-bold shrink-0 ${scoreColor}`}>{score}%</div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {recBmId && (
-                      <div className="px-4 pb-3 pt-2">
-                        <Button
-                          size="sm"
-                          onClick={() => { setRecNotes(""); setRecOpen(true); }}
-                          className="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-xs h-7"
-                        >
-                          <Link2 className="w-3 h-3 mr-1" />
-                          Conciliar con este movimiento
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
+                  >
+                    <span className="flex min-w-0 items-center gap-2"><Icon className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="min-w-0">{l.text}</span></span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{money.eur(l.amount)}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
-        </div>
+          {conc && attention.length === 0 && conc.total.count > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+              <span className="font-medium text-success">{t("economyBatches.conc.allClear")}</span>
+              <span className="text-xs text-muted-foreground">{t("economyBatches.conc.allClearDetail")}</span>
+            </div>
+          )}
+        </section>
+
+        {/* Filtros */}
+        <EconomyFilterBar
+          primary={
+            <>
+              <FilterField label={t("economyBatches.filter.from")} className="w-[calc(50%-0.375rem)] sm:w-40">
+                <Input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => { setFromDate(e.target.value); setPage(0); }} />
+              </FilterField>
+              <FilterField label={t("economyBatches.filter.to")} className="w-[calc(50%-0.375rem)] sm:w-40">
+                <Input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => { setToDate(e.target.value); setPage(0); }} />
+              </FilterField>
+              <FilterField label={t("economyBatches.filter.status")} className="w-full sm:w-48">
+                <Select value={statusFilter || "all"} onValueChange={(v) => { setStatusFilter(v === "all" ? "" : (v as BatchStatus)); setPage(0); }}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("economyBatches.filter.all")}</SelectItem>
+                    {STATUS_KEYS.map((s) => (
+                      <SelectItem key={s} value={s}>{t(`economyBatches.status.${s}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FilterField>
+            </>
+          }
+          actions={
+            <Button variant="outline" onClick={() => { utils.cardTerminalBatches.listPage.invalidate(); utils.cardTerminalBatches.summary.invalidate(); }} aria-label={t("economyBatches.refreshAria")} className="gap-2">
+              <RefreshCw className="w-4 h-4" aria-hidden="true" /> {t("economyBatches.refresh")}
+            </Button>
+          }
+          chips={chips}
+          onClear={clearFilters}
+          summary={t("economyBatches.resultCount", { count: total })}
+        />
+
+        {/* Lista de remesas: el detalle se abre en un cajón lateral (pantalla completa en móvil) */}
+        <EconomyTable
+          rows={batches}
+          columns={columns}
+          rowKey={(b) => b.id}
+          caption={t("economyBatches.caption")}
+          loading={listQ.isLoading}
+          error={listQ.error}
+          errorTitle={t("economyBatches.loadError")}
+          onRetry={() => void listQ.refetch()}
+          emptyTitle={t("economyBatches.empty.title")}
+          emptyDescription={t("economyBatches.empty.description")}
+          emptyAction={<Button variant="outline" size="sm" className="max-sm:h-10" onClick={() => setGenOpen(true)}>{t("economyBatches.empty.generate")}</Button>}
+          rowClassName={(b) => (selectedId === b.id ? "bg-muted/70" : undefined)}
+          onRowClick={(b) => open(b.id)}
+          actions={(b) => (
+            <RowActions
+              label={fmtDate(b.batchDate)}
+              primary={{ label: t("economyBatches.review"), icon: <ChevronRight className="h-4 w-4" />, onSelect: () => open(b.id) }}
+            />
+          )}
+          mobileCard={(b) => (
+            <button type="button" onClick={() => open(b.id)} className="block w-full min-w-0 space-y-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <span className="flex items-start justify-between gap-3">
+                <span className="font-medium text-foreground">{fmtDate(b.batchDate)}</span>
+                <span className="shrink-0 font-semibold tabular-nums text-success">{fmt(b.totalNet)}</span>
+              </span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                {statusBadge(b.status)}
+                {b.suggestedScore != null && matchBadge(b.suggestedScore)}
+              </span>
+              <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>{b.terminalCode ?? "—"} · {b.operationCount}</span>
+                {b.differenceAmount ? <span className="tabular-nums text-warning">Δ {fmt(b.differenceAmount)}</span> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+              </span>
+            </button>
+          )}
+          footer={<EconomyPager page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={(s) => { setPageSize(s); setPage(0); }} />}
+        />
       </div>
+
+      {/* ── Detalle de la remesa: cajón lateral en escritorio, pantalla completa con pie fijo en móvil ── */}
+      <Sheet open={selectedId != null} onOpenChange={(o) => { if (!o) setSelectedId(null); }}>
+        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
+          <SheetHeader className="space-y-1.5 border-b border-border p-4 pr-12">
+            <SheetTitle className="flex flex-wrap items-center gap-2 text-base">
+              {detail ? t("economyBatches.detail.title", { date: fmtDate(detail.batchDate) }) : t("economyBatches.detail.loading")}
+              {detail && statusBadge(detail.status)}
+            </SheetTitle>
+            <SheetDescription className={detail ? undefined : "sr-only"}>
+              {detail ? t("economyBatches.detail.terminalCommerce", { terminal: detail.terminalCode ?? "—", commerce: detail.commerceCode ?? "—" }) : t("economyBatches.detail.description")}
+            </SheetDescription>
+          </SheetHeader>
+
+          {detail && (
+            <>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded bg-muted/60 p-2">
+                    <div className="text-sm font-semibold tabular-nums text-success">{fmt(detail.totalSales)}</div>
+                    <div className="text-xs text-muted-foreground">{t("economyBatches.detail.sales")}</div>
+                  </div>
+                  <div className="rounded bg-muted/60 p-2">
+                    <div className="text-sm font-semibold tabular-nums text-danger">{fmt(detail.totalRefunds)}</div>
+                    <div className="text-xs text-muted-foreground">{t("economyBatches.detail.refunds")}</div>
+                  </div>
+                  <div className="rounded bg-muted/60 p-2">
+                    <div className="text-sm font-bold tabular-nums text-foreground">{fmt(detail.totalNet)}</div>
+                    <div className="text-xs text-muted-foreground">{t("economyBatches.detail.net")}</div>
+                  </div>
+                </div>
+
+                {detail.differenceAmount && (
+                  <div className="space-y-2 rounded border border-warning/30 bg-warning/10 p-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                      <span className="text-sm text-warning">{t("economyBatches.detail.difference", { amount: fmt(detail.differenceAmount) })}</span>
+                    </div>
+                    {detail.notes && (
+                      <div className="border-t border-warning/20 pt-2 text-xs italic text-muted-foreground">
+                        {t("economyBatches.detail.justification", { text: detail.notes })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Movimiento sugerido por el matching: fecha, importe, concepto y coincidencia */}
+                {hasSuggestion && (
+                  <div className="space-y-2 rounded border border-info/30 bg-info/10 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-info">{t("economyBatches.detail.suggestionTitle")}</span>
+                      {detail.suggestedScore != null && matchBadge(detail.suggestedScore)}
+                    </div>
+                    {suggestedMovement ? (
+                      <div className="space-y-0.5 text-sm">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-foreground">{fmtDate(suggestedMovement.fecha)}</span>
+                          <span className="font-semibold tabular-nums text-foreground">{fmt(suggestedMovement.importe)}</span>
+                        </div>
+                        <div className="break-words text-xs text-muted-foreground">{suggestedMovement.movimiento ?? "—"}</div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">{suggestQ.isLoading ? t("economyBatches.detail.searching") : t("economyBatches.detail.suggestionUnknown", { id: String(detail.suggestedBankMovementId) })}</div>
+                    )}
+                  </div>
+                )}
+
+                {detail.status === "review_required" && (
+                  <div className="flex items-center gap-2 rounded border border-danger/30 bg-danger/10 p-3">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+                    <span className="text-sm text-danger">{t("economyBatches.detail.reviewRequired")}</span>
+                  </div>
+                )}
+
+                {detail.bankMovement && (
+                  <div className="rounded border border-success/30 bg-success/10 p-3">
+                    <div className="mb-1 text-sm font-medium text-success">{t("economyBatches.detail.linkedBank")}</div>
+                    <div className="flex items-baseline justify-between gap-3 text-sm text-foreground">
+                      <span>{fmtDate(detail.bankMovement.fecha)}</span>
+                      <span className="font-semibold tabular-nums">{fmt(detail.bankMovement.importe)}</span>
+                    </div>
+                    <div className="break-words text-xs text-muted-foreground">{detail.bankMovement.movimiento ?? "—"}</div>
+                  </div>
+                )}
+
+                {/* Operaciones de la remesa */}
+                <section aria-label={t("economyBatches.detail.operationsTitle", { count: detail.operations?.length ?? 0 })}>
+                  <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("economyBatches.detail.operationsTitle", { count: detail.operations?.length ?? 0 })}</h3>
+                  <ul className="divide-y divide-border rounded-lg border border-border">
+                    {(detail.operations ?? []).map((op) => (
+                      <li key={op.batchOpId} className="flex items-center gap-2 px-3 py-2">
+                        {op.batchOpType === "VENTA" ? (
+                          <ArrowUpRight className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                        ) : (
+                          <ArrowDownLeft className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="whitespace-nowrap text-sm text-foreground">{t("economyBatches.detail.operationNo", { number: op.operationNumber })}</div>
+                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+                            <span>{op.card ? `****${op.card.slice(-4)}` : "—"} · {op.operationDatetime ? f.time(new Date(op.operationDatetime), { hour: "2-digit", minute: "2-digit" }) : "—"}</span>
+                            {op.linkedEntityId && (
+                              <StatusBadge tone="info">
+                                {(op.linkedEntityType === "reservation" || op.linkedEntityType === "quote") ? t(`economyBatches.detail.entity.${op.linkedEntityType}`) : op.linkedEntityType}
+                              </StatusBadge>
+                            )}
+                          </div>
+                        </div>
+                        <div className={cn("shrink-0 text-sm font-medium tabular-nums", op.batchOpType === "VENTA" ? "text-success" : "text-danger")}>{fmt(op.amount)}</div>
+                        <button
+                          type="button"
+                          onClick={() => { setDelOpTarget({ batchOpId: op.batchOpId, operationNumber: op.operationNumber ?? null, amount: String(op.amount) }); setDelOpOpen(true); }}
+                          aria-label={t("economyBatches.detail.removeOp", { number: op.operationNumber ?? "" })}
+                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-8 sm:w-8"
+                        >
+                          <X className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+                {/* Otros movimientos bancarios compatibles (búsqueda manual) */}
+                {canReconcile && (
+                  <section aria-label={t("economyBatches.detail.suggestedTitle")}>
+                    <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("economyBatches.detail.suggestedTitle")}</h3>
+                    {suggestQ.isLoading ? (
+                      <div className="text-sm text-muted-foreground">{t("economyBatches.detail.searching")}</div>
+                    ) : suggestions.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">{t("economyBatches.detail.noneFound")}</div>
+                    ) : (
+                      <ul className="divide-y divide-border rounded-lg border border-border">
+                        {suggestions.map((bm) => {
+                          const isSelected = recBmId === bm.id;
+                          return (
+                            <li key={bm.id}>
+                              <button
+                                type="button"
+                                aria-pressed={isSelected}
+                                aria-label={t("economyBatches.detail.selectMovement", { date: fmtDate(bm.fecha), amount: fmt(bm.importe) })}
+                                onClick={() => setRecBmId(isSelected ? null : bm.id)}
+                                className={cn("flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", isSelected && "bg-muted/70 ring-1 ring-inset ring-success/40")}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                                    <span className="text-foreground">{fmtDate(bm.fecha)}</span>
+                                    <span className="font-semibold tabular-nums text-foreground">{fmt(bm.importe)}</span>
+                                  </div>
+                                  <div className="break-words text-xs text-muted-foreground">{bm.movimiento ?? "—"}</div>
+                                </div>
+                                <span className="shrink-0">{matchBadge(bm.confidenceScore)}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {recBmId && (
+                      <Button className="mt-2 w-full max-sm:h-11" onClick={() => { setRecNotes(""); setRecOpen(true); }}>
+                        <Link2 className="mr-1 h-4 w-4" aria-hidden="true" />
+                        {t("economyBatches.detail.reconcileWith")}
+                      </Button>
+                    )}
+                  </section>
+                )}
+              </div>
+
+              {/* Pie fijo: acciones principales siempre visibles; las destructivas, en el menú «Más» */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background p-3 pb-6 max-sm:[&>button]:min-h-11 sm:pb-3">
+                {hasSuggestion && (
+                  <Button className="flex-1" onClick={() => acceptMut.mutate({ batchId: selectedId! })} disabled={acceptMut.isPending}>
+                    <ThumbsUp className="mr-1 h-4 w-4" aria-hidden="true" />
+                    {t("economyBatches.action.accept")}
+                  </Button>
+                )}
+                {canReconcile && (
+                  <Button variant={hasSuggestion ? "outline" : "default"} className="flex-1" onClick={() => { setRecBmId(null); setRecNotes(""); setRecOpen(true); }}>
+                    <Link2 className="mr-1 h-4 w-4" aria-hidden="true" />
+                    {t("economyBatches.action.reconcile")}
+                  </Button>
+                )}
+                {detail.status === "difference" && (
+                  <Button className="flex-1" onClick={() => { setJustifyText(""); setJustifyOpen(true); }}>
+                    <FileCheck className="mr-1 h-4 w-4" aria-hidden="true" />
+                    {t("economyBatches.action.justify")}
+                  </Button>
+                )}
+                {menuItems.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 sm:h-9 sm:w-9" aria-label={t("economyBatches.action.more")}>
+                        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {menuItems.map((m, i) => {
+                        const Icon = m.icon;
+                        return (
+                          <div key={m.key}>
+                            {m.danger && i > 0 && <DropdownMenuSeparator />}
+                            <DropdownMenuItem onSelect={m.onSelect} className={cn("min-h-10", m.danger && "text-danger focus:text-danger")}>
+                              <Icon className="mr-2 h-4 w-4" aria-hidden="true" /> {m.label}
+                            </DropdownMenuItem>
+                          </div>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </>
+          )}
+          {!detail && (
+            <div className="p-4 text-sm text-muted-foreground" role="status">{detailQ.error ? t("economyBatches.loadError") : t("economyBatches.detail.loading")}</div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Generate dialog */}
       <Dialog open={genOpen} onOpenChange={setGenOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="max-h-[90vh] max-w-sm overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Generar remesas TPV</DialogTitle>
+            <DialogTitle>{t("economyBatches.generateDialog.title")}</DialogTitle>
+            <DialogDescription>{t("economyBatches.generateDialog.description")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-zinc-400">
-              Se agrupan todas las operaciones TPV del período seleccionado por fecha y terminal,
-              creando una remesa diaria para cada grupo.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Desde</Label>
-                <Input
-                  type="date"
-                  value={genFrom}
-                  onChange={e => setGenFrom(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-zinc-400">Hasta</Label>
-                <Input
-                  type="date"
-                  value={genTo}
-                  onChange={e => setGenTo(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white"
-                />
-              </div>
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label={t("economyBatches.generateDialog.from")}>
+              <Input type="date" value={genFrom} onChange={(e) => setGenFrom(e.target.value)} />
+            </FormField>
+            <FormField label={t("economyBatches.generateDialog.to")}>
+              <Input type="date" value={genTo} onChange={(e) => setGenTo(e.target.value)} />
+            </FormField>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setGenOpen(false)} className="border-zinc-700 text-zinc-300">
-              Cancelar
+          <FormFooter>
+            <Button variant="outline" onClick={() => setGenOpen(false)}>{t("economyBatches.generateDialog.cancel")}</Button>
+            <Button onClick={() => generateMut.mutate({ fromDate: genFrom, toDate: genTo })} disabled={generateMut.isPending || !genFrom || !genTo}>
+              {generateMut.isPending ? t("economyBatches.generateDialog.submitting") : t("economyBatches.generateDialog.submit")}
             </Button>
-            <Button
-              onClick={() => generateMut.mutate({ fromDate: genFrom, toDate: genTo })}
-              disabled={generateMut.isPending || !genFrom || !genTo}
-              className="bg-orange-600 hover:bg-orange-500 text-white"
-            >
-              {generateMut.isPending ? "Generando..." : "Generar"}
-            </Button>
-          </DialogFooter>
+          </FormFooter>
         </DialogContent>
       </Dialog>
 
       {/* Reconcile confirmation dialog */}
       <Dialog open={recOpen} onOpenChange={setRecOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="max-h-[90vh] max-w-sm overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Conciliar remesa</DialogTitle>
+            <DialogTitle>{t("economyBatches.reconcileDialog.title")}</DialogTitle>
+            <DialogDescription>{t("economyBatches.reconcileDialog.description")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3">
             {recBmId == null && (
-              <div className="space-y-2">
-                <Label className="text-xs text-zinc-400">ID movimiento bancario</Label>
+              <FormField label={t("economyBatches.reconcileDialog.bankId")}>
                 <Input
                   type="number"
-                  placeholder="ID del movimiento"
-                  onChange={e => setRecBmId(parseInt(e.target.value) || null)}
-                  className="bg-zinc-800 border-zinc-700 text-white"
+                  placeholder={t("economyBatches.reconcileDialog.bankIdPlaceholder")}
+                  onChange={(e) => setRecBmId(parseInt(e.target.value) || null)}
                 />
-              </div>
+              </FormField>
             )}
             {recBmId && detail && (
-              <div className="bg-zinc-800/60 rounded p-3 text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Remesa neto:</span>
-                  <span className="text-white font-medium">{fmt(detail.totalNet)}</span>
+              <div className="space-y-1 rounded bg-muted/60 p-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("economyBatches.reconcileDialog.net")}</span>
+                  <span className="font-medium tabular-nums text-foreground">{fmt(detail.totalNet)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Mov. banco ID:</span>
-                  <span className="text-white">{recBmId}</span>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("economyBatches.reconcileDialog.movement")}</span>
+                  <span className="text-right text-foreground">
+                    {chosenMovement ? <>{fmtDate(chosenMovement.fecha)} · <span className="tabular-nums">{fmt(chosenMovement.importe)}</span></> : t("economyBatches.reconcileDialog.movementId", { id: String(recBmId) })}
+                  </span>
                 </div>
+                {chosenMovement?.movimiento && <div className="break-words text-xs text-muted-foreground">{chosenMovement.movimiento}</div>}
               </div>
             )}
-            <div className="space-y-1">
-              <Label className="text-xs text-zinc-400">Notas (opcional)</Label>
-              <Textarea
-                value={recNotes}
-                onChange={e => setRecNotes(e.target.value)}
-                placeholder="Observaciones sobre la conciliación..."
-                className="bg-zinc-800 border-zinc-700 text-white text-sm resize-none"
-                rows={2}
-              />
-            </div>
+            <FormField label={t("economyBatches.reconcileDialog.notes")}>
+              <Textarea value={recNotes} onChange={(e) => setRecNotes(e.target.value)} placeholder={t("economyBatches.reconcileDialog.notesPlaceholder")} className="resize-none text-sm" rows={2} />
+            </FormField>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRecOpen(false)} className="border-zinc-700 text-zinc-300">
-              Cancelar
-            </Button>
+          <FormFooter>
+            <Button variant="outline" onClick={() => setRecOpen(false)}>{t("economyBatches.reconcileDialog.cancel")}</Button>
             <Button
               onClick={() => {
                 if (!selectedId || !recBmId) return;
                 reconcileMut.mutate({ batchId: selectedId, bankMovementId: recBmId, notes: recNotes || undefined });
               }}
               disabled={reconcileMut.isPending || !recBmId}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white"
             >
-              {reconcileMut.isPending ? "Conciliando..." : "Confirmar conciliación"}
+              {reconcileMut.isPending ? t("economyBatches.reconcileDialog.confirming") : t("economyBatches.reconcileDialog.confirm")}
             </Button>
-          </DialogFooter>
+          </FormFooter>
         </DialogContent>
       </Dialog>
 
       {/* Ignore dialog */}
       <Dialog open={ignOpen} onOpenChange={setIgnOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="max-h-[90vh] max-w-sm overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Ignorar remesa</DialogTitle>
+            <DialogTitle>{t("economyBatches.ignoreDialog.title")}</DialogTitle>
+            <DialogDescription>{t("economyBatches.ignoreDialog.description")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-zinc-400">
-              Esta remesa quedará marcada como ignorada y no aparecerá en las conciliaciones pendientes.
-            </p>
-            <div className="space-y-1">
-              <Label className="text-xs text-zinc-400">Motivo (opcional)</Label>
-              <Textarea
-                value={ignNotes}
-                onChange={e => setIgnNotes(e.target.value)}
-                placeholder="Motivo por el que se ignora esta remesa..."
-                className="bg-zinc-800 border-zinc-700 text-white text-sm resize-none"
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIgnOpen(false)} className="border-zinc-700 text-zinc-300">
-              Cancelar
-            </Button>
+          <FormField label={t("economyBatches.ignoreDialog.reason")}>
+            <Textarea value={ignNotes} onChange={(e) => setIgnNotes(e.target.value)} placeholder={t("economyBatches.ignoreDialog.placeholder")} className="resize-none text-sm" rows={2} />
+          </FormField>
+          <FormFooter>
+            <Button variant="outline" onClick={() => setIgnOpen(false)}>{t("economyBatches.ignoreDialog.cancel")}</Button>
             <Button
               onClick={() => {
                 if (!selectedId) return;
                 ignoreMut.mutate({ batchId: selectedId, notes: ignNotes || undefined });
               }}
               disabled={ignoreMut.isPending}
-              className="bg-zinc-700 hover:bg-zinc-600 text-white"
             >
-              {ignoreMut.isPending ? "Guardando..." : "Ignorar remesa"}
+              {ignoreMut.isPending ? t("economyBatches.ignoreDialog.saving") : t("economyBatches.ignoreDialog.submit")}
             </Button>
-          </DialogFooter>
+          </FormFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete operation dialog */}
       <Dialog open={delOpOpen} onOpenChange={(v) => { setDelOpOpen(v); if (!v) setDelOpTarget(null); }}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="max-h-[90vh] max-w-sm overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Eliminar operación</DialogTitle>
+            <DialogTitle>{t("economyBatches.removeOpDialog.title")}</DialogTitle>
+            <DialogDescription>{t("economyBatches.removeOpDialog.description")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3">
             {delOpTarget && (
-              <div className="bg-zinc-800/60 rounded p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Operación:</span>
-                  <span className="text-white">Op. {delOpTarget.operationNumber ?? "—"}</span>
+              <div className="space-y-1 rounded bg-muted/60 p-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("economyBatches.removeOpDialog.operation")}</span>
+                  <span className="text-foreground">{t("economyBatches.detail.operationNo", { number: delOpTarget.operationNumber ?? "—" })}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Importe:</span>
-                  <span className="text-white font-medium">{fmt(delOpTarget.amount)}</span>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("economyBatches.removeOpDialog.amount")}</span>
+                  <span className="font-medium tabular-nums text-foreground">{fmt(delOpTarget.amount)}</span>
                 </div>
               </div>
             )}
-            <p className="text-sm text-zinc-400">
-              La operación se desvinculará de esta remesa y volverá a estado <span className="text-white">Pendiente</span>. Los totales de la remesa se recalcularán automáticamente.
-            </p>
             {detail?.status === "reconciled" || detail?.status === "difference" ? (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded p-2 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <span className="text-xs text-amber-300">
-                  La remesa está conciliada. Al eliminar la operación se recalculará la diferencia con el banco.
-                </span>
+              <div className="flex items-start gap-2 rounded border border-warning/30 bg-warning/10 p-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                <span className="text-xs text-warning">{t("economyBatches.removeOpDialog.warning")}</span>
               </div>
             ) : null}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setDelOpOpen(false); setDelOpTarget(null); }} className="border-zinc-700 text-zinc-300">
-              Cancelar
-            </Button>
+          <FormFooter>
+            <Button variant="outline" onClick={() => { setDelOpOpen(false); setDelOpTarget(null); }}>{t("economyBatches.removeOpDialog.cancel")}</Button>
             <Button
+              variant="destructive"
               onClick={() => {
                 if (!selectedId || !delOpTarget) return;
                 removeOpMut.mutate({ batchId: selectedId, batchOpId: delOpTarget.batchOpId });
               }}
               disabled={removeOpMut.isPending}
-              className="bg-red-700 hover:bg-red-600 text-white"
             >
-              {removeOpMut.isPending ? "Eliminando..." : "Eliminar operación"}
+              {removeOpMut.isPending ? t("economyBatches.removeOpDialog.deleting") : t("economyBatches.removeOpDialog.confirm")}
             </Button>
-          </DialogFooter>
+          </FormFooter>
         </DialogContent>
       </Dialog>
 
       {/* Justify difference dialog */}
       <Dialog open={justifyOpen} onOpenChange={setJustifyOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+        <DialogContent className="max-h-[90vh] max-w-sm overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-amber-400" />
-              Justificar diferencia
+              <FileCheck className="h-4 w-4 text-warning" aria-hidden="true" />
+              {t("economyBatches.justifyDialog.title")}
             </DialogTitle>
+            <DialogDescription>{t("economyBatches.justifyDialog.description")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3">
             {detail?.differenceAmount && (
-              <div className="bg-orange-500/10 border border-orange-500/30 rounded p-3 text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Neto remesa:</span>
-                  <span className="text-white font-medium">{fmt(detail.totalNet)}</span>
+              <div className="space-y-1 rounded border border-warning/30 bg-warning/10 p-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("economyBatches.justifyDialog.net")}</span>
+                  <span className="font-medium tabular-nums text-foreground">{fmt(detail.totalNet)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Importe banco:</span>
-                  <span className="text-white">{fmt(detail.bankMovement?.importe)}</span>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("economyBatches.justifyDialog.bank")}</span>
+                  <span className="tabular-nums text-foreground">{fmt(detail.bankMovement?.importe)}</span>
                 </div>
-                <div className="flex justify-between border-t border-orange-500/20 pt-1">
-                  <span className="text-orange-300">Diferencia:</span>
-                  <span className="text-orange-300 font-semibold">{fmt(detail.differenceAmount)}</span>
+                <div className="flex justify-between gap-3 border-t border-warning/20 pt-1">
+                  <span className="text-warning">{t("economyBatches.justifyDialog.difference")}</span>
+                  <span className="font-semibold tabular-nums text-warning">{fmt(detail.differenceAmount)}</span>
                 </div>
               </div>
             )}
-            <p className="text-sm text-zinc-400">
-              Explica el motivo de la diferencia. La remesa pasará a estado <span className="text-emerald-400">Conciliada</span> y dejará de aparecer en las alertas del dashboard.
-            </p>
-            <div className="space-y-1">
-              <Label className="text-xs text-zinc-400">Justificación <span className="text-red-400">*</span></Label>
-              <Textarea
-                value={justifyText}
-                onChange={e => setJustifyText(e.target.value)}
-                placeholder="Ej: Comisión bancaria de 35,30 € descontada por el banco en la liquidación del terminal..."
-                className="bg-zinc-800 border-zinc-700 text-white text-sm resize-none"
-                rows={3}
-              />
-              <p className="text-xs text-zinc-500">Mínimo 5 caracteres</p>
-            </div>
+            <FormField label={t("economyBatches.justifyDialog.label")} required hint={t("economyBatches.justifyDialog.min")}>
+              <Textarea value={justifyText} onChange={(e) => setJustifyText(e.target.value)} placeholder={t("economyBatches.justifyDialog.placeholder")} className="resize-none text-sm" rows={3} />
+            </FormField>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setJustifyOpen(false)} className="border-zinc-700 text-zinc-300">
-              Cancelar
-            </Button>
+          <FormFooter>
+            <Button variant="outline" onClick={() => setJustifyOpen(false)}>{t("economyBatches.justifyDialog.cancel")}</Button>
             <Button
               onClick={() => {
                 if (!selectedId || justifyText.trim().length < 5) return;
                 justifyMut.mutate({ batchId: selectedId, justification: justifyText.trim() });
               }}
               disabled={justifyMut.isPending || justifyText.trim().length < 5}
-              className="bg-amber-700 hover:bg-amber-600 text-white"
             >
-              {justifyMut.isPending ? "Guardando..." : "Confirmar justificación"}
+              {justifyMut.isPending ? t("economyBatches.justifyDialog.saving") : t("economyBatches.justifyDialog.confirm")}
             </Button>
-          </DialogFooter>
+          </FormFooter>
         </DialogContent>
       </Dialog>
+    </EconomyShell>
     </AdminLayout>
   );
 }

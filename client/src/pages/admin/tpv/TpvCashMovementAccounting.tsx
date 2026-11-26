@@ -85,7 +85,7 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-1">
-            <Label className="text-gray-300 text-sm">Importe (€)</Label>
+            <Label className="text-gray-200 text-sm">Importe (€)</Label>
             <div className="relative">
               <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <Input
@@ -94,7 +94,7 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
                 min="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="pl-9 bg-gray-800 border-gray-700 text-white text-lg font-bold"
+                className="h-12 pl-9 bg-gray-800 border-gray-700 text-white text-xl font-bold"
                 placeholder="0.00"
               />
             </div>
@@ -102,30 +102,30 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
 
           {type === "out" && (
             <div className="space-y-1">
-              <Label className="text-gray-300 text-sm">Tipo de salida</Label>
+              <Label className="text-gray-200 text-sm">Tipo de salida</Label>
               <div className="grid grid-cols-3 gap-2">
                 {OUT_KINDS.map((k) => (
                   <button
                     key={k.kind}
                     type="button"
                     onClick={() => setOutKind(k.kind)}
-                    className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                    className={`min-h-14 text-sm font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
                       outKind === k.kind ? k.active : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
                     }`}
                   >
                     {k.label}
-                    <span className="block text-[10px] font-normal opacity-70">{k.hint}</span>
+                    <span className="block text-xs font-normal opacity-80">{k.hint}</span>
                   </button>
                 ))}
               </div>
-              {outKind === null && <p className="text-[11px] text-gray-400 pt-1">Elige el tipo de salida.</p>}
+              {outKind === null && <p className="text-xs text-gray-400 pt-1">Elige el tipo de salida.</p>}
               {outKind === "devolucion" && (
-                <p className="text-[11px] text-warning pt-1">
+                <p className="text-xs text-warning pt-1">
                   Devuelve efectivo a un cliente (venta anulada o devuelta). No cuenta como gasto.
                 </p>
               )}
               {outKind === "traspaso" && (
-                <p className="text-[11px] text-info pt-1">
+                <p className="text-xs text-info pt-1">
                   El efectivo sale del cajón pero se conserva en la Caja Central. No cuenta como gasto.
                 </p>
               )}
@@ -134,46 +134,47 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
 
           {type === "in" && (
             <div className="space-y-1">
-              <Label className="text-gray-300 text-sm">Tipo de entrada</Label>
+              <Label className="text-gray-200 text-sm">Tipo de entrada</Label>
               <div className="grid grid-cols-2 gap-2">
                 {IN_KINDS.map((k) => (
                   <button
                     key={k.kind}
                     type="button"
                     onClick={() => setInKind(k.kind)}
-                    className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                    className={`min-h-14 text-sm font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
                       inKind === k.kind ? "bg-success/10 border-success text-success" : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
                     }`}
                   >
                     {k.label}
-                    <span className="block text-[10px] font-normal opacity-70">{k.hint}</span>
+                    <span className="block text-xs font-normal opacity-80">{k.hint}</span>
                   </button>
                 ))}
               </div>
-              {inKind === null && <p className="text-[11px] text-gray-400 pt-1">Elige el tipo de entrada.</p>}
+              {inKind === null && <p className="text-xs text-gray-400 pt-1">Elige el tipo de entrada.</p>}
             </div>
           )}
 
           <div className="space-y-1">
             {advanced && type === "out" && (
               <div className="space-y-1">
-                <Label className="text-gray-300 text-sm">Autorización (si te la piden)</Label>
+                <Label className="text-gray-200 text-sm">Autorización (si te la piden)</Label>
                 <Input inputMode="numeric" value={authId} onChange={(e) => setAuthId(e.target.value.replace(/\D/g, ""))} placeholder="Nº de autorización" className="bg-gray-800 border-gray-700 text-white" />
               </div>
             )}
-            <Label className="text-gray-300 text-sm">Motivo</Label>
+            <Label className="text-gray-200 text-sm">Motivo</Label>
             <Input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="bg-gray-800 border-gray-700 text-white"
+              className="h-11 bg-gray-800 border-gray-700 text-white"
               placeholder="Describe el motivo..."
             />
-            <div className="flex flex-wrap gap-1 pt-1">
+            <div className="flex flex-wrap gap-2 pt-1">
               {quickReasons.map((q) => (
                 <button
                   key={q}
+                  type="button"
                   onClick={() => setReason(q)}
-                  className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1 rounded-full border border-gray-700 transition-colors"
+                  className="min-h-10 text-sm bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1.5 rounded-full border border-gray-600 transition-colors"
                 >
                   {q}
                 </button>
@@ -184,13 +185,13 @@ export default function TpvCashMovementAccounting({ open, type, sessionId, onClo
           <div className="flex gap-2 pt-2">
             <Button
               variant="ghost"
-              className="flex-1 text-gray-400 hover:text-white border border-gray-700"
+              className="h-12 flex-1 text-gray-300 hover:text-white border border-gray-600"
               onClick={onClose}
             >
               Cancelar
             </Button>
             <Button
-              className={`flex-1 font-semibold ${
+              className={`h-12 flex-1 text-base font-semibold ${
                 type === "in"
                   ? "bg-primary hover:bg-primary/90 text-primary-foreground"
                   : "bg-destructive hover:bg-destructive/90 text-white"

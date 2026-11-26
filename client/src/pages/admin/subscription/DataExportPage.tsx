@@ -29,9 +29,9 @@ function AccountNotice({ canExport }: { canExport: boolean }) {
   const text = exportAccountNotice(d.state, d.consultation, canExport);
   if (!text) return null;
   return (
-    <div className="rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 p-4 flex gap-3" role="status">
-      <Info className="w-5 h-5 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" aria-hidden="true" />
-      <p className="text-sm text-amber-900 dark:text-amber-100">{px(text)}</p>
+    <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 flex gap-3" role="status">
+      <Info className="w-5 h-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+      <p className="text-sm text-warning">{px(text)}</p>
     </div>
   );
 }
@@ -39,7 +39,7 @@ function AccountNotice({ canExport }: { canExport: boolean }) {
 function Contents({ maxMb, linkHours, dailyLimit }: { maxMb: number; linkHours: number; dailyLimit: number }) {
   const { t, format: f } = useI18n();
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 space-y-4" aria-labelledby="exp-contents">
+    <section className="rounded-xl border border-border bg-card p-6 space-y-4" aria-labelledby="exp-contents">
       <h2 id="exp-contents" className="font-semibold text-foreground">{t("subscription.export.contentsTitle")}</h2>
       <div className="grid gap-5 md:grid-cols-2 text-sm">
         <div>
@@ -76,7 +76,7 @@ function Relationship() {
   const contact = trpc.subscription.supportContact.useQuery(undefined, { retry: false, staleTime: 300_000 });
   const email = contact.data?.email ?? null;
   return (
-    <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="exp-rel">
+    <section className="rounded-xl border border-border bg-card p-6 space-y-3" aria-labelledby="exp-rel">
       <h2 id="exp-rel" className="font-semibold text-foreground">{t("subscription.export.relTitle")}</h2>
       <p className="text-sm text-muted-foreground">
         {t("subscription.export.relIntro")}
@@ -115,11 +115,11 @@ type ExportRow = {
 function StatusBadge({ row, now }: { row: ExportRow; now: number }) {
   const { t } = useI18n();
   if (row.status === "pending") return <Badge variant="outline" className="gap-1"><Clock className="w-3.5 h-3.5" aria-hidden="true" />{row.startedAt ? (row.attempts && row.attempts > 1 ? t("subscription.export.generatingRetry") : t("subscription.export.generating")) : t("subscription.export.queued")}</Badge>;
-  if (row.status === "failed") return <Badge variant="outline" className="gap-1 text-red-800 dark:text-red-300"><XCircle className="w-3.5 h-3.5" aria-hidden="true" />{t("subscription.export.failed")}</Badge>;
+  if (row.status === "failed") return <Badge variant="outline" className="gap-1 text-danger"><XCircle className="w-3.5 h-3.5" aria-hidden="true" />{t("subscription.export.failed")}</Badge>;
   if (row.purgedAt) return <Badge variant="outline">{t("subscription.export.purged")}</Badge>;
   if (row.expiresAt && row.expiresAt <= now) return <Badge variant="outline">{t("subscription.export.linkExpired")}</Badge>;
-  if (row.warning) return <Badge variant="outline" className="gap-1 text-amber-800 dark:text-amber-300"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />{t("subscription.export.readyIncomplete")}</Badge>;
-  return <Badge variant="outline" className="gap-1 text-emerald-800 dark:text-emerald-300"><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />{t("subscription.export.ready")}</Badge>;
+  if (row.warning) return <Badge variant="outline" className="gap-1 text-warning"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />{t("subscription.export.readyIncomplete")}</Badge>;
+  return <Badge variant="outline" className="gap-1 text-success"><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />{t("subscription.export.ready")}</Badge>;
 }
 
 function History({ rows }: { rows: ExportRow[] }) {
@@ -154,8 +154,8 @@ function History({ rows }: { rows: ExportRow[] }) {
                   {r.downloadCount > 0 && t("subscription.export.downloaded", { n: r.downloadCount })}
                 </p>
               )}
-              {r.warning && <p className="text-sm text-amber-800 dark:text-amber-300">{r.warning}</p>}
-              {r.status === "failed" && r.error && <p className="text-sm text-red-800 dark:text-red-300">{r.error}</p>}
+              {r.warning && <p className="text-sm text-warning">{r.warning}</p>}
+              {r.status === "failed" && r.error && <p className="text-sm text-danger">{r.error}</p>}
             </div>
             {downloadable && (
               <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={link.isPending} onClick={() => link.mutate({ id: r.id })}>
@@ -189,7 +189,7 @@ function OwnerArea({ maxMb, linkHours, dailyLimit }: { maxMb: number; linkHours:
   const pending = rows.some((r) => r.status === "pending");
   return (
     <>
-      <section className="rounded-2xl border border-border bg-card p-6 space-y-4" aria-labelledby="exp-request">
+      <section className="rounded-xl border border-border bg-card p-6 space-y-4" aria-labelledby="exp-request">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
             <h2 id="exp-request" className="font-semibold text-foreground">{t("subscription.export.newTitle")}</h2>
@@ -203,7 +203,7 @@ function OwnerArea({ maxMb, linkHours, dailyLimit }: { maxMb: number; linkHours:
           </Button>
         </div>
       </section>
-      <section className="rounded-2xl border border-border bg-card p-6" aria-labelledby="exp-history">
+      <section className="rounded-xl border border-border bg-card p-6" aria-labelledby="exp-history">
         <h2 id="exp-history" className="font-semibold text-foreground mb-2">{t("subscription.export.yours")}</h2>
         {list.isLoading && <PanelLoading label={t("subscription.export.loadingList")} />}
         {list.isError && <PanelError error={list.error} onRetry={() => list.refetch()} title={list.error.message || t("subscription.export.loadListError")} />}
@@ -237,7 +237,7 @@ export default function DataExportPage() {
         {status.isError && <PanelError error={status.error} onRetry={() => status.refetch()} title={t("subscription.export.checkError")} />}
 
         {s && !s.canExport && (
-          <section className="rounded-2xl border border-border bg-card p-6 flex gap-3" aria-labelledby="exp-denied">
+          <section className="rounded-xl border border-border bg-card p-6 flex gap-3" aria-labelledby="exp-denied">
             <Lock className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
             <div>
               <h2 id="exp-denied" className="font-semibold text-foreground">{t("subscription.export.ownerOnly")}</h2>

@@ -6,19 +6,24 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelEmpty, PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { PanelDataList, PanelPageHeader, StatusBadge, type PanelColumn } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { FolderArchive, RefreshCw, Download, UserPlus, FileArchive } from "lucide-react";
+import { FolderArchive, RefreshCw, Download, UserPlus, FileArchive, Users } from "lucide-react";
+import { FormField } from "../accounting/shared/EconomyUi";
+import { useGestoriaLabels } from "./gestoriaLabels";
+import { SectionCard, YearSelect } from "./GestoriaParts";
 
 export default function GestoriaExpedientes() {
+  const { t, f } = useGestoriaLabels();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [gName, setGName] = useState("");
   const [gEmail, setGEmail] = useState("");
+  const [showErrors, setShowErrors] = useState(false);
   const utils = trpc.useUtils();
 
   const dossiersQ = trpc.gestoria.dossiers.list.useQuery(undefined);
@@ -26,126 +31,132 @@ export default function GestoriaExpedientes() {
 
   const generateMut = trpc.gestoria.dossiers.generate.useMutation({
     onSuccess: () => {
-      toast.success("Expediente generado");
+      toast.success(t("gestoria.dossiers.generated"));
       utils.gestoria.dossiers.list.invalidate();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toastError(e),
   });
 
   const accessMut = trpc.gestoria.access.createPortalAccess.useMutation({
     onSuccess: () => {
-      toast.success("Acceso de gestoría creado — se ha enviado el enlace de activación");
-      setGName(""); setGEmail("");
+      toast.success(t("gestoria.dossiers.accessCreated"));
+      setGName(""); setGEmail(""); setShowErrors(false);
       utils.gestoria.access.list.invalidate();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toastError(e),
   });
 
-  const yearOptions = [currentYear - 1, currentYear, currentYear + 1];
   const dossiers = dossiersQ.data ?? [];
   const accesses = accessQ.data ?? [];
 
+  const dossierColumns: PanelColumn<(typeof dossiers)[number]>[] = [
+    { key: "title", header: t("gestoria.dossiers.colTitle"), cell: (d) => d.title },
+    { key: "created", header: t("gestoria.dossiers.colCreated"), cell: (d) => f.dateTime(new Date(d.createdAt)) },
+    {
+      key: "files",
+      header: t("gestoria.dossiers.colFiles"),
+      cell: (d) => (
+        <span className="tabular-nums">
+          {t("gestoria.dossiers.fileCount", { count: d.fileCount ?? 0 })}
+          {d.fileSize ? ` · ${f.number(Math.round(d.fileSize / 1024))} KB` : ""}
+        </span>
+      ),
+    },
+    {
+      key: "download",
+      header: "",
+      align: "right",
+      hideOnMobile: false,
+      cell: (d) =>
+        d.fileUrl ? (
+          <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+            <Download className="h-4 w-4" aria-hidden="true" /> {t("gestoria.dossiers.download")}
+          </a>
+        ) : (
+          <span className="text-xs text-muted-foreground">{t("gestoria.dossiers.noFile")}</span>
+        ),
+    },
+  ];
+
+  const accessColumns: PanelColumn<(typeof accesses)[number]>[] = [
+    { key: "name", header: t("gestoria.dossiers.colName"), cell: (a) => a.name },
+    { key: "email", header: t("gestoria.dossiers.colEmail"), cell: (a) => <span className="break-all">{a.email}</span> },
+    {
+      key: "status",
+      header: t("gestoria.dossiers.colState"),
+      cell: (a) => <StatusBadge tone={a.inviteAccepted ? "success" : "warning"}>{a.inviteAccepted ? t("gestoria.dossiers.active") : t("gestoria.dossiers.pendingActivation")}</StatusBadge>,
+    },
+  ];
+
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6 max-w-3xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <FolderArchive className="w-6 h-6 text-primary" /> Expedientes para Gestoría
-          </h1>
-          <p className="text-sm text-muted-foreground">Genera y comparte los expedientes fiscales del ejercicio</p>
-        </div>
+      <div className="mx-auto max-w-6xl space-y-6 p-6">
+        <PanelPageHeader icon={<FolderArchive />} title={t("gestoria.dossiers.title")} description={t("gestoria.dossiers.description")} />
 
-        {/* Generar expediente */}
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">Generar expediente del ejercicio</h2>
-          <div className="flex items-end gap-3">
-            <div>
-              <Label className="text-xs">Ejercicio</Label>
-              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-                <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-                </SelectContent>
-              </Select>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {/* Generar expediente */}
+          <SectionCard icon={<FileArchive />} title={t("gestoria.dossiers.generateTitle")} description={t("gestoria.dossiers.generateHelp")}>
+            <div className="flex flex-wrap items-end gap-3">
+              <FormField label={t("gestoria.dossiers.year")}>
+                <YearSelect year={year} onChange={setYear} className="w-44" />
+              </FormField>
+              <Button onClick={() => generateMut.mutate({ year })} disabled={generateMut.isPending} className="gap-2">
+                {generateMut.isPending ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <FileArchive className="h-4 w-4" aria-hidden="true" />}
+                {generateMut.isPending ? t("gestoria.dossiers.generating") : t("gestoria.dossiers.generate")}
+              </Button>
             </div>
-            <Button onClick={() => generateMut.mutate({ year })} disabled={generateMut.isPending} className="gap-2">
-              {generateMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />}
-              Generar ZIP
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            El ZIP incluye los resúmenes de IVA (303), retenciones (111), Sociedades (200/202) y el
-            calendario de obligaciones en CSV, más un resumen ejecutivo.
-          </p>
+          </SectionCard>
+
+          {/* Accesos de gestoría */}
+          <SectionCard icon={<Users />} title={t("gestoria.dossiers.accessTitle")} description={t("gestoria.dossiers.accessHelp")}>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField label={t("gestoria.dossiers.gestoriaName")} required error={showErrors && !gName.trim() ? t("gestoria.dossiers.errName") : null}>
+                  <Input value={gName} onChange={(e) => setGName(e.target.value)} placeholder="Gestoría Ejemplo S.L." autoComplete="off" />
+                </FormField>
+                <FormField label={t("gestoria.dossiers.gestoriaEmail")} required error={showErrors && !gEmail.trim() ? t("gestoria.dossiers.errEmail") : null}>
+                  <Input type="email" value={gEmail} onChange={(e) => setGEmail(e.target.value)} placeholder="contacto@gestoria.com" autoComplete="off" />
+                </FormField>
+              </div>
+              <Button
+                onClick={() => {
+                  if (!gName.trim() || !gEmail.trim()) { setShowErrors(true); toast.error(t("gestoria.dossiers.fillNameEmail")); return; }
+                  accessMut.mutate({ name: gName.trim(), email: gEmail.trim() });
+                }}
+                disabled={accessMut.isPending}
+                variant="outline"
+                className="gap-2"
+              >
+                <UserPlus className="h-4 w-4" aria-hidden="true" />
+                {accessMut.isPending ? t("gestoria.dossiers.creating") : t("gestoria.dossiers.createAccess")}
+              </Button>
+            </div>
+          </SectionCard>
         </div>
 
         {/* Lista de expedientes */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-foreground mb-2">Expedientes generados</h2>
-          {dossiers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aún no se ha generado ningún expediente.</p>
+        <section aria-labelledby="gestoria-expedientes-lista" className="space-y-2">
+          <h2 id="gestoria-expedientes-lista" className="text-base font-semibold text-foreground">{t("gestoria.dossiers.listTitle")}</h2>
+          {dossiersQ.isLoading ? (
+            <PanelLoading />
+          ) : dossiersQ.isError ? (
+            <PanelError error={dossiersQ.error} onRetry={() => void dossiersQ.refetch()} />
+          ) : dossiers.length === 0 ? (
+            <PanelEmpty icon={<FolderArchive className="h-5 w-5" />} title={t("gestoria.dossiers.emptyTitle")} description={t("gestoria.dossiers.emptyHelp")} />
           ) : (
-            <div className="space-y-1.5">
-              {dossiers.map((d) => (
-                <div key={d.id} className="flex items-center justify-between text-sm border-b border-border/50 last:border-0 pb-1.5 last:pb-0">
-                  <div>
-                    <div className="text-foreground/80">{d.title}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(d.createdAt).toLocaleString("es-ES")} · {d.fileCount ?? 0} ficheros
-                      {d.fileSize ? ` · ${(d.fileSize / 1024).toFixed(0)} KB` : ""}
-                    </div>
-                  </div>
-                  {d.fileUrl && (
-                    <a href={d.fileUrl} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-primary hover:underline">
-                      <Download className="w-3.5 h-3.5" /> Descargar
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
+            <PanelDataList rows={dossiers} columns={dossierColumns} rowKey={(d) => d.id} caption={t("gestoria.dossiers.listTitle")} />
           )}
-        </div>
+        </section>
 
-        {/* Accesos de gestoría */}
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">Acceso al Portal de Gestoría</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Nombre de la gestoría</Label>
-              <Input value={gName} onChange={(e) => setGName(e.target.value)} placeholder="Gestoría Ejemplo S.L." />
-            </div>
-            <div>
-              <Label className="text-xs">Email</Label>
-              <Input value={gEmail} onChange={(e) => setGEmail(e.target.value)} placeholder="contacto@gestoria.com" />
-            </div>
-          </div>
-          <Button
-            onClick={() => {
-              if (!gName.trim() || !gEmail.trim()) { toast.error("Rellena nombre y email"); return; }
-              accessMut.mutate({ name: gName.trim(), email: gEmail.trim() });
-            }}
-            disabled={accessMut.isPending}
-            variant="outline"
-            className="gap-2"
-          >
-            <UserPlus className="w-4 h-4" />
-            {accessMut.isPending ? "Creando…" : "Crear acceso y enviar invitación"}
-          </Button>
-
-          {accesses.length > 0 && (
-            <div className="space-y-1 pt-1">
-              {accesses.map((a) => (
-                <div key={a.id} className="flex items-center justify-between text-sm border-t border-border/50 pt-1.5">
-                  <span className="text-foreground/80">{a.name} · {a.email}</span>
-                  <span className={`text-xs font-medium ${a.inviteAccepted ? "text-emerald-400" : "text-amber-400"}`}>
-                    {a.inviteAccepted ? "Activa" : "Pendiente de activar"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Accesos existentes */}
+        {accessQ.isError ? (
+          <PanelError error={accessQ.error} onRetry={() => void accessQ.refetch()} />
+        ) : accesses.length > 0 ? (
+          <section aria-labelledby="gestoria-accesos-lista" className="space-y-2">
+            <h2 id="gestoria-accesos-lista" className="text-base font-semibold text-foreground">{t("gestoria.dossiers.accessListTitle")}</h2>
+            <PanelDataList rows={accesses} columns={accessColumns} rowKey={(a) => a.id} caption={t("gestoria.dossiers.accessListTitle")} />
+          </section>
+        ) : null}
       </div>
     </AdminLayout>
   );

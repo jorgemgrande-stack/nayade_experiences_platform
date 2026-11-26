@@ -113,7 +113,7 @@ export function ConversionSection({ requested, currentPlan = null, plans = [] }:
   if (!status.data) return null;
   if (!enabled) {
     return (
-      <section id="contratar" className="scroll-mt-4 rounded-3xl border border-border bg-card p-6" aria-labelledby="sub-convert">
+      <section id="contratar" className="scroll-mt-4 rounded-xl border border-border bg-card p-6" aria-labelledby="sub-convert">
         <h2 id="sub-convert" className="text-xl font-extrabold tracking-tight text-foreground">
           {t("subscription.checkout.title")}
         </h2>
@@ -300,9 +300,9 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
   const addNames = add.map((k) => extensions.find((e) => e.item.key === k)?.item.name ?? p?.quote.lines.find((l) => l.key === k)?.name ?? k);
 
   return (
-    <section id="contratar" className="cx-shadow scroll-mt-4 space-y-6 rounded-3xl border border-border bg-card p-4 sm:p-6 lg:p-8" aria-labelledby="sub-convert">
+    <section id="contratar" className="cx-shadow scroll-mt-4 space-y-6 rounded-xl border border-border bg-card p-4 sm:p-6 lg:p-8" aria-labelledby="sub-convert">
       <div className="flex flex-wrap items-start gap-3">
-        <span aria-hidden="true" data-tone="electric" className="cx-tone-chip inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-lg shadow-black/20">
+        <span aria-hidden="true" data-tone="electric" className="cx-tone-chip inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-lg shadow-black/20">
           <Sparkles className="h-6 w-6" />
         </span>
         <div className="min-w-0 flex-1">
@@ -316,7 +316,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
       <Stepper step={step} reach={reach} onGo={go} />
 
       {notes.length > 0 && (
-        <div role="status" className="flex gap-2 rounded-2xl border border-border bg-muted/50 p-3 text-sm text-foreground">
+        <div role="status" className="flex gap-2 rounded-xl border border-border bg-muted/50 p-3 text-sm text-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" aria-hidden="true" />
           <div className="space-y-1">
             {notes.map((n) => (
@@ -342,7 +342,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                     const price = interval === "year" ? info?.yearly : info?.monthly;
                     const sel = plan === k;
                     return (
-                      <label key={k} data-tone={pr.tone} data-selected={sel} className="sx-option relative flex cursor-pointer items-start gap-3 rounded-2xl p-4">
+                      <label key={k} data-tone={pr.tone} data-selected={sel} className="sx-option relative flex cursor-pointer items-start gap-3 rounded-xl p-4">
                         <input type="radio" name="sx-plan" value={k} checked={sel} onChange={() => setPlan(k)} className="sr-only" />
                         <span aria-hidden="true" className="cx-tone-chip inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl">
                           <Icon className="h-5 w-5" />
@@ -389,7 +389,7 @@ function Checkout({ requested, currentPlan, plans }: { requested: ConversionRequ
                     const price = i === "year" ? info?.yearly : info?.monthly;
                     const sel = interval === i;
                     return (
-                      <label key={i} data-tone="violet" data-selected={sel} className="sx-option flex cursor-pointer items-center gap-3 rounded-2xl p-4">
+                      <label key={i} data-tone="violet" data-selected={sel} className="sx-option flex cursor-pointer items-center gap-3 rounded-xl p-4">
                         <input type="radio" name="sx-interval" value={i} checked={sel} onChange={() => setBilling(i)} className="sr-only" />
                         <span aria-hidden="true" className={cn("inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2", sel ? "border-[color:var(--tone)]" : "border-border")}>
                           {sel && <span className="cx-tone-chip h-2.5 w-2.5 rounded-full" />}
@@ -561,7 +561,7 @@ function Stepper({ step, reach, onGo }: { step: CheckoutStep; reach: CheckoutSte
 
 function Panel({ icon, title, intro, children }: { icon: ReactNode; title: string; intro?: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-border bg-background/40 p-4 sm:p-5">
+    <section className="rounded-xl border border-border bg-background/40 p-4 sm:p-5">
       <div className="mb-4 flex items-start gap-3">
         <span aria-hidden="true" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground">
           {icon}
@@ -692,7 +692,7 @@ function Extensions({
           const picked = list.filter((e) => selected.includes(e.item.key)).length;
           const pickedLabel = picked > 0 ? `${t("subscription.checkout.picked", { n: picked })} · ` : "";
           return (
-            <details key={g.id} className="sx-details overflow-hidden rounded-2xl border border-border bg-card" open={g.id === "available" || picked > 0}>
+            <details key={g.id} className="sx-details overflow-hidden rounded-xl border border-border bg-card" open={g.id === "available" || picked > 0}>
               <summary className="flex items-center gap-3 px-4 py-3">
                 <span aria-hidden="true" data-tone={GROUP_TONE[g.id]} className="cx-tone-chip inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
                   <GIcon className="h-4 w-4" />
@@ -774,7 +774,7 @@ function Summary({ id, p, planName, interval, calculating, error }: { id: string
   const { t } = useI18n();
   const cur = p?.quote.currency ?? "EUR";
   return (
-    <section className="cx-glow overflow-hidden rounded-2xl border border-border bg-card" aria-labelledby={id} aria-live="polite">
+    <section className="cx-glow overflow-hidden rounded-xl border border-border bg-card" aria-labelledby={id} aria-live="polite">
       <div className="border-b border-border px-4 py-3 sm:px-5">
         <h3 id={id} className="text-lg font-bold text-foreground">
           {t("subscription.checkout.summaryTitle")}

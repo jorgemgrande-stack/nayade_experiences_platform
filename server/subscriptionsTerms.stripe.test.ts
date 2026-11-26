@@ -51,6 +51,9 @@ let billingStore: MemoryTermsBillingStore;
 let caps: MemoryCapabilityStore;
 let alerts: FailureAlerts;
 let companies: Map<number, Record<string, unknown>>;
+const noContacts = new Set<number>();
+/** Avisos internos a Dirección emitidos por el servicio de cobro (se vacía en cada world()). */
+const notices: Array<import("./commercialTerms/billingNotices").BillingNoticeEvent> = [];
 let catalogPort: ReturnType<typeof catalogFromWebStore>;
 const P: Record<string, number> = {};
 /** Llamadas al circuito ORDINARIO (pedidos y orquestador): deben quedarse a cero con las contrataciones negociadas. */
@@ -111,6 +114,7 @@ interface World {
 }
 
 function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxPolicy | null; gateway?: StripeGateway; fiscal?: EligibilityConfig; orderBilled?: (id: number) => Promise<boolean> } = {}): World {
+  notices.length = 0;
   const mode = o.mode ?? "test";
   const gateway = o.gateway ?? gw;
   const enabled = o.enabled ?? true;
@@ -128,10 +132,11 @@ function world(o: { enabled?: boolean; mode?: StripeMode; taxPolicy?: StripeTaxP
     termsStore,
     subscriptionStore: store,
 
-    crmStore: { get: async (_t: string, id: number) => companies.get(id) ?? null, list: async () => [] } as never,
+    crmStore: { get: async (_t: string, id: number) => companies.get(id) ?? null, list: async (_e: string, f: { companyId?: number }) => (noContacts.has(f.companyId ?? -1) ? [] : [{ id: 1, companyId: f.companyId, email: "admin@example.test", status: "active", isPrimary: true }]) } as never,
     capabilities: { list: (t: string) => (capabilityCalls.push(`list:${t}`), caps.list(t)), apply: (t: string, c: never, m: never) => (capabilityCalls.push(`apply:${t}`), caps.apply(t, c, m)) },
     licences: { ensure: async (id: number) => void licenceCalls.push(id) },
     orderBilled: o.orderBilled,
+    notice: async (e) => void notices.push(e),
     urls: URLS,
     namespace: NS,
     mode,
@@ -168,6 +173,11 @@ const applyNew = async (subId: number, input: TermsInput) => {
 /** Entrega a los webhooks los eventos que el doble ha emitido (cada uno, una vez) y los procesa. */
 async function deliver(w: World) {
   for (const ev of gw.events.slice().reverse()) await stripeStore.recordEvent({ eventId: ev.id, type: ev.type, apiVersion: ev.apiVersion, objectType: ev.objectType, objectId: ev.objectId, stripeCreated: ev.created, source: "webhook", now: clock });
+  return w.processor.processDue(200);
+}
+/** Como `deliver`, pero registrando los eventos en el orden contrario (los más recientes primero): webhooks fuera de orden. */
+async function deliverOutOfOrder(w: World) {
+  for (const ev of gw.events.slice()) await stripeStore.recordEvent({ eventId: ev.id, type: ev.type, apiVersion: ev.apiVersion, objectType: ev.objectType, objectId: ev.objectId, stripeCreated: ev.created, source: "webhook", now: clock });
   return w.processor.processDue(200);
 }
 /** Puesta en cobro completa: el operador la inicia, el cliente paga en Stripe y llegan los webhooks. */
@@ -381,6 +391,15 @@ describe("puesta en cobro: Checkout con las partidas negociadas, sin duplicados"
     expect((await w.neg.start(a.subId, A)).status).toBe("pending");
   });
 
+  it("sin contacto activo con correo (futuro administrador) no se abre el pago de un plan Core sin plataforma", async () => {
+    const w = world();
+    const a = await agreed(1);
+    noContacts.add(1);
+    await expect(w.neg.start(a.subId, A)).rejects.toThrow(/contacto activo con correo válido/);
+    expect(sessionCreates()).toHaveLength(0);
+    noContacts.delete(1);
+  });
+
   it("un producto de catálogo sin Product enlazado en Stripe no se cobra con otro", async () => {
     const w = world();
     stripeStore.prices.forEach((p) => {
@@ -567,6 +586,76 @@ describe("estado de pago por los webhooks: mismas reglas que el cobro ordinario"
     return { ...a, stripeId, own };
   }
 
+  it("avisos a Dirección: primer cobro y renovación, una sola vez cada uno aunque Stripe repita el evento", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    const first = notices.filter((n) => n.kind === "first_charge");
+    expect(first).toHaveLength(1);
+    expect(first[0].invoice!.amountPaidCents).toBeGreaterThan(0);
+    expect(notices.some((n) => n.kind === "method_confirmed")).toBe(false);
+    const period = (await subs.must(a.subId)).currentPeriodEnd;
+    clock = period + 60_000;
+    const inv = gw.chargeNegotiatedPeriod(stripeId);
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "recurring_charge")).toHaveLength(1);
+    await w.processor.process({ eventId: "rep-aviso", type: "invoice.paid", objectId: inv });
+    await w.reconciler.tick();
+    expect(notices.filter((n) => n.kind === "recurring_charge")).toHaveLength(1);
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
+  });
+
+  it("avisos a Dirección con webhooks fuera de orden: el mismo resultado, un aviso por hecho y el estado final correcto", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const s = await w.neg.start(a.subId, A);
+    const stripeId = gw.completeNegotiatedSession((s as { sessionId: string }).sessionId);
+    await deliverOutOfOrder(w);
+    expect(await row(a.subId)).toMatchObject({ status: "active", stripeSubscriptionId: stripeId });
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
+    clock = (await subs.must(a.subId)).currentPeriodEnd + 60_000;
+    const inv = gw.chargeNegotiatedPeriod(stripeId);
+    await deliverOutOfOrder(w);
+    // El evento de la factura anterior llega tarde y repetido: no retrocede el estado ni duplica avisos
+    await deliverOutOfOrder(w);
+    expect(await row(a.subId)).toMatchObject({ status: "active", lastPaidInvoiceId: inv });
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
+    expect(notices.filter((n) => n.kind === "recurring_charge")).toHaveLength(1);
+    expect(notices.some((n) => n.kind === "payment_failed")).toBe(false);
+  });
+
+  it("avisos a Dirección: aislamiento multiempresa (cada aviso lleva su suscripción; el fallo de una no toca a la otra)", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const b = await agreed(2);
+    const sa = await started(w, a.subId);
+    await started(w, b.subId);
+    const firsts = notices.filter((n) => n.kind === "first_charge");
+    expect(firsts.map((n) => n.subscriptionId).sort()).toEqual([a.subId, b.subId].sort());
+    expect(new Set(firsts.map((n) => n.key)).size).toBe(2);
+    clock = Math.max((await subs.must(a.subId)).currentPeriodEnd, (await subs.must(b.subId)).currentPeriodEnd) + 60_000;
+    gw.chargeNegotiatedPeriod(sa.stripeId, "open");
+    await deliver(w);
+    const failed = notices.filter((n) => n.kind === "payment_failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0].subscriptionId).toBe(a.subId);
+    expect(await row(b.subId)).toMatchObject({ status: "active" });
+    expect(await row(a.subId)).toMatchObject({ status: "past_due" });
+  });
+
+  it("avisos a Dirección: pago fallido una sola vez, sin repetirlo en cada lectura", async () => {
+    const w = world();
+    const a = await agreed(1);
+    const { stripeId } = await started(w, a.subId);
+    clock = (await subs.must(a.subId)).currentPeriodEnd + 60_000;
+    gw.chargeNegotiatedPeriod(stripeId, "open");
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "payment_failed")).toHaveLength(1);
+    await deliver(w);
+    await w.reconciler.tick();
+    expect(notices.filter((n) => n.kind === "payment_failed")).toHaveLength(1);
+  });
+
   it("renovación cobrada: factura registrada y el periodo interno avanza; repetir el evento no la duplica", async () => {
     const w = world();
     const a = await agreed(1);
@@ -621,6 +710,27 @@ describe("estado de pago por los webhooks: mismas reglas que el cobro ordinario"
     await deliver(w);
     expect((await row(a.subId)).status).toBe("suspended");
     expect((await statusOf("t-acme"))["plan.essential"]).toBe("suspended");
+  });
+
+  it("Stripe pausa la suscripción (paused): suspensión inmediata como unpaid; evento repetido sin efecto; al reanudar vuelven las licencias", async () => {
+    // Caracterización: en este camino paused == unpaid (mapStripeStatus), sin gracia. Coincide con el webhook de pedidos
+    // (stripe/events.ts) y DIFIERE del barrido de gracia de pedidos (resolutor del orquestador: paused → null).
+    const w = world();
+    const a = await licensed(w);
+    gw.updateSubscription(a.stripeId, { status: "paused" });
+    gw.emit("customer.subscription.paused", "subscription", a.stripeId);
+    await deliver(w);
+    expect((await row(a.subId)).status).toBe("suspended");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("suspended");
+    const n = (await termsStore.events({ subscriptionId: a.subId })).filter((e) => e.kind === "billing_state").length;
+    gw.emit("customer.subscription.updated", "subscription", a.stripeId);
+    await deliver(w);
+    expect((await termsStore.events({ subscriptionId: a.subId })).filter((e) => e.kind === "billing_state")).toHaveLength(n);
+    gw.updateSubscription(a.stripeId, { status: "active" });
+    gw.emit("customer.subscription.resumed", "subscription", a.stripeId);
+    await deliver(w);
+    expect((await row(a.subId)).status).toBe("active");
+    expect((await statusOf("t-acme"))["plan.essential"]).toBe("active");
   });
 
   it("fin en Stripe: licencias propias en solo lectura 30 días, la suscripción interna termina y deja de haber enlace", async () => {
@@ -1078,6 +1188,29 @@ describe("inicio del acuerdo y reloj de una contratación cobrada en Stripe", ()
     await deliver(w);
     expect(alerts.count("stripe.negotiated_invoice_mismatch")).toBe(0);
     expect(await w.billing.reconcile(a.subId)).toMatchObject({ consistent: true });
+  });
+
+  it("avisos a Dirección: la autorización de la tarjeta en prueba NO es un cobro; el primer cobro real llega después y se avisa una vez", async () => {
+    const w = world();
+    const D = T0 + 10 * DAY;
+    const a = await scheduled(1, D);
+    const s = await w.neg.start(a.subId, A);
+    const stripeId = gw.completeNegotiatedSession((s as { sessionId: string }).sessionId);
+    await deliver(w);
+    // Factura de 0 € pagada + método autorizado: aviso de método confirmado, jamás de cobro
+    expect(notices.filter((n) => n.kind === "method_confirmed")).toHaveLength(1);
+    expect(notices.filter((n) => n.kind === "first_charge" || n.kind === "recurring_charge")).toHaveLength(0);
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "method_confirmed")).toHaveLength(1);
+    clock = D + 60_000;
+    const charged = gw.chargeNegotiatedPeriod(stripeId);
+    await deliver(w);
+    const first = notices.filter((n) => n.kind === "first_charge");
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ key: `invoice:${charged}` });
+    expect(first[0].invoice!.amountPaidCents).toBeGreaterThan(0);
+    await deliver(w);
+    expect(notices.filter((n) => n.kind === "first_charge")).toHaveLength(1);
   });
 
   it("a menos de 48 h del inicio no se aplaza el primer cargo: se rechaza con la fecha y se pone a cobrar al llegar", async () => {

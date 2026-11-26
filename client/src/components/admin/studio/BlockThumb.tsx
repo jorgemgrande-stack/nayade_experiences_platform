@@ -14,7 +14,7 @@ const C = {
   card: "#ffffff",
   border: "#e2e8f0",
   media: "#dbe3ee",
-  accent: "#5b5bf6",
+  accent: "var(--primary)",
   dark: "#1e293b",
 };
 

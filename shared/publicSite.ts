@@ -9,6 +9,8 @@
  * autorización sigue en el servidor en cada operación.
  */
 
+import { fillUiText, siteUiText, SITE_UI_TEXT, type SiteUiText } from "./siteUiText";
+
 export interface PublicSiteFeatures {
   /** true si la empresa usa licencias por capacidad (pyme). */
   licensed: boolean;
@@ -117,11 +119,11 @@ export interface PublicSiteText {
 }
 
 /** Fecha de un artículo del carrito para mostrar, o null si no tiene (productos sin fecha) o no es válida. */
-export function cartItemDate(dateStr: string | null | undefined, opts: Intl.DateTimeFormatOptions): string | null {
+export function cartItemDate(dateStr: string | null | undefined, opts: Intl.DateTimeFormatOptions, locale = "es-ES"): string | null {
   const s = (dateStr ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
   const d = new Date(s + "T00:00:00");
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("es-ES", opts);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(locale, opts);
 }
 
 const LEGACY_TEXT: PublicSiteText = {
@@ -172,9 +174,48 @@ const GENERIC_TEXT: PublicSiteText = {
   quantityNoun: "unidades",
 };
 
-/** Textos de la web. Mientras no se sabe el modo (`null`), los genéricos: nunca se muestra lo sectorial de más. */
-export function publicSiteText(f: PublicSiteFeatures | null): PublicSiteText {
-  return f && !f.licensed ? LEGACY_TEXT : GENERIC_TEXT;
+/**
+ * Textos de la web. Mientras no se sabe el modo (`null`), los genéricos: nunca se muestra lo sectorial de más.
+ * Con `locale` distinto del español (carrito, pago y retorno del pago en el idioma de quien compra), las mismas
+ * palabras del diccionario de la web (shared/siteUiText.ts); sin traducción, el español de siempre.
+ */
+export function publicSiteText(f: PublicSiteFeatures | null, locale?: string | null): PublicSiteText {
+  const legacy = !!f && !f.licensed;
+  const base = legacy ? LEGACY_TEXT : GENERIC_TEXT;
+  const lang = (locale ?? "").toLowerCase().split("-")[0];
+  if (!lang || lang === "es" || !Object.prototype.hasOwnProperty.call(SITE_UI_TEXT, lang)) return base;
+  return localizePublicSiteText(base, siteUiText(lang), legacy);
+}
+
+/** Cantidad con la palabra de personas, unidades o participantes (productos de actividad). */
+export function quantityText(t: SiteUiText, n: number, kind: "persons" | "units" | "participants"): string {
+  const key = kind === "participants" ? (n === 1 ? "coParticipantCount1" : "coParticipantCountN") : kind === "units" ? (n === 1 ? "coUnitCount1" : "coUnitCountN") : n === 1 ? "coPersonCount1" : "coPersonCountN";
+  return fillUiText(t[key], { n });
+}
+
+function localizePublicSiteText(base: PublicSiteText, t: SiteUiText, legacy: boolean): PublicSiteText {
+  const count = (n: number) => fillUiText(legacy ? t.coCartCountLegacy : t.coCartCountGeneric, { count: `${n} ${legacy ? (n === 1 ? t.coExperience1 : t.coExperienceN) : n === 1 ? t.coArticle1 : t.coArticleN}` });
+  return {
+    ...base,
+    shopLabel: legacy ? t.coShopLabelLegacy : t.shop,
+    cartEmpty: legacy ? t.coCartEmptyLegacy : t.coCartEmptyGeneric,
+    cartBrowse: legacy ? t.coBrowseLegacy : t.coBrowseGeneric,
+    cartCount: count,
+    securePayment: legacy ? t.coSecureLegacy : t.coSecureGeneric,
+    securePaymentLong: legacy ? t.coSecureLongLegacy : t.coSecureGeneric,
+    secureBadge: legacy ? base.secureBadge : t.coSecureBadgeGeneric,
+    promoPlaceholder: legacy ? base.promoPlaceholder : t.coPromoPlaceholderGeneric,
+    commentsPlaceholder: legacy ? t.coCommentsPlaceholderLegacy : t.coCommentsPlaceholderGeneric,
+    contactHint: legacy ? t.coContactHintLegacy : t.coContactHintGeneric,
+    moreShop: legacy ? t.coMoreShopLegacy : t.coMoreShopGeneric,
+    browseShop: legacy ? t.coBrowseLegacy : t.coBrowseGeneric,
+    quoteCta: t.requestQuote,
+    quantity: (n) => quantityText(t, n, legacy ? "persons" : "units"),
+    quantityShort: legacy ? t.coPersonShort : t.coUnitShort,
+    perUnitShort: legacy ? t.coPerPersonShort : t.coPerUnitShort,
+    perUnitLong: legacy ? t.coPerPersonLong : t.coPerUnitLong,
+    quantityNoun: legacy ? t.coNounPersons : t.coNounUnits,
+  };
 }
 
 /** Título de la pestaña: «Quiénes somos · Empresa»; sin página, solo la empresa. */

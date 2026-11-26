@@ -7,7 +7,32 @@ import { isEconomicOnly } from "../subscriptions/service";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { presentTerms, type ClientView } from "./presentation";
 import type { CommercialTermsService } from "./service";
+import type { ContractingStage } from "./stripeBilling";
 import type { TermsStore } from "./store";
+
+/**
+ * Contratación ya FORMALIZADA (acuerdo aceptado) vista por la empresa mientras sigue en prueba o después. Todo sale de las
+ * fuentes reales (el acuerdo aceptado y el estado de cobro verificado por Stripe); nada se supone. Solo lectura.
+ */
+export interface TenantContracting {
+  /** Plan Core del acuerdo (null si el acuerdo no incluye plan: solo extensiones o servicios). */
+  planName: string | null;
+  /** Resto de partidas recurrentes del acuerdo (extensiones, módulos). */
+  extensions: string[];
+  /** Cuándo aceptó el cliente (ms) o null si no consta. */
+  acceptedAt: number | null;
+  /** Etapa del cobro (la misma que ve Administración): payment_pending, activation_scheduled, active, payment_failed… */
+  stage: ContractingStage["stage"];
+  /** Solo true con el cobro enlazado por webhook verificado de Stripe (nunca por volver de una página de éxito). */
+  paymentMethodAuthorized: boolean;
+  /** Prueba todavía vigente y su fin (ms). */
+  trialActive: boolean;
+  trialEndsAt: number | null;
+  /** Primer cobro (o próximo) previsto (ms); null si no hay método autorizado. NO es un cobro efectuado. */
+  nextChargeAt: number | null;
+  /** Cuota que se cobrará, con IVA desglosado (céntimos). */
+  recurring: { netCents: number; taxCents: number; totalCents: number; currency: string } | null;
+}
 
 export interface TenantCustomTerms {
   /** Condiciones vigentes, tal como se le presentaron al cliente. */
@@ -17,10 +42,12 @@ export interface TenantCustomTerms {
   /** Condiciones ya pactadas que entrarán en vigor más adelante. */
   upcoming: ClientView | null;
   renewsAt: number | null;
+  /** Contratación formalizada y estado de cobro (null si no se pudo leer o no hay acuerdo aceptado). */
+  contracting?: TenantContracting | null;
   timeZone: "Europe/Madrid";
 }
 
-export function tenantTermsReader(terms: CommercialTermsService, store: TermsStore, subscriptions: Pick<SubscriptionStore, "list"> & Partial<Pick<SubscriptionStore, "items">>, now: () => number) {
+export function tenantTermsReader(terms: CommercialTermsService, store: TermsStore, subscriptions: Pick<SubscriptionStore, "list"> & Partial<Pick<SubscriptionStore, "items">>, now: () => number, contractingOf?: (subscriptionId: number) => Promise<ContractingStage | null>) {
   /**
    * Suscripción solo económica (`isEconomicOnly`: partidas a medida y servicios puros, nada que conceda algo en la
    * plataforma): no es el plan de ninguna plataforma. No se muestra en «Mi plan» ni estorba a la suscripción que sí lo es.
@@ -41,11 +68,30 @@ export function tenantTermsReader(terms: CommercialTermsService, store: TermsSto
     const upcoming = all.filter((t) => t.id !== cur.id && t.effectiveFrom !== null && t.effectiveFrom > now() && (t.closedAt === null || t.closedAt > t.effectiveFrom)).sort((a, b) => a.effectiveFrom! - b.effectiveFrom!)[0] ?? null;
     const today = (await terms.ofSubscription(sub.id)).currentRecurring;
     const view = presentTerms(cur, next);
+    // Acuerdo ACEPTADO y su cobro, de las fuentes reales; si no se puede leer, la pantalla sigue como siempre (nunca rompe «Mi plan»)
+    const st = contractingOf ? await contractingOf(sub.id).catch(() => null) : null;
+    const isPlan = (l: { kind: string; chargeClass: string; catalog?: { family?: string } | null }) => l.kind === "catalog" && l.chargeClass === "recurring" && l.catalog?.family === "core_plan";
+    const recurringLines = cur.lines.filter((l) => l.chargeClass === "recurring");
+    const contracting: TenantContracting | null =
+      st && st.acceptedAt !== null
+        ? {
+            planName: recurringLines.find(isPlan)?.name ?? null,
+            extensions: recurringLines.filter((l) => !isPlan(l)).map((l) => l.name),
+            acceptedAt: st.acceptedAt,
+            stage: st.stage,
+            paymentMethodAuthorized: st.paymentMethodAuthorized,
+            trialActive: st.trialActive,
+            trialEndsAt: st.trialEndsAt,
+            nextChargeAt: st.nextChargeAt,
+            recurring: st.recurring ? { netCents: st.recurring.netCents, taxCents: st.recurring.taxCents, totalCents: st.recurring.totalCents, currency: st.recurring.currency } : null,
+          }
+        : null;
     return {
       current: view,
       today: today ? { netCents: today.netCents, taxCents: today.taxCents, totalCents: today.totalCents } : { netCents: view.recurring.netCents, taxCents: view.recurring.taxCents, totalCents: view.recurring.totalCents },
       upcoming: upcoming ? presentTerms(upcoming) : null,
       renewsAt: sub.cancelAt ? null : sub.currentPeriodEnd,
+      contracting,
       timeZone: "Europe/Madrid",
     };
   };

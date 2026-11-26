@@ -25,6 +25,8 @@ export default {
   prev: "Anterior",
   next: "Siguiente",
   pageOf: "Página {page} de {total}",
+  sections: { identity: "Identificación", discount: "Descuento", validity: "Validez y límites", notes: "Notas" },
+  saving: "Guardando…",
   form: {
     editTitle: "Editar código de descuento",
     newTitle: "Nuevo código de descuento",

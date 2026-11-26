@@ -85,11 +85,13 @@ export default function MaintenanceModeControl({ mode = "technical" }: { mode?: 
       <Button
         variant={isEnabled ? "destructive" : "outline"}
         size="sm"
-        className="text-xs gap-1.5"
+        className="text-xs gap-1.5 px-2.5 xl:px-3 whitespace-nowrap"
         onClick={handleOpen}
+        title={isEnabled ? t.on : t.off}
+        aria-label={isEnabled ? t.on : t.off}
       >
-        <Wrench className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{isEnabled ? t.on : t.off}</span>
+        <Wrench className="w-3.5 h-3.5" aria-hidden="true" />
+        <span className="hidden xl:inline">{isEnabled ? t.on : t.off}</span>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -99,24 +101,25 @@ export default function MaintenanceModeControl({ mode = "technical" }: { mode?: 
             <DialogDescription>{t.description}</DialogDescription>
           </DialogHeader>
 
-          <div className="flex items-center justify-between gap-4 py-2 border-y border-border/50">
+          <div className={`flex items-center justify-between gap-4 rounded-xl border p-3.5 transition-colors ${enabledDraft ? "border-danger/40 bg-danger/5" : "border-border bg-muted/40"}`}>
             <div>
               <p className="text-sm font-medium text-foreground">{t.switchLabel}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{t.switchHint}</p>
             </div>
-            <Switch checked={enabledDraft} onCheckedChange={setEnabledDraft} />
+            <Switch checked={enabledDraft} onCheckedChange={setEnabledDraft} aria-label={t.switchLabel} />
           </div>
 
           {enabledDraft && !isEnabled && (
-            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-300">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/40 rounded-lg text-sm text-foreground">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-warning" aria-hidden="true" />
               <p>{tr("maintenance.warning")}</p>
             </div>
           )}
 
           <div>
-            <p className="text-sm font-medium text-foreground mb-1.5">{tr("maintenance.messageShown")}</p>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{tr("maintenance.messageShown")}</p>
             <Textarea
+              aria-label={tr("maintenance.messageShown")}
               value={messageDraft}
               onChange={(e) => setMessageDraft(e.target.value)}
               rows={8}

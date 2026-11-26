@@ -19,6 +19,9 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { shopOrderProcedures } from "./routers/shopOrders";
 import { editionsRouter } from "./routers/editions";
+import { saleReadinessRouter } from "./routers/saleReadiness";
+import { parseIsoDay } from "../shared/requestDates";
+import { assertCanSwitchToFixed } from "./saleReadinessDb";
 import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, showsPrice, notForSaleMessage } from "../shared/offerMode";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -49,6 +52,7 @@ import {
   updateBookingStatus,
   getAllTransactions,
   getTransactionsCount,
+  getTransactionsSummary,
   getTransactionById,
   deleteTransaction,
   getAccountingReports,
@@ -149,6 +153,10 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
+import { resolveSupplements, supplementsTotalCents, supplementOffers, SupplementError, type SupplementLine } from "./supplements";
+import { recordOrderSupplements, supplementScopes, setSupplementScope, SupplementScopeError } from "./orderSupplements";
+import { assertChargeable, checkoutFingerprint, discountCents as computeDiscountCents, discountLogEntry, discountProblem, eurosToCents, fingerprintLogEntry, lineTotalCents, acquireCheckoutLock, variantUnitCents, variantQuantityProblem, productPeopleProblem, type OrderDiscount } from "./shopCheckoutRules";
+import { getTenantIdOrDefault } from "./_core/tenant";
 import { assertUserAdminAllowed, OWNER_SETTING_KEY } from "./_core/companyOwner";
 import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, legoPackSnapshots, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes, users as usersTable } from "../drizzle/schema";
 
@@ -326,6 +334,21 @@ const noClientPricedExtras = z
 // Social Token Net por sector: puntos por alquiler entregado y clase impartida de Ski Net (eventos del SDK)
 installSectorLoyalty(getSdkRuntime().events);
 
+/** Suplementos marcados de un producto en el pago online: ids → líneas con importe del servidor; un id ajeno o caducado se rechaza. */
+async function resolveSuppForCheckout(productId: number, ids: number[] | undefined, people: number, programmeVariantId?: number | null): Promise<SupplementLine[]> {
+  if (!ids || ids.length === 0) return [];
+  const rows = await getVariantsByExperience(productId, { includeSupplements: true });
+  try {
+    // Un suplemento puede estar acotado a ciertas opciones del programa (p. ej. Lifetime Access solo con ONLINE COMPLETO / INTENSIV)
+    const scopes = await supplementScopes(rows.filter((v) => !!v.supplementGroup).map((v) => v.id));
+    return resolveSupplements(ids, rows as any, people, { programmeVariantId: programmeVariantId ?? null, scopes });
+  } catch (e) {
+    if (e instanceof SupplementError) throw new TRPCError({ code: "BAD_REQUEST", message: `${e.message} No se ha realizado ningún cobro.` });
+    throw e;
+  }
+}
+const suppNameSuffix = (lines: SupplementLine[]): string => (lines.length ? ` + ${lines.map((l) => l.name).join(" + ")} (suplemento opcional)` : "");
+
 export const appRouter = router({
   system: systemRouter,
   publicExpenses: publicExpensesRouter,
@@ -446,6 +469,26 @@ export const appRouter = router({
         // Promociones de la tienda (reglas de precios Business, canal web) para enseñar el precio final y el ahorro;
         // el importe lo recalcula siempre el servidor al pagar. Sin reglas, lista vacía.
         return { ...exp, pricingRules: await webRulesForProduct({ id: exp.id, categoryId: exp.categoryId ?? null }), ...(i18n ? { i18n } : {}) };
+      }),
+
+    /**
+     * Suplementos opcionales del producto (alimentación ayurvédica…), AGRUPADOS por tramos y aparte de las opciones del
+     * programa. Nunca vienen marcados: los importes que ve la persona son orientativos; el servidor los recalcula.
+     */
+    getSupplementsByExperience: publicProcedure
+      .input(z.object({ experienceId: z.number(), locale: z.string().max(35).optional() }))
+      .query(async ({ input }) => {
+        const { getExperienceById: byId } = await import("./db");
+        const prod = await byId(input.experienceId);
+        if (!prod || !showsPrice(prod)) return [];
+        const rows = (await getVariantsByExperience(input.experienceId, { includeSupplements: true })).filter((v) => !!v.supplementGroup);
+        if (!rows.length) return [];
+        let shown = rows;
+        if (input.locale) {
+          const [{ localizeVariants }, { sqlI18nRepo }] = await Promise.all([import("./i18nProducts"), import("./i18nSqlRepo")]);
+          shown = (await localizeVariants(sqlI18nRepo(), rows, input.locale)) as typeof rows;
+        }
+        return supplementOffers(shown, await supplementScopes(rows.map((v) => v.id)));
       }),
 
     getVariantsByExperience: publicProcedure
@@ -672,7 +715,11 @@ export const appRouter = router({
           elapsedMs: z.number().int().min(0).optional(),
           page: z.string().max(200).optional(),
           variantId: z.number().int().positive().optional(),
+          /** Suplementos opcionales marcados (ids); solo se anotan en la solicitud, sin cobro */
+          supplementIds: z.array(z.number().int().positive()).max(5).optional(),
           lang: z.string().max(5).optional(),
+          /** Fecha de inicio deseada (YYYY-MM-DD) de un producto sin convocatoria; el servidor la valida contra el periodo del producto */
+          startDate: z.string().max(10).optional(),
         }).optional(),
         studioForm: z.object({
           slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
@@ -1708,7 +1755,13 @@ export const appRouter = router({
         description: z.string().optional(),
         basePrice: z.string().optional(),
         offerMode: z.enum(OFFER_MODES).optional(),
+        /** El administrador ha revisado los avisos de preparación y autoriza pasar a precio fijo. */
+        confirmReadiness: z.boolean().optional(),
         requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
+        /** Migración 0088: duración como dato y periodo de peticiones de fecha de inicio (YYYY-MM-DD; null = sin calendario) */
+        durationDays: z.number().int().min(1).max(366).nullable().optional(),
+        requestDatesFrom: z.string().refine((v) => parseIsoDay(v) !== null, "Fecha no válida (AAAA-MM-DD)").nullable().optional(),
+        requestDatesUntil: z.string().refine((v) => parseIsoDay(v) !== null, "Fecha no válida (AAAA-MM-DD)").nullable().optional(),
         isFeatured: z.boolean().optional(),
         isActive: z.boolean().optional(),
         image1: z.string().optional(),
@@ -1743,7 +1796,7 @@ export const appRouter = router({
         maxUnits: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        const { id, ...data } = input;
+        const { id, confirmReadiness, ...data } = input;
         // Sync coverImageUrl with image1
         if (data.image1 !== undefined) (data as Record<string, unknown>).coverImageUrl = data.image1;
         // Coerce legacy "general_21" → "general" (DB enum migration)
@@ -1795,6 +1848,8 @@ export const appRouter = router({
           } else if (input.offerMode === "fixed" && offerModeOf(cur) !== "fixed") {
             const typed = Number(String(processedData.basePrice ?? "").replace(",", "."));
             if (!(typed > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "Para volver a venderlo con precio fijo, indica el precio." });
+            // Preparación para venta online: solo al pasar a precio fijo desde otra modalidad
+            await assertCanSwitchToFixed(id, processedData, confirmReadiness === true);
           }
           if (processedData.requestCtaLabel !== undefined) processedData.requestCtaLabel = String(processedData.requestCtaLabel).replace(/\s+/g, " ").trim() || null;
         }
@@ -1815,6 +1870,7 @@ export const appRouter = router({
 
     /** E-4: convocatorias del producto (fechas, plazas e inscripciones) */
     editions: editionsRouter,
+    saleReadiness: saleReadinessRouter,
 
     toggleActive: adminProcedure
       .input(z.object({ id: z.number(), isActive: z.boolean() }))
@@ -1956,11 +2012,23 @@ export const appRouter = router({
       }),
 
     // ── VARIANTS ──────────────────────────────────────────────────────────────
+    /** Opciones del programa con las que se puede contratar un suplemento (p. ej. Lifetime Access solo con ONLINE COMPLETO / INTENSIV). Lista vacía = con cualquiera. */
+    setSupplementScope: adminProcedure
+      .input(z.object({ supplementVariantId: z.number().int().positive(), programmeVariantIds: z.array(z.number().int().positive()).max(30) }))
+      .mutation(async ({ input }) => {
+        try {
+          return await setSupplementScope(input.supplementVariantId, input.programmeVariantIds);
+        } catch (e) {
+          if (e instanceof SupplementScopeError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          throw e;
+        }
+      }),
+
     getVariants: adminProcedure
       .input(z.object({ experienceId: z.number().optional() }))
       .query(async ({ input }) => {
         if (input.experienceId) {
-          return getVariantsByExperience(input.experienceId, { includeExpired: true });
+          return getVariantsByExperience(input.experienceId, { includeExpired: true, includeSupplements: true });
         }
         return getAllVariantsGrouped();
       }),
@@ -1975,7 +2043,11 @@ export const appRouter = router({
         isRequired: z.boolean().default(false),
         sortOrder: z.number().default(0),
         validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
-      }))
+        minQty: z.number().int().min(1).nullable().optional(),
+        maxQty: z.number().int().min(1).nullable().optional(),
+        /** Suplemento opcional (aparte del programa; tramos con el mismo grupo). Solo «por persona» o «fijo». */
+        supplementGroup: z.string().trim().max(64).regex(/^[a-z0-9_-]+$/i).nullable().optional(),
+      }).refine((v) => !v.supplementGroup || v.priceType !== "percentage", { message: "Un suplemento no puede ser un porcentaje." }))
       .mutation(async ({ input }) => {
         return createVariant(input);
       }),
@@ -1990,6 +2062,9 @@ export const appRouter = router({
         isRequired: z.boolean().optional(),
         sortOrder: z.number().optional(),
         validUntil: z.string().regex(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/).nullable().optional(),
+        minQty: z.number().int().min(1).nullable().optional(),
+        maxQty: z.number().int().min(1).nullable().optional(),
+        supplementGroup: z.string().trim().max(64).regex(/^[a-z0-9_-]+$/i).nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -2125,6 +2200,21 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         return getTransactionsCount(input);
+      }),
+
+    /** Totales del filtro completo (ingresos, salidas, neto, nº): solo lectura, mismos filtros que el listado. */
+    getTransactionsSummary: adminProcedure
+      .input(z.object({
+        type: z.string().optional(),
+        status: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        saleChannel: z.string().optional(),
+        fiscalRegime: z.string().optional(),
+        search: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return getTransactionsSummary(input);
       }),
 
     getReports: adminProcedure
@@ -2492,8 +2582,10 @@ export const appRouter = router({
       .input(z.object({
         productId: z.number(),
         bookingDate: z.string(),
-        people: z.number().min(1).max(100),
-        variantId: z.number().optional(),
+        people: z.number().int().min(1).max(100),
+        variantId: z.number().int().positive().optional(),
+        /** Suplementos opcionales MARCADOS (ids de variante-suplemento); el servidor fija tramo e importe */
+        supplementIds: z.array(z.number().int().positive()).max(5).optional(),
         extras: noClientPricedExtras,
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
@@ -2512,12 +2604,20 @@ export const appRouter = router({
         // Sin pasarela configurada no se crea una pre-reserva que nunca podrá pagarse
         if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         // 1. Obtener el producto y validar que existe y tiene precio
+        // La ampliación de acceso de un módulo solo se compra desde el aula (pedido con la marca y el módulo del alumno)
+        if (input.productId === (await (await import("./learningExtensions")).extensionProductId())) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto solo se compra desde tu aula." });
         const { getExperienceById, getVariantsByExperience } = await import("./db");
         const product = await getExperienceById(input.productId);
         if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
         // E-6: «bajo petición» y «próximamente» no se compran online, llegue la petición como llegue
         if (offerModeOf(product) !== "fixed") throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(product.title, offerModeOf(product)) });
+        // Inactivo o sin publicar: tampoco se vende por esta vía (igual que en el carrito)
+        if (product.isActive === false || product.isPublished === false) throw new TRPCError({ code: "BAD_REQUEST", message: `«${product.title}» ya no está disponible.` });
         if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto no tiene precio fijo" });
+        {
+          const pp = productPeopleProblem(product as any, input.people);
+          if (pp) throw new TRPCError({ code: "BAD_REQUEST", message: pp });
+        }
 
         // 1b. Validar time slot si el producto lo requiere
         if ((product as any).hasTimeSlots && !input.selectedTimeSlotId && !input.selectedTime) {
@@ -2533,6 +2633,10 @@ export const appRouter = router({
         if (input.variantId) {
           const variants = await getVariantsByExperience(input.productId);
           const variant = variants.find(v => v.id === input.variantId);
+          // Una opción inexistente, caducada o de otro producto se rechaza (antes caía en silencio al precio base)
+          if (!variant) throw new TRPCError({ code: "BAD_REQUEST", message: `La opción elegida de «${product.title}» ya no está disponible. Vuelve a elegirla.` });
+          const vq = variantQuantityProblem(variant as any, input.people);
+          if (vq) throw new TRPCError({ code: "BAD_REQUEST", message: vq });
           if (variant) {
             const mod = parseFloat(String(variant.priceModifier ?? 0));
             if (variant.priceType === "percentage") {
@@ -2557,7 +2661,9 @@ export const appRouter = router({
         );
         // Los extras con precio del cliente se rechazan en el esquema de entrada (noClientPricedExtras).
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
-        const totalEuros = baseTotal + extrasTotal;
+        // Suplementos opcionales: solo los marcados, con tramo e importe calculados aquí (nunca los fija el cliente)
+        const suppLines = await resolveSuppForCheckout(input.productId, input.supplementIds, input.people, input.variantId);
+        const totalEuros = baseTotal + extrasTotal + supplementsTotalCents(suppLines) / 100;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
 
         // 2d. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
@@ -2573,7 +2679,7 @@ export const appRouter = router({
         const clientUserAgent = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
         const { id: createdReservationId } = await createReservation({
           productId: input.productId,
-          productName: product.title,
+          productName: product.title + suppNameSuffix(suppLines),
           bookingDate: input.bookingDate,
           people: input.people,
           extrasJson,
@@ -2599,6 +2705,7 @@ export const appRouter = router({
         // Artículo inventariable (Business): la línea se descuenta al confirmarse el pago
         await markOrderStockLine(createdReservationId, input.productId, input.variantId);
         await (await import("./orderVariant")).markOrderVariant(createdReservationId, input.variantId);
+        await recordOrderSupplements(createdReservationId, merchantOrder, input.productId, suppLines);
 
         // 5. Construir el formulario Redsys
         const pricingDesc = pricingType === "per_unit" && unitsBooked
@@ -2679,20 +2786,30 @@ export const appRouter = router({
     cartCheckout: publicProcedure
       .input(z.object({
         items: z.array(z.object({
-          productId: z.number(),
+          productId: z.number().int().positive(),
           bookingDate: z.string(),
-          people: z.number().min(1).max(100),
-          variantId: z.number().optional(),
+          people: z.number().int().min(1).max(100),
+          variantId: z.number().int().positive().optional(),
+          /** Suplementos opcionales MARCADOS (ids de variante-suplemento); el servidor fija tramo e importe */
+          supplementIds: z.array(z.number().int().positive()).max(5).optional(),
+          /** Convocatoria elegida (obligatoria si el producto tiene fechas abiertas; la valida el servidor) */
+          editionId: z.number().int().positive().optional(),
           extras: noClientPricedExtras,
           // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
-          legoPackLineIds: z.array(z.number()).optional(),
-          legoPackLinePeople: z.record(z.string(), z.number()).optional(),
+          legoPackLineIds: z.array(z.number().int().positive()).optional(),
+          legoPackLinePeople: z.record(z.string(), z.number().int().min(0)).optional(),
+          /** Nombres de los participantes (opcional; solo se guardan si la empresa lo ha activado). */
+          participants: z.array(z.string().max(120)).max(100).optional(),
         })).min(1).max(20),
+        /** Idioma de la web en que compra (correos y páginas de retorno). */
+        locale: z.string().max(12).optional(),
+        /** Aceptación de condiciones: el servidor la exige solo si la empresa lo ha configurado. */
+        consentAccepted: z.boolean().optional(),
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
         customerPhone: z.string().optional(),
         origin: z.string().url(),
-        discountCodeId: z.number().optional(),
+        discountCodeId: z.number().int().positive().optional(),
         /** Código tal como lo validó el cliente; debe coincidir con el id (el id es enumerable). */
         discountCode: z.string().max(50).optional(),
         // discountPercent ya no se acepta del cliente — se consulta en BD por discountCodeId
@@ -2710,10 +2827,14 @@ export const appRouter = router({
           if (!(await stripeAvailableForPublic())) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago con Stripe no está disponible en esta empresa." });
         } else if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         const { validateBuyer, normalizeSpanishTaxId, soldOutMessage, isPurchasable, orderNotes } = await import("../shared/shopOrders");
-        const buyerErrors = validateBuyer({ name: input.customerName, email: input.customerEmail, phone: input.customerPhone, wantsInvoice: !!input.billing, nif: input.billing?.nif, billingName: input.billing?.name, billingAddress: input.billing?.address });
+        const buyerErrors = validateBuyer({ name: input.customerName, email: input.customerEmail, phone: input.customerPhone, wantsInvoice: !!input.billing, nif: input.billing?.nif, billingName: input.billing?.name, billingAddress: input.billing?.address }, input.locale);
         const firstBuyerError = Object.values(buyerErrors)[0];
         if (firstBuyerError) throw new TRPCError({ code: "BAD_REQUEST", message: firstBuyerError });
         const billing = input.billing ? { nif: normalizeSpanishTaxId(input.billing.nif)!, ...(input.billing.name?.trim() ? { name: input.billing.name.trim() } : {}), ...(input.billing.address?.trim() ? { address: input.billing.address.trim() } : {}) } : null;
+        // Condiciones de la empresa: sin configurar no se exige nada (comportamiento de siempre)
+        const checkoutExtras = await import("./checkoutExtrasDb");
+        const checkoutCfg = await checkoutExtras.getCheckoutConfig();
+        checkoutExtras.assertConsentAccepted(checkoutCfg, input.consentAccepted, input.locale);
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
         const storefront = await (await import("./storefront")).getStorefront();
         // 1. Calcular el importe total de todos los artículos en backend
@@ -2729,6 +2850,10 @@ export const appRouter = router({
           unitCapacity?: number;
           unitsBooked?: number;
           stockVariantId?: number;
+          /** Suplementos elegidos (importe del servidor): se guardan con la línea pagada */
+          supplementLines?: SupplementLine[];
+          /** Convocatoria comprada: plazas retenidas al crear la reserva (editionPurchaseDb) */
+          editionLine?: import("./editionPurchaseDb").EditionLine;
           /** Lego Pack: no es un producto del catálogo, nunca descuenta inventario. */
           stockExcluded?: boolean;
           legoPackSnapshot?: {
@@ -2742,6 +2867,8 @@ export const appRouter = router({
         }> = [];
         const productNames: string[] = [];
         const cartRules = await activePricingRules();
+        const extensionProduct = await (await import("./learningExtensions")).extensionProductId();
+        if (extensionProduct != null && input.items.some((i) => i.productId === extensionProduct)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto solo se compra desde tu aula." });
         for (const item of input.items) {
           const product = await getExpById(item.productId);
           if (!product) {
@@ -2750,12 +2877,11 @@ export const appRouter = router({
             if (!dbInst) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
             const [packRow] = await dbInst.select().from(legoPacksTable).where(eq(legoPacksTable.id, item.productId)).limit(1);
             if (!packRow) throw new TRPCError({ code: "NOT_FOUND", message: `Producto ${item.productId} no encontrado` });
-            if (!packRow.isOnlineSale) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no está disponible para venta online` });
+            if (!packRow.isOnlineSale || !packRow.isActive || !packRow.isPublished) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no está disponible para venta online` });
             const pricing = await calculateLegoPackPrice(item.productId, item.legoPackLineIds);
-            const packPricePerPerson = pricing.totalFinal;
-            if (!(packPricePerPerson > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no tiene precio configurado` });
-            const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
-            const itemAmountCents = Math.round((packPricePerPerson * item.people + extrasTotal) * 100);
+            const packUnitCents = eurosToCents(pricing.totalFinal);
+            if (!(packUnitCents > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no tiene precio configurado` });
+            const itemAmountCents = packUnitCents * item.people + item.extras.reduce((s, e) => s + eurosToCents(e.price) * e.quantity, 0);
             totalAmountCents += itemAmountCents;
             itemsWithPrices.push({
               productId: item.productId,
@@ -2782,154 +2908,185 @@ export const appRouter = router({
           if (offerModeOf(product) !== "fixed") throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(product.title, offerModeOf(product)) });
           // Agotado, retirado o sin publicar: no se vende aunque siga en un carrito guardado
           if (!isPurchasable(product)) throw new TRPCError({ code: "BAD_REQUEST", message: soldOutMessage(product.title) });
-          if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
-          const basePrice = parseFloat(String(product.basePrice));
-          if (!(basePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
-          let pricePerPerson = basePrice;
+          // Importes en céntimos enteros. El precio base puede ser 0 si el precio vive en las opciones de pago (Basic/Premium…)
+          const productBaseCents = eurosToCents(String(product.basePrice ?? "0"));
+          if (!Number.isFinite(productBaseCents) || productBaseCents < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido` });
+          // Producto con convocatorias: exige edición válida y abierta con plazas; su precio (si lo tiene) sustituye al base
+          const editionLine = await (await import("./editionPurchaseDb")).prepareEditionLine({ experienceId: item.productId, editionId: item.editionId, people: item.people, ignoreSeats: true });
+          const baseCents = editionLine ? eurosToCents(String((await import("../shared/editionPurchase")).editionBasePrice(editionLine.priceOverride, productBaseCents / 100))) : productBaseCents;
           let lineName = product.title;
-          if (item.variantId) {
-            const variants = await getVariants(item.productId);
-            const variant = variants.find(v => v.id === item.variantId);
-            if (variant) {
-              const mod = parseFloat(String(variant.priceModifier ?? 0));
-              pricePerPerson = variant.priceType === "percentage"
-                ? basePrice + (basePrice * mod / 100)
-                : mod;
-              // Tienda de una pyme: la opción elegida (talla, color…) figura en el pedido y en la factura
-              if (storefront.kind === "generic") lineName = `${product.title} · ${variant.name}`;
-            } else if (storefront.kind === "generic") {
-              throw new TRPCError({ code: "BAD_REQUEST", message: `La opción elegida de «${product.title}» ya no está disponible. Vuelve a añadirlo al carrito.` });
-            }
-          } else if (storefront.kind === "generic" && (await getVariants(item.productId)).some(v => v.isRequired)) {
+          // La opción elegida debe existir y ser de ESTE producto (las caducadas no se listan); nunca cae al precio base
+          const variants = await getVariants(item.productId);
+          const variant = item.variantId !== undefined ? variants.find(v => v.id === item.variantId) : undefined;
+          if (item.variantId !== undefined && !variant) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `La opción elegida de «${product.title}» ya no está disponible. Vuelve a añadirlo al carrito.` });
+          }
+          // Límites de cantidad de la opción (minQty/maxQty) y del producto (minPersons/maxPersons); nulo = sin límite
+          const qtyProblem = variantQuantityProblem(variant as any, item.people) ?? productPeopleProblem(product as any, item.people);
+          if (qtyProblem) throw new TRPCError({ code: "BAD_REQUEST", message: qtyProblem });
+          if (!variant && variants.some(v => v.isRequired)) {
             throw new TRPCError({ code: "BAD_REQUEST", message: `Elige una opción de «${product.title}» antes de pagar.` });
           }
-          const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+          if (!variant && !product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
+          if (!variant && !(baseCents > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
+          let unitCents = variant ? variantUnitCents(baseCents, variant) : baseCents;
+          // Tienda de una pyme: la opción elegida (talla, color…) figura en el pedido y en la factura
+          if (variant && storefront.kind === "generic") lineName = `${product.title} · ${variant.name}`;
+          const extrasCents = item.extras.reduce((s, e) => s + eurosToCents(e.price) * e.quantity, 0);
           const itemPricingType = (product as any).pricingType ?? "per_person";
           const itemUnitCap = (product as any).unitCapacity ?? null;
           const itemMaxUnits = (product as any).maxUnits ?? null;
           // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
-          assertCheckoutLinePriced(product.title, calcPricing(pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalEuros, `#${item.productId}, opción ${item.variantId ?? "-"}`);
+          assertCheckoutLinePriced(product.title, lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalCents / 100, `#${item.productId}, opción ${item.variantId ?? "-"}`);
           // Reglas de precios de la empresa (Business), antes del cupón: sin reglas, el precio de siempre
-          pricePerPerson = webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: item.people, serviceDate: item.bookingDate }).unitPrice;
-          const { totalEuros: itemBase, unitsBooked: itemUnits } = calcPricing(
-            pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits
-          );
-          const itemTotalEuros = itemBase + extrasTotal;
-          const itemAmountCents = Math.round(itemTotalEuros * 100);
+          unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: editionLine?.bookingDate ?? item.bookingDate }).unitPrice);
+          const { totalCents: itemBaseCents, unitsBooked: itemUnits } = lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits);
+          // Suplementos opcionales: solo los marcados; importe y tramo (individual / desde 2) los fija el servidor
+          const suppLines = await resolveSuppForCheckout(item.productId, item.supplementIds, item.people, item.variantId);
+          lineName += suppNameSuffix(suppLines);
+          const itemAmountCents = itemBaseCents + extrasCents + supplementsTotalCents(suppLines);
           totalAmountCents += itemAmountCents;
           itemsWithPrices.push({
             productId: item.productId,
             productName: lineName,
-            bookingDate: item.bookingDate,
+            bookingDate: editionLine?.bookingDate ?? item.bookingDate,
             people: item.people,
             extrasJson: JSON.stringify(item.extras),
             amountTotal: itemAmountCents,
+            editionLine: editionLine ?? undefined,
             pricingType: itemPricingType,
             unitCapacity: itemUnitCap ?? undefined,
             unitsBooked: itemUnits || undefined,
             stockVariantId: item.variantId,
+            supplementLines: suppLines,
           });
           productNames.push(lineName);
         }
-        // 1b. Un descuento por id exige conocer el código (el id es enumerable). Se valida
-        // ANTES de crear reservas para no dejar pre-reservas huérfanas si se rechaza.
+        // 1b. Descuento: se valida SIEMPRE en servidor y ANTES de crear reservas. Un código inexistente, inactivo, caducado
+        // o agotado se rechaza con aviso (antes se ignoraba y se cobraba el precio completo sin decirlo). El id exige además
+        // conocer el código (el id es enumerable). El uso se consume al CONFIRMAR el pago, no aquí.
+        let discountInfo: OrderDiscount | null = null;
+        let discountRow: { id: number; maxUses: number | null; currentUses: number } | null = null;
+        let finalAmountCents = totalAmountCents;
         if (input.discountCodeId) {
           const dbCheck = await getDb();
           const [codeRow] = dbCheck
             ? await dbCheck
-                .select({ code: discountCodes.code })
+                .select({ id: discountCodes.id, code: discountCodes.code, discountType: discountCodes.discountType, discountPercent: discountCodes.discountPercent, discountAmount: discountCodes.discountAmount, status: discountCodes.status, expiresAt: discountCodes.expiresAt, maxUses: discountCodes.maxUses, currentUses: discountCodes.currentUses })
                 .from(discountCodes)
                 .where(eq(discountCodes.id, input.discountCodeId))
                 .limit(1)
             : [];
-          if (
-            codeRow &&
-            (!input.discountCode ||
-              codeRow.code.toUpperCase() !== input.discountCode.toUpperCase().trim())
-          ) {
+          if (codeRow && (!input.discountCode || codeRow.code.toUpperCase() !== input.discountCode.toUpperCase().trim())) {
             throw new TRPCError({
               code: "BAD_REQUEST",
               message: "El código de descuento no es válido. Vuelve a aplicarlo e inténtalo de nuevo.",
             });
           }
+          const problem = discountProblem(codeRow);
+          if (problem) throw new TRPCError({ code: "BAD_REQUEST", message: `${problem} No se ha realizado ningún cobro.` });
+          const dc = computeDiscountCents(totalAmountCents, codeRow);
+          finalAmountCents = totalAmountCents - dc;
+          discountRow = { id: codeRow.id, maxUses: codeRow.maxUses, currentUses: codeRow.currentUses };
+          discountInfo = { id: codeRow.id, code: codeRow.code, percent: Number(codeRow.discountPercent) || 0, discountCents: dc, originalCents: totalAmountCents, finalCents: finalAmountCents };
         }
-        // 1c. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
-        const cartStock = await import("./inventoryDb");
-        await cartStock.assertStockAvailable(itemsWithPrices.filter((it) => !it.stockExcluded).map((it, i) => ({ key: String(i + 1), productId: it.productId, variantId: it.stockVariantId ?? null, quantity: cartStock.orderLineQuantity({ pricing_type: it.pricingType, units_booked: it.unitsBooked, people: it.people }), name: it.productName })), null);
-        // 2. Generar un merchantOrder único para todo el carrito
-        const merchantOrder = generateMerchantOrder();
-        // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
-        const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
-        const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
-        const dbForSnapshots = await getDb();
-        for (const { legoPackSnapshot, stockVariantId, stockExcluded, ...item } of itemsWithPrices) {
-          const { id: reservationId } = await createReservation({
-            ...item,
-            customerName: input.customerName,
-            customerEmail: input.customerEmail,
-            customerPhone: input.customerPhone,
-            merchantOrder,
-            notes: orderNotes(productNames, input.comments),
-            pricingType: item.pricingType,
-            unitCapacity: item.unitCapacity,
-            unitsBooked: item.unitsBooked,
-            // Meta CAPI attribution
-            fbp: input.fbp ?? undefined,
-            fbc: input.fbc ?? undefined,
-            clientIpAddress: cartClientIp,
-            clientUserAgent: cartClientUa,
-          });
-          if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
-          // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
-          if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
-          // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
-          // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
-          // realmente elegido, en vez de expandir el catálogo completo del pack.
-          if (legoPackSnapshot && dbForSnapshots) {
-            try {
-              await dbForSnapshots.insert(legoPackSnapshots).values({
-                legoPackId: legoPackSnapshot.legoPackId,
-                legoPackTitle: legoPackSnapshot.legoPackTitle,
-                operationType: "reservation",
-                operationId: reservationId,
-                linesSnapshot: legoPackSnapshot.lines as any,
-                totalOriginal: String(legoPackSnapshot.totalOriginal.toFixed(2)),
-                totalDiscount: String(legoPackSnapshot.totalDiscount.toFixed(2)),
-                totalFinal: String(legoPackSnapshot.totalFinal.toFixed(2)),
-              });
-            } catch (err) {
-              console.error(`[Checkout] Error guardando snapshot de Lego Pack: ${err}`);
+        // 1b'. Importe cobrable (mín. 0,50 €; 0 € no se cobra): antes de crear reservas, sin pre-reservas huérfanas
+        assertChargeable(finalAmountCents);
+        // 1b''. Idempotencia: el mismo carrito del mismo comprador (clics repetidos) reutiliza el pedido pendiente en vez de
+        // crear otro. Tras un pago fallido, cancelado o caducado el pedido ya no está pendiente y se crea uno nuevo.
+        const fingerprint = checkoutFingerprint({ email: input.customerEmail, items: input.items, finalCents: finalAmountCents, discountCodeId: input.discountCodeId ?? null, comments: input.comments, billing });
+        const releaseLock = await acquireCheckoutLock(`${getTenantIdOrDefault()}|${fingerprint}`);
+        try {
+        const shopOrdersDb = await import("./shopOrdersDb");
+        let merchantOrder: string;
+        const existingOrder = await shopOrdersDb.findPendingOrderByFingerprint(input.customerEmail, fingerprint);
+        if (existingOrder) {
+          merchantOrder = existingOrder;
+        } else {
+          // Pedido nuevo: ahora sí se comprueban las plazas de cada convocatoria (el pedido reutilizado ya las retiene)
+          for (const it of itemsWithPrices) {
+            if (it.editionLine) await (await import("./editionPurchaseDb")).prepareEditionLine({ experienceId: it.productId, editionId: it.editionLine.editionId, people: it.people });
+          }
+          // Código de usos limitados: los pagos en curso «sostienen» un uso durante la ventana, para que dos pagos
+          // simultáneos no agoten el código a la vez (la confirmación del pago lo vuelve a garantizar de forma atómica)
+          if (discountRow && discountRow.maxUses !== null) {
+            const holds = await shopOrdersDb.countPendingDiscountHolds(discountRow.id);
+            if (discountRow.currentUses + holds >= discountRow.maxUses) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "El código de descuento se está usando en otro pago en curso. Inténtalo de nuevo en unos minutos. No se ha realizado ningún cobro." });
             }
           }
-        }
-        // Datos fiscales del comprador: pasan a la factura y a su ficha del CRM cuando se confirma el pago
-        if (billing) await (await import("./shopOrdersDb")).recordCheckoutDetails(merchantOrder, billing);
-        // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor
-        let finalAmountCents = totalAmountCents;
-        if (input.discountCodeId) {
-          const db = await getDb();
-          const [discountRow] = await db!
-            .select({ discountType: discountCodes.discountType, discountPercent: discountCodes.discountPercent, discountAmount: discountCodes.discountAmount, status: discountCodes.status, expiresAt: discountCodes.expiresAt, maxUses: discountCodes.maxUses, currentUses: discountCodes.currentUses })
-            .from(discountCodes)
-            .where(eq(discountCodes.id, input.discountCodeId))
-            .limit(1);
-          if (discountRow && discountRow.status === "active") {
-            const expired = (discountRow.expiresAt && new Date(discountRow.expiresAt) < new Date())
-              || (discountRow.maxUses !== null && discountRow.currentUses >= discountRow.maxUses);
-            if (!expired) {
-              let discountCents: number;
-              if (discountRow.discountType === "fixed") {
-                const fixedEuros = parseFloat((discountRow.discountAmount as unknown as string) ?? "0");
-                discountCents = Math.round(fixedEuros * 100);
-              } else {
-                const pct = parseFloat(discountRow.discountPercent as unknown as string);
-                discountCents = Math.round(totalAmountCents * pct / 100);
+          // 1c. Inventario (Business): sin existencias con la política «bloquear», no se inicia el pago
+          const cartStock = await import("./inventoryDb");
+          await cartStock.assertStockAvailable(itemsWithPrices.filter((it) => !it.stockExcluded).map((it, i) => ({ key: String(i + 1), productId: it.productId, variantId: it.stockVariantId ?? null, quantity: cartStock.orderLineQuantity({ pricing_type: it.pricingType, units_booked: it.unitsBooked, people: it.people }), name: it.productName })), null);
+          // 2. Generar un merchantOrder único para todo el carrito
+          merchantOrder = generateMerchantOrder();
+          // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
+          const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
+          const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
+          const dbForSnapshots = await getDb();
+          for (const { legoPackSnapshot, stockVariantId, stockExcluded, editionLine, supplementLines, ...item } of itemsWithPrices) {
+            const reservationData = {
+              ...item,
+              customerName: input.customerName,
+              customerEmail: input.customerEmail,
+              customerPhone: input.customerPhone,
+              merchantOrder,
+              notes: [orderNotes(productNames, input.comments), editionLine?.note].filter(Boolean).join("\n"),
+              pricingType: item.pricingType,
+              unitCapacity: item.unitCapacity,
+              unitsBooked: item.unitsBooked,
+              // Meta CAPI attribution
+              fbp: input.fbp ?? undefined,
+              fbc: input.fbc ?? undefined,
+              clientIpAddress: cartClientIp,
+              clientUserAgent: cartClientUa,
+            };
+            const reservationId = editionLine
+              ? await (await import("./editionPurchaseDb")).createEditionLine(editionLine, reservationData)
+              : (await createReservation(reservationData)).id;
+            if (!legoPackSnapshot && !stockExcluded) await cartStock.markOrderStockLine(reservationId, item.productId, stockVariantId);
+            // Opción comprada de la línea (la usa el LMS para matricular solo en lo contratado)
+            if (!legoPackSnapshot) await (await import("./orderVariant")).markOrderVariant(reservationId, stockVariantId);
+            // Suplementos pagados de la línea (dato estructurado: acceso digital y reembolso por separado)
+            if (supplementLines?.length) await recordOrderSupplements(reservationId, merchantOrder, item.productId, supplementLines);
+            // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
+            // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
+            // realmente elegido, en vez de expandir el catálogo completo del pack.
+            if (legoPackSnapshot && dbForSnapshots) {
+              try {
+                await dbForSnapshots.insert(legoPackSnapshots).values({
+                  legoPackId: legoPackSnapshot.legoPackId,
+                  legoPackTitle: legoPackSnapshot.legoPackTitle,
+                  operationType: "reservation",
+                  operationId: reservationId,
+                  linesSnapshot: legoPackSnapshot.lines as any,
+                  totalOriginal: String(legoPackSnapshot.totalOriginal.toFixed(2)),
+                  totalDiscount: String(legoPackSnapshot.totalDiscount.toFixed(2)),
+                  totalFinal: String(legoPackSnapshot.totalFinal.toFixed(2)),
+                });
+              } catch (err) {
+                console.error(`[Checkout] Error guardando snapshot de Lego Pack: ${err}`);
               }
-              finalAmountCents = Math.max(0, totalAmountCents - discountCents);
             }
           }
+          // Datos fiscales del comprador: pasan a la factura y a su ficha del CRM cuando se confirma el pago
+          const shopOrders = await import("./shopOrdersDb");
+          if (billing) await shopOrders.recordCheckoutDetails(merchantOrder, billing);
+          // Idioma de quien compra, aceptación de condiciones (fecha, huella del texto, IP) y participantes
+          try {
+            await checkoutExtras.recordCheckoutExtras(merchantOrder, {
+              locale: input.locale ? checkoutExtras.uiLocaleOf(input.locale) : null,
+              consent: checkoutCfg.consentRequired && input.consentAccepted ? checkoutExtras.buildConsent(checkoutCfg, input.locale, cartClientIp ?? null) : null,
+              participantsByLine: checkoutCfg.participantsEnabled ? input.items.map((i) => i.participants) : [],
+              quantities: input.items.map((i) => i.people),
+            });
+          } catch (e) {
+            console.error("[Checkout] No se pudieron guardar los datos añadidos del pedido:", (e as Error).message);
+          }
+          // Huella (idempotencia ante clics repetidos) y código de descuento aplicado (se consume al confirmar el pago)
+          await shopOrders.appendOrderLogEntries(merchantOrder, [fingerprintLogEntry(fingerprint, Date.now()), ...(discountInfo ? [discountLogEntry(discountInfo, Date.now())] : [])]);
         }
-        // 4. Construir el formulario Redsys con el importe total
+        // 4. Construir el formulario Redsys con el importe total (en un pedido reutilizado: el mismo, con la misma sesión de Stripe)
         const description = productNames.length === 1
           ? productNames[0]
           : storefront.kind === "generic"
@@ -2957,6 +3114,9 @@ export const appRouter = router({
           itemCount: input.items.length,
           redsysForm,
         };
+        } finally {
+          releaseLock();
+        }
       }),
   }),
 

@@ -1,16 +1,17 @@
 import { useState } from "react";
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, MapPin, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
 import { useVocabulary } from "@/lib/vocabulary";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -34,7 +35,7 @@ export default function LocationsManager() {
   const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const utils = trpc.useUtils();
-  const { data: locations, isLoading } = trpc.products.getLocations.useQuery();
+  const { data: locations, isLoading, isError, error, refetch } = trpc.products.getLocations.useQuery();
 
   const createMut = trpc.products.createLocation.useMutation({
     onSuccess: () => { utils.products.getLocations.invalidate(); toast.success(t("productsLocations.toast.created")); setOpen(false); setForm(emptyForm); },
@@ -100,19 +101,23 @@ export default function LocationsManager() {
   };
 
   return (
-    <AdminLayout title={t("productsLocations.title")}>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">{t("productsLocations.title")}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t("productsLocations.count", { n: locations?.length ?? 0 })}</p>
-        </div>
-        <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
-          <Plus className="w-4 h-4 mr-2" /> {t("productsLocations.newLocation")}
-        </Button>
-      </div>
+    <AdminLayout>
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <PanelPageHeader
+        icon={<MapPin />}
+        title={t("productsLocations.title")}
+        description={isError ? undefined : t("productsLocations.count", { n: locations?.length ?? 0 })}
+        actions={
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsLocations.newLocation")}
+          </Button>
+        }
+      />
 
       {isLoading ? (
-        <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />)}</div>
+        <div role="status" className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />)}</div>
+      ) : isError ? (
+        <PanelError error={error} onRetry={() => refetch()} title={t("productsLocations.loadError")} />
       ) : sortedLocations.length === 0 ? (
         <PanelEmpty
           icon={<MapPin className="w-6 h-6" />}
@@ -142,7 +147,7 @@ export default function LocationsManager() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-semibold text-foreground">{loc.name}</p>
-                  <Badge variant="outline" className="text-xs">{loc.isActive ? t("productsLocations.active") : t("productsLocations.inactive")}</Badge>
+                  <StatusBadge tone={loc.isActive ? "success" : "neutral"}>{loc.isActive ? t("productsLocations.active") : t("productsLocations.inactive")}</StatusBadge>
                 </div>
                 {loc.address && <p className="text-sm text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">{loc.address}</p>}
                 {loc.description && <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{loc.description}</p>}
@@ -169,7 +174,7 @@ export default function LocationsManager() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onClick={() => { if (confirm(t("productsLocations.confirmRemove"))) hardDeleteMut.mutate({ id: loc.id }); }}
+                      onClick={async () => { if ((await confirmAction({ description: t("productsLocations.confirmRemove"), destructive: true }))) hardDeleteMut.mutate({ id: loc.id }); }}
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-2" /> {t("productsLocations.remove")}
                     </DropdownMenuItem>
@@ -180,6 +185,8 @@ export default function LocationsManager() {
           ))}
         </div>
       )}
+
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">

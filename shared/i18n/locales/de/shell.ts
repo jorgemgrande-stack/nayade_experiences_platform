@@ -31,7 +31,7 @@ export default {
     logout: "Abmelden",
     exitSupport: "Support-Modus beenden",
   },
-  brand: { restaurants: "Restaurants", control: "Kontrolle", admin: "Admin", home: "{brand}: zur Startseite des Panels" },
+  brand: { restaurants: "Restaurants", control: "Kontrolle", admin: "Admin", home: "{brand}: zur Startseite des Panels", poweredBy: "Powered by Elephant Core", byBigElephant: "Big Elephant", platformLabel: "Plattform Elephant Core von Big Elephant" },
   trial: "Testphase: {days, plural, one {# Tag} other {# Tage}}",
   theme: { toLight: "Zum hellen Modus wechseln", toDark: "Zum dunklen Modus wechseln" },
   notifications: {

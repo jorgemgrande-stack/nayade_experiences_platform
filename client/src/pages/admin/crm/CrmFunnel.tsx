@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { CompactEmpty, SummaryStrip } from "@/components/admin/SalesFamilyShell";
 import { FormField, TAG_COLOR_CLASSES, describedBy, selectClass } from "@/components/admin/crm/CrmParts";
 import { toastError } from "@/lib/errorMessage";
 import { cn } from "@/lib/utils";
@@ -204,22 +205,26 @@ export default function CrmFunnel() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("crmFunnel.board.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("crmFunnel.board.description")}</p>
+        {/* Cabecera compacta: título, búsqueda y configuración en una fila */}
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:h-4 [&_svg]:w-4"><Target /></span>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold leading-tight text-foreground">{t("crmFunnel.board.title")}</h1>
+              <p className="hidden text-xs text-muted-foreground lg:block">{t("crmFunnel.board.description")}</p>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <form
               role="search"
               onSubmit={(e) => {
                 e.preventDefault();
                 setQuery(search.trim());
               }}
-              className="relative"
+              className="relative min-w-0"
             >
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("crmFunnel.board.searchPlaceholder")} aria-label={t("crmFunnel.board.searchAria")} className="w-64 pl-8" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("crmFunnel.board.searchPlaceholder")} aria-label={t("crmFunnel.board.searchAria")} className="h-9 w-full bg-card pl-8 sm:w-64" />
             </form>
             {canConfigure && (
               <Button variant="outline" onClick={() => setConfigOpen(true)}>
@@ -227,21 +232,14 @@ export default function CrmFunnel() {
               </Button>
             )}
           </div>
-        </div>
+        </header>
 
         {forecast && (
-          <dl className="grid gap-3 sm:grid-cols-3">
-            {[
-              { label: t("crmFunnel.board.openAmount"), value: forecast.openAmount },
-              { label: t("crmFunnel.board.weighted"), value: forecast.weightedTotal },
-              { label: t("crmFunnel.board.won"), value: forecast.wonAmount },
-            ].map((k) => (
-              <div key={k.label} className="rounded-2xl border border-border bg-card px-4 py-3">
-                <dt className="text-xs text-muted-foreground">{k.label}</dt>
-                <dd className="text-xl font-semibold tabular-nums text-foreground">{money(k.value)}</dd>
-              </div>
-            ))}
-          </dl>
+          <SummaryStrip items={[
+            { key: "open", label: t("crmFunnel.board.openAmount"), value: money(forecast.openAmount), primary: true, tone: "brand" },
+            { key: "weighted", label: t("crmFunnel.board.weighted"), value: money(forecast.weightedTotal), tone: "info" },
+            { key: "won", label: t("crmFunnel.board.won"), value: money(forecast.wonAmount), tone: "success" },
+          ]} />
         )}
 
         {board.isLoading ? (
@@ -249,7 +247,7 @@ export default function CrmFunnel() {
         ) : board.isError ? (
           <PanelError error={board.error} onRetry={() => board.refetch()} title={t("crmFunnel.board.loadError")} />
         ) : cards.length === 0 && !query ? (
-          <PanelEmpty icon={<Target className="h-6 w-6" />} title={t("crmFunnel.board.emptyTitle")} description={t("crmFunnel.board.emptyDesc")} />
+          <CompactEmpty icon={<Target />} title={t("crmFunnel.board.emptyTitle")} description={t("crmFunnel.board.emptyDesc")} />
         ) : (
           <>
             {board.data?.truncated && <p className="text-sm text-muted-foreground">{t("crmFunnel.board.truncated")}</p>}
@@ -261,7 +259,7 @@ export default function CrmFunnel() {
                   <section
                     key={s.id}
                     aria-label={t("crmFunnel.board.stageAria", { name: s.name, n: list.length })}
-                    className={cn("flex w-72 shrink-0 flex-col rounded-2xl border border-border bg-muted/30", over === s.id && "ring-2 ring-primary")}
+                    className={cn("flex w-72 shrink-0 flex-col rounded-xl border border-border bg-muted/30", over === s.id && "ring-2 ring-primary")}
                     onDragOver={(e) => {
                       if (!canMove || dragging === null) return;
                       e.preventDefault();

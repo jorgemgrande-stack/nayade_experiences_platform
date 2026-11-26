@@ -5,6 +5,7 @@
  * comisiones y lo que paga cada canal. La autorización real (licencia `multichannel` y administración) la aplica el
  * servidor.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useMemo, useState } from "react";
 import { Ban, Copy, Download, Link2, Pencil, Plus, RefreshCw, RotateCcw, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import {
   MC_CHANNEL_KINDS,
@@ -124,13 +126,13 @@ function Channels() {
                 <Button size="sm" variant="outline" onClick={() => setForm({ id: c.id, name: c.name, kind: c.kind, provider: c.provider, commissionPct: String(c.commissionPct), commissionFixed: (c.commissionFixedCents / 100).toFixed(2), settlementDays: c.settlementDays == null ? "" : String(c.settlementDays), notes: c.notes ?? "", csvMapping: c.csvMapping })}>
                   <Pencil className="mr-1.5 h-4 w-4" aria-hidden="true" />Editar
                 </Button>
-                <Button size="sm" variant="outline" disabled={rotate.isPending} onClick={() => {
-                  if (c.inboundEnabled && !window.confirm("El enlace actual dejará de funcionar. ¿Generar uno nuevo?")) return;
+                <Button size="sm" variant="outline" disabled={rotate.isPending} onClick={async () => {
+                  if (c.inboundEnabled && !(await confirmAction({ description: "El enlace actual dejará de funcionar. ¿Generar uno nuevo?" }))) return;
                   rotate.mutate({ id: c.id }, { onSuccess: (r) => (setLink({ name: c.name, ...r }), refresh()) });
                 }}>
                   <Link2 className="mr-1.5 h-4 w-4" aria-hidden="true" />{c.inboundEnabled ? "Cambiar enlace" : "Generar enlace"}
                 </Button>
-                {c.inboundEnabled && <Button size="sm" variant="outline" onClick={() => window.confirm("¿Revocar el enlace de entrada? El canal no podrá enviar más ventas por él.") && revoke.mutate({ id: c.id })}>Revocar enlace</Button>}
+                {c.inboundEnabled && <Button size="sm" variant="outline" onClick={async () => (await confirmAction({ description: "¿Revocar el enlace de entrada? El canal no podrá enviar más ventas por él.", destructive: true })) && revoke.mutate({ id: c.id })}>Revocar enlace</Button>}
                 <Button size="sm" variant="ghost" onClick={() => active.mutate({ id: c.id, active: !c.isActive })}>{c.isActive ? "Desactivar" : "Activar"}</Button>
               </div>
             </div>
@@ -464,7 +466,7 @@ function Sales() {
                   <td className="whitespace-nowrap p-2">
                     {["sin_cupo", "sin_plaza", "rechazada"].includes(s.status) && <Button size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate({ id: s.id })}><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />Reintentar</Button>}
                     {(s.status === "registrada" || s.status === "cancelada") && s.reservationId != null && s.opsStatus === "error" && <Button size="sm" variant="outline" disabled={retryOps.isPending} onClick={() => retryOps.mutate({ id: s.id })}><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />{s.status === "cancelada" ? "Anular contabilidad" : "Completar contabilidad"}</Button>}
-                    {s.status !== "cancelada" && <Button size="sm" variant="ghost" disabled={cancel.isPending} onClick={() => window.confirm("¿Cancelar esta venta? Se anula la reserva del Core y se devuelve el cupo.") && cancel.mutate({ id: s.id })}><Ban className="mr-1 h-4 w-4" aria-hidden="true" />Cancelar</Button>}
+                    {s.status !== "cancelada" && <Button size="sm" variant="ghost" disabled={cancel.isPending} onClick={async () => (await confirmAction({ description: "¿Cancelar esta venta? Se anula la reserva del Core y se devuelve el cupo.", destructive: true })) && cancel.mutate({ id: s.id })}><Ban className="mr-1 h-4 w-4" aria-hidden="true" />Cancelar</Button>}
                   </td>
                 </tr>
               ))}
@@ -677,11 +679,7 @@ export default function Multicanal() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Extensión</p>
-          <h1 className="text-2xl font-bold text-foreground">Venta multicanal</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Vende tus experiencias, tratamientos y habitaciones en marketplaces, agencias y canales de entradas con un cupo por canal. Cada venta del canal crea su reserva aquí, sin sobrevender, y la conciliación te dice cuánto has vendido, cuánta comisión pagas y qué te falta por cobrar.</p>
-        </header>
+        <PanelPageHeader icon={<Link2 />} title="Venta multicanal" description="Vende tus experiencias, tratamientos y habitaciones en marketplaces, agencias y canales de entradas con un cupo por canal. Cada venta del canal crea su reserva aquí, sin sobrevender, y la conciliación te dice cuánto has vendido, cuánta comisión pagas y qué te falta por cobrar." />
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="canales">Canales</TabsTrigger>

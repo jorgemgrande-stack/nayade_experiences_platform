@@ -14,10 +14,10 @@ const STATUS_TONE: Record<string, "ok" | "warn" | "bad" | "muted"> = {
 const SUPPRESSION_KEYS = ["hard_bounce", "invalid", "complaint", "unsubscribed"];
 const SKIP_KEYS = ["suppressed", "mode_off", "sandbox_recipient_not_allowed", "rate_limited_recipient", "rate_limited_tenant"];
 const TONE: Record<string, string> = {
-  ok: "border-primary/40 text-primary",
-  warn: "border-amber-500/50 text-amber-700 dark:text-amber-300",
-  bad: "border-destructive/50 text-destructive",
-  muted: "border-border text-muted-foreground",
+  ok: "border-success/40 bg-success/10 text-success",
+  warn: "border-warning/40 bg-warning/10 text-warning",
+  bad: "border-danger/40 bg-danger/10 text-danger",
+  muted: "border-border bg-muted text-muted-foreground",
 };
 const UNDELIVERED = new Set(["bounced", "blocked", "complained", "failed"]);
 
@@ -38,9 +38,9 @@ export function CustomerEmailDeliveryWarning({ clientId, email }: { clientId: nu
   const failed = data.sends.filter((s) => UNDELIVERED.has(s.status));
   if (!data.suppressed && failed.length === 0) return null;
   return (
-    <div role="alert" className="mb-6 space-y-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100">
+    <div role="alert" className="mb-6 space-y-1.5 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-foreground">
       <p className="flex items-center gap-1.5 font-semibold">
-        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("crmForm.mail.warnTitle")}
+        <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" /> {t("crmForm.mail.warnTitle")}
       </p>
       <p>
         {t("crmForm.mail.address")} <strong className="break-all">{data.email}</strong>
@@ -53,7 +53,7 @@ export function CustomerEmailDeliveryWarning({ clientId, email }: { clientId: nu
       {failed.length > 0 && (
         <ul className="space-y-1">
           {failed.slice(0, 5).map((s) => (
-            <li key={s.id} className="border-t border-amber-500/20 pt-1">
+            <li key={s.id} className="border-t border-warning/20 pt-1">
               <span className="tabular-nums">{fmt(s.createdAt)}</span> · <span className="break-words">{s.subject || t("crmForm.mail.noSubject")}</span>
               <br />
               <span className="opacity-80">

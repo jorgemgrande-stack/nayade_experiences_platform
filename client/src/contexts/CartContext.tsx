@@ -6,6 +6,7 @@
  * frontend (estimado). El precio real se calcula siempre en backend al hacer checkout.
  */
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { applicableSupplements, supplementsTotalEuros, type CartSupplement } from "../../../shared/supplementCart";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -36,10 +37,16 @@ export interface CartItem {
   maxPersons?: number;
   /** ID de variante seleccionada (opcional) */
   variantId?: number;
+  /** Convocatoria elegida (productos con fechas): la valida y la ocupa el servidor al pagar */
+  editionId?: number;
+  /** Etiqueta de la convocatoria (para mostrar) */
+  editionLabel?: string;
   /** Nombre de la variante (para mostrar) */
   variantName?: string;
   /** Extras seleccionados */
   extras: CartExtra[];
+  /** Suplementos opcionales marcados (el servidor recalcula tramo e importe y comprueba que la opción los admita) */
+  supplements?: CartSupplement[];
   /** Precio por persona (estimado, calculado en frontend) */
   pricePerPerson: number;
   /** Precio por persona original antes de descuento (si hay descuento activo) */
@@ -64,6 +71,8 @@ export interface CartItem {
   legoPackLinePeople?: Record<number, number>;
   /** Nombres de las líneas (para mostrar) */
   legoPackLineNames?: Record<number, string>;
+  /** «participants»: la cantidad son participantes (actividades y retiros) y así se nombra en carrito y pago. */
+  quantityKind?: "participants";
 }
 
 interface CartContextValue {
@@ -164,7 +173,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems(prev => prev.map(i => {
       if (i.cartItemId !== cartItemId) return i;
       const extrasTotal = i.extras.reduce((s, e) => s + e.price * e.quantity, 0);
-      const estimatedTotal = i.pricePerPerson * calcUnits(i, people) + extrasTotal;
+      const estimatedTotal = i.pricePerPerson * calcUnits(i, people) + extrasTotal + supplementsTotalEuros(i.supplements, people);
       return { ...i, people, estimatedTotal };
     }));
   }, []);
@@ -179,8 +188,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems(prev => prev.map(i => {
       if (i.cartItemId !== cartItemId) return i;
       const extrasTotal = i.extras.reduce((s, e) => s + e.price * e.quantity, 0);
-      const estimatedTotal = pricePerPerson * calcUnits(i, i.people) + extrasTotal;
-      return { ...i, variantId, variantName, pricePerPerson, estimatedTotal };
+      // Un suplemento acotado a otras opciones deja de aplicarse al cambiar de opción
+      const supplements = i.supplements ? applicableSupplements(i.supplements, variantId) : undefined;
+      const estimatedTotal = pricePerPerson * calcUnits(i, i.people) + extrasTotal + supplementsTotalEuros(supplements, i.people);
+      return { ...i, variantId, variantName, pricePerPerson, estimatedTotal, supplements: supplements?.length ? supplements : undefined };
     }));
   }, []);
 

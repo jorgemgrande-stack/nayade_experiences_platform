@@ -4,6 +4,7 @@
  * al equipo y modo «probar» (simula sin enviar ni crear nada). La autorización real (licencia `automations-advanced`,
  * administración y solo lectura) la aplica el servidor.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useState } from "react";
 import { FlaskConical, Pencil, Plus, Trash2, Workflow } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import {
   ACTION_KINDS,
@@ -328,7 +330,7 @@ function Rules({ rules, options }: { rules: RuleRow[]; options: Options }) {
                     <Switch checked={r.enabled} disabled={toggle.isPending} onCheckedChange={(v) => toggle.mutate({ id: r.id, enabled: v })} aria-label={r.enabled ? "Apagar la regla" : "Encender la regla"} />
                   </label>
                   <Button variant="outline" size="sm" onClick={() => setEditing({ id: r.id, rule: { name: r.name, trigger: r.trigger, conditions: r.conditions, steps: r.steps, dailyCap: r.dailyCap } })}><Pencil className="mr-1 h-4 w-4" />Editar</Button>
-                  <Button variant="ghost" size="sm" onClick={() => { if (window.confirm(`¿Archivar «${r.name}»? Se apaga y deja de aparecer; su historial se conserva.`)) archive.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /><span className="sr-only">Archivar</span></Button>
+                  <Button variant="ghost" size="sm" onClick={async () => { if ((await confirmAction({ description: `¿Archivar «${r.name}»? Se apaga y deja de aparecer; su historial se conserva.`, destructive: true }))) archive.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4" /><span className="sr-only">Archivar</span></Button>
                 </div>
               </div>
             </li>
@@ -349,7 +351,7 @@ function Templates({ templates }: { templates: Array<{ key: string; title: strin
           <p className="font-semibold text-foreground">{t.title}</p>
           <p className="text-sm text-muted-foreground">{t.summary}</p>
           <p className="text-xs text-muted-foreground">Cuando: {triggerOf(t.trigger).label}</p>
-          {t.warning && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">{t.warning}</p>}
+          {t.warning && <p className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs text-foreground">{t.warning}</p>}
           <div className="flex items-center justify-between gap-2">
             {t.used ? <Badge variant="secondary">Ya la tienes</Badge> : <span />}
             <Button size="sm" variant="outline" disabled={create.isPending} onClick={() => create.mutate({ key: t.key })}>Crear desde la plantilla</Button>
@@ -419,14 +421,10 @@ export default function Automatizaciones() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elephant Connect</p>
-          <h1 className="text-2xl font-bold text-foreground">Automatizaciones</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">Reglas propias para que las tareas repetitivas no se olviden: cuando pasa algo en tu negocio, el sistema envía el correo, crea la tarea, avisa al equipo o mueve la oportunidad, con los retardos que elijas.</p>
-        </header>
+        <PanelPageHeader icon={<Workflow />} title="Automatizaciones" description="Reglas propias para que las tareas repetitivas no se olviden: cuando pasa algo en tu negocio, el sistema envía el correo, crea la tarea, avisa al equipo o mueve la oportunidad, con los retardos que elijas." />
         {q.isLoading ? <PanelLoading /> : q.error ? <PanelError error={q.error} onRetry={() => q.refetch()} /> : (
           <>
-            {!q.data!.mail.ready && <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">Los pasos de correo no saldrán todavía: {q.data!.mail.message ?? "el correo de tu empresa no está disponible."}</p>}
+            {!q.data!.mail.ready && <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">Los pasos de correo no saldrán todavía: {q.data!.mail.message ?? "el correo de tu empresa no está disponible."}</p>}
             <p className="text-xs text-muted-foreground">Hoy: {q.data!.today.used} de {q.data!.today.cap} acciones como máximo de toda la empresa.</p>
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="flex-wrap">

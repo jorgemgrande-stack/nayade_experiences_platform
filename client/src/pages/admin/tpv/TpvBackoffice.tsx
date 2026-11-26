@@ -1,8 +1,10 @@
 /**
- * TpvBackoffice — Backoffice de cajas TPV
+ * TpvBackoffice — Historial de cajas TPV
  * Admin > Contabilidad > TPV
+ * Cabecera común, resumen destacado de las sesiones cargadas, filtros, tabla con acción principal y menú por fila, y el
+ * detalle de la sesión por secciones en un panel lateral (pantalla completa en móvil). Solo presentación.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatEur } from "@shared/creditNoteForm";
 import { formatDayEs } from "@shared/formatDay";
@@ -10,27 +12,30 @@ import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { PanelEmpty, PanelError, PanelLoading, errorMessage } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import { MetricCard, SegmentedTabs } from "@/components/admin/PanelVisual";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { useCompanySites } from "@/hooks/useCompanySites";
 import { selectClass } from "@/components/admin/crm/CrmParts";
 import { validateCashRegisterForm } from "@shared/formValidation";
 import { toast } from "sonner";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import TpvPlanPanel from "./TpvPlanPanel";
 import TpvDailySummary from "./TpvDailySummary";
 import TpvClosedCorrections from "./TpvClosedCorrections";
 import { TpvOperatorsEditor, TpvReturnRequests, TpvSupervision } from "./TpvBusiness";
+import { TpvFilterBar, TpvFilterField, TpvRowActions, TpvSection, TpvSummary, TpvTable, type TpvChip, type TpvColumn } from "./shared/TpvUi";
 import {
   Receipt, TrendingUp, CreditCard, Banknote, Smartphone,
-  Calendar, Clock, User, ChevronRight, ExternalLink, Search,
-  ArrowUpRight, ArrowDownLeft, CheckCircle, XCircle, BookOpen,
-  Phone, Mail, FileText, Plus, MapPin,
+  Calendar, Clock, User, ExternalLink,
+  ArrowUpRight, ArrowDownLeft, BookOpen, Eye, Scale, Store,
+  Phone, Mail, Plus, MapPin,
 } from "lucide-react";
 
 const METHOD_ICONS: Record<string, React.ReactNode> = {
@@ -40,33 +45,129 @@ const METHOD_ICONS: Record<string, React.ReactNode> = {
   other: <Receipt className="w-3 h-3" />,
 };
 
-const METHOD_LABELS: Record<string, string> = {
-  cash: "Efectivo",
-  card: "Tarjeta",
-  bizum: "Bizum",
-  other: "Otro",
+type SessionRow = {
+  id: number;
+  registerId: number;
+  registerName?: string;
+  status: string;
+  openedAt: number | string;
+  closedAt?: number | string | null;
+  openedByName?: string | null;
+  cashierName?: string | null;
+  salesCount?: number;
+  totalSales?: number | string;
+  cashDifference?: string | number | null;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  open: "bg-success/10 text-success border-success/40",
-  closed: "bg-muted text-muted-foreground border-border",
-  cancelled: "bg-danger/10 text-danger border-danger/40",
+type StatusFilter = "all" | "open" | "closed" | "diff";
+type PeriodFilter = "all" | "today" | "7d" | "30d";
+
+const PERIOD_LABELS: Record<PeriodFilter, string> = { all: "Todo lo cargado", today: "Hoy", "7d": "Últimos 7 días", "30d": "Últimos 30 días" };
+const DAY_MS = 86_400_000;
+
+const sessionTotal = (s: SessionRow) => parseFloat(String(s.totalSales ?? 0)) || 0;
+/** Diferencia del arqueo de una sesión cerrada (null si sigue abierta o no se contó). */
+const sessionDiff = (s: SessionRow): number | null => (s.status === "closed" && s.cashDifference != null ? parseFloat(String(s.cashDifference)) || 0 : null);
+const hasDiff = (s: SessionRow) => {
+  const d = sessionDiff(s);
+  return d !== null && Math.abs(d) >= 0.01;
 };
+const sessionRegisterName = (s: SessionRow) => s.registerName ?? `Caja #${s.registerId}`;
+const sessionCashier = (s: SessionRow) => s.openedByName ?? s.cashierName ?? "";
+const fmtDate = (v: number | string) => new Date(v).toLocaleDateString("es-ES");
+const fmtTime = (v: number | string) => new Date(v).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+/** Estado del arqueo con significado: cuadrada, faltan o sobran euros. */
+function ArqueoBadge({ session }: { session: SessionRow }) {
+  const d = sessionDiff(session);
+  if (d === null) return <span className="text-xs text-muted-foreground">{session.status === "open" ? "Sin cerrar" : "Sin recuento"}</span>;
+  if (Math.abs(d) < 0.01) return <StatusBadge tone="success">Cuadrada</StatusBadge>;
+  return <StatusBadge tone={d < 0 ? "danger" : "warning"}>{d < 0 ? `Faltan ${formatEur(Math.abs(d))}` : `Sobran ${formatEur(d)}`}</StatusBadge>;
+}
 
 export default function TpvBackoffice() {
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
-  const [searchTicket, setSearchTicket] = useState("");
+  const [, navigate] = useLocation();
 
   // Varias sedes (Business): filtro de sesiones por sede y sede de cada caja; con una sola sede no se muestra nada
   const companySites = useCompanySites();
   const [siteFilter, setSiteFilter] = useState("");
-  const { data: sessions } = trpc.tpv.getBackoffice.useQuery({ page: 1, limit: 50, ...(companySites.enabled && siteFilter ? { siteId: siteFilter } : {}) });
-  const { data: sessionDetail } = trpc.tpv.getSessionSummary.useQuery(
+  const sessionsQ = trpc.tpv.getBackoffice.useQuery({ page: 1, limit: 50, ...(companySites.enabled && siteFilter ? { siteId: siteFilter } : {}) });
+  const sessions = sessionsQ.data as SessionRow[] | undefined;
+  const detailQ = trpc.tpv.getSessionSummary.useQuery(
     { sessionId: selectedSessionId! },
     { enabled: !!selectedSessionId }
   );
+  const sessionDetail = detailQ.data;
 
-  const selectedSession = sessions?.find((s: any) => s.id === selectedSessionId);
+  const selectedSession = sessions?.find((s) => s.id === selectedSessionId);
+
+  // Filtros de la tabla (sobre las sesiones ya cargadas)
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [period, setPeriod] = useState<PeriodFilter>("all");
+  const [registerFilter, setRegisterFilter] = useState("");
+  const registerOptions = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const s of sessions ?? []) m.set(s.registerId, sessionRegisterName(s));
+    return Array.from(m.entries());
+  }, [sessions]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const since = period === "today" ? new Date().setHours(0, 0, 0, 0) : period === "7d" ? Date.now() - 7 * DAY_MS : period === "30d" ? Date.now() - 30 * DAY_MS : 0;
+    return (sessions ?? []).filter((s) => {
+      if (statusFilter === "open" && s.status !== "open") return false;
+      if (statusFilter === "closed" && s.status !== "closed") return false;
+      if (statusFilter === "diff" && !hasDiff(s)) return false;
+      if (registerFilter && String(s.registerId) !== registerFilter) return false;
+      if (since && new Date(s.openedAt).getTime() < since) return false;
+      if (q && !`${sessionRegisterName(s)} ${sessionCashier(s)} ${s.id}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [sessions, search, statusFilter, period, registerFilter]);
+  const stats = useMemo(() => ({
+    total: filtered.reduce((a, s) => a + sessionTotal(s), 0),
+    sales: filtered.reduce((a, s) => a + (s.salesCount ?? 0), 0),
+    open: filtered.filter((s) => s.status === "open").length,
+    withDiff: filtered.filter(hasDiff).length,
+    diffSum: filtered.reduce((a, s) => a + (sessionDiff(s) ?? 0), 0),
+  }), [filtered]);
+  const chips: TpvChip[] = [
+    ...(search.trim() ? [{ id: "q", label: `Texto: ${search.trim()}`, onRemove: () => setSearch("") }] : []),
+    ...(period !== "all" ? [{ id: "p", label: PERIOD_LABELS[period], onRemove: () => setPeriod("all") }] : []),
+    ...(registerFilter ? [{ id: "r", label: registerOptions.find(([id]) => String(id) === registerFilter)?.[1] ?? "Caja", onRemove: () => setRegisterFilter("") }] : []),
+    ...(statusFilter !== "all" ? [{ id: "s", label: { open: "Abiertas", closed: "Cerradas", diff: "Con diferencia", all: "" }[statusFilter], onRemove: () => setStatusFilter("all") }] : []),
+  ];
+  const clearFilters = () => { setSearch(""); setPeriod("all"); setRegisterFilter(""); setStatusFilter("all"); };
+
+  const sessionColumns: TpvColumn<SessionRow>[] = [
+    {
+      key: "caja", header: "Caja", mobile: "title",
+      cell: (s) => (
+        <span className="flex flex-col">
+          <span className="font-medium text-foreground">{sessionRegisterName(s)}</span>
+          <span className="text-xs text-muted-foreground">Sesión #{s.id}</span>
+        </span>
+      ),
+    },
+    {
+      key: "apertura", header: "Apertura",
+      cell: (s) => (
+        <span className="flex flex-col">
+          <span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3 text-muted-foreground" aria-hidden="true" />{fmtDate(s.openedAt)}</span>
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" aria-hidden="true" />{fmtTime(s.openedAt)}{s.closedAt ? ` – ${fmtTime(s.closedAt)}` : ""}</span>
+        </span>
+      ),
+    },
+    { key: "cajero", header: "Cajero", secondary: true, cell: (s) => sessionCashier(s) || <span className="text-muted-foreground">—</span> },
+    {
+      key: "estado", header: "Estado",
+      cell: (s) => (s.status === "open" ? <StatusBadge tone="success">Abierta</StatusBadge> : <StatusBadge tone="neutral">Cerrada</StatusBadge>),
+    },
+    { key: "ventas", header: "Ventas", align: "right", num: true, cell: (s) => s.salesCount ?? 0 },
+    { key: "arqueo", header: "Arqueo", cell: (s) => <ArqueoBadge session={s} /> },
+    { key: "total", header: "Total", align: "right", num: true, mobile: "amount", cell: (s) => <span className="font-semibold text-foreground">{formatEur(sessionTotal(s))}</span> },
+  ];
 
   // ── Cajas: una empresa nueva no trae ninguna y sin caja no se puede abrir sesión ──
   const utils = trpc.useUtils();
@@ -129,46 +230,136 @@ export default function TpvBackoffice() {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Receipt className="w-6 h-6 text-primary" />
-              Cajas
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Historial de sesiones de caja y ventas presenciales
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {advancedOn && (
-              <Link href="/admin/tpv/avanzado">
+      <div className="space-y-5 p-4 md:p-6">
+        <PanelPageHeader
+          className="mb-0"
+          icon={<Receipt />}
+          title="Cajas"
+          description="Historial de sesiones de caja y ventas presenciales"
+          actions={
+            <>
+              {advancedOn && (
+                <Link href="/admin/tpv/avanzado">
+                  <Button variant="outline" className="gap-2">
+                    TPV Advanced
+                  </Button>
+                </Link>
+              )}
+              <Link href="/admin/tpv/informes">
                 <Button variant="outline" className="gap-2">
-                  TPV Advanced
+                  <TrendingUp className="w-4 h-4" aria-hidden="true" />
+                  Informes
                 </Button>
               </Link>
-            )}
-            <Link href="/admin/tpv/informes">
-              <Button variant="outline" className="gap-2">
-                <TrendingUp className="w-4 h-4" aria-hidden="true" />
-                Informes
-              </Button>
-            </Link>
-            <Link href="/admin/tpv">
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
-                <ExternalLink className="w-4 h-4" />
-                Abrir la caja
-              </Button>
-            </Link>
-          </div>
-        </div>
+              <Link href="/admin/tpv">
+                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
+                  <ExternalLink className="w-4 h-4" />
+                  Abrir la caja
+                </Button>
+              </Link>
+            </>
+          }
+        />
 
-        {/* Lo que incluye el plan y el resumen del día */}
-        <TpvPlanPanel canManage={canManageCash} />
-        <TpvDailySummary />
+        {/* Avisos que requieren decisión */}
         <TpvReturnRequests />
         <TpvSupervision />
+
+        {/* Resumen de las sesiones cargadas */}
+        {sessions && sessions.length > 0 && (
+          <TpvSummary>
+            <MetricCard
+              icon={<Receipt />}
+              tone="brand"
+              label="Total vendido"
+              value={formatEur(stats.total)}
+              detail={`${filtered.length} ${filtered.length === 1 ? "sesión" : "sesiones"} · ${stats.sales} ${stats.sales === 1 ? "venta" : "ventas"}`}
+              hint={filtered.length !== sessions.length ? `Filtrado de ${sessions.length} sesiones cargadas` : `Últimas ${sessions.length} sesiones cargadas`}
+            />
+            <MetricCard icon={<Store />} tone={stats.open > 0 ? "success" : "neutral"} label="Cajas abiertas" value={stats.open} detail={stats.open === 1 ? "sesión en curso" : "sesiones en curso"} />
+            <MetricCard icon={<Scale />} tone={stats.withDiff > 0 ? "warning" : "success"} label="Con diferencia de arqueo" value={stats.withDiff} detail={stats.withDiff > 0 ? "revisa el recuento" : "todas cuadradas"} />
+            <MetricCard
+              icon={<Banknote />}
+              tone={Math.abs(stats.diffSum) >= 0.01 ? (stats.diffSum < 0 ? "danger" : "warning") : "neutral"}
+              label="Diferencia acumulada"
+              value={formatEur(stats.diffSum)}
+              detail="suma de los arqueos cerrados"
+            />
+          </TpvSummary>
+        )}
+
+        {/* Historial de sesiones */}
+        <section aria-labelledby="tpv-sesiones" className="space-y-3">
+          <h2 id="tpv-sesiones" className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Sesiones de caja</h2>
+          <TpvFilterBar
+            search={{ value: search, onChange: setSearch, placeholder: "Buscar por caja, cajero o nº de sesión" }}
+            chips={chips}
+            onClear={clearFilters}
+            summary={sessions ? `${filtered.length} de ${sessions.length} sesiones` : undefined}
+          >
+            <TpvFilterField label="Periodo" className="w-40">
+              <select className={selectClass} value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} aria-label="Periodo">
+                {(Object.keys(PERIOD_LABELS) as PeriodFilter[]).map((p) => <option key={p} value={p}>{PERIOD_LABELS[p]}</option>)}
+              </select>
+            </TpvFilterField>
+            {registerOptions.length > 1 && (
+              <TpvFilterField label="Caja" className="w-44">
+                <select className={selectClass} value={registerFilter} onChange={(e) => setRegisterFilter(e.target.value)} aria-label="Caja">
+                  <option value="">Todas las cajas</option>
+                  {registerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                </select>
+              </TpvFilterField>
+            )}
+            {companySites.enabled && (
+              <TpvFilterField label="Sede" className="w-44">
+                <select id="sesiones-sede" className={selectClass} value={siteFilter} aria-label="Filtrar sesiones por sede" onChange={(e) => { setSiteFilter(e.target.value); setSelectedSessionId(null); }}>
+                  <option value="">Todas las sedes</option>
+                  {companySites.sites.map((s) => <option key={s.siteId} value={s.siteId}>{s.name}{s.status === "archived" ? " (desactivada)" : ""}</option>)}
+                </select>
+              </TpvFilterField>
+            )}
+            <SegmentedTabs
+              label="Estado de la sesión"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "all", label: "Todas" },
+                { value: "open", label: "Abiertas" },
+                { value: "closed", label: "Cerradas" },
+                { value: "diff", label: "Con diferencia" },
+              ]}
+            />
+          </TpvFilterBar>
+          <TpvTable
+            rows={filtered}
+            columns={sessionColumns}
+            rowKey={(s) => s.id}
+            caption="Sesiones de caja"
+            loading={sessionsQ.isLoading}
+            error={sessionsQ.isError ? sessionsQ.error : undefined}
+            errorTitle="No se han podido cargar las sesiones de caja"
+            onRetry={() => sessionsQ.refetch()}
+            emptyTitle={sessions && sessions.length > 0 ? "Ninguna sesión coincide con los filtros" : "Todavía no hay sesiones de caja"}
+            emptyDescription={sessions && sessions.length > 0
+              ? "Prueba con otro periodo o quita algún filtro."
+              : "Cada vez que abres la caja en el terminal de venta empieza una sesión; al cerrarla, aquí verás sus ventas y el arqueo."}
+            emptyAction={sessions && sessions.length > 0
+              ? <Button size="sm" variant="outline" onClick={clearFilters}>Limpiar filtros</Button>
+              : <Button asChild size="sm"><Link href="/admin/tpv">Abrir el terminal de venta</Link></Button>}
+            selectedKey={selectedSessionId}
+            onRowClick={(s) => setSelectedSessionId(s.id)}
+            actions={(s) => (
+              <TpvRowActions
+                label={`${sessionRegisterName(s)}, sesión ${s.id}`}
+                primary={{ label: "Ver detalle", icon: <Eye className="h-4 w-4" aria-hidden="true" />, onSelect: () => setSelectedSessionId(s.id) }}
+                menu={[
+                  ...(s.status === "open" ? [{ label: "Abrir el terminal de venta", icon: <ExternalLink />, onSelect: () => navigate("/admin/tpv") }] : []),
+                  { label: "Informes de ventas", icon: <TrendingUp />, onSelect: () => navigate("/admin/tpv/informes") },
+                ]}
+              />
+            )}
+          />
+        </section>
 
         {/* Cajas */}
         <section aria-labelledby="tpv-cajas" className="space-y-3">
@@ -318,157 +509,111 @@ export default function TpvBackoffice() {
           </DialogContent>
         </Dialog>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Sessions list */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Sesiones de Caja
-            </h2>
-            {companySites.enabled && (
-              <div>
-                <label htmlFor="sesiones-sede" className="sr-only">Filtrar sesiones por sede</label>
-                <select id="sesiones-sede" className={selectClass} value={siteFilter} onChange={(e) => { setSiteFilter(e.target.value); setSelectedSessionId(null); }}>
-                  <option value="">Todas las sedes</option>
-                  {companySites.sites.map((s) => <option key={s.siteId} value={s.siteId}>{s.name}{s.status === "archived" ? " (desactivada)" : ""}</option>)}
-                </select>
-              </div>
-            )}
-            <ScrollArea className="h-[600px]">
-              <div className="space-y-2 pr-2">
-                {sessions?.map((session: any) => {
-                  const openedAt = new Date(session.openedAt);
-                  const isSelected = session.id === selectedSessionId;
-                  return (
-                    <button
-                      key={session.id}
-                      onClick={() => setSelectedSessionId(session.id)}
-                      className={`w-full text-left rounded-xl p-3 border transition-all ${
-                        isSelected
-                          ? "border-primary bg-primary/15"
-                          : "border-border bg-card hover:border-primary/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-foreground">
-                          Caja #{session.registerId}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={`text-xs ${STATUS_COLORS[session.status] ?? STATUS_COLORS.closed}`}
-                        >
-                          {session.status === "open" ? "Abierta" : "Cerrada"}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar className="w-3 h-3" />
-                        {openedAt.toLocaleDateString("es-ES")}
-                        <Clock className="w-3 h-3 ml-1" />
-                        {openedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                      {session.openedByName && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                          <User className="w-3 h-3" />
-                          {session.openedByName}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs text-muted-foreground">{session.salesCount ?? 0} ventas</span>
-                        <span className="text-sm font-bold text-primary">
-                          {formatEur(parseFloat(String(session.totalSales ?? 0)))}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-                {(!sessions || sessions.length === 0) && (
-                  <PanelEmpty
-                    className="border-0 bg-transparent p-4 md:p-6"
-                    icon={<Receipt className="w-6 h-6" />}
-                    title="Todavía no hay sesiones de caja"
-                    description="Cada vez que abres la caja en el terminal de venta empieza una sesión; al cerrarla, aquí verás sus ventas y el arqueo."
-                  >
-                    <Button asChild size="sm">
-                      <Link href="/admin/tpv">Abrir el terminal de venta</Link>
-                    </Button>
-                  </PanelEmpty>
-                )}
-              </div>
-            </ScrollArea>
-          </div>
+        {/* Resumen del día y lo que incluye el plan */}
+        <TpvDailySummary />
+        <TpvPlanPanel canManage={canManageCash} />
 
-          {/* Session detail */}
-          <div className="lg:col-span-2">
-            {selectedSession && sessionDetail ? (
-              <div className="space-y-4">
-                {/* Summary cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {[
-                    { label: "Total ventas", value: `${formatEur((sessionDetail.totalSales ?? 0))}`, icon: <TrendingUp className="w-4 h-4" />, color: "text-primary" },
-                    { label: "Entradas", value: `${formatEur((sessionDetail.totalIn ?? 0))}`, icon: <Banknote className="w-4 h-4" />, color: "text-success" },
-                    { label: "Salidas", value: `${formatEur((sessionDetail.totalOut ?? 0))}`, icon: <CreditCard className="w-4 h-4" />, color: "text-danger" },
-                    { label: "Ventas", value: String(sessionDetail.sales?.length ?? 0), icon: <Receipt className="w-4 h-4" />, color: "text-info" },
-                  ].map((stat) => (
-                    <Card key={stat.label} className="bg-card border-border">
-                      <CardContent className="p-3">
-                        <div className={`flex items-center gap-1 text-xs text-muted-foreground mb-1`}>
-                          {stat.icon}
-                          {stat.label}
+        {/* Detalle de la sesión por secciones */}
+        <Sheet open={selectedSessionId !== null} onOpenChange={(o) => { if (!o) setSelectedSessionId(null); }}>
+          <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
+            <SheetHeader className="shrink-0 border-b border-border pr-12">
+              <SheetTitle className="flex flex-wrap items-center gap-2">
+                {selectedSession ? sessionRegisterName(selectedSession) : "Sesión de caja"}
+                {selectedSession && (selectedSession.status === "open" ? <StatusBadge tone="success">Abierta</StatusBadge> : <StatusBadge tone="neutral">Cerrada</StatusBadge>)}
+              </SheetTitle>
+              <SheetDescription>
+                {selectedSession
+                  ? `Sesión #${selectedSession.id} · ${fmtDate(selectedSession.openedAt)} ${fmtTime(selectedSession.openedAt)}${selectedSession.closedAt ? ` – ${fmtTime(selectedSession.closedAt)}` : ""}${sessionCashier(selectedSession) ? ` · ${sessionCashier(selectedSession)}` : ""}`
+                  : "Detalle de la sesión"}
+              </SheetDescription>
+            </SheetHeader>
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+              {detailQ.isLoading ? (
+                <PanelLoading label="Cargando la sesión…" />
+              ) : detailQ.isError ? (
+                <PanelError error={detailQ.error} onRetry={() => detailQ.refetch()} title="No se ha podido cargar la sesión" />
+              ) : selectedSession && sessionDetail ? (
+                <>
+                  <TpvSection title="Resumen" icon={<TrendingUp />}>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: "Total ventas", value: `${formatEur((sessionDetail.totalSales ?? 0))}`, icon: <TrendingUp className="w-4 h-4" />, color: "text-primary" },
+                        { label: "Ventas", value: String(sessionDetail.sales?.length ?? 0), icon: <Receipt className="w-4 h-4" />, color: "text-info" },
+                        { label: "Entradas", value: `${formatEur((sessionDetail.totalIn ?? 0))}`, icon: <Banknote className="w-4 h-4" />, color: "text-success" },
+                        { label: "Salidas", value: `${formatEur((sessionDetail.totalOut ?? 0))}`, icon: <CreditCard className="w-4 h-4" />, color: "text-danger" },
+                      ].map((stat) => (
+                        <div key={stat.label} className="rounded-xl border border-border bg-card p-3">
+                          <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+                            {stat.icon}
+                            {stat.label}
+                          </div>
+                          <div className={`text-xl font-bold tabular-nums ${stat.color}`}>{stat.value}</div>
                         </div>
-                        <div className={`text-lg font-bold ${stat.color}`}>{stat.value}</div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                      ))}
+                    </div>
+                  </TpvSection>
 
-                {/* Cash balance */}
-                <Card className="bg-card border-border">
-                  <CardContent className="p-4">
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Fondo inicial</span>
-                        <div className="font-bold text-foreground">{formatEur(parseFloat(String(sessionDetail.session.openingAmount ?? 0)))}</div>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Mov. entradas</span>
-                        <div className="font-bold text-success">+{formatEur((sessionDetail.totalIn ?? 0))}</div>
+                  <TpvSection title="Arqueo de caja" icon={<Scale />}>
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Fondo inicial</span>
+                          <div className="font-bold tabular-nums text-foreground">{formatEur(parseFloat(String(sessionDetail.session.openingAmount ?? 0)))}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Mov. entradas</span>
+                          <div className="font-bold tabular-nums text-success">+{formatEur((sessionDetail.totalIn ?? 0))}</div>
+                        </div>
+                        {sessionDetail.session.status === "closed" && (
+                          <>
+                            <div>
+                              <span className="text-muted-foreground">Efectivo esperado</span>
+                              <div className="font-bold tabular-nums text-foreground">{formatEur(parseFloat(String(sessionDetail.session.closingAmount ?? 0)))}</div>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Efectivo real</span>
+                              <div className={`font-bold tabular-nums ${
+                                Math.abs(parseFloat(String(sessionDetail.session.countedCash ?? 0)) - parseFloat(String(sessionDetail.session.closingAmount ?? 0))) < 0.01
+                                  ? "text-success"
+                                  : "text-warning"
+                              }`}>
+                                {formatEur(parseFloat(String(sessionDetail.session.countedCash ?? 0)))}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                       {sessionDetail.session.status === "closed" && (
-                        <div>
-                          <span className="text-muted-foreground">Efectivo real</span>
-                          <div className={`font-bold ${
-                            Math.abs(parseFloat(String(sessionDetail.session.countedCash ?? 0)) - parseFloat(String(sessionDetail.session.closingAmount ?? 0))) < 0.01
-                              ? "text-success"
-                              : "text-warning"
-                          }`}>
-                            {formatEur(parseFloat(String(sessionDetail.session.countedCash ?? 0)))}
-                          </div>
+                        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3 text-sm">
+                          <span className="text-muted-foreground">Resultado del arqueo</span>
+                          <ArqueoBadge session={selectedSession} />
                         </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
+                  </TpvSection>
 
-                {sessionDetail.session.status === "closed" && (
-                  <TpvClosedCorrections sessionId={sessionDetail.session.id} corrections={sessionDetail.corrections ?? []} canManage={canManageCash} />
-                )}
+                  {sessionDetail.session.status === "closed" && (
+                    <TpvSection title="Correcciones del cierre">
+                      <TpvClosedCorrections sessionId={sessionDetail.session.id} corrections={sessionDetail.corrections ?? []} canManage={canManageCash} />
+                    </TpvSection>
+                  )}
 
-                <Tabs defaultValue="sales">
-                  <TabsList className="bg-muted border border-border">
-                    <TabsTrigger value="sales" className="text-xs">Ventas ({sessionDetail.sales?.length ?? 0})</TabsTrigger>
-                    <TabsTrigger value="movements" className="text-xs">Movimientos ({sessionDetail.movements?.length ?? 0})</TabsTrigger>
-                    <TabsTrigger value="reservations" className="text-xs flex items-center gap-1"><BookOpen className="w-3 h-3" />Reservas hoy</TabsTrigger>
-                  </TabsList>
+                  <Tabs defaultValue="sales">
+                    <TabsList className="h-auto w-full flex-wrap justify-start border border-border bg-muted">
+                      <TabsTrigger value="sales" className="min-h-9 flex-none text-xs">Ventas ({sessionDetail.sales?.length ?? 0})</TabsTrigger>
+                      <TabsTrigger value="movements" className="min-h-9 flex-none text-xs">Movimientos ({sessionDetail.movements?.length ?? 0})</TabsTrigger>
+                      <TabsTrigger value="reservations" className="min-h-9 flex-none text-xs flex items-center gap-1"><BookOpen className="w-3 h-3" />Reservas hoy</TabsTrigger>
+                    </TabsList>
 
-                  <TabsContent value="sales">
-                    <ScrollArea className="h-80">
-                      <div className="space-y-2 pr-2">
+                    <TabsContent value="sales">
+                      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
                         {sessionDetail.sales?.map((sale: any) => (
                           <div key={sale.id} className="bg-card border border-border rounded-lg p-3">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-xs font-mono font-bold text-primary">{sale.ticketNumber}</span>
-                              <span className="text-sm font-bold text-foreground">{formatEur(parseFloat(String(sale.total)))}</span>
+                              <span className="text-sm font-bold tabular-nums text-foreground">{formatEur(parseFloat(String(sale.total)))}</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                               <Clock className="w-3 h-3" />
                               {new Date(sale.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                               {sale.customerName && (
@@ -478,8 +623,9 @@ export default function TpvBackoffice() {
                                 </>
                               )}
                               {sale.serviceDate && (
-                                <span className="ml-1 text-primary font-medium">
-                                  📅 {sale.serviceDate}
+                                <span className="ml-1 inline-flex items-center gap-1 text-primary font-medium">
+                                  <Calendar className="w-3 h-3" aria-hidden="true" />
+                                  {sale.serviceDate}
                                 </span>
                               )}
                             </div>
@@ -497,12 +643,10 @@ export default function TpvBackoffice() {
                           <div className="text-center py-8 text-muted-foreground text-sm">No hay ventas en esta sesión</div>
                         )}
                       </div>
-                    </ScrollArea>
-                  </TabsContent>
+                    </TabsContent>
 
-                  <TabsContent value="movements">
-                    <ScrollArea className="h-80">
-                      <div className="space-y-2 pr-2">
+                    <TabsContent value="movements">
+                      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
                         {sessionDetail.movements?.map((mov: any) => (
                           <div key={mov.id} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -516,7 +660,7 @@ export default function TpvBackoffice() {
                                 {new Date(mov.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                               </p>
                             </div>
-                            <span className={`text-sm font-bold ${mov.type === "in" ? "text-success" : "text-danger"}`}>
+                            <span className={`text-sm font-bold tabular-nums ${mov.type === "in" ? "text-success" : "text-danger"}`}>
                               {mov.type === "in" ? "+" : "-"}{formatEur(parseFloat(String(mov.amount)))}
                             </span>
                           </div>
@@ -525,24 +669,17 @@ export default function TpvBackoffice() {
                           <div className="text-center py-8 text-muted-foreground text-sm">No hay movimientos en esta sesión</div>
                         )}
                       </div>
-                    </ScrollArea>
-                  </TabsContent>
+                    </TabsContent>
 
-                  <TabsContent value="reservations">
-                    <TpvReservationsToday />
-                  </TabsContent>
-                </Tabs>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground min-h-64">
-                <div className="text-center">
-                  <Receipt className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>Selecciona una sesión para ver el detalle</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+                    <TabsContent value="reservations">
+                      <TpvReservationsToday />
+                    </TabsContent>
+                  </Tabs>
+                </>
+              ) : null}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </AdminLayout>
   );

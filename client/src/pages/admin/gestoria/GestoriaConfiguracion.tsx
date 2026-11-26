@@ -6,20 +6,19 @@
  */
 import { useState, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelError, PanelLoading, toastError } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Settings2, Save } from "lucide-react";
-
-const MONTHS = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-];
+import { FormField, FormSection } from "../accounting/shared/EconomyUi";
+import { useGestoriaLabels } from "./gestoriaLabels";
 
 export default function GestoriaConfiguracion() {
+  const { t, f } = useGestoriaLabels();
   const utils = trpc.useUtils();
   const settingsQ = trpc.gestoria.settings.get.useQuery();
 
@@ -50,110 +49,100 @@ export default function GestoriaConfiguracion() {
 
   const updateMut = trpc.gestoria.settings.update.useMutation({
     onSuccess: () => {
-      toast.success("Configuración guardada");
+      toast.success(t("gestoria.settings.saved"));
       utils.gestoria.settings.get.invalidate();
     },
-    onError: (e) => toast.error("Error: " + e.message),
+    onError: (e) => toastError(e),
   });
+
+  const monthName = (i: number) => {
+    const name = f.date(new Date(2000, i, 1), { month: "long" });
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  };
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6 max-w-2xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Settings2 className="w-6 h-6 text-primary" /> Configuración Fiscal
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Parámetros del módulo Gestoría e Impuestos
-          </p>
-        </div>
+      <div className="mx-auto max-w-3xl space-y-6 p-6">
+        <PanelPageHeader icon={<Settings2 />} title={t("gestoria.settings.title")} description={t("gestoria.settings.description")} />
 
-        {/* Empresa */}
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">Datos fiscales de la empresa</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">NIF</Label>
-              <Input value={form.companyNif} onChange={(e) => setForm({ ...form, companyNif: e.target.value })} placeholder="B12345678" />
-            </div>
-            <div>
-              <Label className="text-xs">Razón social</Label>
-              <Input value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} />
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs">Domicilio fiscal</Label>
-            <Input value={form.companyAddress} onChange={(e) => setForm({ ...form, companyAddress: e.target.value })} />
-          </div>
-          <div>
-            <Label className="text-xs">Epígrafes IAE</Label>
-            <Input value={form.iaeEpigraphs} onChange={(e) => setForm({ ...form, iaeEpigraphs: e.target.value })} placeholder="Ej.: 755, 999" />
-          </div>
-        </div>
-
-        {/* Parámetros fiscales */}
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">Parámetros del ejercicio</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Tipo Impuesto de Sociedades (%)</Label>
-              <Input
-                type="number" step="0.01" min="0"
-                value={form.corporateTaxRate}
-                onChange={(e) => setForm({ ...form, corporateTaxRate: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Cierre del ejercicio fiscal</Label>
-              <Select
-                value={String(form.fiscalYearEndMonth)}
-                onValueChange={(v) => setForm({ ...form, fiscalYearEndMonth: Number(v) })}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((m, i) => (
-                    <SelectItem key={i} value={String(i + 1)}>{m.charAt(0).toUpperCase() + m.slice(1)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        {/* Gestoría */}
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">Gestoría externa</h2>
-          <div>
-            <Label className="text-xs">Correos de la gestoría</Label>
-            <Input
-              value={form.gestoriaEmails}
-              onChange={(e) => setForm({ ...form, gestoriaEmails: e.target.value })}
-              placeholder="gestoria@ejemplo.com, contacto@gestoria.com"
-            />
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Separados por comas. Se usarán al enviar expedientes (fase posterior).
-            </p>
-          </div>
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            onClick={() => updateMut.mutate({
-              corporateTaxRate: form.corporateTaxRate,
-              fiscalYearEndMonth: form.fiscalYearEndMonth,
-              companyNif: form.companyNif,
-              companyName: form.companyName,
-              companyAddress: form.companyAddress,
-              gestoriaEmails: form.gestoriaEmails,
-              iaeEpigraphs: form.iaeEpigraphs,
-            })}
-            disabled={updateMut.isPending}
-            className="gap-2"
+        {settingsQ.isLoading ? (
+          <PanelLoading />
+        ) : settingsQ.isError ? (
+          <PanelError error={settingsQ.error} onRetry={() => void settingsQ.refetch()} />
+        ) : (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              updateMut.mutate({
+                corporateTaxRate: form.corporateTaxRate,
+                fiscalYearEndMonth: form.fiscalYearEndMonth,
+                companyNif: form.companyNif,
+                companyName: form.companyName,
+                companyAddress: form.companyAddress,
+                gestoriaEmails: form.gestoriaEmails,
+                iaeEpigraphs: form.iaeEpigraphs,
+              });
+            }}
           >
-            <Save className="w-4 h-4" />
-            {updateMut.isPending ? "Guardando…" : "Guardar configuración"}
-          </Button>
-        </div>
+            <FormSection title={t("gestoria.settings.companyTitle")} description={t("gestoria.settings.companyHelp")}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField label={t("gestoria.settings.nif")}>
+                  <Input value={form.companyNif} onChange={(e) => setForm({ ...form, companyNif: e.target.value })} placeholder="B12345678" autoComplete="off" />
+                </FormField>
+                <FormField label={t("gestoria.settings.companyName")}>
+                  <Input value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} autoComplete="off" />
+                </FormField>
+              </div>
+              <FormField label={t("gestoria.settings.address")}>
+                <Input value={form.companyAddress} onChange={(e) => setForm({ ...form, companyAddress: e.target.value })} autoComplete="off" />
+              </FormField>
+              <FormField label={t("gestoria.settings.iae")} hint={t("gestoria.settings.iaeHint")}>
+                <Input value={form.iaeEpigraphs} onChange={(e) => setForm({ ...form, iaeEpigraphs: e.target.value })} placeholder={t("gestoria.settings.iaePlaceholder")} autoComplete="off" />
+              </FormField>
+            </FormSection>
+
+            <FormSection title={t("gestoria.settings.yearTitle")} description={t("gestoria.settings.yearHelp")}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField label={t("gestoria.settings.taxRate")} hint={t("gestoria.settings.taxRateHint")}>
+                  <Input
+                    type="number" step="0.01" min="0" inputMode="decimal" className="tabular-nums"
+                    value={form.corporateTaxRate}
+                    onChange={(e) => setForm({ ...form, corporateTaxRate: e.target.value })}
+                  />
+                </FormField>
+                <FormField label={t("gestoria.settings.yearEnd")}>
+                  <Select value={String(form.fiscalYearEndMonth)} onValueChange={(v) => setForm({ ...form, fiscalYearEndMonth: Number(v) })}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <SelectItem key={i} value={String(i + 1)}>{monthName(i)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title={t("gestoria.settings.gestoriaTitle")} description={t("gestoria.settings.gestoriaHelp")}>
+              <FormField label={t("gestoria.settings.emails")} hint={t("gestoria.settings.emailsHint")}>
+                <Input
+                  value={form.gestoriaEmails}
+                  onChange={(e) => setForm({ ...form, gestoriaEmails: e.target.value })}
+                  placeholder="gestoria@ejemplo.com, contacto@gestoria.com"
+                  autoComplete="off"
+                />
+              </FormField>
+            </FormSection>
+
+            <div className="flex justify-end">
+              <Button type="submit" disabled={updateMut.isPending} className="gap-2">
+                <Save className="h-4 w-4" aria-hidden="true" />
+                {updateMut.isPending ? t("common.saving") : t("gestoria.settings.save")}
+              </Button>
+            </div>
+          </form>
+        )}
       </div>
     </AdminLayout>
   );

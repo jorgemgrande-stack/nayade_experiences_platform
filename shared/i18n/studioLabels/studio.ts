@@ -94,6 +94,7 @@ export const STUDIO_DE_STUDIO: Record<string, string> = {
   "Abrir la portada": "Startseite öffnen",
   "la página": "die Seite",
   "Cargando la página": "Seite wird geladen",
+  "No se ha podido cargar la página": "Die Seite konnte nicht geladen werden",
   "Modo concentrado": "Fokusmodus",
   "Mostrar los paneles": "Panels einblenden",
   "Opciones de «": "Optionen von «",

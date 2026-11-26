@@ -10,6 +10,8 @@ import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { usePublicContact } from "@/hooks/usePublicPhone";
 import { usePublicSite } from "@/hooks/usePublicSite";
+import { useBuyerLocale } from "@/hooks/useBuyerLocale";
+import { fillUiText, siteUiText } from "@shared/siteUiText";
 import { formatEuros } from "@shared/storefront";
 import { formatDayEs } from "@shared/formatDay";
 
@@ -40,7 +42,9 @@ export default function ReservaError() {
   const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   // Tienda de una pyme: «pedido», cantidades y vuelta a la tienda (sin fechas ni personas que no existen)
-  const { features, text } = usePublicSite();
+  const locale = useBuyerLocale();
+  const t = siteUiText(locale);
+  const { features, text } = usePublicSite(locale);
   const generic = !features || features.licensed;
   const shopHref = features?.licensed && !features.store ? "/" : text.shopHref;
 
@@ -57,7 +61,8 @@ export default function ReservaError() {
     { enabled: !!merchantOrder, retry: 2 }
   );
 
-  const errorMessage = errorCode ? REDSYS_ERROR_MESSAGES[errorCode] : null;
+  // La tabla de códigos de la pasarela Redsys está en español: en otro idioma se enseña solo el código
+  const errorMessage = errorCode && siteUiText(locale) === siteUiText("es") ? REDSYS_ERROR_MESSAGES[errorCode] : null;
   const isCancelled = errorCode === "9915";
   const canRetry = !reservation || reservation.status === "pending_payment" || reservation.status === "failed";
 
@@ -69,12 +74,10 @@ export default function ReservaError() {
             <XCircle className="w-10 h-10 text-red-500" />
           </div>
           <h1 className="text-3xl font-bold text-foreground mb-2">
-            {isCancelled ? "Pago cancelado" : "Pago no completado"}
+            {isCancelled ? t.coErrCancelledTitle : t.coPaymentNotCompleted}
           </h1>
           <p className="text-muted-foreground">
-            {isCancelled
-              ? "Has cancelado el proceso de pago. No se ha realizado ningún cargo en tu tarjeta."
-              : "El banco no ha podido procesar el pago. No se ha realizado ningún cargo en tu tarjeta."}
+            {isCancelled ? t.coErrCancelledHelp : t.coErrFailedHelp}
           </p>
         </div>
 
@@ -85,11 +88,11 @@ export default function ReservaError() {
               <div>
                 {errorCode && (
                   <p className="text-sm font-semibold text-red-700 mb-1">
-                    Código de error: {errorCode}
+                    {fillUiText(t.coErrCode, { code: errorCode })}
                   </p>
                 )}
                 <p className="text-sm text-red-600">
-                  {errorMessage ?? "El banco ha rechazado la operación. Prueba con otra tarjeta o contacta con tu banco."}
+                  {errorMessage ?? t.coErrRejected}
                 </p>
               </div>
             </div>
@@ -98,7 +101,7 @@ export default function ReservaError() {
 
         {reservation && (
           <div className="bg-muted/50 rounded-xl p-5 mb-6 space-y-2 text-sm">
-            <h3 className="font-semibold text-foreground mb-3">{generic ? "Datos de tu pedido" : "Datos de tu reserva"}</h3>
+            <h3 className="font-semibold text-foreground mb-3">{generic ? t.coErrOrderData : t.coErrBookingData}</h3>
             {generic && reservation.lines?.length ? (
               reservation.lines.map((l, i) => (
                 <div key={i} className="flex justify-between gap-3">
@@ -108,31 +111,31 @@ export default function ReservaError() {
               ))
             ) : (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Producto</span>
+                <span className="text-muted-foreground">{t.coProduct}</span>
                 <span className="font-medium text-foreground">{reservation.productName}</span>
               </div>
             )}
             {!generic && (
               <>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Fecha</span>
+                  <span className="text-muted-foreground">{t.coErrDate}</span>
                   <span className="font-medium text-foreground">{/^\d{4}-\d{2}-\d{2}$/.test(reservation.bookingDate ?? "") ? formatDayEs(reservation.bookingDate) : reservation.bookingDate}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Personas</span>
+                  <span className="text-muted-foreground">{t.coErrPeople}</span>
                   <span className="font-medium text-foreground">{reservation.people}</span>
                 </div>
               </>
             )}
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Importe</span>
+              <span className="text-muted-foreground">{t.coErrAmount}</span>
               <span className="font-medium text-foreground">
                 {(generic ? reservation.orderTotalCents : reservation.amountTotal) ? formatEuros(((generic ? reservation.orderTotalCents : reservation.amountTotal) ?? 0) / 100) : "—"}
               </span>
             </div>
             {merchantOrder && (
               <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t border-border">
-                <span>{generic ? "N.º de pedido" : "Referencia"}</span>
+                <span>{generic ? t.coOrderNumber : t.coReference}</span>
                 <span className="font-mono">{merchantOrder}</span>
               </div>
             )}
@@ -140,12 +143,12 @@ export default function ReservaError() {
         )}
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8">
-          <h3 className="font-semibold text-amber-800 mb-2 text-sm">¿Qué puedo hacer?</h3>
+          <h3 className="font-semibold text-amber-800 mb-2 text-sm">{t.coErrWhatCanIDo}</h3>
           <ul className="space-y-1 text-sm text-amber-700">
-            <li>• Comprueba que los datos de la tarjeta son correctos.</li>
-            <li>• Verifica que tienes saldo o límite disponible.</li>
-            <li>• Prueba con otra tarjeta de crédito o débito.</li>
-            <li>• Si el problema persiste, contacta con tu banco.</li>
+            <li>• {t.coErrTip1}</li>
+            <li>• {t.coErrTip2}</li>
+            <li>• {t.coErrTip3}</li>
+            <li>• {t.coErrTip4}</li>
           </ul>
         </div>
 
@@ -155,7 +158,7 @@ export default function ReservaError() {
               href={generic ? "/checkout" : "/experiencias"}
               className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold"
             >
-              <RefreshCw className="w-4 h-4" /> Intentar de nuevo
+              <RefreshCw className="w-4 h-4" /> {t.coTryAgain}
             </Link>
           )}
           <Link
@@ -168,12 +171,12 @@ export default function ReservaError() {
             href="/"
             className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
           >
-            Volver al inicio
+            {t.coBackHome}
           </Link>
         </div>
 
         <div className="text-center text-sm text-muted-foreground pt-6 border-t border-border">
-          <p className="mb-3">¿Necesitas ayuda? Estamos aquí para ti:</p>
+          <p className="mb-3">{t.coErrNeedHelp}</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a href={phoneTel} className="flex items-center gap-2 hover:text-primary transition-colors">
               <Phone className="w-4 h-4" /> {phone}

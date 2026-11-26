@@ -29,7 +29,7 @@ export default {
     logout: "Cerrar sesión",
     exitSupport: "Salir del modo soporte",
   },
-  brand: { restaurants: "Restaurantes", control: "Control", admin: "Admin", home: "{brand}: ir al inicio del panel" },
+  brand: { restaurants: "Restaurantes", control: "Control", admin: "Admin", home: "{brand}: ir al inicio del panel", poweredBy: "Powered by Elephant Core", byBigElephant: "Big Elephant", platformLabel: "Plataforma Elephant Core, de Big Elephant" },
   trial: "Prueba: {days, plural, one {# día} other {# días}}",
   theme: { toLight: "Cambiar a modo claro", toDark: "Cambiar a modo oscuro" },
   notifications: {

@@ -8,7 +8,10 @@ import AdminLayout from "@/components/AdminLayout";
 import ImageUploader from "@/components/ImageUploader";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
-import { PanelError } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge as ToneBadge, type Tone } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
+import { TONE_SURFACE } from "@/lib/panelTones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,23 +51,19 @@ function fromLocalInput(v: string): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
-const STATUS_CLASS: Record<BlogVisibleStatus, string> = {
-  draft: "bg-slate-100 text-slate-800 border-slate-300",
-  scheduled: "bg-amber-50 text-amber-900 border-amber-300",
-  published: "bg-emerald-50 text-emerald-900 border-emerald-300",
-};
+const STATUS_TONE: Record<BlogVisibleStatus, Tone> = { draft: "neutral", scheduled: "warning", published: "success" };
 
 function StatusBadge({ status }: { status: BlogVisibleStatus }) {
-  return <Badge variant="outline" className={`text-xs ${STATUS_CLASS[status]}`}>{BLOG_STATUS_LABEL[status]}</Badge>;
+  return <ToneBadge tone={STATUS_TONE[status]}>{BLOG_STATUS_LABEL[status]}</ToneBadge>;
 }
 
 function FieldError({ id, msg }: { id: string; msg?: string }) {
   if (!msg) return null;
-  return <p id={id} className="mt-1 text-xs text-red-700" role="alert">{msg}</p>;
+  return <p id={id} className="mt-1 text-xs text-danger" role="alert">{msg}</p>;
 }
 
 function Counter({ value, max }: { value: string; max: number }) {
-  return <span className={`text-xs ${value.length > max ? "text-red-700" : "text-muted-foreground"}`}>{value.length}/{max}</span>;
+  return <span className={`text-xs ${value.length > max ? "text-danger" : "text-muted-foreground"}`}>{value.length}/{max}</span>;
 }
 
 // ─── Editor ──────────────────────────────────────────────────────────────────
@@ -164,7 +163,7 @@ function PostEditor({ id, canWrite, categories, onClose }: { id: number | null; 
       </div>
 
       {!canWrite && (
-        <p role="status" className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{tx("Solo lectura: tu plan permite consultar el blog, pero no modificarlo.")}</p>
+        <p role="status" className={`mb-4 rounded-md border px-3 py-2 text-sm text-foreground ${TONE_SURFACE.warning}`}>{tx("Solo lectura: tu plan permite consultar el blog, pero no modificarlo.")}</p>
       )}
 
       <fieldset disabled={!canWrite} className="space-y-6">
@@ -309,79 +308,62 @@ export default function BlogManager() {
   return (
     <AdminLayout title={tx("Blog")}>
       <div className="p-4 md:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">{tx("Blog")}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{tx("Entradas de tu web en /blog. Solo las publicadas se ven en la web.")}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <a href="/blog" target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="mr-1" aria-hidden="true" />{tx("Ver el blog")}</a>
+        <CmsSectionNav />
+        <PanelPageHeader
+          icon={<Newspaper />}
+          title={tx("Blog")}
+          description={tx("Entradas de tu web en /blog. Solo las publicadas se ven en la web.")}
+          actions={<>
+            <Button variant="outline" asChild>
+              <a href="/blog" target="_blank" rel="noopener noreferrer"><ExternalLink size={14} className="mr-1.5" aria-hidden="true" />{tx("Ver el blog")}</a>
             </Button>
-            <Button size="sm" onClick={() => setEditing(null)} disabled={!writable}><Plus size={14} className="mr-1" aria-hidden="true" />{tx("Nueva entrada")}</Button>
-          </div>
-        </div>
+            <Button onClick={() => setEditing(null)} disabled={!writable}><Plus size={14} className="mr-1.5" aria-hidden="true" />{tx("Nueva entrada")}</Button>
+          </>}
+        />
 
         {!writable && (
-          <p role="status" className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{tx("Solo lectura: tu plan permite consultar el blog, pero no modificarlo.")}</p>
+          <p role="status" className={`mb-4 rounded-md border px-3 py-2 text-sm text-foreground ${TONE_SURFACE.warning}`}>{tx("Solo lectura: tu plan permite consultar el blog, pero no modificarlo.")}</p>
         )}
 
         {list.isLoading ? (
-          <p role="status" className="py-12 text-center text-muted-foreground">{tx("Cargando entradas…")}</p>
+          <PanelLoading label={tx("Cargando entradas…")} />
         ) : list.error ? (
           <PanelError title={tx("No se han podido cargar las entradas")} error={list.error} onRetry={() => void list.refetch()} />
         ) : posts.length === 0 ? (
-          <div className="text-center py-16 border-2 border-dashed border-border rounded-xl bg-background">
-            <Newspaper size={32} className="mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-            <p className="font-medium">{tx("Aún no hay entradas")}</p>
-            <p className="text-sm text-muted-foreground mt-1">{tx("Escribe noticias, novedades o consejos para tus clientes.")}</p>
-            {writable && <Button className="mt-4" size="sm" onClick={() => setEditing(null)}><Plus size={14} className="mr-1" aria-hidden="true" />{tx("Crear la primera entrada")}</Button>}
-          </div>
+          <PanelEmpty icon={<Newspaper className="h-6 w-6" />} title={tx("Aún no hay entradas")} description={tx("Escribe noticias, novedades o consejos para tus clientes.")}>
+            {writable && <Button size="sm" onClick={() => setEditing(null)}><Plus size={14} className="mr-1" aria-hidden="true" />{tx("Crear la primera entrada")}</Button>}
+          </PanelEmpty>
         ) : (
-          <div className="bg-background border border-border rounded-xl overflow-x-auto">
-            <table className="w-full min-w-[640px]">
-              <caption className="sr-only">{tx("Entradas del blog")}</caption>
-              <thead>
-                <tr className="border-b border-border bg-muted/50 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  <th scope="col" className="px-4 py-3">{tx("Entrada")}</th>
-                  <th scope="col" className="px-4 py-3">{tx("Estado")}</th>
-                  <th scope="col" className="px-4 py-3">{tx("Categoría")}</th>
-                  <th scope="col" className="px-4 py-3">{tx("Publicación")}</th>
-                  <th scope="col" className="px-4 py-3"><span className="sr-only">{tx("Acciones")}</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {posts.map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-sm">{p.title}</p>
-                      <code className="text-xs text-muted-foreground">{tx("/blog/{slug}", { slug: p.slug })}</code>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={p.visibleStatus} /></td>
-                    <td className="px-4 py-3 text-sm">{p.category ?? "—"}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{p.publishedAt ? format.dateTime(p.publishedAt, { dateStyle: "medium", timeStyle: "short" }) : "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {p.visibleStatus === "published" && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                            <a href={`/blog/${p.slug}`} target="_blank" rel="noopener noreferrer" aria-label={tx("Ver «{title}» en la web", { title: p.title })}><ExternalLink size={14} aria-hidden="true" /></a>
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(p.id)} aria-label={`${writable ? tx("Editar") : tx("Ver")} «${p.title}»`}>
-                          <Pencil size={14} aria-hidden="true" />
-                        </Button>
-                        {writable && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-700 hover:text-red-800" onClick={() => setToDelete({ id: p.id, title: p.title })} aria-label={tx("Eliminar «{title}»", { title: p.title })}>
-                            <Trash2 size={14} aria-hidden="true" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul aria-label={tx("Entradas del blog")} className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
+            {posts.map((p) => (
+              <li key={p.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                  <button type="button" className="min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-left font-medium hover:underline" onClick={() => setEditing(p.id)}>{p.title}</button>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <code className="mr-1">{tx("/blog/{slug}", { slug: p.slug })}</code>
+                    <StatusBadge status={p.visibleStatus} />
+                    {p.category && <span>{p.category}</span>}
+                    {p.publishedAt && <span>{format.dateTime(p.publishedAt, { dateStyle: "medium", timeStyle: "short" })}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setEditing(p.id)} aria-label={`${writable ? tx("Editar") : tx("Ver")} «${p.title}»`}>
+                    <Pencil size={14} className="mr-1.5" aria-hidden="true" />{writable ? tx("Editar") : tx("Ver")}
+                  </Button>
+                  {p.visibleStatus === "published" && (
+                    <Button variant="ghost" size="icon" className="h-9 w-9" asChild>
+                      <a href={`/blog/${p.slug}`} target="_blank" rel="noopener noreferrer" aria-label={tx("Ver «{title}» en la web", { title: p.title })}><ExternalLink size={14} aria-hidden="true" /></a>
+                    </Button>
+                  )}
+                  {writable && (
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-danger hover:text-danger" onClick={() => setToDelete({ id: p.id, title: p.title })} aria-label={tx("Eliminar «{title}»", { title: p.title })}>
+                      <Trash2 size={14} aria-hidden="true" />
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 

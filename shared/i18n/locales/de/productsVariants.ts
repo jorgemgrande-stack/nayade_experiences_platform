@@ -3,6 +3,8 @@ import type es from "../es/productsVariants";
 
 export default {
   title: "Varianten und Preise",
+  loadError: "Die Varianten konnten nicht geladen werden",
+  noImage: "Kein Bild",
   itemLower: { licensed: "Produkt oder Leistung", own: "Erlebnis" },
   itemUpper: { licensed: "Produkt oder Leistung", own: "Erlebnis" },
   priceType: {

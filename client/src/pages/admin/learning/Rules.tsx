@@ -2,20 +2,22 @@
  * Elephant Learning · Reglas de acceso con nombres comerciales (lotes 3-4): qué producto y modalidad abre qué módulos y durante cuánto.
  * Las reglas nuevas nacen INACTIVAS. Activar una regla hace que un pago confirmado conceda acceso, así que pide confirmación expresa.
  */
+import { confirmAction } from "@/components/admin/ConfirmHost";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { StatusBadge } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 import { experienceLabel, variantLabel, modulesLabel } from "@shared/learningRules";
+import { modulesWithoutDuration } from "@shared/learning";
 import { Pencil, Plus, ShieldCheck } from "lucide-react";
 
-type Rule = { id: number; experienceId: number; variantId: number | null; courseId: number; moduleIds: number[]; durationDays: number | null; startMode: "on_grant" | "fixed_date"; fixedStart: number | null; active: boolean; experienceName: string | null; variantName: string | null; courseTitle: string | null; moduleTitles: string[] };
+type Rule = { id: number; experienceId: number; variantId: number | null; courseId: number; moduleIds: number[]; permanent?: boolean; activationRequired?: boolean; moduleSchedule?: Record<number, { unlockOffsetDays: number | null; durationDays: number | null }>; durationDays: number | null; startMode: "on_grant" | "fixed_date"; fixedStart: number | null; active: boolean; experienceName: string | null; variantName: string | null; courseTitle: string | null; moduleTitles: string[] };
 
 function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
@@ -26,14 +28,22 @@ function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () =
   const [moduleIds, setModuleIds] = useState<number[]>(rule?.moduleIds ?? []);
   const [days, setDays] = useState<string>(rule?.durationDays != null ? String(rule.durationDays) : "");
   const [active, setActive] = useState<boolean>(rule?.active ?? false);
+  const [permanent, setPermanent] = useState<boolean>(rule?.permanent ?? false);
+  const [activationRequired, setActivationRequired] = useState<boolean>(rule?.activationRequired ?? false);
+  const [sched, setSched] = useState<Record<number, { offset: string; dur: string }>>(() => Object.fromEntries(Object.entries(rule?.moduleSchedule ?? {}).map(([k, v]) => [Number(k), { offset: v.unlockOffsetDays != null ? String(v.unlockOffsetDays) : "", dur: v.durationDays != null ? String(v.durationDays) : "" }])));
+  const setField = (m: number, f: "offset" | "dur", v: string) => setSched((s) => ({ ...s, [m]: { offset: s[m]?.offset ?? "", dur: s[m]?.dur ?? "", [f]: v.replace(/\D/g, "") } }));
+  const moduleSettings = moduleIds.map((m) => ({ moduleId: m, unlockOffsetDays: sched[m]?.offset ? Number(sched[m].offset) : null, durationDays: sched[m]?.dur ? Number(sched[m].dur) : null }));
+  // Una regla no puede activarse con módulos sin duración (ni propia ni general) salvo que sea permanente: lo exige también el servidor
+  const missing = modulesWithoutDuration({ durationDays: days === "" ? null : Number(days), moduleIds, moduleSchedule: Object.fromEntries(moduleSettings.map((s) => [s.moduleId, { unlockOffsetDays: s.unlockOffsetDays, durationDays: s.durationDays }])) });
+  const blocked = active && !permanent && missing.length > 0;
   const save = trpc.learning.admin.saveRule.useMutation({ onSuccess: () => { toast.success(active ? t("learningManage.rules.saveActive") : t("learningManage.rules.saveInactive")); onSaved(); }, onError: (e) => toastError(e) });
   const exp = cat.data?.experiences.find((e) => e.id === experienceId);
   const course = cat.data?.courses.find((c) => c.id === courseId);
-  const valid = experienceId !== "" && courseId !== "" && moduleIds.length > 0 && (days === "" || (Number(days) >= 1 && Number(days) <= 3650));
+  const valid = experienceId !== "" && courseId !== "" && moduleIds.length > 0 && (days === "" || (Number(days) >= 1 && Number(days) <= 3650)) && !blocked && moduleSettings.every((s) => (s.durationDays == null || (s.durationDays >= 1 && s.durationDays <= 3650)) && (s.unlockOffsetDays == null || s.unlockOffsetDays <= 3650));
   const wasActive = rule?.active ?? false;
-  function submit() {
-    if (active && !wasActive && !confirm(t("learningManage.rules.activateConfirm"))) return;
-    save.mutate({ id: rule?.id, experienceId: Number(experienceId), variantId: variantId === "" ? null : Number(variantId), courseId: Number(courseId), moduleIds, durationDays: days === "" ? null : Number(days), startMode: "on_grant", fixedStart: null, active });
+  async function submit() {
+    if (active && !wasActive && !(await confirmAction({ description: t("learningManage.rules.activateConfirm") }))) return;
+    save.mutate({ id: rule?.id, experienceId: Number(experienceId), variantId: variantId === "" ? null : Number(variantId), courseId: Number(courseId), moduleIds, durationDays: days === "" ? null : Number(days), startMode: "on_grant", fixedStart: null, active, permanent, activationRequired, moduleSettings });
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -66,9 +76,24 @@ function RuleForm({ rule, onClose, onSaved }: { rule: Rule | null; onClose: () =
                 ))}
               </fieldset>
             )}
+            {course && moduleIds.length > 0 && (
+              <fieldset className="space-y-2 rounded-md border p-2" data-testid="rule-calendar"><legend className="px-1">{t("learningManage.rules.moduleCalendar")}</legend>
+                <p className="text-xs text-muted-foreground">{t("learningManage.rules.moduleCalendarHelp")}</p>
+                {course.modules.filter((m) => moduleIds.includes(m.id)).map((m) => (
+                  <div key={m.id} className="grid grid-cols-[1fr_6rem_6rem] items-end gap-2">
+                    <span className="truncate">{m.title}</span>
+                    <label className="text-xs">{t("learningManage.rules.unlockOffset")}<Input inputMode="numeric" aria-label={`${m.title}: ${t("learningManage.rules.unlockOffset")}`} value={sched[m.id]?.offset ?? ""} onChange={(e) => setField(m.id, "offset", e.target.value)} placeholder="0" /></label>
+                    <label className="text-xs">{t("learningManage.rules.moduleDuration")}<Input inputMode="numeric" aria-label={`${m.title}: ${t("learningManage.rules.moduleDuration")}`} value={sched[m.id]?.dur ?? ""} onChange={(e) => setField(m.id, "dur", e.target.value)} placeholder={t("learningManage.rules.inheritsDuration")} /></label>
+                  </div>
+                ))}
+              </fieldset>
+            )}
+            <label className="flex items-center gap-2"><input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />{t("learningManage.rules.permanentLabel")}</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={activationRequired} onChange={(e) => setActivationRequired(e.target.checked)} />{t("learningManage.rules.activationLabel")}</label>
             <label className="block">{t("learningManage.rules.duration")}<Input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} placeholder={t("learningManage.rules.durationPlaceholder")} /></label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />{t("learningManage.rules.activeLabel")}</label>
             {!active && <p className="text-xs text-muted-foreground">{t("learningManage.rules.inactiveNote")}</p>}
+            {blocked && <p role="alert" data-testid="rule-needs-duration" className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">{t("learningManage.rules.needsDurationWarning", { n: missing.length })}</p>}
             <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("learningManage.rules.cancel")}</Button><Button disabled={!valid || save.isPending} onClick={submit}>{t("learningManage.rules.save")}</Button></div>
           </div>
         )}
@@ -101,12 +126,13 @@ export default function Rules() {
                   <h3 className="flex items-center gap-1.5 font-semibold"><ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden /><span className="truncate">{experienceLabel(r)}</span></h3>
                   <p className="text-sm text-muted-foreground">{variantLabel(r)}</p>
                 </div>
-                <Badge variant={r.active ? "default" : "secondary"}>{r.active ? t("learningManage.rules.active") : t("learningManage.rules.inactive")}</Badge>
+                <StatusBadge tone={r.active ? "success" : "neutral"}>{r.active ? t("learningManage.rules.active") : t("learningManage.rules.inactive")}</StatusBadge>
               </div>
               <dl className="mt-3 space-y-1 text-sm">
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.course")}</dt><dd>{r.courseTitle ?? "—"}</dd></div>
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.opens")}</dt><dd>{modulesLabel(r)}</dd></div>
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.durationLabel")}</dt><dd>{r.durationDays ? t("learningManage.rules.days", { n: r.durationDays }) : t("learningManage.rules.noLimit")}</dd></div>
+                {(r.permanent || r.activationRequired || r.moduleSchedule) && <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.moduleCalendar")}</dt><dd>{r.permanent ? t("learningManage.rules.permanentTag") : ""}{r.activationRequired ? t("learningManage.rules.activationTag") : ""}{r.moduleSchedule ? Object.entries(r.moduleSchedule).map(([m, s]) => `#${m}: ${t("learningManage.rules.scheduleLine", { offset: s.unlockOffsetDays ?? 0, duration: s.durationDays != null ? t("learningManage.rules.days", { n: s.durationDays }) : "—" })}`).join(" · ") : ""}</dd></div>}
                 <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">{t("learningManage.rules.start")}</dt><dd>{r.startMode === "fixed_date" ? fmtDate(r.fixedStart) : t("learningManage.rules.onGrant")}</dd></div>
               </dl>
               <div className="mt-3"><Button size="sm" variant="outline" onClick={() => setEditing(r)}><Pencil className="mr-1.5 h-4 w-4" aria-hidden />{t("learningManage.rules.edit")}</Button></div>

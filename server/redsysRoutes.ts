@@ -39,7 +39,7 @@ import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
 import { applyOnlineOrderStock } from "./inventoryDb";
 import { applyOnlineOrderPoints } from "./loyaltyDb";
 import { isMultiTenant } from "./_core/tenant";
-import { finalizePaidShopOrder, isGenericShopOrder, sendShopOrderConfirmation, sendShopOrderFailed } from "./shopOrdersDb";
+import { consumeOrderDiscount, finalizePaidShopOrder, isGenericShopOrder, sendShopOrderConfirmation, sendShopOrderFailed } from "./shopOrdersDb";
 import { issuerSnapshotForNewInvoice } from "./issuerSnapshot";
 import { inventoryKindsOf, onlineReservationKind, onlineReservationTaxRate } from "./onlineReservationFiscal";
 
@@ -248,6 +248,16 @@ export async function applyPaymentResult(result: PaymentResult): Promise<void> {
         await applyOnlineOrderStock(result.merchantOrder);
       } catch (stockErr: any) {
         console.error("[Redsys IPN] Error descontando el inventario del pedido:", stockErr.message);
+      }
+    }
+
+    // Código de descuento del pedido: el uso se consume AQUÍ, al confirmar el pago (no al crear el carrito). Idempotente por
+    // pedido y sin superar el límite de usos; en una recuperación se rehace sin duplicar (ver consumeOrderDiscount).
+    if (result.isAuthorized && (affectedRows > 0 || recovering)) {
+      try {
+        await consumeOrderDiscount(result.merchantOrder, result.amount);
+      } catch (discErr: any) {
+        console.error("[Redsys IPN] Error registrando el uso del código de descuento:", discErr.message);
       }
     }
 

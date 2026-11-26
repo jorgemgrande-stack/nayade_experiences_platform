@@ -17,14 +17,14 @@ import type { TagEntityType } from "@shared/crmTagsTasks";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
 
-/** Clases de color con contraste AA en tema claro y oscuro. */
+/** Colores de etiqueta por significado (tonos del tema, con contraste AA en claro y oscuro; el violeta toma la marca de la empresa). */
 export const TAG_COLOR_CLASSES: Record<string, string> = {
-  gris: "bg-slate-100 text-slate-900 border-slate-300 dark:bg-slate-500/20 dark:text-slate-100 dark:border-slate-400/40",
-  azul: "bg-sky-100 text-sky-900 border-sky-300 dark:bg-sky-500/20 dark:text-sky-100 dark:border-sky-400/40",
-  verde: "bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-100 dark:border-emerald-400/40",
-  ambar: "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-500/20 dark:text-amber-100 dark:border-amber-400/40",
-  rojo: "bg-red-100 text-red-900 border-red-300 dark:bg-red-500/20 dark:text-red-100 dark:border-red-400/40",
-  violeta: "bg-violet-100 text-violet-900 border-violet-300 dark:bg-violet-500/20 dark:text-violet-100 dark:border-violet-400/40",
+  gris: "bg-muted text-foreground border-border",
+  azul: "bg-info/10 text-info border-info/40",
+  verde: "bg-success/10 text-success border-success/40",
+  ambar: "bg-warning/10 text-warning border-warning/40",
+  rojo: "bg-danger/10 text-danger border-danger/40",
+  violeta: "bg-primary/10 text-primary border-primary/40",
 };
 
 export function TagChip({ name, color, className }: { name: string; color?: string | null; className?: string }) {

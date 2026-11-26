@@ -30,6 +30,22 @@ export const TRPC_ROUTER_MODULES: Record<string, string> = {
 export const LEARNING_ENFORCE_ENV = "LEARNING_LICENSE_ENFORCED";
 export const learningEnforced = (): boolean => ["1", "true", "on"].includes((process.env[LEARNING_ENFORCE_ENV] ?? "").trim().toLowerCase());
 
+/**
+ * Derechos adquiridos del alumno (solo con la licencia exigida): lo que un alumno YA matriculado sigue pudiendo hacer aunque la
+ * empresa pierda la licencia `learning`: ver su aula, abrir sus lecciones y recursos, registrar su progreso y activar un derecho ya
+ * concedido. Todo va acotado a SUS matrículas (la comprobación de matrícula está en el procedimiento / la ruta, no aquí).
+ * Quedan fuera (exigen licencia): toda la administración (`learning.admin.*`), la vista previa, la subida y, entre las del alumno,
+ * `learning.my.startExtension` (crea un pedido nuevo: es venta, no derecho adquirido).
+ */
+export const LEARNING_STUDENT_PROCEDURES: ReadonlySet<string> = new Set([
+  "learning.my.courses",
+  "learning.my.course",
+  "learning.my.lesson",
+  "learning.my.progress",
+  "learning.my.activate",
+]);
+const LEARNING_STUDENT_RESOURCE_PATH = /^\/resource\/[1-9]\d{0,9}\/?$/;
+
 export function procedureNames(path: string): string[] {
   const p = path.split("?")[0].replace(/^\/api\/trpc\//, "").replace(/^\//, "");
   return p ? p.split(",").map((x) => x.trim()).filter(Boolean) : [];
@@ -43,6 +59,8 @@ export function procedureNames(path: string): string[] {
 export function learningLicenseGuard(getAccess: () => ModuleAccess): RequestHandler {
   return async (_req: Request, res: Response, next: NextFunction) => {
     if (!learningEnforced()) return next();
+    // Derecho adquirido del alumno: abrir un recurso de SU matrícula (la ruta comprueba matrícula y ventana); el resto exige licencia
+    if (_req.method === "GET" && LEARNING_STUDENT_RESOURCE_PATH.test(_req.path)) return next();
     try {
       if (await getAccess().isModuleAvailable("learning")) return next();
       opsLog("warn", "Licensing", "module_denied", { module: "learning", via: "express" });
@@ -67,7 +85,7 @@ export function moduleRouteGuard(getAccess: () => ModuleAccess, map?: Record<str
     const needed = new Set<string>();
     for (const proc of procedureNames(req.url ?? "")) {
       const ns = proc.split(".")[0];
-      const mod = routes[ns] ?? learning?.[ns as "learning"];
+      const mod = routes[ns] ?? (LEARNING_STUDENT_PROCEDURES.has(proc) ? undefined : learning?.[ns as "learning"]);
       if (mod) needed.add(mod);
     }
     if (needed.size === 0) return next();

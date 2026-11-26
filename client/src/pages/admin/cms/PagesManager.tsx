@@ -20,7 +20,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { PanelEmpty } from "@/components/admin/PanelStates";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge } from "@/components/admin/PanelUi";
+import CmsSectionNav from "./CmsSectionNav";
 import type { SitePage } from "@/components/admin/studio/PageSettings";
 import { cn } from "@/lib/utils";
 import { PAGE_TEMPLATES, SEO_LIMITS, pageSlugProblem, slugFromTitle, type PageTemplateKey } from "@shared/pageBlocks";
@@ -66,35 +68,33 @@ export default function PagesManager() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl p-4 md:p-6">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">{tx("Páginas de tu web")}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{tx("Crea tus páginas y edítalas visualmente en Elephant Studio. Los cambios se ven en tu web cuando los publicas.")}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        <CmsSectionNav />
+        <PanelPageHeader
+          icon={<FileText />}
+          title={tx("Páginas de tu web")}
+          description={tx("Crea tus páginas y edítalas visualmente en Elephant Studio. Los cambios se ven en tu web cuando los publicas.")}
+          actions={<>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label={tx("Más opciones")}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => navigate("/admin/cms/menus")}><ListTree className="mr-2 h-4 w-4" aria-hidden="true" />{tx("Ordenar el menú")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate("/admin/cms/idiomas")}><Globe className="mr-2 h-4 w-4" aria-hidden="true" />{tx("Idiomas")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate("/admin/cms/redirecciones")}><CornerDownRight className="mr-2 h-4 w-4" aria-hidden="true" />{tx("Redirecciones")}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="outline" asChild>
-              <Link href="/admin/cms/menus">
-                <ListTree className="mr-1.5 h-4 w-4" />{" "}{tx("Ordenar el menú")}</Link>
+              <Link href="/admin/studio"><Sparkles className="mr-1.5 h-4 w-4" aria-hidden="true" />{tx("Abrir Elephant Studio")}</Link>
             </Button>
-            <Button variant="outline" asChild>
-              <Link href="/admin/cms/idiomas">
-                <Globe className="mr-1.5 h-4 w-4" />{" "}{tx("Idiomas")}</Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/admin/cms/redirecciones">
-                <CornerDownRight className="mr-1.5 h-4 w-4" />{" "}{tx("Redirecciones")}</Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/admin/studio">
-                <Sparkles className="mr-1.5 h-4 w-4" />{" "}{tx("Abrir Elephant Studio")}</Link>
-            </Button>
-            <Button onClick={() => setCreating(true)}>
-              <Plus className="mr-1.5 h-4 w-4" />{" "}{tx("Nueva página")}</Button>
-          </div>
-        </div>
+            <Button onClick={() => setCreating(true)}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{tx("Nueva página")}</Button>
+          </>}
+        />
 
         {list.isLoading ? (
-          <div className="py-12 text-center text-muted-foreground">{tx("Cargando páginas…")}</div>
+          <PanelLoading label={tx("Cargando páginas…")} />
+        ) : list.isError ? (
+          <PanelError error={list.error} onRetry={() => void list.refetch()} />
         ) : !pages.length ? (
           <PanelEmpty icon={<FileText className="h-6 w-6" />} title={tx("Todavía no tienes páginas")} description={tx("Crea la portada de tu web y las páginas que necesites: servicios, quiénes somos, contacto…")}>
             <Button onClick={() => setCreating(true)}>
@@ -103,22 +103,20 @@ export default function PagesManager() {
         ) : (
           <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-background">
             {pages.map((p) => (
-              <li key={p.slug} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
+              <li key={p.slug} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                  <div className="flex min-w-0 items-center gap-2">
                     {p.isHome ? <Home className="h-4 w-4 text-primary" aria-hidden /> : p.isLegal ? <Scale className="h-4 w-4 text-muted-foreground" aria-hidden /> : <FileText className="h-4 w-4 text-muted-foreground" aria-hidden />}
                     <button type="button" className="overflow-hidden text-ellipsis whitespace-nowrap text-left font-medium hover:underline" onClick={() => edit(p.slug)}>
                       {p.title}
                     </button>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    <span>{p.isHome ? tx("Portada") : `/${p.slug}`}</span>
-                    <Badge variant={p.isPublished ? "default" : "secondary"} className="text-[11px]">
-                      {p.isPublished ? tx("Publicada") : tx("Sin publicar")}
-                    </Badge>
-                    {p.hasDraft && p.isPublished && <Badge variant="outline" className="text-[11px] border-warning/40 bg-warning/10 text-warning">{tx("Cambios sin publicar")}</Badge>}
-                    {p.isLegal && <Badge variant="outline" className="text-[11px]">{tx("Texto legal")}</Badge>}
-                    {(p.inHeader || p.inFooter) && <Badge variant="outline" className="text-[11px]">{p.inHeader ? tx("En el menú") : tx("En el pie")}</Badge>}
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="mr-1">{p.isHome ? tx("Portada") : `/${p.slug}`}</span>
+                    <StatusBadge tone={p.isPublished ? "success" : "neutral"}>{p.isPublished ? tx("Publicada") : tx("Borrador")}</StatusBadge>
+                    {p.hasDraft && p.isPublished && <StatusBadge tone="warning">{tx("Cambios sin publicar")}</StatusBadge>}
+                    {p.isLegal && <StatusBadge tone="neutral">{tx("Texto legal")}</StatusBadge>}
+                    {(p.inHeader || p.inFooter) && <StatusBadge tone="info">{p.inHeader ? tx("En el menú") : tx("En el pie")}</StatusBadge>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">

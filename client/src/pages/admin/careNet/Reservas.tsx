@@ -107,7 +107,7 @@ export default function Reservas() {
           </PanelEmpty>
         ) : (
           days.map((d) => (
-            <section key={d} className="rounded-2xl border border-border bg-card" aria-label={dayLabel(d)}>
+            <section key={d} className="rounded-xl border border-border bg-card" aria-label={dayLabel(d)}>
               <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">{dayLabel(d)}</h2>
               {(byDay.get(d) ?? []).length === 0 ? (
                 <p className="px-4 py-3 text-sm text-muted-foreground">Sin reservas.</p>

@@ -1,6 +1,7 @@
 /** Lugares de servicio. */
 export default {
   title: "Lugares de servicio",
+  loadError: "No se han podido cargar los lugares de servicio",
   count: "{n, plural, one {# lugar registrado} other {# lugares registrados}}",
   newLocation: "Nuevo lugar de servicio",
   empty: {

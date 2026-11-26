@@ -172,20 +172,20 @@ export const LEGACY_NAV: NavItem[] = [
       { label: "Configuración", href: "/admin/personal/configuracion" },
     ],
   },
-  { label: "Control Diario", href: "/admin/contabilidad/control-diario", icon: "chart", roles: ["controler"] },
+  { label: "Control diario", href: "/admin/contabilidad/control-diario", icon: "chart", roles: ["controler"] },
   {
     label: "Contabilidad", href: "/admin/contabilidad", icon: "chart", roles: ["admin"],
     children: [
-      { label: "Control Diario", href: "/admin/contabilidad/control-diario" },
-      { label: "Dashboard", href: "/admin/contabilidad/dashboard" },
+      { label: "Control diario", href: "/admin/contabilidad/control-diario" },
+      { label: "Resumen económico", href: "/admin/contabilidad/dashboard" },
       { label: "Transacciones", href: "/admin/contabilidad/transacciones" },
-      { label: "Informes", href: "/admin/contabilidad/informes" },
+      { label: "Informes de ventas", href: "/admin/contabilidad/informes" },
       { label: "Gastos", href: "/admin/contabilidad/gastos" },
-      { label: "Recurrentes", href: "/admin/contabilidad/gastos/recurrentes" },
-      { label: "Categ. gastos", href: "/admin/contabilidad/gastos/categorias" },
-      { label: "Proveedores gastos", href: "/admin/contabilidad/gastos/proveedores" },
+      { label: "Gastos recurrentes", href: "/admin/contabilidad/gastos/recurrentes" },
+      { label: "Categorías de gasto", href: "/admin/contabilidad/gastos/categorias" },
+      { label: "Proveedores de gasto", href: "/admin/contabilidad/gastos/proveedores" },
       { label: "Centros de coste", href: "/admin/contabilidad/gastos/centros-coste" },
-      { label: "Cuenta Resultados", href: "/admin/contabilidad/cuenta-resultados" },
+      { label: "Cuenta de resultados", href: "/admin/contabilidad/cuenta-resultados" },
       { label: "Caja", href: "/admin/contabilidad/caja" },
       { label: "Movimientos bancarios", href: "/admin/contabilidad/movimientos-bancarios" },
       { label: "Operaciones TPV", href: "/admin/contabilidad/operaciones-tpv" },
@@ -365,7 +365,7 @@ export const TASK_NAV: NavSection[] = [
       {
         label: "Informes", href: "/admin/contabilidad/informes", key: "t-informes", icon: "chart", roles: ADMIN, capabilities: ["bill-reports"],
         children: [
-          { label: "Resumen", href: "/admin/contabilidad/dashboard", capabilities: ["bill-reports"] },
+          { label: "Resumen económico", href: "/admin/contabilidad/dashboard", capabilities: ["bill-reports"] },
           { label: "Transacciones", href: "/admin/contabilidad/transacciones", capabilities: ["bill-reports"] },
           { label: "Informes de ventas", href: "/admin/contabilidad/informes", capabilities: ["bill-reports"] },
         ],
@@ -405,7 +405,7 @@ export const TASK_NAV: NavSection[] = [
       {
         label: "Bancos y TPV", href: "/admin/contabilidad/movimientos-bancarios", key: "x-bancos", icon: "creditCard", roles: ADMIN, capabilities: ["bank-import-pos"],
         children: [
-          { label: "Puesta en marcha", href: "/admin/contabilidad/finance-sync", capabilities: ["bank-import-pos"] },
+          { label: "Finance Sync", href: "/admin/contabilidad/finance-sync", capabilities: ["bank-import-pos"] },
           { label: "Movimientos bancarios", href: "/admin/contabilidad/movimientos-bancarios", capabilities: ["bank-import-pos"] },
           { label: "Operaciones TPV", href: "/admin/contabilidad/operaciones-tpv", capabilities: ["bank-import-pos"] },
           { label: "Remesas TPV", href: "/admin/contabilidad/remesas-tpv", capabilities: ["bank-import-pos"] },

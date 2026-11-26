@@ -28,7 +28,7 @@ function Counter({ value, max }: { value: string; max: number }) {
   const tx = useStudioText();
   const n = value.length;
   return (
-    <span className={cn("text-xs", n > max ? "text-amber-700" : "text-muted-foreground")}>
+    <span className={cn("text-xs", n > max ? "text-warning" : "text-muted-foreground")}>
       {tx("{n} de {max} caracteres", { n, max })}{n > max ? tx(" · los buscadores lo cortarán") : ""}
     </span>
   );
@@ -121,8 +121,8 @@ export function PageSettings({ page, pages, onSaved, beforeSave }: { page: SiteP
           <Counter value={metaDescription} max={SEO_LIMITS.description} />
         </div>
         <div className="rounded-lg border border-border bg-background p-3">
-          <p className="text-[11px] text-muted-foreground">{origin}{page.isHome ? "" : `/${slug}`}</p>
-          <p className="mt-0.5 text-sm font-medium text-[#1a0dab] dark:text-sky-300">{(metaTitle || title).slice(0, 70)}</p>
+          <p className="text-xs text-muted-foreground">{origin}{page.isHome ? "" : `/${slug}`}</p>
+          <p className="mt-0.5 text-sm font-medium text-info">{(metaTitle || title).slice(0, 70)}</p>
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{metaDescription || tx("Sin descripción: los buscadores mostrarán un fragmento de la página.")}</p>
         </div>
         <Button

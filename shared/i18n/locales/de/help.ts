@@ -85,6 +85,12 @@ export default {
   },
   account: {
     title: "Mein Konto",
+    subtitle: "Sicherheit deines Zugangs: die E-Mail für die Anmeldung und die Geräte, die du schon genutzt hast.",
+    loadError: "Die Geräte konnten nicht geladen werden",
+    signedInAs: "Angemeldet als",
+    deviceCount: "{n, plural, one {# registriertes Gerät} other {# registrierte Geräte}}",
+    emailDesc: "Die E-Mail-Adresse, mit der du dich anmeldest. Für eine Änderung brauchst du dein aktuelles Passwort und die Bestätigung über die neue E-Mail.",
+    passwordHint: "Wird nur verwendet, um zu prüfen, dass du es bist.",
     emailTitle: "Anmelde-E-Mail",
     currentEmail: "Aktuelle E-Mail:",
     pendingChange: "Änderung auf <b>{email}</b> wartet auf Bestätigung (der Link läuft am {date} ab).",

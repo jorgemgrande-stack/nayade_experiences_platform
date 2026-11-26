@@ -107,6 +107,8 @@ export interface BlockDataMap {
     /** Tableta: automático (con 3–4 columnas, dos por fila), una debajo de otra o todas en fila */
     tablet: "auto" | "stack" | "columns";
     width: "normal" | "wide" | "full";
+    /** Espacio vertical propio de la sección (arriba y abajo): normal (como siempre), reducido o sin espacio */
+    vspace: "normal" | "compact" | "none";
     columns: SectionColumn[];
   };
   /**
@@ -538,7 +540,7 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
     logos: { title: "Confían en nosotros", logos: [], grayscale: "on" },
     upcoming_dates: { title: "Próximas fechas", intro: "", productSlug: "", categorySlug: "", limit: "6", emptyText: "" },
     // Las columnas nacen vacías aquí; createSection (shared/studio/tree.ts) las llena al insertarla
-    section: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", tablet: "auto", width: "normal", columns: [{ blocks: [] }, { blocks: [] }] },
+    section: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", tablet: "auto", width: "normal", vspace: "normal", columns: [{ blocks: [] }, { blocks: [] }] },
     modal: {
       slug: "ventana", title: "Título de la ventana", imageUrl: "", imageAlt: "", size: "m", align: "left",
       closeLabel: "Cerrar", showClose: "on", closeOnOverlay: "on", closeOnEsc: "on",

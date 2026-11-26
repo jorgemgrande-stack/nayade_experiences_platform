@@ -1,10 +1,17 @@
 import { useState, useMemo } from "react";
-import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
-import { PanelError } from "@/components/admin/PanelStates";
+import { EconomyShell } from "@/components/admin/EconomyShell";
+import { CompactEmpty, SummaryStrip, ToolbarRow, type SummaryStripItem } from "@/components/admin/SalesFamilyShell";
+import { StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { PanelLoading } from "@/components/admin/PanelStates";
+import { FormFooter, EconomyTable, FilterField, FormSection, RowActions, type EconomyColumn } from "./shared/EconomyUi";
+import { EconomyPager, MoreFilters } from "./shared/EconomyParts";
 import { trpc } from "@/lib/trpc";
 import { transactionDescription } from "@shared/transactionText";
 import { useVocabulary } from "@/lib/vocabulary";
+import { useI18n, useFormat } from "@/i18n/I18nProvider";
+import { useMoney } from "@/lib/useMoney";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,47 +19,34 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  Search, Download, TrendingUp, TrendingDown, RefreshCw, Receipt,
-  ChevronLeft, ChevronRight, User, ShoppingBag, Calendar,
-  CreditCard, Banknote, Smartphone, Store, Globe, Monitor,
-  Eye, Trash2,
+  Download, TrendingUp, TrendingDown, Receipt, Percent, Undo2, ArrowUpRight, User, ShoppingBag,
+  CreditCard, Banknote, Smartphone, Eye, Trash2, SearchX,
 } from "lucide-react";
 import { toastError } from "@/lib/errorMessage";
 
-// ─── Configuraciones visuales ────────────────────────────────────────────────
-const typeConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  ingreso:   { label: "Ingreso",   color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",   icon: <TrendingUp className="w-3 h-3" /> },
-  reembolso: { label: "Reembolso", color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",           icon: <TrendingDown className="w-3 h-3" /> },
-  comision:  { label: "Comisión",  color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",       icon: <Receipt className="w-3 h-3" /> },
-  gasto:     { label: "Gasto",     color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",   icon: <TrendingDown className="w-3 h-3" /> },
+// ─── Configuración visual ────────────────────────────────────────────────────
+// Cada tipo tiene su propio tono, icono y color de importe. Es solo presentación: el signo y el importe no cambian.
+const TYPE_STYLE: Record<string, { tone: Tone; icon: React.ReactNode; amount: string }> = {
+  ingreso:   { tone: "success", icon: <TrendingUp />,  amount: "text-success" },
+  reembolso: { tone: "danger",  icon: <Undo2 />,       amount: "text-danger" },
+  comision:  { tone: "info",    icon: <Percent />,     amount: "text-info" },
+  gasto:     { tone: "warning", icon: <ArrowUpRight />, amount: "text-warning" },
 };
-
-const statusConfig: Record<string, { label: string; color: string }> = {
-  pendiente:   { label: "Pendiente",   color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  completado:  { label: "Completado",  color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  fallido:     { label: "Fallido",     color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  reembolsado: { label: "Reembolsado", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400" },
+const STATUS_TONE: Record<string, Tone> = { pendiente: "warning", completado: "success", fallido: "danger", reembolsado: "neutral" };
+const METHOD_ICON: Record<string, React.ReactNode> = {
+  efectivo: <Banknote className="h-3 w-3" />, tarjeta: <CreditCard className="h-3 w-3" />, bizum: <Smartphone className="h-3 w-3" />,
+  redsys: <CreditCard className="h-3 w-3" />, otro: <Receipt className="h-3 w-3" />,
 };
+const KNOWN_CHANNELS = ["tpv", "web", "online", "crm", "admin", "delegado", "otro"];
+const KNOWN_METHODS = ["efectivo", "tarjeta", "bizum", "redsys", "transferencia", "link_pago", "tarjeta_fisica", "tarjeta_redsys", "otro"];
 
-const channelConfig: Record<string, { label: string; icon: React.ReactNode }> = {
-  tpv:    { label: "TPV",    icon: <Monitor className="w-3 h-3" /> },
-  web:    { label: "Web",    icon: <Globe className="w-3 h-3" /> },
-  admin:  { label: "Admin",  icon: <Store className="w-3 h-3" /> },
-  otro:   { label: "Otro",   icon: <Receipt className="w-3 h-3" /> },
-};
-
-const methodIcons: Record<string, React.ReactNode> = {
-  efectivo: <Banknote className="w-3 h-3" />,
-  tarjeta:  <CreditCard className="w-3 h-3" />,
-  bizum:    <Smartphone className="w-3 h-3" />,
-  redsys:   <CreditCard className="w-3 h-3" />,
-  otro:     <Receipt className="w-3 h-3" />,
-};
-
-const PAGE_SIZE = 50;
+type Tx = Record<string, any> & { id: number; transactionNumber: string; type: string; amount: string | number; status: string; createdAt: string | Date };
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function TransactionsList() {
+  const { t } = useI18n();
+  const f = useFormat();
+  const money = useMoney();
   // REAV (agencias de viaje) solo con su módulo; la instalación propia lo conserva
   const voc = useVocabulary();
   const [search, setSearch]             = useState("");
@@ -63,6 +57,7 @@ export default function TransactionsList() {
   const [fromDate, setFromDate]         = useState("");
   const [toDate, setToDate]             = useState("");
   const [page, setPage]                 = useState(0);
+  const [pageSize, setPageSize]         = useState(50);
   const [viewTxId, setViewTxId]         = useState<number | null>(null);
   const [deleteTx, setDeleteTx]         = useState<{ id: number; number: string } | null>(null);
 
@@ -75,7 +70,7 @@ export default function TransactionsList() {
     searchTimeout.id = setTimeout(() => { setDebouncedSearch(v); setPage(0); }, 400);
   };
 
-  const queryParams = {
+  const filterParams = {
     type:         typeFilter    === "all" ? undefined : typeFilter,
     status:       statusFilter  === "all" ? undefined : statusFilter,
     saleChannel:  channelFilter === "all" ? undefined : channelFilter,
@@ -83,24 +78,17 @@ export default function TransactionsList() {
     from:         fromDate || undefined,
     to:           toDate   || undefined,
     search:       debouncedSearch || undefined,
-    limit:        PAGE_SIZE,
-    offset:       page * PAGE_SIZE,
   };
 
-  const { data: transactions, isLoading, error: transactionsError, refetch: refetchTransactions } = trpc.accounting.getTransactions.useQuery(queryParams);
-  const { data: countData }               = trpc.accounting.getTransactionsCount.useQuery({
-    type:         queryParams.type,
-    status:       queryParams.status,
-    saleChannel:  queryParams.saleChannel,
-    fiscalRegime: queryParams.fiscalRegime,
-    from:         queryParams.from,
-    to:           queryParams.to,
-    search:       queryParams.search,
-  });
+  const { data: transactions, isLoading, error: transactionsError, refetch: refetchTransactions } = trpc.accounting.getTransactions.useQuery({ ...filterParams, limit: pageSize, offset: page * pageSize });
+  const { data: countData }  = trpc.accounting.getTransactionsCount.useQuery(filterParams);
+  // Totales del filtro COMPLETO (no de la página): ingresos, salidas, neto y nº, calculados en el servidor
+  const { data: summary }    = trpc.accounting.getTransactionsSummary.useQuery(filterParams);
+  // Total sin filtros, solo para decir «0 de N con estos filtros»
+  const { data: allCount }   = trpc.accounting.getTransactionsCount.useQuery({});
 
-  const total       = countData?.total ?? 0;
-  const totalPages  = Math.ceil(total / PAGE_SIZE);
-  const txList      = transactions ?? [];
+  const total      = countData?.total ?? 0;
+  const txList     = (transactions ?? []) as Tx[];
 
   const { data: txDetail } = trpc.accounting.getTransactionById.useQuery(
     { id: viewTxId! },
@@ -110,16 +98,20 @@ export default function TransactionsList() {
   const utils = trpc.useUtils();
   const deleteMut = trpc.accounting.deleteTransaction.useMutation({
     onSuccess: () => {
-      toast.success("Transacción eliminada");
+      toast.success(t("economyTx.delete.done"));
       setDeleteTx(null);
       utils.accounting.getTransactions.invalidate();
       utils.accounting.getTransactionsCount.invalidate();
+      utils.accounting.getTransactionsSummary.invalidate();
     },
     onError: (e) => toastError(e),
   });
 
-  const totalIngresos = txList.filter(t => t.type === "ingreso"   && t.status === "completado").reduce((s, t) => s + parseFloat(String(t.amount)), 0);
-  const totalGastos   = txList.filter(t => (t.type === "gasto" || t.type === "reembolso") && t.status === "completado").reduce((s, t) => s + parseFloat(String(t.amount)), 0);
+  const typeLabel = (v: string) => (v in TYPE_STYLE ? t(`economyTx.type.${v}`) : v);
+  const statusLabel = (v: string) => (v in STATUS_TONE ? t(`economyTx.status.${v}`) : v);
+  const channelLabel = (v: string | null | undefined) => { const k = v ?? "otro"; return KNOWN_CHANNELS.includes(k) ? t(`economyTx.channel.${k}`) : k; };
+  const methodLabel = (v: string | null | undefined) => { const k = v ?? "otro"; return KNOWN_METHODS.includes(k) ? t(`economyTx.method.${k}`) : k; };
+  const regimeLabel = (v: string) => (v === "general" || v === "reav" || v === "mixed" ? t(`economyTx.regime.${v}`) : v);
 
   const resetFilters = () => {
     setSearch(""); setDebouncedSearch(""); setTypeFilter("all");
@@ -127,351 +119,346 @@ export default function TransactionsList() {
     setFromDate(""); setToDate(""); setPage(0);
   };
 
+  // El CSV no cambia: mismas columnas, mismos datos (las filas cargadas) y mismo formato.
   const exportCSV = () => {
     const rows = [
       ["Nº Transacción","Tipo","Importe","Método","Canal","Régimen Fiscal","Base Imponible","IVA","Estado","Cliente","Producto","Descripción","Fecha"],
-      ...txList.map(t => [
-        t.transactionNumber, t.type, t.amount,
-        t.paymentMethod ?? "",
-        (t as any).saleChannel ?? "",
-        (t as any).fiscalRegime ?? "",
-        (t as any).taxBase ?? "",
-        (t as any).taxAmount ?? "",
-        t.status,
-        (t as any).clientName ?? "",
-        (t as any).productName ?? "",
-        t.description ?? "",
-        new Date(t.createdAt).toLocaleDateString("es-ES"),
+      ...txList.map(tx => [
+        tx.transactionNumber, tx.type, tx.amount,
+        tx.paymentMethod ?? "",
+        tx.saleChannel ?? "",
+        tx.fiscalRegime ?? "",
+        tx.taxBase ?? "",
+        tx.taxAmount ?? "",
+        tx.status,
+        tx.clientName ?? "",
+        tx.productName ?? "",
+        tx.description ?? "",
+        new Date(tx.createdAt).toLocaleDateString("es-ES"),
       ])
     ];
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href = url; a.download = `transacciones_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
-    toast.success("Exportación CSV completada");
+    toast.success(t("economyTx.exported"));
   };
 
-  return (
-    <AdminLayout title="Transacciones">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">Transacciones</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {total} registros totales · página {page + 1} de {Math.max(1, totalPages)}
-          </p>
-        </div>
-        <Button variant="outline" onClick={exportCSV} className="gap-2">
-          <Download className="w-4 h-4" /> Exportar CSV
-        </Button>
-      </div>
+  const dayShort = (v: string) => f.date(new Date(`${v}T00:00:00`), { day: "2-digit", month: "short", year: "numeric" });
+  const chips = [
+    ...(debouncedSearch ? [{ id: "q", label: t("economyTx.chip.search", { value: debouncedSearch }), onRemove: () => { setSearch(""); setDebouncedSearch(""); setPage(0); } }] : []),
+    ...(typeFilter !== "all" ? [{ id: "type", label: t("economyTx.chip.type", { value: typeLabel(typeFilter) }), onRemove: () => { setTypeFilter("all"); setPage(0); } }] : []),
+    ...(statusFilter !== "all" ? [{ id: "status", label: t("economyTx.chip.status", { value: statusLabel(statusFilter) }), onRemove: () => { setStatusFilter("all"); setPage(0); } }] : []),
+    ...(channelFilter !== "all" ? [{ id: "channel", label: t("economyTx.chip.channel", { value: channelLabel(channelFilter) }), onRemove: () => { setChannelFilter("all"); setPage(0); } }] : []),
+    ...(fiscalFilter !== "all" ? [{ id: "fiscal", label: t("economyTx.chip.regime", { value: regimeLabel(fiscalFilter) }), onRemove: () => { setFiscalFilter("all"); setPage(0); } }] : []),
+    ...(fromDate ? [{ id: "from", label: t("economyTx.chip.from", { value: dayShort(fromDate) }), onRemove: () => { setFromDate(""); setPage(0); } }] : []),
+    ...(toDate ? [{ id: "to", label: t("economyTx.chip.to", { value: dayShort(toDate) }), onRemove: () => { setToDate(""); setPage(0); } }] : []),
+  ];
+  const moreActive = (channelFilter !== "all" ? 1 : 0) + (fiscalFilter !== "all" ? 1 : 0);
 
-      {/* KPIs rápidos */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
-          <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide mb-1">Ingresos (página)</p>
-          <p className="text-2xl font-bold text-green-800 dark:text-green-300">€{totalIngresos.toFixed(2)}</p>
-        </div>
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
-          <p className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase tracking-wide mb-1">Gastos/Reembolsos</p>
-          <p className="text-2xl font-bold text-red-800 dark:text-red-300">€{totalGastos.toFixed(2)}</p>
-        </div>
-        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
-          <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">Balance neto</p>
-          <p className={`text-2xl font-bold ${totalIngresos - totalGastos >= 0 ? "text-green-800 dark:text-green-300" : "text-red-800 dark:text-red-300"}`}>
-            €{(totalIngresos - totalGastos).toFixed(2)}
-          </p>
-        </div>
-      </div>
+  const net = summary ? Number(summary.net) : 0;
+  const dash = "—";
+  const stripItems: SummaryStripItem[] = [
+    { key: "net", label: t("economyTx.summary.net"), value: summary ? money.eur(summary.net) : dash, primary: true, tone: net >= 0 ? "success" : "danger" },
+    { key: "income", label: t("economyTx.summary.income"), value: summary ? money.eur(summary.income) : dash, tone: "success" },
+    { key: "outflow", label: t("economyTx.summary.outflow"), value: summary ? money.eur(summary.outflow) : dash, tone: "danger" },
+    { key: "pending", label: t("economyTx.summary.pending"), value: summary ? String(summary.pending) : dash, detail: summary ? t("economyTx.summary.pendingDetail", { count: summary.count }) : undefined, tone: summary && summary.pending > 0 ? "warning" : "neutral" },
+  ];
 
-      {/* Filtros */}
-      <div className="bg-card border border-border rounded-xl p-4 mb-5 space-y-3">
-        <div className="flex flex-wrap gap-3">
-          {/* Búsqueda */}
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input value={search} onChange={e => handleSearch(e.target.value)}
-              placeholder="Buscar por nº, cliente, producto..." className="pl-9" />
-          </div>
-          {/* Tipo */}
-          <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Tipo" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los tipos</SelectItem>
-              <SelectItem value="ingreso">Ingreso</SelectItem>
-              <SelectItem value="reembolso">Reembolso</SelectItem>
-              <SelectItem value="comision">Comisión</SelectItem>
-              <SelectItem value="gasto">Gasto</SelectItem>
-            </SelectContent>
-          </Select>
-          {/* Estado */}
-          <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Estado" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="pendiente">Pendiente</SelectItem>
-              <SelectItem value="completado">Completado</SelectItem>
-              <SelectItem value="fallido">Fallido</SelectItem>
-              <SelectItem value="reembolsado">Reembolsado</SelectItem>
-            </SelectContent>
-          </Select>
-          {/* Canal */}
-          <Select value={channelFilter} onValueChange={v => { setChannelFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="Canal" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los canales</SelectItem>
-              <SelectItem value="tpv">TPV</SelectItem>
-              <SelectItem value="web">Web</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="otro">Otro</SelectItem>
-            </SelectContent>
-          </Select>
-          {/* Régimen fiscal */}
-          <Select value={fiscalFilter} onValueChange={v => { setFiscalFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-44"><SelectValue placeholder="Régimen fiscal" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los regímenes</SelectItem>
-              <SelectItem value="general">IVA General 21%</SelectItem>
-              {voc.showReav && <SelectItem value="reav">REAV</SelectItem>}
-              <SelectItem value="mixed">Mixto</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          {/* Fechas */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-muted-foreground" />
-            <Input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPage(0); }}
-              className="w-36 text-sm" placeholder="Desde" />
-            <span className="text-muted-foreground text-sm">—</span>
-            <Input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPage(0); }}
-              className="w-36 text-sm" placeholder="Hasta" />
-          </div>
-          <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground gap-1">
-            <RefreshCw className="w-3 h-3" /> Limpiar filtros
-          </Button>
-        </div>
-      </div>
+  const amountOf = (tx: Tx) => {
+    const style = TYPE_STYLE[tx.type] ?? TYPE_STYLE.ingreso;
+    return (
+      <span className={cn("whitespace-nowrap text-sm font-bold tabular-nums", style.amount)}>
+        {tx.type === "ingreso" ? "+" : "−"}{money.eur(tx.amount)}
+      </span>
+    );
+  };
+  const partyOf = (tx: Tx) => tx.clientName || tx.productName || transactionDescription(tx.description) || dash;
+  const dateOf = (tx: Tx) => f.date(tx.createdAt, { day: "2-digit", month: "short", year: "numeric" });
+  const typeBadge = (tx: Tx) => { const st = TYPE_STYLE[tx.type] ?? TYPE_STYLE.ingreso; return <StatusBadge tone={st.tone} icon={st.icon}>{typeLabel(tx.type)}</StatusBadge>; };
+  const statusBadge = (tx: Tx) => <StatusBadge tone={STATUS_TONE[tx.status] ?? "warning"}>{statusLabel(tx.status)}</StatusBadge>;
 
-      {/* Tabla */}
-      {transactionsError ? (
-        <PanelError title="No se han podido cargar las transacciones" error={transactionsError} onRetry={() => void refetchTransactions()} />
-      ) : isLoading ? (
-        <div className="space-y-3">
-          {[...Array(8)].map((_, i) => <div key={i} className="h-14 bg-muted animate-pulse rounded-xl" />)}
-        </div>
-      ) : txList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <RefreshCw className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-muted-foreground font-medium">No hay transacciones con estos filtros</p>
-          <Button variant="ghost" size="sm" onClick={resetFilters} className="mt-3">Limpiar filtros</Button>
-        </div>
-      ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Nº / Fecha</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipo</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Importe</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Método</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Canal</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fiscal</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cliente / Producto</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {txList.map((t) => {
-                  const tp = typeConfig[t.type]   ?? typeConfig.ingreso;
-                  const st = statusConfig[t.status] ?? statusConfig.pendiente;
-                  const ch = channelConfig[(t as any).saleChannel ?? "otro"] ?? channelConfig.otro;
-                  const taxBase   = parseFloat(String((t as any).taxBase   ?? "0"));
-                  const taxAmount = parseFloat(String((t as any).taxAmount ?? "0"));
-                  const reavMargin= parseFloat(String((t as any).reavMargin?? "0"));
-                  const regime    = (t as any).fiscalRegime ?? null;
-                  return (
-                    <tr key={t.id} className="hover:bg-muted/20 transition-colors">
-                      {/* Nº / Fecha */}
-                      <td className="px-4 py-3">
-                        <p className="font-mono text-xs font-bold text-foreground">{t.transactionNumber}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(t.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}
-                        </p>
-                      </td>
-                      {/* Tipo */}
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${tp.color}`}>
-                          {tp.icon} {tp.label}
-                        </span>
-                      </td>
-                      {/* Importe */}
-                      <td className="px-4 py-3 text-right">
-                        <span className={`text-sm font-bold ${t.type === "ingreso" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
-                          {t.type === "ingreso" ? "+" : "-"}€{parseFloat(String(t.amount)).toFixed(2)}
-                        </span>
-                        {regime && (
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {regime === "reav" && reavMargin > 0 && <span>Margen REAV: €{reavMargin.toFixed(2)}</span>}
-                            {regime !== "reav" && taxBase > 0 && <span>Base: €{taxBase.toFixed(2)} · IVA: €{taxAmount.toFixed(2)}</span>}
-                          </div>
-                        )}
-                      </td>
-                      {/* Método */}
-                      <td className="px-4 py-3">
-                        <Badge variant="outline" className="text-xs gap-1">
-                          {methodIcons[t.paymentMethod ?? "otro"]}
-                          {formatPaymentMethod(t.paymentMethod)}
-                        </Badge>
-                      </td>
-                      {/* Canal */}
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          {ch.icon} {ch.label}
-                        </span>
-                      </td>
-                      {/* Fiscal */}
-                      <td className="px-4 py-3">
-                        {regime ? (
-                          <Badge variant="outline" className={`text-xs ${
-                            regime === "reav" ? "border-purple-400 text-purple-600 dark:text-purple-400" :
-                            regime === "mixed" ? "border-amber-400 text-amber-600 dark:text-amber-400" :
-                            "border-blue-400 text-blue-600 dark:text-blue-400"
-                          }`}>
-                            {regime === "reav" ? "REAV" : regime === "mixed" ? "Mixto" : "IVA 21%"}
-                          </Badge>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      {/* Cliente / Producto */}
-                      <td className="px-4 py-3 max-w-xs">
-                        {(t as any).clientName && (
-                          <p className="text-xs font-medium text-foreground flex items-center gap-1 truncate">
-                            <User className="w-3 h-3 shrink-0" />{(t as any).clientName}
-                          </p>
-                        )}
-                        {(t as any).productName && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 truncate mt-0.5">
-                            <ShoppingBag className="w-3 h-3 shrink-0" />{(t as any).productName}
-                          </p>
-                        )}
-                        {!(t as any).clientName && !(t as any).productName && (
-                          <p className="text-xs text-muted-foreground truncate">{transactionDescription(t.description) ?? "—"}</p>
-                        )}
-                      </td>
-                      {/* Estado */}
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${st.color}`}>
-                          {st.label}
-                        </span>
-                      </td>
-                      {/* Acciones */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
-                            onClick={() => setViewTxId(t.id)} title="Ver transacción">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
-                            onClick={() => setDeleteTx({ id: t.id, number: t.transactionNumber })} title="Borrar transacción">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginación */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
-              <p className="text-xs text-muted-foreground">
-                Mostrando {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} de {total}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <span className="text-xs text-muted-foreground px-2">{page + 1} / {totalPages}</span>
-                <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
+  const columns: EconomyColumn<Tx>[] = [
+    {
+      key: "num",
+      header: t("economyTx.col.number"),
+      mobile: "title",
+      cell: (tx) => (
+        <>
+          <p className="font-mono text-xs font-bold text-foreground">{tx.transactionNumber}</p>
+          <p className="mt-0.5 text-xs font-normal text-muted-foreground">{dateOf(tx)}</p>
+        </>
+      ),
+    },
+    { key: "type", header: t("economyTx.col.type"), priority: "md", cell: typeBadge },
+    {
+      key: "party",
+      header: t("economyTx.col.party"),
+      priority: "lg",
+      className: "max-w-xs",
+      cell: (tx) => (
+        <>
+          {tx.clientName && (
+            <p className="flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-medium text-foreground">
+              <User className="h-3 w-3 shrink-0" aria-hidden="true" />{tx.clientName}
+            </p>
+          )}
+          {tx.productName && (
+            <p className="mt-0.5 flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">
+              <ShoppingBag className="h-3 w-3 shrink-0" aria-hidden="true" />{tx.productName}
+            </p>
+          )}
+          {!tx.clientName && !tx.productName && (
+            <p className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{transactionDescription(tx.description) ?? dash}</p>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "method",
+      header: t("economyTx.col.method"),
+      priority: "xl",
+      cell: (tx) => (
+        <Badge variant="outline" className="gap-1 text-xs">
+          {METHOD_ICON[tx.paymentMethod ?? "otro"]}
+          {methodLabel(tx.paymentMethod)}
+        </Badge>
+      ),
+    },
+    { key: "channel", header: t("economyTx.col.channel"), priority: "xl", cell: (tx) => <span className="text-xs text-muted-foreground">{channelLabel(tx.saleChannel)}</span> },
+    {
+      key: "fiscal",
+      header: t("economyTx.col.fiscal"),
+      priority: "xl",
+      cell: (tx) => {
+        const regime = tx.fiscalRegime ?? null;
+        return regime ? (
+          <Badge variant="outline" className={`text-xs ${regime === "reav" ? "border-primary/40 text-primary" : regime === "mixed" ? "border-warning/40 text-warning" : "border-info/40 text-info"}`}>
+            {regimeLabel(regime)}
+          </Badge>
+        ) : <span className="text-xs text-muted-foreground">{dash}</span>;
+      },
+    },
+    {
+      key: "amount",
+      header: t("economyTx.col.amount"),
+      align: "right",
+      num: true,
+      mobile: "amount",
+      cell: (tx) => {
+        const taxBase    = parseFloat(String(tx.taxBase    ?? "0"));
+        const taxAmount  = parseFloat(String(tx.taxAmount  ?? "0"));
+        const reavMargin = parseFloat(String(tx.reavMargin ?? "0"));
+        const regime     = tx.fiscalRegime ?? null;
+        return (
+          <>
+            {amountOf(tx)}
+            {regime && (
+              <div className="mt-0.5 hidden text-xs font-normal text-muted-foreground @5xl:block">
+                {regime === "reav" && reavMargin > 0 && <span>{t("economyTx.reavMargin", { amount: money.eur(reavMargin) })}</span>}
+                {regime !== "reav" && taxBase > 0 && <span>{t("economyTx.base", { base: money.eur(taxBase), tax: money.eur(taxAmount) })}</span>}
               </div>
-            </div>
+            )}
+          </>
+        );
+      },
+    },
+    { key: "status", header: t("economyTx.col.status"), cell: statusBadge },
+  ];
+
+  const filtersActive = chips.length > 0;
+  const exportButton = (
+    <Button variant="outline" onClick={exportCSV} className="gap-2 max-sm:min-h-10">
+      <Download className="h-4 w-4" aria-hidden="true" /> {t("economyTx.exportCsv")}
+    </Button>
+  );
+
+  return (
+    <AdminLayout>
+      <EconomyShell screen="transactions" description={t("economyTx.description")} action={exportButton}>
+        <div className="space-y-3">
+          <SummaryStrip items={stripItems} label={t("economyTx.summary.label")} />
+
+          <ToolbarRow
+            search={{ value: search, onChange: handleSearch, placeholder: t("economyTx.toolbar.search") }}
+            filters={
+              <>
+                <Select value={typeFilter} onValueChange={v => { setTypeFilter(v); setPage(0); }}>
+                  <SelectTrigger aria-label={t("economyTx.toolbar.type")} className="h-9 w-full sm:w-40 max-sm:h-10"><SelectValue placeholder={t("economyTx.toolbar.type")} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("economyTx.toolbar.allTypes")}</SelectItem>
+                    {Object.keys(TYPE_STYLE).map((k) => <SelectItem key={k} value={k}>{typeLabel(k)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
+                  <SelectTrigger aria-label={t("economyTx.toolbar.status")} className="h-9 w-full sm:w-44 max-sm:h-10"><SelectValue placeholder={t("economyTx.toolbar.status")} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("economyTx.toolbar.allStatuses")}</SelectItem>
+                    {Object.keys(STATUS_TONE).map((k) => <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground max-sm:justify-between">
+                  {t("economyTx.toolbar.from")}
+                  <Input type="date" value={fromDate} max={toDate || undefined} onChange={e => { setFromDate(e.target.value); setPage(0); }} className="h-9 w-40 bg-card max-sm:h-10 max-sm:w-44" />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground max-sm:justify-between">
+                  {t("economyTx.toolbar.to")}
+                  <Input type="date" value={toDate} min={fromDate || undefined} onChange={e => { setToDate(e.target.value); setPage(0); }} className="h-9 w-40 bg-card max-sm:h-10 max-sm:w-44" />
+                </label>
+                <MoreFilters label={t("economyTx.toolbar.more")} count={moreActive}>
+                  <FilterField label={t("economyTx.toolbar.channel")}>
+                    <Select value={channelFilter} onValueChange={v => { setChannelFilter(v); setPage(0); }}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder={t("economyTx.toolbar.channel")} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("economyTx.toolbar.allChannels")}</SelectItem>
+                        {["tpv", "web", "admin", "otro"].map((k) => <SelectItem key={k} value={k}>{channelLabel(k)}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </FilterField>
+                  <FilterField label={t("economyTx.toolbar.regime")}>
+                    <Select value={fiscalFilter} onValueChange={v => { setFiscalFilter(v); setPage(0); }}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder={t("economyTx.toolbar.regime")} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t("economyTx.toolbar.allRegimes")}</SelectItem>
+                        <SelectItem value="general">{t("economyTx.toolbar.regimeGeneral")}</SelectItem>
+                        {voc.showReav && <SelectItem value="reav">{t("economyTx.regime.reav")}</SelectItem>}
+                        <SelectItem value="mixed">{t("economyTx.regime.mixed")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FilterField>
+                </MoreFilters>
+              </>
+            }
+            chips={chips}
+            onClear={resetFilters}
+            summary={t("economyTx.toolbar.resultCount", { count: total })}
+          />
+
+          {!isLoading && !transactionsError && txList.length === 0 ? (
+            <CompactEmpty
+              icon={<SearchX />}
+              title={filtersActive ? t("economyTx.empty.title", { total: allCount?.total ?? 0 }) : t("economyTx.empty.noneTitle")}
+              description={filtersActive ? t("economyTx.empty.description") : t("economyTx.empty.noneDescription")}
+              action={filtersActive ? <Button variant="outline" size="sm" className="max-sm:h-10" onClick={resetFilters}>{t("economyTx.empty.clear")}</Button> : undefined}
+            />
+          ) : (
+            <EconomyTable
+              rows={txList}
+              columns={columns}
+              rowKey={(tx) => tx.id}
+              caption={t("economyTx.caption")}
+              loading={isLoading}
+              error={transactionsError}
+              errorTitle={t("economyTx.loadError")}
+              onRetry={() => void refetchTransactions()}
+              emptyTitle={t("economyTx.empty.noneTitle")}
+              onRowClick={(tx) => setViewTxId(tx.id)}
+              actions={(tx) => (
+                <RowActions
+                  label={tx.transactionNumber}
+                  primary={{ label: t("economyTx.action.view"), icon: <Eye className="h-4 w-4" />, onSelect: () => setViewTxId(tx.id) }}
+                  menu={[{ label: t("economyTx.action.delete"), icon: <Trash2 />, destructive: true, onSelect: () => setDeleteTx({ id: tx.id, number: tx.transactionNumber }) }]}
+                />
+              )}
+              mobileCard={(tx, menu) => (
+                <div className="space-y-1.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm"><span className="font-mono text-xs font-bold text-foreground">{tx.transactionNumber}</span><span className="whitespace-nowrap text-xs text-muted-foreground"> · {f.date(tx.createdAt)}</span></p>
+                    {amountOf(tx)}
+                  </div>
+                  <p className="overflow-hidden text-ellipsis whitespace-nowrap text-sm text-foreground">{partyOf(tx)}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">{typeBadge(tx)}{statusBadge(tx)}</div>
+                    {menu}
+                  </div>
+                </div>
+              )}
+              mobileActions={(tx) => <RowActions label={tx.transactionNumber} menu={[{ label: t("economyTx.action.delete"), icon: <Trash2 />, destructive: true, onSelect: () => setDeleteTx({ id: tx.id, number: tx.transactionNumber }) }]} />}
+              footer={<EconomyPager page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={(s) => { setPageSize(s); setPage(0); }} />}
+            />
           )}
         </div>
-      )}
-      {/* Modal Ver transacción */}
-      <Dialog open={viewTxId !== null} onOpenChange={open => { if (!open) setViewTxId(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Detalle de transacción</DialogTitle>
-          </DialogHeader>
-          {txDetail ? (
-            <div className="space-y-3 text-sm">
-              {[
-                ["Nº Transacción", txDetail.transactionNumber],
-                ["Tipo", typeConfig[txDetail.type]?.label ?? txDetail.type],
-                ["Estado", statusConfig[txDetail.status]?.label ?? txDetail.status],
-                ["Importe", `€${parseFloat(String(txDetail.amount)).toFixed(2)}`],
-                ["Método de pago", txDetail.paymentMethod ?? "—"],
-                ["Canal de venta", (txDetail as any).saleChannel ?? "—"],
-                ["Régimen fiscal", (txDetail as any).fiscalRegime ?? "—"],
-                ["Base imponible", (txDetail as any).taxBase ? `€${parseFloat(String((txDetail as any).taxBase)).toFixed(2)}` : "—"],
-                ["IVA", (txDetail as any).taxAmount ? `€${parseFloat(String((txDetail as any).taxAmount)).toFixed(2)}` : "—"],
-                ...(voc.showReav ? [["Margen REAV", (txDetail as any).reavMargin ? `€${parseFloat(String((txDetail as any).reavMargin)).toFixed(2)}` : "—"]] : []),
-                ["Cliente", (txDetail as any).clientName ?? "—"],
-                ["Producto", (txDetail as any).productName ?? "—"],
-                ["Vendedor", (txDetail as any).sellerName ?? "—"],
-                ["Centro operativo", (txDetail as any).operativeCenter ?? "—"],
-                ["Descripción", transactionDescription(txDetail.description) ?? "—"],
-                [`Ref. ${voc.order}`, (txDetail as any).reservationRef ?? "—"],
-                ["Ref. externa", (txDetail as any).externalRef ?? "—"],
-                ["Nº factura", (txDetail as any).invoiceNumber ?? "—"],
-                ["Fecha", new Date(txDetail.createdAt).toLocaleString("es-ES")],
-              ].map(([label, value]) => (
-                <div key={label as string} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0">
-                  <span className="text-muted-foreground shrink-0">{label}</span>
-                  <span className="font-medium text-right truncate">{value as string}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="h-32 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setViewTxId(null)}>Cerrar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Modal Borrar transacción */}
-      <Dialog open={deleteTx !== null} onOpenChange={open => { if (!open) setDeleteTx(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-red-600">Borrar transacción</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            ¿Seguro que quieres eliminar la transacción <span className="font-mono font-bold text-foreground">{deleteTx?.number}</span>?
-            Esta acción es <strong>irreversible</strong> y no se puede deshacer.
-          </p>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteTx(null)}>Cancelar</Button>
-            <Button variant="destructive" disabled={deleteMut.isPending}
-              onClick={() => deleteTx && deleteMut.mutate({ id: deleteTx.id })}>
-              {deleteMut.isPending ? "Borrando..." : "Borrar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {/* Detalle de la transacción */}
+        <Dialog open={viewTxId !== null} onOpenChange={open => { if (!open) setViewTxId(null); }}>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{t("economyTx.detail.title")}</DialogTitle>
+            </DialogHeader>
+            {txDetail ? (
+              <div className="space-y-4 text-sm">
+                {(() => {
+                  const d = txDetail as Tx;
+                  const eur = (v: unknown) => (v ? money.eur(v as string) : dash);
+                  const sections: Array<[string, Array<[string, string]>]> = [
+                    [t("economyTx.detail.general"), [
+                      [t("economyTx.detail.number"), d.transactionNumber],
+                      [t("economyTx.detail.type"), typeLabel(d.type)],
+                      [t("economyTx.detail.status"), statusLabel(d.status)],
+                      [t("economyTx.detail.date"), f.dateTime(d.createdAt)],
+                      [t("economyTx.detail.description"), transactionDescription(d.description) ?? dash],
+                    ]],
+                    [t("economyTx.detail.amounts"), [
+                      [t("economyTx.detail.amount"), money.eur(d.amount)],
+                      [t("economyTx.detail.method"), d.paymentMethod ? methodLabel(d.paymentMethod) : dash],
+                      [t("economyTx.detail.regime"), d.fiscalRegime ? regimeLabel(d.fiscalRegime) : dash],
+                      [t("economyTx.detail.taxBase"), eur(d.taxBase)],
+                      [t("economyTx.detail.tax"), eur(d.taxAmount)],
+                      ...(voc.showReav ? [[t("economyTx.detail.reav"), eur(d.reavMargin)] as [string, string]] : []),
+                    ]],
+                    [t("economyTx.detail.origin"), [
+                      [t("economyTx.detail.channel"), d.saleChannel ? channelLabel(d.saleChannel) : dash],
+                      [t("economyTx.detail.client"), d.clientName ?? dash],
+                      [t("economyTx.detail.product"), d.productName ?? dash],
+                      [t("economyTx.detail.seller"), d.sellerName ?? dash],
+                      [t("economyTx.detail.center"), d.operativeCenter ?? dash],
+                      [t("economyTx.detail.reference", { order: voc.order }), d.reservationRef ?? dash],
+                      [t("economyTx.detail.external"), d.externalRef ?? dash],
+                      [t("economyTx.detail.invoice"), d.invoiceNumber ?? dash],
+                    ]],
+                  ];
+                  return sections.map(([title, items]) => (
+                    <FormSection key={title} title={title}>
+                      {items.map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0 last:pb-0">
+                          <span className="shrink-0 text-muted-foreground">{label}</span>
+                          <span className="min-w-0 break-words text-right font-medium tabular-nums">{value}</span>
+                        </div>
+                      ))}
+                    </FormSection>
+                  ));
+                })()}
+              </div>
+            ) : (
+              <PanelLoading className="h-32 py-0" />
+            )}
+            <FormFooter>
+              <Button variant="outline" onClick={() => setViewTxId(null)}>{t("economyTx.detail.close")}</Button>
+            </FormFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Borrar transacción */}
+        <Dialog open={deleteTx !== null} onOpenChange={open => { if (!open) setDeleteTx(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-danger">{t("economyTx.delete.title")}</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              {t("economyTx.delete.question")} <span className="font-mono font-bold text-foreground">{deleteTx?.number}</span>? <strong>{t("economyTx.delete.irreversible")}</strong>
+            </p>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setDeleteTx(null)}>{t("economyTx.delete.cancel")}</Button>
+              <Button variant="destructive" disabled={deleteMut.isPending}
+                onClick={() => deleteTx && deleteMut.mutate({ id: deleteTx.id })}>
+                {deleteMut.isPending ? t("economyTx.delete.deleting") : t("economyTx.delete.confirm")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </EconomyShell>
     </AdminLayout>
   );
 }

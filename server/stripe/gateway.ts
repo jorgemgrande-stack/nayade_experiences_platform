@@ -139,6 +139,8 @@ export interface GwInvoice {
   total?: number | null;
   /** Página de la factura alojada por Stripe (pagar o autenticar el cobro). */
   hostedInvoiceUrl?: string | null;
+  /** PDF oficial de la factura alojado por Stripe. */
+  invoicePdf?: string | null;
   /** Líneas de la factura (las primeras que devuelve Stripe con la factura). */
   lines?: GwInvoiceLine[];
   /** ¿Tiene la factura más líneas que las que vienen con ella? (Stripe embebe las 10 primeras). */
@@ -589,6 +591,7 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     number: i.number ?? null,
     total: typeof i.total === "number" ? i.total : null,
     hostedInvoiceUrl: i.hosted_invoice_url ?? null,
+    invoicePdf: i.invoice_pdf ?? null,
     lines: (i.lines?.data ?? []).map(toInvoiceLine),
     linesTruncated: !!(i.lines as { has_more?: boolean } | undefined)?.has_more,
     amountRemaining: typeof i.amount_remaining === "number" ? i.amount_remaining : null,

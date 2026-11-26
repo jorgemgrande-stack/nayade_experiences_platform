@@ -10,25 +10,23 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
+import { PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { MetricCard } from "@/components/admin/PanelVisual";
 import { localizeTemplateText } from "@shared/i18n/emailTemplatesDe";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Mail, Send, Monitor, Smartphone, Plus, Pencil, Trash2,
-  RotateCcw, Save, ChevronLeft, Loader2, AlertTriangle, Eye,
+  RotateCcw, Save, ChevronLeft, Loader2, AlertTriangle, Eye, FileText, CheckCircle2, Sparkles, PauseCircle,
 } from "lucide-react";
 
 type Category = "all" | "reservas" | "presupuestos" | "anulaciones" | "tpv" | "ticketing" | "sistema";
 
-const CATEGORY_COLORS: Record<string, string> = {
-  reservas: "bg-blue-100 text-blue-800", presupuestos: "bg-purple-100 text-purple-800",
-  anulaciones: "bg-red-100 text-red-800", tpv: "bg-green-100 text-green-800",
-  ticketing: "bg-yellow-100 text-yellow-800", sistema: "bg-gray-100 text-gray-800",
-  general: "bg-slate-100 text-slate-800",
+/** Cada categoría y destinatario se distingue por un tono con significado del sistema (no por un color propio). */
+const CATEGORY_TONES: Record<string, Tone> = {
+  reservas: "info", presupuestos: "brand", anulaciones: "danger", tpv: "success", ticketing: "warning", sistema: "neutral", general: "neutral",
 };
-const RECIPIENT_COLORS: Record<string, string> = {
-  cliente: "bg-teal-100 text-teal-800", admin: "bg-orange-100 text-orange-800",
-  ambos: "bg-indigo-100 text-indigo-800",
-};
+const RECIPIENT_TONES: Record<string, Tone> = { cliente: "success", admin: "warning", ambos: "brand" };
 
 const DEFAULT_BODY = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h1 style="color:#0a1628">Titulo de la plantilla</h1>
@@ -73,7 +71,7 @@ export default function EmailTemplatesManager() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<string | null>(null);
 
-  const { data: templates, isLoading: loadingList } = trpc.emailTemplates.list.useQuery();
+  const { data: templates, isLoading: loadingList, error: listError, refetch: refetchList } = trpc.emailTemplates.list.useQuery();
   const { data: fullTemplate, isLoading: loadingFull } = trpc.emailTemplates.get.useQuery(
     { id: selectedId! }, { enabled: !!selectedId && mode === "edit" }
   );
@@ -138,6 +136,18 @@ export default function EmailTemplatesManager() {
     })).filter(c => c.count > 0),
   ];
   const selectedTemplate = templates?.find(t => t.id === selectedId);
+  const totals = {
+    all: templates?.length ?? 0,
+    active: templates?.filter((x) => (x as Record<string, unknown>).isActive !== false).length ?? 0,
+    custom: templates?.filter((x) => !!(x as Record<string, unknown>).isCustom).length ?? 0,
+    inactive: templates?.filter((x) => (x as Record<string, unknown>).isActive === false).length ?? 0,
+  };
+  const editDirty = !!(mode === "edit" && editForm && fullTemplate && (() => {
+    const ft = fullTemplate as Record<string, unknown>;
+    return editForm.name !== fullTemplate.name || editForm.subject !== fullTemplate.subject || editForm.description !== ((ft.description as string) ?? "")
+      || editForm.headerTitle !== ((ft.headerTitle as string) ?? "") || editForm.headerSubtitle !== ((ft.headerSubtitle as string) ?? "")
+      || editForm.bodyHtml !== ((ft.bodyHtml as string) ?? "") || editForm.isActive !== ((ft.isActive as boolean) ?? true);
+  })());
 
   if (mode === "edit" && fullTemplate && (!editForm || editForm.id !== fullTemplate.id)) {
     const ft = fullTemplate as Record<string, unknown>;
@@ -154,58 +164,65 @@ export default function EmailTemplatesManager() {
   return (
     <AdminLayout>
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b bg-background px-6 py-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-            <Mail className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold">{t("emailTemplates.title")}</h1>
-            <p className="text-xs text-muted-foreground">{t("emailTemplates.subtitle", { count: templates?.length ?? 0 })}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder={t("emailTemplates.testEmailPlaceholder")} className="h-8 w-56 text-sm" />
-          <Button size="sm" variant="outline" onClick={() => sendAllMutation.mutate({ toEmail: testEmail })} disabled={sendAllMutation.isPending || !testEmail}>
-            {sendAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-            {t("emailTemplates.sendAll")}
-          </Button>
-          <Button size="sm" onClick={() => { setMode("create"); setSelectedId(null); setEditForm(null); }}>
-            <Plus className="h-4 w-4 mr-1" /> {t("emailTemplates.newTemplate")}
-          </Button>
-        </div>
+      <div className="shrink-0 border-b bg-background px-4 pt-4 sm:px-6">
+        <PanelPageHeader
+          className="mb-0 border-b-0 pb-4"
+          icon={<Mail />}
+          title={t("emailTemplates.title")}
+          description={t("emailTemplates.subtitle", { count: templates?.length ?? 0 })}
+          actions={<>
+            <Input type="email" aria-label={t("emailTemplates.testEmailPlaceholder")} autoComplete="off" name="plantillas-correo-prueba" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder={t("emailTemplates.testEmailPlaceholder")} className="h-8 w-full text-sm sm:w-56" />
+            <Button size="sm" variant="outline" onClick={() => sendAllMutation.mutate({ toEmail: testEmail })} disabled={sendAllMutation.isPending || !testEmail}>
+              {sendAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+              {t("emailTemplates.sendAll")}
+            </Button>
+            <Button size="sm" onClick={() => { setMode("create"); setSelectedId(null); setEditForm(null); }}>
+              <Plus className="h-4 w-4 mr-1" /> {t("emailTemplates.newTemplate")}
+            </Button>
+          </>}
+        />
       </div>
-      <WorkplaceLocks place="comms" className="border-b bg-background px-6 py-3 shrink-0" />
+      <WorkplaceLocks place="comms" className="border-b bg-background px-4 py-3 shrink-0 sm:px-6" />
+      {!listError && (templates?.length ?? 0) > 0 && (
+        <div className="grid shrink-0 grid-cols-2 gap-3 border-b bg-background px-4 py-3 sm:px-6 lg:grid-cols-4">
+          <MetricCard compact tone="brand" icon={<FileText />} label={t("emailTemplates.summary.all")} value={totals.all} className="bg-gradient-to-br from-primary/5 to-card" />
+          <MetricCard compact tone="success" icon={<CheckCircle2 />} label={t("emailTemplates.summary.active")} value={totals.active} />
+          <MetricCard compact tone="info" icon={<Sparkles />} label={t("emailTemplates.summary.custom")} value={totals.custom} />
+          <MetricCard compact tone={totals.inactive ? "warning" : "neutral"} icon={<PauseCircle />} label={t("emailTemplates.summary.inactive")} value={totals.inactive} />
+        </div>
+      )}
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex w-72 shrink-0 flex-col border-r bg-muted/20 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
+        <div className="flex max-h-72 w-full shrink-0 flex-col overflow-hidden border-b bg-muted/20 md:max-h-none md:w-72 md:border-b-0 md:border-r">
           <div className="flex flex-wrap gap-1 p-3 border-b shrink-0">
             {categories.map(cat => (
-              <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
-                className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${activeCategory === cat.id ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent"}`}>
+              <button key={cat.id} type="button" aria-pressed={activeCategory === cat.id} onClick={() => setActiveCategory(cat.id)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeCategory === cat.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground hover:bg-accent"}`}>
                 {cat.label} ({cat.count})
               </button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto">
             {loadingList ? (
-              <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              <PanelLoading />
+            ) : listError ? (
+              <PanelError className="m-3" error={listError} onRetry={() => void refetchList()} title={t("emailTemplates.loadError")} />
             ) : filtered.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">{t("emailTemplates.empty")}</p>
+              <PanelEmpty className="m-3" icon={<Mail />} title={t("emailTemplates.empty")} />
             ) : filtered.map(tpl => {
               const tplAny = tpl as Record<string, unknown>;
               return (
-                <button key={tpl.id} onClick={() => { setSelectedId(tpl.id); setMode("view"); setEditForm(null); }}
-                  className={`w-full text-left px-4 py-3 border-b transition-colors hover:bg-accent/50 ${selectedId === tpl.id && mode !== "create" ? "bg-accent" : ""}`}>
+                <button key={tpl.id} type="button" aria-current={selectedId === tpl.id && mode !== "create"} onClick={() => { setSelectedId(tpl.id); setMode("view"); setEditForm(null); }}
+                  className={`w-full border-b border-l-2 px-4 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${selectedId === tpl.id && mode !== "create" ? "border-l-primary bg-primary/10" : "border-l-transparent"}`}>
                   <div className="flex items-start justify-between gap-1">
                     <span className="text-sm font-medium leading-tight">{localizeTemplateText(tpl.name, locale)}</span>
-                    {!!(tplAny.isCustom) && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("emailTemplates.custom")}</span>}
+                    {!!(tplAny.isCustom) && <StatusBadge tone="brand" className="shrink-0">{t("emailTemplates.custom")}</StatusBadge>}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{localizeTemplateText(tpl.description, locale)}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[tpl.recipient] ?? "bg-gray-100 text-gray-700"}`}>{recipientLabels[tpl.recipient] ?? tpl.recipient}</span>
-                    {!(tplAny.isActive as boolean) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">{t("emailTemplates.inactive")}</span>}
+                    <StatusBadge tone={CATEGORY_TONES[tpl.category] ?? "neutral"}>{categoryLabels[tpl.category] ?? tpl.category}</StatusBadge>
+                    <StatusBadge tone={RECIPIENT_TONES[tpl.recipient] ?? "neutral"}>{recipientLabels[tpl.recipient] ?? tpl.recipient}</StatusBadge>
+                    {!(tplAny.isActive as boolean) && <StatusBadge tone="danger">{t("emailTemplates.inactive")}</StatusBadge>}
                   </div>
                 </button>
               );
@@ -213,25 +230,26 @@ export default function EmailTemplatesManager() {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden md:min-h-0">
           {mode === "create" && (
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               <div className="flex items-center gap-3">
                 <Button variant="ghost" size="sm" onClick={() => setMode("view")}><ChevronLeft className="h-4 w-4 mr-1" /> {t("emailTemplates.create.back")}</Button>
                 <h2 className="text-base font-semibold">{t("emailTemplates.create.title")}</h2>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <h3 className="text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionIdentity")}</h3>
                 <div className="space-y-1">
-                  <Label>{t("emailTemplates.create.uniqueId")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("emailTemplates.create.uniqueId")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.idPlaceholder")} value={createForm.id} onChange={e => setCreateForm(f => ({ ...f, id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "_") }))} />
                   <p className="text-xs text-muted-foreground">{t("emailTemplates.create.idHint")}</p>
                 </div>
                 <div className="space-y-1">
-                  <Label>{t("emailTemplates.create.visibleName")} <span className="text-red-500">*</span></Label>
+                  <Label>{t("emailTemplates.create.visibleName")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.namePlaceholder")} value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} />
                 </div>
-                <div className="space-y-1 col-span-2">
-                  <Label>{t("emailTemplates.create.subject")} <span className="text-red-500">*</span></Label>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label>{t("emailTemplates.create.subject")} <span className="text-danger">*</span></Label>
                   <Input placeholder={t("emailTemplates.create.subjectPlaceholder")} value={createForm.subject} onChange={e => setCreateForm(f => ({ ...f, subject: e.target.value }))} />
                 </div>
                 <div className="space-y-1">
@@ -252,6 +270,7 @@ export default function EmailTemplatesManager() {
                     </SelectContent>
                   </Select>
                 </div>
+                <h3 className="border-t pt-4 text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionContent")}</h3>
                 <div className="space-y-1">
                   <Label>{t("emailTemplates.edit.headerTitle")}</Label>
                   <Input placeholder={t("emailTemplates.create.headerTitlePlaceholder")} value={createForm.headerTitle} onChange={e => setCreateForm(f => ({ ...f, headerTitle: e.target.value }))} />
@@ -260,12 +279,12 @@ export default function EmailTemplatesManager() {
                   <Label>{t("emailTemplates.edit.headerSubtitle")}</Label>
                   <Input placeholder={voc.licensed ? t("emailTemplates.create.headerSubtitleLicensed") : t("emailTemplates.create.headerSubtitleDefault")} value={createForm.headerSubtitle} onChange={e => setCreateForm(f => ({ ...f, headerSubtitle: e.target.value }))} />
                 </div>
-                <div className="space-y-1 col-span-2">
+                <div className="space-y-1 sm:col-span-2">
                   <Label>{t("emailTemplates.edit.description")}</Label>
                   <Input placeholder={t("emailTemplates.create.descriptionPlaceholder")} value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))} />
                 </div>
-                <div className="space-y-1 col-span-2">
-                  <Label>{t("emailTemplates.create.bodyHtml")} <span className="text-red-500">*</span></Label>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label>{t("emailTemplates.create.bodyHtml")} <span className="text-danger">*</span></Label>
                   <Textarea className="font-mono text-xs min-h-[300px]" value={createForm.bodyHtml} onChange={e => setCreateForm(f => ({ ...f, bodyHtml: e.target.value }))} />
                 </div>
               </div>
@@ -281,33 +300,36 @@ export default function EmailTemplatesManager() {
 
           {mode === "edit" && selectedId && (
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-3">
                   <Button variant="ghost" size="sm" onClick={() => setMode("view")}><ChevronLeft className="h-4 w-4 mr-1" /> {t("emailTemplates.create.back")}</Button>
-                  <h2 className="text-base font-semibold">{t("emailTemplates.edit.editing", { name: selectedTemplate?.name ?? "" })}</h2>
+                  <h2 className="min-w-0 break-words text-base font-semibold">{t("emailTemplates.edit.editing", { name: selectedTemplate?.name ?? "" })}</h2>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {editDirty && !saveMutation.isPending && <StatusBadge tone="warning">{t("emailTemplates.unsaved")}</StatusBadge>}
                   {!(selectedTemplate as Record<string,unknown>)?.isCustom && (
                     <Button variant="outline" size="sm" onClick={() => setShowRestoreConfirm(selectedId)}><RotateCcw className="h-4 w-4 mr-1" /> {t("emailTemplates.edit.restoreOriginal")}</Button>
                   )}
                   <Button size="sm" onClick={() => editForm && saveMutation.mutate(editForm)} disabled={saveMutation.isPending || !editForm}>
                     {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                    {t("emailTemplates.edit.saveChanges")}
+                    {saveMutation.isPending ? t("emailTemplates.saving") : t("emailTemplates.edit.saveChanges")}
                   </Button>
                 </div>
               </div>
               {loadingFull || !editForm ? (
-                <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                <PanelLoading />
               ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 col-span-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <h3 className="text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionIdentity")}</h3>
+                  <div className="space-y-1 sm:col-span-2">
                     <Label>{t("emailTemplates.edit.visibleName")}</Label>
                     <Input value={editForm.name} onChange={e => setEditForm(f => f ? { ...f, name: e.target.value } : f)} />
                   </div>
-                  <div className="space-y-1 col-span-2">
+                  <div className="space-y-1 sm:col-span-2">
                     <Label>{t("emailTemplates.edit.subject")}</Label>
                     <Input value={editForm.subject} onChange={e => setEditForm(f => f ? { ...f, subject: e.target.value } : f)} />
                   </div>
+                  <h3 className="border-t pt-4 text-sm font-semibold text-foreground sm:col-span-2">{t("emailTemplates.sectionContent")}</h3>
                   <div className="space-y-1">
                     <Label>{t("emailTemplates.edit.headerTitle")}</Label>
                     <Input value={editForm.headerTitle} onChange={e => setEditForm(f => f ? { ...f, headerTitle: e.target.value } : f)} />
@@ -316,18 +338,18 @@ export default function EmailTemplatesManager() {
                     <Label>{t("emailTemplates.edit.headerSubtitle")}</Label>
                     <Input value={editForm.headerSubtitle} onChange={e => setEditForm(f => f ? { ...f, headerSubtitle: e.target.value } : f)} />
                   </div>
-                  <div className="space-y-1 col-span-2">
+                  <div className="space-y-1 sm:col-span-2">
                     <Label>{t("emailTemplates.edit.description")}</Label>
                     <Input value={editForm.description} onChange={e => setEditForm(f => f ? { ...f, description: e.target.value } : f)} />
                   </div>
-                  <div className="space-y-1 col-span-2">
+                  <div className="space-y-1 sm:col-span-2">
                     <div className="flex items-center justify-between mb-1">
                       <Label>{t("emailTemplates.edit.bodyHtml")}</Label>
                       <span className="text-xs text-muted-foreground">{t("emailTemplates.edit.fullEditor")}</span>
                     </div>
                     <Textarea className="font-mono text-xs min-h-[400px]" value={editForm.bodyHtml} onChange={e => setEditForm(f => f ? { ...f, bodyHtml: e.target.value } : f)} />
                   </div>
-                  <div className="flex items-center gap-2 col-span-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:col-span-2">
                     <input type="checkbox" id="isActive" checked={editForm.isActive} onChange={e => setEditForm(f => f ? { ...f, isActive: e.target.checked } : f)} className="h-4 w-4" />
                     <Label htmlFor="isActive">{t("emailTemplates.edit.active")}</Label>
                   </div>
@@ -337,34 +359,30 @@ export default function EmailTemplatesManager() {
           )}
 
           {mode === "view" && !selectedId && (
-            <div className="flex flex-1 items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <Eye className="mx-auto mb-3 h-10 w-10 opacity-30" />
-                <p className="text-sm">{t("emailTemplates.view.selectPrompt")}</p>
-                <p className="text-xs mt-1">{t("emailTemplates.view.orCreate")}</p>
-              </div>
+            <div className="flex flex-1 items-center justify-center p-6">
+              <PanelEmpty className="w-full max-w-md" icon={<Eye />} title={t("emailTemplates.view.selectPrompt")} description={t("emailTemplates.view.orCreate")} />
             </div>
           )}
 
           {mode === "view" && selectedId && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex items-center justify-between border-b px-4 py-2 bg-background shrink-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 bg-background shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   {selectedTemplate && (
                     <>
-                      <span className="text-sm font-medium truncate">{localizeTemplateText(selectedTemplate.name, locale)}</span>
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[selectedTemplate.category] ?? ""}`}>{categoryLabels[selectedTemplate.category] ?? selectedTemplate.category}</span>
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[selectedTemplate.recipient] ?? ""}`}>{recipientLabels[selectedTemplate.recipient] ?? selectedTemplate.recipient}</span>
-                      {(selectedTemplate as Record<string,unknown>).isCustom && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{t("emailTemplates.custom")}</span>}
+                      <span className="text-sm font-medium overflow-hidden text-ellipsis whitespace-nowrap">{localizeTemplateText(selectedTemplate.name, locale)}</span>
+                      <StatusBadge tone={CATEGORY_TONES[selectedTemplate.category] ?? "neutral"} className="shrink-0">{categoryLabels[selectedTemplate.category] ?? selectedTemplate.category}</StatusBadge>
+                      <StatusBadge tone={RECIPIENT_TONES[selectedTemplate.recipient] ?? "neutral"} className="shrink-0">{recipientLabels[selectedTemplate.recipient] ?? selectedTemplate.recipient}</StatusBadge>
+                      {(selectedTemplate as Record<string,unknown>).isCustom && <StatusBadge tone="brand" className="shrink-0">{t("emailTemplates.custom")}</StatusBadge>}
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <div className="flex rounded-md border overflow-hidden">
-                    <button onClick={() => setPreviewMode("desktop")} className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors ${previewMode === "desktop" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>
+                    <button type="button" aria-pressed={previewMode === "desktop"} onClick={() => setPreviewMode("desktop")} className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors ${previewMode === "desktop" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>
                       <Monitor className="h-3 w-3" /> {t("emailTemplates.view.desktop")}
                     </button>
-                    <button onClick={() => setPreviewMode("mobile")} className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors ${previewMode === "mobile" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>
+                    <button type="button" aria-pressed={previewMode === "mobile"} onClick={() => setPreviewMode("mobile")} className={`px-2 py-1 text-xs flex items-center gap-1 transition-colors ${previewMode === "mobile" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}>
                       <Smartphone className="h-3 w-3" /> {t("emailTemplates.view.mobile")}
                     </button>
                   </div>
@@ -376,7 +394,7 @@ export default function EmailTemplatesManager() {
                     <Pencil className="h-3 w-3 mr-1" /> {t("emailTemplates.view.edit")}
                   </Button>
                   {(selectedTemplate as Record<string,unknown>)?.isCustom ? (
-                    <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => setShowDeleteConfirm(selectedId)}>
+                    <Button size="sm" variant="outline" className="text-danger hover:text-danger" onClick={() => setShowDeleteConfirm(selectedId)}>
                       <Trash2 className="h-3 w-3 mr-1" /> {t("emailTemplates.view.delete")}
                     </Button>
                   ) : (
@@ -397,7 +415,7 @@ export default function EmailTemplatesManager() {
                     <Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">{t("emailTemplates.view.loading")}</span>
                   </div>
                 ) : preview ? (
-                  <div className={`bg-white shadow-lg rounded-lg overflow-hidden transition-all ${previewMode === "mobile" ? "w-[390px]" : "w-full max-w-[680px]"}`}>
+                  <div className={`bg-white shadow-md rounded-lg overflow-hidden transition-all ${previewMode === "mobile" ? "w-full max-w-[390px]" : "w-full max-w-[680px]"}`}>
                     <iframe srcDoc={preview.html} title={t("emailTemplates.view.iframeTitle")} className="w-full border-0" style={{ minHeight: "600px" }}
                       onLoad={e => {
                         const iframe = e.target as HTMLIFrameElement;
@@ -413,7 +431,7 @@ export default function EmailTemplatesManager() {
 
       <Dialog open={!!showDeleteConfirm} onOpenChange={() => setShowDeleteConfirm(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-red-500" /> {t("emailTemplates.deleteDialog.title")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-danger" /> {t("emailTemplates.deleteDialog.title")}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">{t("emailTemplates.deleteDialog.text")}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteConfirm(null)}>{t("emailTemplates.deleteDialog.cancel")}</Button>
@@ -426,7 +444,7 @@ export default function EmailTemplatesManager() {
 
       <Dialog open={!!showRestoreConfirm} onOpenChange={() => setShowRestoreConfirm(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><RotateCcw className="h-5 w-5 text-orange-500" /> {t("emailTemplates.restoreDialog.title")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><RotateCcw className="h-5 w-5 text-warning" /> {t("emailTemplates.restoreDialog.title")}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">{t("emailTemplates.restoreDialog.text")}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRestoreConfirm(null)}>{t("emailTemplates.restoreDialog.cancel")}</Button>

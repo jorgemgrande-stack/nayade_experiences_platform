@@ -150,6 +150,8 @@ export class TermsAcceptanceService {
        * Net de sus partidas. Un fallo nunca deshace la aceptación ni la activación: solo se registra.
        */
       onActivated?: (i: { terms: TermsRecord; subscriptionId: number; contractId: number }) => Promise<unknown>;
+      /** Aviso interno a Dirección: contrato aceptado (solo correo; nunca lanza). */
+      notice?: (e: import("./billingNotices").BillingNoticeEvent) => Promise<void>;
       /**
        * Prueba gratuita de la plataforma (17/11/2026): al aceptarse unas condiciones con plan Core sobre una suscripción
        * EN PRUEBA, la prueba termina y su registro queda convertido. Sin él, la suscripción sale igualmente de la prueba
@@ -658,6 +660,8 @@ export class TermsAcceptanceService {
       opsLog("warn", "CommercialTerms", "activation_after_acceptance_failed", { termsId: t.id, error: e instanceof Error ? e.name : "error" });
       await this.d.termsStore.log(t.id, { kind: "activation_failed", actor: ACTOR, reason: (e instanceof Error ? e.message : "Error").slice(0, 500), before: null, after: null, effectiveAt: null, acceptanceStatus: "accepted", syncResult: "failed", economic: null }, this.now()).catch(() => undefined);
     }
+    // Aviso a Dirección (idempotente por aceptación): el contrato ya consta aunque la activación posterior falle
+    if (this.d.notice) await this.d.notice({ kind: "contract_accepted", key: `terms:${t.id}:accepted:${a.id}`, subscriptionId: accepted.subscriptionId ?? t.subscriptionId ?? null, at: now, detail: `Aceptado por ${name}.` }).catch(() => undefined);
     return { accepted: true, activated, reference: doc.reference, version: doc.version, documentSha256: doc.sha256, acceptedAt: now, view: doc.view };
   }
 
