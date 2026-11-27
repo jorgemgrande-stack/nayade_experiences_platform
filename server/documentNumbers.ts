@@ -98,6 +98,11 @@ const SEQUENCE_PADDING = 4;
 
 // --- Secuencia atómica --------------------------------------------------------
 
+// Tope de números ya ocupados que se saltan seguidos antes de abortar con error explícito. Cada salto consume un número, así que
+// el tope solo se alcanza si alguien creó documentos por fuera del contador en masa (para las devoluciones se evita antes
+// con `raiseCounterToAtLeast`, que adelanta el contador al máximo existente en una sola operación).
+const MAX_OCCUPIED_SKIPS = 1000;
+
 // Segundos de espera máxima del bloqueo que serializa la creación de la serie de un año.
 const CREATE_LOCK_TIMEOUT_S = 10;
 
@@ -181,6 +186,39 @@ async function createCounterIfMissing(
   }
 }
 
+/**
+ * Adelanta (NUNCA retrocede) el contador de una serie NO fiscal del año hasta `floor`, de modo que el siguiente número sea
+ * `floor + 1` como mínimo. Es una sola sentencia atómica (`GREATEST`), segura frente a altas simultáneas: dos llamadas a la vez
+ * con el mismo `floor` son idempotentes y ninguna puede bajar un contador que otra ya subió. Sirve para saltar de golpe los
+ * números que ya existen en el documento (p. ej. devoluciones antiguas DEV-AAAA-NNNN), en vez de consumirlos uno a uno.
+ * Rechaza las series fiscales (factura, abono): su contador no se toca por esta vía.
+ */
+export async function raiseCounterToAtLeast(documentType: DocumentType, year: number, floor: number): Promise<void> {
+  if (FISCAL_DOCUMENT_TYPES.has(documentType)) {
+    throw new Error(`[documentNumbers] La serie fiscal ${documentType} no admite adelantar el contador`);
+  }
+  if (!Number.isSafeInteger(floor) || floor <= 0) return;
+  const conn = await legacyPool().getConnection();
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const [found] = await conn.query<mysql.RowDataPacket[]>(
+        "SELECT id FROM document_counters WHERE document_type = ? AND `year` = ? ORDER BY id LIMIT 1",
+        [documentType, year]
+      );
+      const counterId = found[0]?.id as number | undefined;
+      if (counterId === undefined) {
+        await createCounterIfMissing(conn, documentType, year);
+        continue;
+      }
+      await conn.query("UPDATE document_counters SET current_number = GREATEST(current_number, ?) WHERE id = ?", [floor, counterId]);
+      return;
+    }
+    throw new Error(`[documentNumbers] No se pudo obtener el contador para ${documentType}/${year}`);
+  } finally {
+    conn.release();
+  }
+}
+
 // --- Función principal --------------------------------------------------------
 
 /**
@@ -213,8 +251,8 @@ export async function generateDocumentNumber(
   let documentNumber = `${prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
   if (existsCheck) {
     for (let guard = 0; await existsCheck(documentNumber); guard++) {
-      if (guard >= 50) {
-        throw new Error(`[documentNumbers] No se encontró un número libre para ${documentType}/${year} tras 50 intentos`);
+      if (guard >= MAX_OCCUPIED_SKIPS) {
+        throw new Error(`[documentNumbers] No se encontró un número libre para ${documentType}/${year} tras ${MAX_OCCUPIED_SKIPS} intentos`);
       }
       ({ sequence, prefix } = await nextSequence(documentType, year));
       documentNumber = `${prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
@@ -283,7 +321,7 @@ export async function generateDocumentNumberInTx(
     .limit(1)
     .for("update");
   if (!counter) throw new Error(`[documentNumbers] La serie ${documentType}/${year} no existe (falta ensureDocumentCounter)`);
-  for (let guard = 0; guard < 50; guard++) {
+  for (let guard = 0; guard < MAX_OCCUPIED_SKIPS; guard++) {
     await tx.update(documentCounters).set({ currentNumber: sql`${documentCounters.currentNumber} + 1` }).where(eq(documentCounters.id, counter.id));
     const [row] = await tx.select({ n: documentCounters.currentNumber }).from(documentCounters).where(eq(documentCounters.id, counter.id));
     const sequence = Number(row?.n);
@@ -292,7 +330,7 @@ export async function generateDocumentNumberInTx(
     await tx.insert(documentNumberLogs).values({ documentType, documentNumber, year, sequence, generatedBy, context });
     return documentNumber;
   }
-  throw new Error(`[documentNumbers] No se encontró un número libre para ${documentType}/${year} tras 50 intentos`);
+  throw new Error(`[documentNumbers] No se encontró un número libre para ${documentType}/${year} tras ${MAX_OCCUPIED_SKIPS} intentos`);
 }
 
 // --- Función de consulta (sin efecto secundario) ------------------------------
