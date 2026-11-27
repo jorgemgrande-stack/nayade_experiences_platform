@@ -89,7 +89,7 @@ describe("Contabilidad general (E6): la sincronización y las operaciones no cam
   it("al abrir la pantalla se ejecuta una vez la misma mutación `sync`, en el mismo punto y con el mismo tratamiento de errores", () => {
     expect(src).toContain("const sync = trpc.accountingGeneral.sync.useMutation({\n    onSuccess: () => utils.accountingGeneral.invalidate(),");
     expect(src).toContain('if (e.data?.code !== "FORBIDDEN") toastError(e);');
-    expect(src).toContain("const started = useRef(false);\n  useEffect(() => {\n    if (started.current) return;\n    started.current = true;\n    sync.mutate();\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);");
+    expect(src).toContain("const started = useRef(false);\n  useEffect(() => {\n    if (started.current) return;\n    started.current = true;\n    sync.mutate({ origin: \"pantalla\" });\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);");
     // «Actualizar asientos» sigue llamando a la misma mutación
     expect(src).toContain("onSync={() => sync.mutate()}");
     expect(src.match(/sync\.mutate\(/g)).toHaveLength(2);
