@@ -45,3 +45,27 @@ a las personas que se inscriben, existe una excepción **acotada y por empresa**
   defecto, máximo 500) medido sobre `newsletter_mail_log`. Si no se puede medir, no sale.
 - No toca el estado comercial, ni el tope general de la prueba, ni el resto del correo a terceros (campañas, presupuestos…).
 - El servicio de correo conserva su propio modo (`MAIL_MODE` off/sandbox/live y su lista de destinatarios autorizados).
+
+## Textos del bloque de la home de Quantum (alemán principal, español e inglés)
+
+| Campo | Alemán (principal) | Español | Inglés |
+|---|---|---|---|
+| Antetítulo | Newsletter | Newsletter | Newsletter |
+| Título | Ein Impuls für deine Seele, jede Woche. | Un impulso para tu alma, cada semana. | A spark for your soul, every week. |
+| Descripción | Erhalte Inspiration, Reflexionen und Neuigkeiten von Indira direkt in dein Postfach. | Recibe inspiración, reflexiones y novedades de Indira directamente en tu correo. | Receive inspiration, reflections and news from Indira straight to your inbox. |
+| Etiqueta del correo | Deine E-Mail-Adresse | Tu correo electrónico | Your email address |
+| Texto de ayuda | deine@email.de | tu@correo.com | you@email.com |
+| Botón | Newsletter erhalten | Quiero recibir la newsletter | Get the newsletter |
+| Consentimiento | Ich möchte den wöchentlichen Newsletter erhalten und stimme der Datenschutzerklärung zu. Ich kann mich jederzeit abmelden. | Quiero recibir la newsletter semanal y acepto la política de privacidad. Puedo darme de baja en cualquier momento. | I would like to receive the weekly newsletter and I accept the privacy policy. I can unsubscribe at any time. |
+| Enlace de privacidad | Datenschutzerklärung | Política de privacidad | Privacy policy |
+| Mensaje tras inscribirse | Danke! Wir haben dir eine E-Mail gesendet, um deine Anmeldung zu bestätigen. | ¡Gracias! Te hemos enviado un correo para confirmar tu inscripción. | Thank you! We have sent you an email to confirm your subscription. |
+
+Los mensajes de error (correo no válido, falta de consentimiento, fallo, demasiados intentos, formulario no disponible) salen por
+defecto en el idioma del visitante (`shared/newsletterMessages.ts`) cuando el bloque no define los suyos o conserva el español de fábrica.
+El campo «Aspecto» (`tone`) no se traduce.
+
+## Página de prueba aislada
+
+`/newsletter-prueba` (sin enlazar, fuera del menú y sin indexar): sirve para probar el circuito completo con el bloque publicado
+sin exponerlo en la home. Con «Inscripción pública» desactivada en Newsletter › Ajustes el formulario responde con un error
+honesto («no disponible»), nunca con un falso «te hemos enviado un correo».
