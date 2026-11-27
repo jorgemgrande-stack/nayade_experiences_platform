@@ -896,7 +896,7 @@ export default function GeneralAccounting() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    sync.mutate();
+    sync.mutate({ origin: "pantalla" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const accountOptions = accounts.data ?? [];

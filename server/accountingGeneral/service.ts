@@ -10,6 +10,7 @@
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { madridDateKey, madridYear } from "../utils/timezone";
+import { currentTenantOrNull } from "../_core/tenantScope";
 import { expenseCategories } from "../../drizzle/schema";
 import type { EntryLine, PostedLine } from "../finance/types";
 import { ACC_DEFAULT_MAP, ACC_MAP_KEYS, ACC_MANUAL_JOURNALS, ACC_PGC_SEED, isAccDate, type AccAccountMap, type AccJournal, type AccOrigin } from "../../shared/accountingGeneral";
@@ -142,7 +143,15 @@ export interface SyncSummary {
   review: ReviewItem[];
   reviewCount: number;
   failedGroups: Array<{ group: string; message: string }>;
+  /** Acciones que no procedían al aplicarse (otra ejecución ya lo había hecho, el documento cambió): no escriben nada. */
+  skipped: number;
+  /** Acciones descartadas porque otra ejecución simultánea hizo lo mismo (clave duplicada o interbloqueo). */
+  conflicts: number;
+  /** Avisos que no cambian el resultado (p. ej. `account_map` inválido: rige el mapa por defecto). */
+  warnings: string[];
 }
+
+export type SyncOrigin = store.SyncRunOrigin;
 
 type Outcome = "created" | "replaced" | "reversed" | "skipped";
 
@@ -176,9 +185,62 @@ async function applyAction(db: Db, a: SyncAction, accounts: ReadonlyMap<string, 
   });
 }
 
+/** Texto recortado y sin datos sensibles para la traza: solo claves de documento y mensajes de la propia contabilidad. */
+const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+
+function traceOf(summary: SyncSummary) {
+  const status: store.SyncRunStatus = summary.errors.length > 0 || summary.failedGroups.length > 0 || summary.truncated ? "partial" : "ok";
+  const problems = [
+    ...summary.errors.slice(0, 10).map((e) => `${e.key}: ${e.message}`),
+    ...summary.failedGroups.map((g) => `Grupo «${g.group}» sin leer`),
+    ...(summary.truncated ? ["Tope de asientos por generación alcanzado: el resto, en la siguiente"] : []),
+  ];
+  return {
+    status,
+    counts: { ...summary, errors: summary.errors.length } as Partial<store.SyncRunCounts>,
+    warnings: summary.warnings.length ? clip(summary.warnings.join(" | "), 1000) : null,
+    errorSummary: problems.length ? clip(problems.join(" | "), 2000) : null,
+  };
+}
+
+/**
+ * Traza de la ejecución en `acc_sync_runs` (migración 0096). Nunca altera la sincronización: si la tabla no existe todavía
+ * o la escritura falla, la generación sigue igual y sus asientos son los mismos.
+ */
+async function openTrace(db: Db, userId: number | null, origin: SyncOrigin): Promise<number | null> {
+  try {
+    return await store.beginSyncRun(db, { tenantId: currentTenantOrNull(), actor: userId == null ? "sistema" : `user:${userId}`, userId, origin });
+  } catch {
+    return null;
+  }
+}
+async function closeTrace(db: Db, id: number | null, r: Parameters<typeof store.finishSyncRun>[2]): Promise<void> {
+  if (id == null) return;
+  try {
+    await store.finishSyncRun(db, id, r);
+  } catch {
+    /* la traza es accesoria */
+  }
+}
+
 /** Genera (o corrige) los asientos automáticos de todos los documentos del Core desde la fecha de inicio. */
-export async function sync(userId: number | null, now = new Date()): Promise<SyncSummary> {
+export async function sync(userId: number | null, now = new Date(), origin: SyncOrigin = "manual"): Promise<SyncSummary> {
   return run(async (db) => {
+    const runId = await openTrace(db, userId, origin);
+    try {
+      const summary = await syncCore(db, userId, now);
+      await closeTrace(db, runId, traceOf(summary));
+      return summary;
+    } catch (e) {
+      const message = e instanceof AccError ? e.message : store.isMissingAccSchema(e) ? "Falta aplicar la migración de la contabilidad general" : "Error interno al sincronizar";
+      await closeTrace(db, runId, { status: "error", counts: {}, warnings: null, errorSummary: clip(message, 2000) });
+      throw e;
+    }
+  });
+}
+
+async function syncCore(db: Db, userId: number | null, now: Date): Promise<SyncSummary> {
+  {
     const s = await ready(db);
     const [accounts, cats] = await Promise.all([store.accountMap(db), store.categoryAccounts(db)]);
     const read = await readSources(db, { startDate: s.startDate, map: s.map, categoryAccounts: cats });
@@ -198,6 +260,9 @@ export async function sync(userId: number | null, now = new Date()): Promise<Syn
       review: read.review.slice(0, 50),
       reviewCount: read.review.length,
       failedGroups: read.failed.map((f) => ({ group: SOURCE_GROUP_LABELS[f.group], message: f.message })),
+      skipped: 0,
+      conflicts: 0,
+      warnings: s.mapWarning ? [s.mapWarning] : [],
     };
     const pending = new Set(actions.map((a) => a.key));
     summary.unchanged = Array.from(read.desired.keys()).filter((k) => !pending.has(k)).length;
@@ -216,16 +281,32 @@ export async function sync(userId: number | null, now = new Date()): Promise<Syn
       }
       try {
         const o = await applyAction(db, a, accounts, s.lockedUntil, today, userId);
-        if (o !== "skipped") summary[o]++;
+        if (o === "skipped") summary.skipped++;
+        else summary[o]++;
         if (o !== "skipped" && deferred) summary.deferred++;
       } catch (e) {
-        if (store.isConcurrent(e)) continue;
+        if (store.isConcurrent(e)) {
+          summary.conflicts++;
+          continue;
+        }
         if (store.isMissingAccSchema(e)) throw e;
         if (summary.errors.length < 50) summary.errors.push({ key: a.key, message: e instanceof AccError ? e.message : "No se pudo contabilizar (error interno)" });
       }
     }
     await store.saveLastSync(db, summary);
     return summary;
+  }
+}
+
+/** Últimas ejecuciones de la sincronización (más recientes primero). Sin la migración 0096, lista vacía. */
+export async function syncRuns(limit: number) {
+  return run(async (db) => {
+    try {
+      return { available: true, items: await store.listSyncRuns(db, limit) };
+    } catch (e) {
+      if (store.isMissingAccSchema(e)) return { available: false, items: [] as store.SyncRun[] };
+      throw e;
+    }
   });
 }
 
