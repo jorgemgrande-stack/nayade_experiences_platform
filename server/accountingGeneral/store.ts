@@ -65,6 +65,17 @@ export interface AccSettings {
   map: AccAccountMap;
   lastSyncAt: string | null;
   lastSync: unknown;
+  /** Aviso si `account_map` es inválido y rige el mapa por defecto (solo informativo). */
+  mapWarning?: string | null;
+}
+
+/** Aviso (sin cambiar el resultado) cuando `account_map` no es un mapa válido y se usa el de por defecto en todo o en parte. */
+export function mapProblem(v: unknown): string | null {
+  if (v == null) return null;
+  const m = json<unknown>(v);
+  if (m == null || typeof m !== "object" || Array.isArray(m)) return "account_map no es un JSON válido: se usa el mapa de cuentas por defecto";
+  const bad = ACC_MAP_KEYS.filter((k) => k in (m as object) && !(typeof (m as any)[k] === "string" && (m as any)[k]));
+  return bad.length ? `account_map tiene valores no válidos (${bad.join(", ")}): se usan las cuentas por defecto de esas claves` : null;
 }
 
 const mapOf = (v: unknown): AccAccountMap => {
@@ -77,7 +88,7 @@ const mapOf = (v: unknown): AccAccountMap => {
 export async function getSettings(exec: Exec): Promise<AccSettings | null> {
   const [r] = await rows(exec, sql`SELECT DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date, DATE_FORMAT(locked_until, '%Y-%m-%d') AS locked_until, account_map, last_sync_at, last_sync FROM acc_settings WHERE id = 1`);
   if (!r) return null;
-  return { startDate: day(r.start_date), lockedUntil: r.locked_until == null ? null : day(r.locked_until), map: mapOf(r.account_map), lastSyncAt: iso(r.last_sync_at), lastSync: json(r.last_sync) };
+  return { startDate: day(r.start_date), lockedUntil: r.locked_until == null ? null : day(r.locked_until), map: mapOf(r.account_map), lastSyncAt: iso(r.last_sync_at), lastSync: json(r.last_sync), mapWarning: mapProblem(r.account_map) };
 }
 
 /**
@@ -329,4 +340,71 @@ export async function accountTotals(exec: Exec, f: { from?: string | null; to?: 
   const r = await rows(exec, sql`SELECT l.account_code, SUM(l.debit_cents) AS d, SUM(l.credit_cents) AS c
     FROM acc_entry_lines l JOIN acc_entries e ON e.id = l.entry_id ${where} GROUP BY l.account_code ORDER BY l.account_code`);
   return r.map((x) => ({ accountCode: String(x.account_code), debitCents: num(x.d), creditCents: num(x.c) }));
+}
+
+// ─── Traza de ejecuciones (acc_sync_runs, migración 0096) ─────────────────────
+
+export type SyncRunStatus = "running" | "ok" | "partial" | "error";
+export type SyncRunOrigin = "manual" | "pantalla" | "programada";
+
+export interface SyncRunCounts {
+  created: number;
+  replaced: number;
+  reversed: number;
+  unchanged: number;
+  skipped: number;
+  deferred: number;
+  blocked: number;
+  conflicts: number;
+  errors: number;
+  truncated: boolean;
+}
+
+export interface SyncRun extends SyncRunCounts {
+  id: number;
+  actor: string;
+  origin: string;
+  status: SyncRunStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  warnings: string | null;
+  errorSummary: string | null;
+}
+
+/** Abre la fila de una ejecución (cada ejecución, la suya: las concurrentes no se pisan). */
+export async function beginSyncRun(exec: Exec, r: { tenantId: string | null; actor: string; userId: number | null; origin: SyncRunOrigin }): Promise<number> {
+  const h = await header(exec, sql`INSERT INTO acc_sync_runs (tenant_id, actor, actor_user_id, origin, status) VALUES (${r.tenantId}, ${r.actor}, ${r.userId}, ${r.origin}, 'running')`);
+  return h.insertId;
+}
+
+export async function finishSyncRun(exec: Exec, id: number, r: { status: SyncRunStatus; counts: Partial<SyncRunCounts>; warnings: string | null; errorSummary: string | null }): Promise<void> {
+  const c = r.counts;
+  await exec.execute(sql`UPDATE acc_sync_runs SET status = ${r.status}, finished_at = CURRENT_TIMESTAMP(3), created_count = ${c.created ?? 0}, replaced_count = ${c.replaced ?? 0},
+    reversed_count = ${c.reversed ?? 0}, unchanged_count = ${c.unchanged ?? 0}, skipped_count = ${c.skipped ?? 0}, deferred_count = ${c.deferred ?? 0}, blocked_count = ${c.blocked ?? 0},
+    conflict_count = ${c.conflicts ?? 0}, error_count = ${c.errors ?? 0}, truncated = ${c.truncated ? 1 : 0}, warnings = ${r.warnings}, error_summary = ${r.errorSummary} WHERE id = ${id}`);
+}
+
+export async function listSyncRuns(exec: Exec, limit: number): Promise<SyncRun[]> {
+  const r = await rows(exec, sql`SELECT id, actor, origin, status, started_at, finished_at, created_count, replaced_count, reversed_count, unchanged_count, skipped_count,
+      deferred_count, blocked_count, conflict_count, error_count, truncated, warnings, error_summary FROM acc_sync_runs ORDER BY id DESC LIMIT ${limit}`);
+  return r.map((x) => ({
+    id: num(x.id),
+    actor: String(x.actor),
+    origin: String(x.origin),
+    status: String(x.status) as SyncRunStatus,
+    startedAt: iso(x.started_at),
+    finishedAt: iso(x.finished_at),
+    created: num(x.created_count),
+    replaced: num(x.replaced_count),
+    reversed: num(x.reversed_count),
+    unchanged: num(x.unchanged_count),
+    skipped: num(x.skipped_count),
+    deferred: num(x.deferred_count),
+    blocked: num(x.blocked_count),
+    conflicts: num(x.conflict_count),
+    errors: num(x.error_count),
+    truncated: num(x.truncated) === 1,
+    warnings: str(x.warnings),
+    errorSummary: str(x.error_summary),
+  }));
 }
