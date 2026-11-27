@@ -45,6 +45,14 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
   // Un nombre distinto por prueba: la restricción se valida contra las filas ya existentes
   const failName = () => `Fallo Inyectado ${++seq}`;
 
+  /** Reconciliar = proponer (sin emitir) + aprobar esa propuesta (única forma de emitir/vincular). */
+  const propose = (incidentId: number, cookie = adm) => ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId }, cookie);
+  const reconcile = async (incidentId: number, cookie = adm) => {
+    const p = await propose(incidentId, cookie);
+    if (p.status !== 200 || (data(p) as any).status !== "proposal_pending") return p;
+    return ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId, proposalId: Number((data(p) as any).proposalId) }, cookie);
+  };
+
   beforeAll(async () => {
     ess = await startEssentialApp(URL_!, "integr");
     adm = await ess.login("a", "admin");
@@ -508,13 +516,6 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     };
     const incidentsOf = async (q: number, action: string) => ess.sql("a", "SELECT id, details FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = ? ORDER BY id", [q, action]);
     const listOpen = async () => (ok(await ess.q("a", "crm.fiscalIncidents.list", undefined, adm), "lista") as any[]);
-    /** Reconciliar = proponer (sin emitir) + aprobar esa propuesta (única forma de emitir/vincular). */
-    const propose = (incidentId: number, cookie = adm) => ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId }, cookie);
-    const reconcile = async (incidentId: number, cookie = adm) => {
-      const p = await propose(incidentId, cookie);
-      if (p.status !== 200 || (data(p) as any).status !== "proposal_pending") return p;
-      return ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId, proposalId: Number((data(p) as any).proposalId) }, cookie);
-    };
     const invoicesOfRes = async (resId: number) => Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE reservationId = ?", [resId]))[0].n);
 
     /** Pago pendiente de 400 € sobre una reserva ya convertida, confirmado con la factura rota. */
