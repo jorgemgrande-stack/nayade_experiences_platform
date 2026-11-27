@@ -10,6 +10,7 @@ import { useSiteLocale } from "@/hooks/useSiteLocale";
 import { useLegalHref } from "@/hooks/useLegalHref";
 import { cn } from "@/lib/utils";
 import type { BlockDataMap } from "@shared/pageBlocks";
+import { newsletterMessage } from "@shared/newsletterMessages";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -45,18 +46,18 @@ export function NewsletterSignupForm({ blockId, data, preview, editing }: { bloc
     e.preventDefault();
     setError(null);
     if (preview || editing) {
-      setError("Vista previa: no se envía nada.");
+      setError(locale === "de" ? "Vorschau: Es wird nichts gesendet." : locale === "en" ? "Preview: nothing is sent." : "Vista previa: no se envía nada.");
       return;
     }
-    if (!EMAIL_RE.test(email.trim())) return setError(data.invalidEmailMessage || "Introduce un correo electrónico válido.");
-    if (!consent) return setError(data.noConsentMessage || "Para inscribirte tienes que aceptar el consentimiento.");
+    if (!EMAIL_RE.test(email.trim())) return setError(newsletterMessage(locale, "invalidEmailMessage", data.invalidEmailMessage));
+    if (!consent) return setError(newsletterMessage(locale, "noConsentMessage", data.noConsentMessage));
     try {
       const r = await subscribe.mutateAsync({ slug: currentSlug(), blockId, email: email.trim(), consent: true, website: trap, elapsedMs: Date.now() - shownAt.current, locale: locale ?? undefined, page: window.location.pathname });
-      setDone(r.message || data.successMessage);
+      setDone(r.message || newsletterMessage(locale, "successMessage", data.successMessage));
       setEmail("");
       setConsent(false);
     } catch (err) {
-      setError((err as Error).message || data.errorMessage);
+      setError((err as Error).message || newsletterMessage(locale, "errorMessage", data.errorMessage));
     }
   };
 

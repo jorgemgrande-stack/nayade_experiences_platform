@@ -11,20 +11,11 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "../
 import { allowFormSubmit } from "../_core/studioForms";
 import { sameSiteRequest } from "../_core/studioFormsSubmit";
 import { peekTenantContext } from "../_core/tenant";
+import { newsletterLang, newsletterMessage, NEWSLETTER_MESSAGES, type NewsletterMsgKey } from "../../shared/newsletterMessages";
 import { cleanText, ipFingerprint, LOCALES, STATUSES } from "./core";
 import { ipSecret, newsletterService } from "./runtime";
 import { NewsletterError, type ListQuery } from "./service";
 import { mysqlNewsletterStore, NewsletterNotInstalled } from "./store";
-
-/** Textos de fábrica del bloque (el bloque publicado, y su traducción, mandan). */
-export const BLOCK_DEFAULTS = {
-  consentText: "Quiero recibir la newsletter semanal de Quantum Soulrise y acepto la política de privacidad. Puedo darme de baja en cualquier momento.",
-  successMessage: "¡Gracias! Te hemos enviado un correo para confirmar tu inscripción.",
-  invalidEmailMessage: "Introduce un correo electrónico válido.",
-  noConsentMessage: "Para inscribirte tienes que aceptar el consentimiento.",
-  errorMessage: "No hemos podido completar la inscripción. Inténtalo de nuevo en unos minutos.",
-  rateLimitedMessage: "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.",
-} as const;
 
 const hdr = (req: { headers: Record<string, string | string[] | undefined> }, n: string) => {
   const v = req.headers[n];
@@ -87,18 +78,18 @@ export const newsletterRouter = router({
     .mutation(async ({ input, ctx }) => {
       const req = ctx.req;
       if (!sameSiteRequest({ origin: hdr(req, "origin"), referer: hdr(req, "referer"), hosts: [hdr(req, "x-forwarded-host"), hdr(req, "host")] })) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "No se ha podido enviar el formulario desde esta dirección." });
+        throw new TRPCError({ code: "FORBIDDEN", message: NEWSLETTER_MESSAGES[newsletterLang(input.locale)].forbiddenMessage });
       }
       const ip = req.ip || req.socket.remoteAddress || "desconocida";
       const tenantId = peekTenantContext()?.tenantId ?? "single";
       // Límite por visitante (el mismo que los formularios del Studio) y campo trampa / tiempo mínimo: a un envío automático se le responde igual
-      if (!allowFormSubmit(`newsletter:${tenantId}:${ip}`)) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: BLOCK_DEFAULTS.rateLimitedMessage });
+      if (!allowFormSubmit(`newsletter:${tenantId}:${ip}`)) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: NEWSLETTER_MESSAGES[newsletterLang(input.locale)].rateLimitedMessage });
       const found = await (await import("../pageBuilderDb")).getPublishedNewsletterBlock(input.slug, input.blockId);
-      if (!found) throw new TRPCError({ code: "NOT_FOUND", message: "Este formulario ya no está disponible." });
-      const msg = (k: keyof typeof BLOCK_DEFAULTS) => cleanText((found.localized as Record<string, unknown> | null)?.[k], 300) || cleanText((found.data as Record<string, unknown>)[k], 300) || BLOCK_DEFAULTS[k];
+      if (!found) throw new TRPCError({ code: "NOT_FOUND", message: NEWSLETTER_MESSAGES[newsletterLang(input.locale)].unavailableMessage });
+      const msg = (k: NewsletterMsgKey) => newsletterMessage(input.locale, k, cleanText((found.localized as Record<string, unknown> | null)?.[k], 300) || cleanText((found.data as Record<string, unknown>)[k], 300));
       const okMessage = msg("successMessage");
       if ((input.website ?? "").trim() !== "" || (input.elapsedMs != null && input.elapsedMs < 1500)) return { ok: true as const, message: okMessage };
-      const consentText = cleanText((found.localized as Record<string, unknown> | null)?.consentText, 600) || cleanText((found.data as Record<string, unknown>).consentText, 600) || BLOCK_DEFAULTS.consentText;
+      const consentText = newsletterMessage(input.locale, "consentText", cleanText((found.localized as Record<string, unknown> | null)?.consentText, 600) || cleanText((found.data as Record<string, unknown>).consentText, 600));
       const path = /^\/[^\s<>"']{0,199}$/.test(input.page ?? "") ? input.page! : `/${found.slug}`;
       try {
         await newsletterService().subscribe({
@@ -115,7 +106,7 @@ export const newsletterRouter = router({
         if (e instanceof NewsletterError) {
           if (e.code === "invalid_input") throw new TRPCError({ code: "BAD_REQUEST", message: msg("invalidEmailMessage") });
           if (e.code === "no_consent") throw new TRPCError({ code: "BAD_REQUEST", message: msg("noConsentMessage") });
-          if (e.code === "rate_limited") throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: BLOCK_DEFAULTS.rateLimitedMessage });
+          if (e.code === "rate_limited") throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: msg("rateLimitedMessage") });
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: msg("errorMessage") });
         }
         if (e instanceof NewsletterNotInstalled) throw new TRPCError({ code: "PRECONDITION_FAILED", message: msg("errorMessage") });
