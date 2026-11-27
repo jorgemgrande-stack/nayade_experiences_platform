@@ -32,3 +32,16 @@ Los textos del bloque se traducen como el resto de la página; los de los correo
 
 ## Pendiente (siguiente entrega)
 Campañas semanales y segmentación en Elephant Campaigns (los suscriptores ya quedan como clientes con consentimiento y origen `newsletter`).
+
+## Correo de suscripción durante la prueba gratuita
+
+La prueba solo deja salir correo a los buzones propios de la empresa. Para que la doble confirmación y la bienvenida lleguen
+a las personas que se inscriben, existe una excepción **acotada y por empresa** (`server/trialRestrictions.ts`):
+
+- Solo para correos marcados `trialException: "subscription"` con categoría `operational` (los que envía este módulo).
+- La plataforma debe autorizar a la empresa en `TRIAL_SUBSCRIPTION_MAIL_TENANTS` (ids separados por comas; vacío = nadie).
+  Ninguna empresa lo tiene por defecto y no depende de un ajuste que la propia empresa pueda cambiar.
+- Un solo destinatario, sin copia, con remitente configurado, y tope propio de 24 h (`TRIAL_SUBSCRIPTION_MAIL_DAILY`, 30 por
+  defecto, máximo 500) medido sobre `newsletter_mail_log`. Si no se puede medir, no sale.
+- No toca el estado comercial, ni el tope general de la prueba, ni el resto del correo a terceros (campañas, presupuestos…).
+- El servicio de correo conserva su propio modo (`MAIL_MODE` off/sandbox/live y su lista de destinatarios autorizados).
