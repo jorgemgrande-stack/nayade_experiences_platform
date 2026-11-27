@@ -35,8 +35,15 @@ describe("decisión de acceso", () => {
     expect(decide([g({ status: "read_only" })], "people-hr", { write: true, now: NOW })).toMatchObject({ allowed: false, status: "read_only" });
   });
   it("caducada (fin de prueba): pasa a solo lectura; los datos se siguen consultando", () => {
+    for (const source of ["subscription:1", "trial:1"]) {
+      const expired = [g({ validUntil: NOW - 1, source })];
+      expect(decide(expired, "people-hr", { write: false, now: NOW })).toMatchObject({ allowed: true, status: "read_only" });
+      expect(decide(expired, "people-hr", { write: true, now: NOW })).toMatchObject({ allowed: false, status: "expired" });
+    }
+  });
+  it("concesión temporal de operador vencida: ni se consulta (expired)", () => {
     const expired = [g({ validUntil: NOW - 1 })];
-    expect(decide(expired, "people-hr", { write: false, now: NOW })).toMatchObject({ allowed: true, status: "read_only" });
+    expect(decide(expired, "people-hr", { write: false, now: NOW })).toMatchObject({ allowed: false, status: "expired" });
     expect(decide(expired, "people-hr", { write: true, now: NOW })).toMatchObject({ allowed: false, status: "expired" });
   });
   it("contratada, pendiente de configuración, suspendida o cancelada: no se usa", () => {
