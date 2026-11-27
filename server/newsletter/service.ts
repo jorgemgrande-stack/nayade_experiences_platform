@@ -124,7 +124,7 @@ export interface CrmPort {
   withdraw(clientId: number, evidence: string): Promise<void>;
 }
 export interface MailPort {
-  send(m: { to: string; subject: string; html: string; text: string; idempotencyKey: string; category: "operational" | "marketing" }): Promise<{ ok: boolean; error?: string }>;
+  send(m: { to: string; subject: string; html: string; text: string; idempotencyKey: string; category: "operational" }): Promise<{ ok: boolean; error?: string }>;
 }
 export interface NewsletterDeps {
   store: NewsletterStore;
@@ -277,11 +277,12 @@ export class NewsletterService {
     const mails = await this.d.store.mails(id);
     const failed = mails.filter((m) => m.kind === "welcome" && m.status === "failed").length;
     if (mode === "auto" && failed > 0) return { sent: false, reason: "already_attempted" };
+    // Categoría «operational»: es la respuesta directa a la confirmación de la propia persona (la política de correo reserva «marketing» a las automatizaciones). Solo sale a una suscripción ACTIVA y con enlace de baja.
     // Clave por ciclo de confirmación y por intento manual: dos réplicas o un reintento no duplican la bienvenida
     const key = `nl:welcome:${id}:${sub.confirmedAt}:${mode === "auto" ? 0 : failed + 1}`;
     if (!(await this.d.store.reserveMail(id, "welcome", key, this.now))) return { sent: false, reason: "already_attempted" };
     const m = renderMail(this.tpl("welcome", sub.locale, settings), sub.locale, this.d.identity(), { unsubscribeUrl: this.unsubUrl(id) });
-    const r = await this.d.mail.send({ to: sub.email, subject: m.subject, html: m.html, text: m.text, idempotencyKey: key, category: "marketing" }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "error" }));
+    const r = await this.d.mail.send({ to: sub.email, subject: m.subject, html: m.html, text: m.text, idempotencyKey: key, category: "operational" }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "error" }));
     await this.d.store.finishMail(key, r.ok ? "sent" : "failed", r.ok ? null : (r.error ?? "El correo no salió").slice(0, 300), this.now);
     if (r.ok) {
       await this.d.store.patch(id, { welcomeSentAt: this.now }, this.now);

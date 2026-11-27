@@ -73,7 +73,7 @@ class FakeCrm implements CrmPort {
 class FakeMail implements MailPort {
   sent: Array<{ to: string; subject: string; html: string; text: string; idempotencyKey: string; category: string }> = [];
   ok = true;
-  async send(m: { to: string; subject: string; html: string; text: string; idempotencyKey: string; category: "operational" | "marketing" }) {
+  async send(m: { to: string; subject: string; html: string; text: string; idempotencyKey: string; category: "operational" }) {
     if (!this.ok) return { ok: false, error: "buzón rechazado" };
     this.sent.push(m);
     return { ok: true };
@@ -89,7 +89,7 @@ function make(tenantId = "t12-quantum-soulrise", store = new MemoryStore(), crm 
 }
 const input = (email: unknown, o: Partial<{ consent: unknown; locale: string }> = {}) => ({ email, consent: o.consent ?? true, locale: o.locale ?? "es", source: "web:inicio", page: "/", consentText: CONSENT, ipHash: "h" });
 /** Token del enlace del último correo de confirmación enviado. */
-const tokenIn = (mail: FakeMail) => /\/newsletter\/confirmar\/([A-Za-z0-9_-]{43})/.exec(mail.sent.filter((m) => m.category === "operational").at(-1)!.text)![1];
+const tokenIn = (mail: FakeMail) => /\/newsletter\/confirmar\/([A-Za-z0-9_-]{43})/.exec(mail.sent.filter((m) => m.idempotencyKey.startsWith("nl:confirm")).at(-1)!.text)![1];
 
 beforeEach(() => { now = 1_800_000_000_000; });
 
@@ -149,14 +149,14 @@ describe("confirmación y reenvío", () => {
     expect(s.confirmedAt).toBe(now);
     expect(s.clientId).toBe(1);
     expect(crm.consent.get(1)).toBe("granted");
-    const welcome = mail.sent.filter((m) => m.category === "marketing");
+    const welcome = mail.sent.filter((m) => m.idempotencyKey.startsWith("nl:welcome"));
     expect(welcome).toHaveLength(1);
     expect(welcome[0].subject).toBe("Bienvenida a Quantum Soulrise ✨");
     expect(welcome[0].html).toContain("/newsletter/baja/");
     expect(welcome[0].html).toContain("Quantum Soulrise S.L. · CIF B123");
     // Repetir el enlace (o abrirlo dos veces) no duplica nada
     expect(await svc.confirm(t)).toMatchObject({ state: "invalid" });
-    expect(mail.sent.filter((m) => m.category === "marketing")).toHaveLength(1);
+    expect(mail.sent.filter((m) => m.idempotencyKey.startsWith("nl:welcome"))).toHaveLength(1);
     expect((await store.byId(s.id))!.welcomeSentAt).toBe(now);
   });
   it("sendWelcome repetido (reintento o segunda réplica) no duplica la bienvenida", async () => {
@@ -166,7 +166,7 @@ describe("confirmación y reenvío", () => {
     const id = store.subs[0].id;
     expect(await svc.sendWelcome(id, "auto")).toMatchObject({ sent: false, reason: "already_sent" });
     expect(await svc.sendWelcome(id, "manual", "user:1")).toMatchObject({ sent: false, reason: "already_sent" });
-    expect(mail.sent.filter((m) => m.category === "marketing")).toHaveLength(1);
+    expect(mail.sent.filter((m) => m.idempotencyKey.startsWith("nl:welcome"))).toHaveLength(1);
   });
   it("un enlace caducado no confirma; uno inventado tampoco", async () => {
     const { svc, store, mail } = make();
@@ -291,7 +291,7 @@ describe("baja y reactivación", () => {
     await svc.confirm(tokenIn(mail));
     expect(store.subs[0].status).toBe("active");
     expect(crm.consent.get(1)).toBe("granted");
-    expect(mail.sent.filter((m) => m.category === "marketing")).toHaveLength(2); // una bienvenida por ciclo confirmado
+    expect(mail.sent.filter((m) => m.idempotencyKey.startsWith("nl:welcome"))).toHaveLength(2); // una bienvenida por ciclo confirmado
   });
   it("no existe ninguna operación de activación para el personal", () => {
     const proto = Object.getOwnPropertyNames(NewsletterService.prototype);

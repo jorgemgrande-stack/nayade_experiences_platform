@@ -55,7 +55,7 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
   });
 
   const input = (email: string, locale = "es") => ({ email, consent: true, locale, source: "web:inicio", page: "/", consentText: "Acepto la newsletter y la privacidad.", ipHash: null });
-  const confirmToken = () => /\/newsletter\/confirmar\/([A-Za-z0-9_-]{43})/.exec(sent.filter((m) => m.category === "operational").at(-1)!.text)![1];
+  const confirmToken = () => /\/newsletter\/confirmar\/([A-Za-z0-9_-]{43})/.exec(sent.filter((m) => m.idempotencyKey.startsWith("nl:confirm")).at(-1)!.text)![1];
   const [one] = [() => admin.query(`SELECT * FROM customer_marketing_consents`)];
   void one;
 
@@ -89,7 +89,7 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
     expect(cl).toMatchObject({ source: "newsletter", email: "ana@example.com" });
     const [[cons]] = (await admin.query("SELECT status, source FROM customer_marketing_consents WHERE client_id = ?", [after.clientId])) as any;
     expect(cons).toMatchObject({ status: "granted" });
-    expect(sent.filter((m) => m.category === "marketing")).toHaveLength(1);
+    expect(sent.filter((m) => m.idempotencyKey.startsWith("nl:welcome"))).toHaveLength(1);
     expect((await store.mails(after.id)).map((m) => `${m.kind}:${m.status}`).sort()).toEqual(["confirm:sent", "welcome:sent"]);
     expect((await store.events(after.id)).map((e) => e.action).sort()).toEqual(["confirmed", "requested", "welcome_sent"]);
   });
@@ -122,7 +122,7 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
     expect((await store.byId(sub.id))!.status).toBe("pending");
     await svc.confirm(confirmToken());
     expect((await store.byId(sub.id))!.status).toBe("active");
-    expect(sent.filter((m) => m.category === "marketing")).toHaveLength(1);
+    expect(sent.filter((m) => m.idempotencyKey.startsWith("nl:welcome"))).toHaveLength(1);
   });
 
   it("listado con filtros, orden y paginación; estadísticas; exportación completa del filtro y su constancia", async () => {
