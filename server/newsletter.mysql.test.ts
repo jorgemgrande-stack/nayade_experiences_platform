@@ -160,5 +160,9 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
     for (const s of splitStatements(down)) await admin.query(s);
     const [[c]] = (await admin.query("SELECT COUNT(*) AS c FROM retired_newsletter_subscribers")) as any;
     expect(Number(c.c)).toBeGreaterThan(5);
+    // Volver a aplicar la 0095 tras revertirla funciona (los CHECK no chocan) y deja las tablas nuevas vacías
+    for (const s of splitStatements(fs.readFileSync(path.join(DIR, "0095_newsletter.sql"), "utf8"))) await admin.query(s);
+    const [[n]] = (await admin.query("SELECT COUNT(*) AS c FROM newsletter_subscribers")) as any;
+    expect(Number(n.c)).toBe(0);
   });
 });
