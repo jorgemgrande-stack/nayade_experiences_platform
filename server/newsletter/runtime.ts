@@ -68,7 +68,7 @@ export const mailPort: MailPort = {
   async send(m) {
     const { sendEmail } = await import("../mailer");
     try {
-      const ok = await sendEmail({ to: m.to, subject: m.subject, html: m.html, text: m.text, category: m.category, idempotencyKey: m.idempotencyKey });
+      const ok = await sendEmail({ to: m.to, subject: m.subject, html: m.html, text: m.text, category: m.category, idempotencyKey: m.idempotencyKey, trialException: "subscription" });
       return ok ? { ok: true } : { ok: false, error: "El servicio de correo no envió el mensaje (política de correo, modo de pruebas o cuota)." };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "error" };

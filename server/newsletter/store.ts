@@ -176,3 +176,14 @@ export const mysqlNewsletterStore: NewsletterStore = {
   recentSignups: (since) => guarded(async () => Number((await exec(sql`SELECT COUNT(*) AS c FROM newsletter_subscribers WHERE created_at >= ${since} OR (consent_at IS NOT NULL AND consent_at >= ${since} AND status = 'pending')`)).rows[0]?.c ?? 0)),
   recordExport: (e, now) => guarded(async () => void (await exec(sql`INSERT INTO newsletter_exports (actor_id, actor, format, row_count, filters, created_at) VALUES (${e.actorId}, ${e.actor.slice(0, 120)}, ${e.format}, ${e.rows}, ${e.filters.slice(0, 600)}, ${now})`))),
 };
+
+/** Correos de la newsletter reservados desde `since` (ms): consumo de la excepción de prueba. null si el módulo no está instalado. */
+export async function mailsReservedSince(since: number): Promise<number | null> {
+  try {
+    const r = await exec(sql`SELECT COUNT(*) AS c FROM newsletter_mail_log WHERE created_at >= ${since}`);
+    return Number(r.rows[0]?.c ?? 0);
+  } catch (e) {
+    if (missingTable(e)) return null;
+    throw e;
+  }
+}
