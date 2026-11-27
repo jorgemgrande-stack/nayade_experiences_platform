@@ -115,3 +115,31 @@ export async function listOpenFiscalIncidents(runner: Runner, limit = 200): Prom
   }
   return open;
 }
+
+/** Propuesta de reconciliación pendiente de aprobación. NO emite ni vincula nada: solo describe lo que se haría. */
+export const FISCAL_RECONCILE_PROPOSED = "fiscal_reconcile_proposed";
+
+export type ReconcileProposalPlan =
+  | { kind: "issue_invoice"; ppId: number; reservationId: number | null; quoteId: number | null; amountCents: number; paymentMethod: string }
+  /** `reservationId`: la reserva viva del presupuesto que el cierre del plan completaría (o null si crearía una nueva). */
+  | { kind: "confirm_plan"; quoteId: number; reservationId: number | null };
+
+export interface ReconcileProposal { id: number; incidentId: number; plan: ReconcileProposalPlan; proposedBy: number | null; at: Date }
+
+export async function recordReconcileProposal(runner: Runner, incident: { id: number; entityType: Entity; entityId: number }, plan: ReconcileProposalPlan, actor: { id: number | null; name: string | null }): Promise<number> {
+  const [r] = await runner.insert(crmActivityLog).values({
+    entityType: incident.entityType, entityId: incident.entityId, action: FISCAL_RECONCILE_PROPOSED,
+    actorId: actor.id, actorName: actor.name, details: { incidentId: incident.id, plan }, createdAt: new Date(),
+  });
+  return Number((r as { insertId: number }).insertId);
+}
+
+/** Propuesta indicada (si pertenece a esa incidencia) o la más reciente de la incidencia. */
+export async function getReconcileProposal(runner: Runner, incidentId: number, proposalId?: number): Promise<ReconcileProposal | null> {
+  const rows = await runner.select().from(crmActivityLog)
+    .where(and(eq(crmActivityLog.action, FISCAL_RECONCILE_PROPOSED), ...(proposalId ? [eq(crmActivityLog.id, proposalId)] : [])))
+    .orderBy(desc(crmActivityLog.id)).limit(proposalId ? 1 : 500);
+  const hit = rows.find((r: any) => Number((r.details as Record<string, unknown>)?.incidentId) === incidentId);
+  if (!hit) return null;
+  return { id: hit.id, incidentId, plan: (hit.details as any).plan as ReconcileProposalPlan, proposedBy: hit.actorId ?? null, at: hit.createdAt };
+}

@@ -4,7 +4,7 @@
  */
 
 
-import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, getOpenFiscalIncident, markFiscalIncidentResolved } from "../fiscalIncidents";
+import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, getOpenFiscalIncident, markFiscalIncidentResolved, recordReconcileProposal, getReconcileProposal, type ReconcileProposalPlan } from "../fiscalIncidents";
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { brandSetting, companyName, formatLegalAddress } from "../tenantBrand";
@@ -7300,17 +7300,50 @@ export const crmRouter = router({
       const open = await listOpenFiscalIncidents(db);
       return open.map((i) => ({ ...i, at: i.at.toISOString() }));
     }),
-    reconcile: staff
+    // La reconciliación puede EMITIR facturas y vincular una reserva a un presupuesto: exige permiso de administración
+    // (`settings.manage`, solo admin/propietario; un rol de personal recibe FORBIDDEN) y se hace en DOS pasos:
+    //  1) reconcile: NO escribe nada fiscal; deja una propuesta (qué factura y qué reserva afectaría) en el registro del CRM.
+    //  2) approveReconciliation: aprueba esa propuesta concreta; solo entonces se emite/vincula, con las garantías de siempre.
+    reconcile: admin
       .input(z.object({ incidentId: z.number() }))
       .mutation(async ({ input, ctx }) => {
         const incident = await getOpenFiscalIncident(db, input.incidentId);
         if (!incident) return { status: "already_resolved" as const };
         if (!incident.reconcilable) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta incidencia no se reconcilia automáticamente: revisa su ficha." });
         const actor = { id: ctx.user.id, name: ctx.user.name ?? null };
+        let plan: ReconcileProposalPlan;
         if (incident.action === "payment_confirmed_without_invoice") {
           const ppId = Number(incident.details.ppId);
           const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, ppId));
           if (!pp || pp.status !== "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "El pago pendiente no consta como cobrado." });
+          plan = { kind: "issue_invoice", ppId, reservationId: pp.reservationId ?? null, quoteId: pp.quoteId ?? null, amountCents: pp.amountCents, paymentMethod: String(incident.details.paymentMethod ?? "efectivo") };
+        } else {
+          if (incident.entityType !== "quote") throw new TRPCError({ code: "BAD_REQUEST", message: "Incidencia sin presupuesto asociado." });
+          const found = await findReservationForQuote(db, incident.entityId);
+          plan = { kind: "confirm_plan", quoteId: incident.entityId, reservationId: found?.id ?? null };
+        }
+        const proposalId = await recordReconcileProposal(db, incident, plan, actor);
+        await logActivity(incident.entityType, incident.entityId, "fiscal_reconcile_proposal_created", ctx.user.id, ctx.user.name, { incidentId: incident.id, proposalId });
+        return { status: "proposal_pending" as const, proposalId, plan, message: "Propuesta creada: no se ha emitido ni vinculado nada. Apruébala con approveReconciliation." };
+      }),
+    approveReconciliation: admin
+      .input(z.object({ incidentId: z.number(), proposalId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const incident = await getOpenFiscalIncident(db, input.incidentId);
+        if (!incident) return { status: "already_resolved" as const };
+        if (!incident.reconcilable) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta incidencia no se reconcilia automáticamente: revisa su ficha." });
+        const proposal = await getReconcileProposal(db, incident.id, input.proposalId);
+        if (!proposal) throw new TRPCError({ code: "BAD_REQUEST", message: "No existe esa propuesta para esta incidencia." });
+        const actor = { id: ctx.user.id, name: ctx.user.name ?? null };
+        const approvedBy = { approvedBy: ctx.user.id, proposalId: proposal.id };
+        if (incident.action === "payment_confirmed_without_invoice") {
+          const ppId = Number(incident.details.ppId);
+          const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, ppId));
+          if (!pp || pp.status !== "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "El pago pendiente no consta como cobrado." });
+          // Lo aprobado debe ser exactamente lo que se ejecuta: si el pago cambió desde la propuesta, hay que proponer de nuevo
+          const plan = proposal.plan;
+          if (plan.kind !== "issue_invoice" || plan.ppId !== pp.id || plan.reservationId !== (pp.reservationId ?? null) || plan.quoteId !== (pp.quoteId ?? null) || plan.amountCents !== pp.amountCents)
+            return { status: "proposal_stale" as const, message: "El pago cambió desde la propuesta: genera una nueva con reconcile." };
           // Si el presupuesto ya tiene otra factura (emitida por otra vía), NO se emite una segunda: revisión humana
           if (pp.quoteId) {
             const [other] = await db.select({ id: invoices.id }).from(invoices).where(and(eq(invoices.quoteId, pp.quoteId), ne(invoices.invoiceType, "abono"))).limit(1);
@@ -7320,17 +7353,22 @@ export const crmRouter = router({
           const outcome = await issuePendingPaymentInvoice(pp, String(incident.details.paymentMethod ?? "efectivo"), ctx.user, false);
           if (outcome === "failed") throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo emitir la factura; la incidencia sigue abierta." });
           await markFiscalIncidentResolved(db, incident, actor, outcome);
-          await logActivity(incident.entityType, incident.entityId, "fiscal_incident_reconciled", ctx.user.id, ctx.user.name, { incidentId: incident.id, outcome });
+          await logActivity(incident.entityType, incident.entityId, "fiscal_incident_reconciled", ctx.user.id, ctx.user.name, { incidentId: incident.id, outcome, ...approvedBy });
           return { status: outcome };
         }
         // installment_plan_failed: la comprobación del plan es idempotente (reserva y factura final únicas)
         if (incident.entityType !== "quote") throw new TRPCError({ code: "BAD_REQUEST", message: "Incidencia sin presupuesto asociado." });
+        const planNow = proposal.plan;
+        const foundNow = await findReservationForQuote(db, incident.entityId);
+        // Reutilizar/completar una reserva ya existente es un cambio de vinculación: solo la que se aprobó
+        if (planNow.kind !== "confirm_plan" || planNow.quoteId !== incident.entityId || planNow.reservationId !== (foundNow?.id ?? null))
+          return { status: "proposal_stale" as const, message: "La reserva del presupuesto cambió desde la propuesta: genera una nueva con reconcile." };
         await checkAndConfirmInstallmentPlan(incident.entityId, ctx.user.id, ctx.user.name ?? "Admin");
         // Solo se cierra si el plan quedó realmente confirmado (cuotas obligatorias pagadas → presupuesto aceptado)
         const [planQuote] = await db.select({ status: quotes.status }).from(quotes).where(eq(quotes.id, incident.entityId)).limit(1);
         if (planQuote?.status !== "aceptado") return { status: "plan_not_ready" as const, message: "Las cuotas obligatorias aún no están pagadas: no hay nada que completar." };
         await markFiscalIncidentResolved(db, incident, actor, "plan_reconciled");
-        await logActivity("quote", incident.entityId, "fiscal_incident_reconciled", ctx.user.id, ctx.user.name, { incidentId: incident.id, outcome: "plan_reconciled" });
+        await logActivity("quote", incident.entityId, "fiscal_incident_reconciled", ctx.user.id, ctx.user.name, { incidentId: incident.id, outcome: "plan_reconciled", ...approvedBy });
         return { status: "plan_reconciled" as const };
       }),
   }),

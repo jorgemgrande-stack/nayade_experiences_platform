@@ -508,7 +508,13 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
     };
     const incidentsOf = async (q: number, action: string) => ess.sql("a", "SELECT id, details FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = ? ORDER BY id", [q, action]);
     const listOpen = async () => (ok(await ess.q("a", "crm.fiscalIncidents.list", undefined, adm), "lista") as any[]);
-    const reconcile = (incidentId: number) => ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId }, adm);
+    /** Reconciliar = proponer (sin emitir) + aprobar esa propuesta (única forma de emitir/vincular). */
+    const propose = (incidentId: number, cookie = adm) => ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId }, cookie);
+    const reconcile = async (incidentId: number, cookie = adm) => {
+      const p = await propose(incidentId, cookie);
+      if (p.status !== 200 || (data(p) as any).status !== "proposal_pending") return p;
+      return ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId, proposalId: Number((data(p) as any).proposalId) }, cookie);
+    };
     const invoicesOfRes = async (resId: number) => Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE reservationId = ?", [resId]))[0].n);
 
     /** Pago pendiente de 400 € sobre una reserva ya convertida, confirmado con la factura rota. */
@@ -537,6 +543,56 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
       // Idempotente: repetir no emite otra
       expect(ok(await reconcile(Number(inc[0].id)), "repetir").status).toBe("already_resolved");
       expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("SEGURIDAD: un rol de personal (agente) NO puede proponer ni aprobar reconciliaciones (FORBIDDEN) y no cambia nada", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const logs0 = Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log"))[0].n);
+      expect(errCode(await propose(inc, ag))).toBe("FORBIDDEN");
+      expect(errCode(await ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId: inc, proposalId: 1 }, ag))).toBe("FORBIDDEN");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log"))[0].n)).toBe(logs0);
+      // La lista de incidencias sigue siendo de consulta para el personal
+      expect((await ess.q("a", "crm.fiscalIncidents.list", undefined, ag)).status).toBe(200);
+    });
+
+    it("SEGURIDAD: el administrador que reconcilia SIN aprobar no emite ni vincula: solo queda una propuesta; los datos históricos no cambian", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const snapInv = async () => JSON.stringify(await ess.sql("a", "SELECT id, invoiceNumber, total, reservationId FROM invoices ORDER BY id"));
+      const snapRes = async () => JSON.stringify(await ess.sql("a", "SELECT id, status, invoiceId, quote_id, people, amount_total, amount_paid FROM reservations ORDER BY id"));
+      const histInv = await snapInv();
+      const histRes = await snapRes();
+      const r = ok(await propose(inc), "proponer");
+      expect(r.status).toBe("proposal_pending");
+      expect(r.plan).toMatchObject({ kind: "issue_invoice", reservationId: resId, quoteId: q });
+      expect(await counter()).toBe(c0);
+      expect(await snapInv()).toBe(histInv);
+      expect(await snapRes()).toBe(histRes);
+      expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+      // Proponer dos veces no emite nada y una propuesta inexistente se rechaza
+      ok(await propose(inc), "proponer otra vez");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      const bad = await ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId: inc, proposalId: 999999999 }, adm);
+      expect(errCode(bad)).toBe("BAD_REQUEST");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      // Aprobada la propuesta concreta, sí emite UNA factura
+      expect(ok(await ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId: inc, proposalId: Number(r.proposalId) }, adm), "aprobar").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("SEGURIDAD: si el pago cambia entre la propuesta y la aprobación, la aprobación caduca (proposal_stale) y no emite", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const r = ok(await propose(inc), "proponer");
+      await ess.sql("a", "UPDATE pending_payments SET amount_cents = amount_cents + 100 WHERE quote_id = ?", [q]);
+      const a = ok(await ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId: inc, proposalId: Number(r.proposalId) }, adm), "aprobar");
+      expect(a.status).toBe("proposal_stale");
+      expect(await invoicesOfRes(resId)).toBe(0);
     });
 
     it("reconciliar ×4 a la vez la misma incidencia → exactamente UNA factura, sin número perdido", async () => {
@@ -647,7 +703,7 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
       const inc = Number((await ess.sql("a", "SELECT id FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'payment_confirmed_without_invoice'", [q]))[0].id);
       ok(await pay(q), "cobro normal posterior");
       // El presupuesto ya tiene factura por otra vía: no se emite una segunda, se pide revisión humana y la incidencia sigue abierta
-      expect(ok(await ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId: inc }, adm), "reconciliar").status).toBe("needs_review");
+      expect(ok(await reconcile(inc), "reconciliar").status).toBe("needs_review");
       expect((await invoicesOf(q)).length).toBe(1);
     });
 
@@ -659,7 +715,7 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
       ] }, adm), "plan");
       await ess.sql("a", "INSERT INTO crm_activity_log (entityType, entityId, action, details) VALUES ('quote', ?, 'installment_plan_failed', JSON_OBJECT('incident', true, 'source', 'prueba'))", [q]);
       const id = Number((await ess.sql("a", "SELECT id FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'installment_plan_failed'", [q]))[0].id);
-      const r = ok(await ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId: id }, adm), "reconciliar");
+      const r = ok(await reconcile(id), "reconciliar");
       expect(r.status).toBe("plan_not_ready");
       expect(((await ess.q("a", "crm.fiscalIncidents.list", undefined, adm)).json as any) ?? true).toBeTruthy();
       expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE action = 'fiscal_incident_resolved' AND JSON_EXTRACT(details, '$.incidentId') = ?", [id]))[0].n).toBe(0);
