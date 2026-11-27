@@ -25,7 +25,7 @@ const licensed = adminProcedure.use(async ({ type, next }) => {
 export const accountingGeneralRouter = router({
   overview: licensed.query(() => svc.overview()),
   /** Genera o corrige los asientos automáticos de los documentos del Core (idempotente). */
-  sync: licensed.input(z.object({ origin: z.enum(["manual", "pantalla"]) }).nullish()).mutation(({ ctx, input }) => svc.sync(ctx.user.id, new Date(), input?.origin ?? "manual")),
+  sync: licensed.input(z.object({ origin: z.enum(["manual", "pantalla"]).optional(), startDate: date.nullish() }).nullish()).mutation(({ ctx, input }) => svc.sync(ctx.user.id, new Date(), input?.origin ?? "manual", input?.startDate ?? null)),
   /** Últimas ejecuciones de la sincronización (quién, cuándo, resultado y cantidades). */
   syncRuns: licensed.input(z.object({ limit: z.number().int().min(1).max(100).default(20) }).nullish()).query(({ input }) => svc.syncRuns(input?.limit ?? 20)),
 

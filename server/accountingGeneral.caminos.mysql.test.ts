@@ -29,7 +29,7 @@ describe.skipIf(!URL_)("Contabilidad general · caminos reales del Core (TPV, an
     return data(r);
   };
   const sync = async () => {
-    const s = ok(await ess.m("a", "accountingGeneral.sync", undefined, adA), "generar asientos");
+    const s = ok(await ess.m("a", "accountingGeneral.sync", { startDate: `${new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date()).slice(0, 4)}-01-01` }, adA), "generar asientos");
     expect(s.errors).toEqual([]);
     return s;
   };

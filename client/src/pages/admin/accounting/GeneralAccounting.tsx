@@ -1,7 +1,8 @@
 /**
  * Contabilidad general (/admin/contabilidad/general): contabilidad de doble partida de la empresa sin introducir
  * las facturas dos veces. Los asientos de facturas, abonos, tickets, cobros, gastos, pagos y cierres de caja salen solos
- * de lo que ya registra el Core (se generan al abrir la página y con «Actualizar asientos»); los demás, con asientos
+ * de lo que ya registra el Core (se generan solo cuando un administrador pulsa «Sincronizar» y lo confirma; abrir la página no
+ * escribe nada y la primera vez pide confirmar la fecha de inicio); los demás, con asientos
  * manuales que deben cuadrar. Libro diario, mayor, sumas y saldos, pérdidas y ganancias y exportación para la gestoría.
  * La autorización real (licencia `accounting-general` y administración) la aplica el servidor.
  *
@@ -9,7 +10,7 @@
  * diálogo de reversión, textos con t() e importes con el formato único). Los cálculos, los asientos y la sincronización
  * al abrir la pantalla no cambian.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
@@ -172,16 +173,26 @@ function ExpandRow({ title, subtitle, amount, amountLabel, details, openLabel }:
 
 // ─── Resumen ──────────────────────────────────────────────────────────────────
 
-function Summary({ syncing, onSync }: { syncing: boolean; onSync: () => void }) {
+/** Una ejecución en curso de otra persona que lleva menos de esto sigue contando como «en curso» (una interrumpida no bloquea para siempre). */
+const RUNNING_STALE_MS = 5 * 60 * 1000;
+const RUN_STATUS_KEY = { ok: "ok", partial: "partial", error: "error", running: "running" } as const;
+
+function Summary({ syncing, syncError, onSync }: { syncing: boolean; syncError: string | null; onSync: (startDate?: string | null) => void }) {
   const { t } = useI18n();
   const m = useMoney();
   const dt = useDates();
   const q = trpc.accountingGeneral.overview.useQuery();
+  const runsQ = trpc.accountingGeneral.syncRuns.useQuery(
+    { limit: 5 },
+    { refetchInterval: (query) => ((query.state.data as any)?.items?.[0]?.status === "running" ? 3000 : false) },
+  );
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [startDate, setStartDate] = useState("");
   // Solo escribe la confirmación de la contabilidad general: el gasto y sus impuestos en el Core no cambian
   const confirmTax = trpc.accountingGeneral.confirmExpenseTax.useMutation({
     onSuccess: () => {
       toast.success(t("economyLedger.summary.taxConfirmed"));
-      onSync();
+      onSync(null);
     },
     onError: (e) => toastError(e),
   });
@@ -190,21 +201,62 @@ function Summary({ syncing, onSync }: { syncing: boolean; onSync: () => void }) 
   const d = q.data!;
   const last = d.lastSync;
   const eur = (c: number | null | undefined) => m.cents(c, { nullAs: NONE });
+  const lastRun = runsQ.data?.items?.[0] ?? null;
+  const otherRunning = lastRun?.status === "running" && lastRun.startedAt != null && Date.now() - Date.parse(lastRun.startedAt) < RUNNING_STALE_MS;
+  const busy = syncing || otherRunning;
+  const who = lastRun ? (lastRun.actorName ?? (lastRun.actor === "sistema" ? t("economyLedger.sync.bySystem") : t("economyLedger.sync.byUser"))) : "";
+  const effectiveStart = startDate || d.defaultStartDate;
+  const startValid = /^\d{4}-\d{2}-\d{2}$/.test(effectiveStart) && !Number.isNaN(Date.parse(effectiveStart));
+  const openConfirm = () => {
+    setStartDate(d.defaultStartDate);
+    setConfirmOpen(true);
+  };
+  const confirmSync = () => {
+    if (!d.started && !startValid) return;
+    setConfirmOpen(false);
+    onSync(d.started ? null : effectiveStart);
+  };
   return (
     <div className="space-y-6">
       <section className={sectionClass}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium text-foreground">{t("economyLedger.summary.autoSince", { date: dt.day(d.settings.startDate) })}</p>
-            <p className="text-sm text-muted-foreground">
-              {t("economyLedger.summary.lastUpdate", { when: dt.when(d.lastSyncAt) })}
+            {d.started ? (
+              <p className="text-sm font-medium text-foreground">{t("economyLedger.summary.autoSince", { date: dt.day(d.settings.startDate) })}</p>
+            ) : (
+              <p className="text-sm font-medium text-foreground">{t("economyLedger.sync.notStarted")}</p>
+            )}
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {busy
+                ? t("economyLedger.sync.running")
+                : lastRun
+                  ? t("economyLedger.sync.last", { when: dt.when(lastRun.startedAt), who, result: t(`economyLedger.sync.result.${RUN_STATUS_KEY[lastRun.status]}`) })
+                  : d.started
+                    ? t("economyLedger.summary.lastUpdate", { when: dt.when(d.lastSyncAt) })
+                    : t("economyLedger.sync.never")}
               {d.settings.lockedUntil ? ` · ${t("economyLedger.summary.lockedUntil", { date: dt.day(d.settings.lockedUntil) })}` : ""}
             </p>
           </div>
-          <Button onClick={onSync} disabled={syncing} className="max-sm:h-10 max-sm:w-full">
-            <RefreshCw className={`mr-1 h-4 w-4 ${syncing ? "animate-spin" : ""}`} aria-hidden="true" /> {t("economyLedger.summary.sync")}
+          <Button onClick={openConfirm} disabled={busy} className="max-sm:h-10 max-sm:w-full">
+            <RefreshCw className={`mr-1 h-4 w-4 ${busy ? "animate-spin" : ""}`} aria-hidden="true" />{" "}
+            {busy ? t("economyLedger.sync.buttonRunning") : d.started ? t("economyLedger.sync.button") : t("economyLedger.sync.buttonStart")}
           </Button>
         </div>
+        {(syncError || (!busy && lastRun?.status === "error")) && (
+          <div role="alert" className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+            <p className="flex items-center gap-1 font-medium text-foreground">
+              <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" /> {t("economyLedger.sync.failed")}
+            </p>
+            <p className="break-words text-muted-foreground">{syncError ?? lastRun?.errorSummary ?? t("economyLedger.sync.failedUnknown")}</p>
+          </div>
+        )}
+        {last && (last.warnings?.length ?? 0) > 0 && (
+          <ul className="space-y-0.5 break-words text-sm text-muted-foreground">
+            {last.warnings.map((w: string) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        )}
         {last && (
           <ul className="grid gap-1 text-sm text-muted-foreground sm:grid-cols-3">
             <li>{t("economyLedger.summary.created", { n: last.created })}</li>
@@ -253,6 +305,34 @@ function Summary({ syncing, onSync }: { syncing: boolean; onSync: () => void }) 
             </ul>
           </div>
         )}
+        <Dialog open={confirmOpen} onOpenChange={(o) => { if (!syncing) setConfirmOpen(o); }}>
+          <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{d.started ? t("economyLedger.sync.dialog.title") : t("economyLedger.sync.dialog.startTitle")}</DialogTitle>
+              <DialogDescription>{d.started ? t("economyLedger.sync.dialog.description") : t("economyLedger.sync.dialog.startDescription")}</DialogDescription>
+            </DialogHeader>
+            <form
+              className="space-y-4"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                confirmSync();
+              }}
+            >
+              {!d.started && (
+                <FormField label={t("economyLedger.sync.dialog.startDate")} required hint={t("economyLedger.sync.dialog.startDateHint")} error={startValid ? null : t("economyLedger.sync.dialog.startDateInvalid")}>
+                  <Input type="date" value={effectiveStart} onChange={(ev) => setStartDate(ev.target.value)} className={inputClass} autoFocus />
+                </FormField>
+              )}
+              {!d.started && <p className="text-sm text-muted-foreground">{t("economyLedger.sync.dialog.tpvNote")}</p>}
+              <FormFooter>
+                <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)}>{t("economyLedger.sync.dialog.cancel")}</Button>
+                <Button type="submit" disabled={busy || (!d.started && !startValid)}>
+                  {d.started ? t("economyLedger.sync.dialog.confirm") : t("economyLedger.sync.dialog.confirmStart")}
+                </Button>
+              </FormFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
         <p className="flex items-start gap-1 text-sm text-muted-foreground">
           {d.balanced ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />}
           <span className="min-w-0">
@@ -892,13 +972,6 @@ export default function GeneralAccounting() {
       if (e.data?.code !== "FORBIDDEN") toastError(e);
     },
   });
-  const started = useRef(false);
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    sync.mutate({ origin: "pantalla" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const accountOptions = accounts.data ?? [];
   const active = tab as TabKey;
   return (
@@ -907,7 +980,7 @@ export default function GeneralAccounting() {
         <div className="space-y-4">
           <InnerTabs tabs={TAB_KEYS.map((k) => ({ key: k, label: t(`economyLedger.tab.${k}`) }))} active={active} onChange={setTab} label={t("economyLedger.tabsLabel")} />
           {PERIOD_TABS.includes(active) && <PeriodPicker value={period} onChange={setPeriod} />}
-          {active === "resumen" && <Summary syncing={sync.isPending} onSync={() => sync.mutate()} />}
+          {active === "resumen" && <Summary syncing={sync.isPending} syncError={sync.error && sync.error.data?.code !== "FORBIDDEN" ? sync.error.message : null} onSync={(startDate) => sync.mutate({ origin: "manual", startDate: startDate ?? null })} />}
           {active === "diario" && <Journal period={period} />}
           {active === "mayor" && <Ledger period={period} accounts={accountOptions} />}
           {active === "sumas" && <Trial period={period} />}

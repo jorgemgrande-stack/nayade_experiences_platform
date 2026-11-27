@@ -363,6 +363,8 @@ export interface SyncRunCounts {
 export interface SyncRun extends SyncRunCounts {
   id: number;
   actor: string;
+  /** Nombre del usuario que la lanzó (para mostrarlo en el panel de administración); null si es del sistema o ya no existe. */
+  actorName: string | null;
   origin: string;
   status: SyncRunStatus;
   startedAt: string | null;
@@ -385,11 +387,13 @@ export async function finishSyncRun(exec: Exec, id: number, r: { status: SyncRun
 }
 
 export async function listSyncRuns(exec: Exec, limit: number): Promise<SyncRun[]> {
-  const r = await rows(exec, sql`SELECT id, actor, origin, status, started_at, finished_at, created_count, replaced_count, reversed_count, unchanged_count, skipped_count,
-      deferred_count, blocked_count, conflict_count, error_count, truncated, warnings, error_summary FROM acc_sync_runs ORDER BY id DESC LIMIT ${limit}`);
+  const r = await rows(exec, sql`SELECT r.id, r.actor, u.name AS actor_name, r.origin, r.status, r.started_at, r.finished_at, r.created_count, r.replaced_count, r.reversed_count, r.unchanged_count, r.skipped_count,
+      r.deferred_count, r.blocked_count, r.conflict_count, r.error_count, r.truncated, r.warnings, r.error_summary
+    FROM acc_sync_runs r LEFT JOIN users u ON u.id = r.actor_user_id ORDER BY r.id DESC LIMIT ${limit}`);
   return r.map((x) => ({
     id: num(x.id),
     actor: String(x.actor),
+    actorName: str(x.actor_name),
     origin: String(x.origin),
     status: String(x.status) as SyncRunStatus,
     startedAt: iso(x.started_at),
