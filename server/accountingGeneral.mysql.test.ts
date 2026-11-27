@@ -344,7 +344,7 @@ describe.skipIf(!URL_)("Contabilidad general · asientos automáticos, manuales,
   it("aislamiento: la otra empresa no ve nada y sus asientos son solo suyos", async () => {
     const o = await ok(q("overview", undefined, adB, "b"));
     expect(o.counts.entries).toBe(0);
-    expect((await ok(m("sync", undefined, adB, "b"))).created).toBe(0);
+    expect((await ok(m("sync", { startDate: `${y()}-01-01` }, adB, "b"))).created).toBe(0);
     const j = await ok(q("journal", period(), adB, "b"));
     expect(j.total).toBe(0);
     const [sub] = await ess.sql("b", "SELECT COUNT(*) AS n FROM acc_accounts WHERE code = '57200001'");

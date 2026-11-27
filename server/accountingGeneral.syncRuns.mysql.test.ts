@@ -55,13 +55,13 @@ describe.skipIf(!URL_)("Contabilidad general · traza por ejecución acc_sync_ru
   });
 
   it("los asientos son idénticos con traza (A) y sin la tabla de traza (B): la sincronización no falla ni cambia nada", async () => {
-    await ok(m("sync", undefined, "b")); // siembra ajustes y plan en B
+    await ok(m("sync", { startDate: `${year()}-01-01` }, "b")); // inicia la contabilidad (con fecha confirmada) en B
     await ess.sql("b", "DROP TABLE acc_sync_runs");
     for (const co of ["a", "b"] as const) {
       await addExpense(co, "Material oficina", "121.00", "21.00");
       await addExpense(co, "Suministros", "60.50", "10.50");
     }
-    const a = await ok(m("sync", undefined, "a"));
+    const a = await ok(m("sync", { startDate: `${year()}-01-01` }, "a"));
     const b = await ok(m("sync", undefined, "b"));
     expect(a.errors).toEqual([]);
     expect(b.errors).toEqual([]);

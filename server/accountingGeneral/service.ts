@@ -79,14 +79,14 @@ async function run<T>(fn: (d: Db) => Promise<T>): Promise<T> {
  * Ajustes de la empresa para una MUTACIÓN; la primera vez siembra el plan de cuentas del PGC de pymes (inicio: 1 de
  * enero). Las consultas usan `current` y `chartMap`, que no escriben (en solo lectura no se crea nada).
  */
-async function ready(db: Db): Promise<store.AccSettings> {
+async function ready(db: Db, startDate: string | null = null): Promise<store.AccSettings> {
   const s = await store.getSettings(db);
   if (s) {
     // Las cuentas nuevas del plan (p. ej. la 560 de las fianzas) en empresas ya sembradas, sin tocar las existentes
     await store.seedAccounts(db);
     return s;
   }
-  await store.seed(db as unknown as store.TxExec, `${madridYear()}-01-01`);
+  await store.seed(db as unknown as store.TxExec, startDate ?? `${madridYear()}-01-01`);
   return (await store.getSettings(db))!;
 }
 
@@ -224,11 +224,17 @@ async function closeTrace(db: Db, id: number | null, r: Parameters<typeof store.
 }
 
 /** Genera (o corrige) los asientos automáticos de todos los documentos del Core desde la fecha de inicio. */
-export async function sync(userId: number | null, now = new Date(), origin: SyncOrigin = "manual"): Promise<SyncSummary> {
+export async function sync(userId: number | null, now = new Date(), origin: SyncOrigin = "manual", startDate: string | null = null): Promise<SyncSummary> {
   return run(async (db) => {
+    // Primera vez (sin acc_settings): la contabilidad solo se inicia con una fecha de inicio confirmada por el usuario.
+    // Rechazada antes de abrir la traza y sin escribir nada: no es una ejecución.
+    if (!(await store.getSettings(db))) {
+      if (startDate == null) throw new AccError("invalid_state", "La contabilidad general aún no está iniciada: confirma la fecha de inicio para sincronizar por primera vez");
+      if (!isAccDate(startDate)) throw new AccError("invalid_input", "La fecha de inicio no es válida");
+    }
     const runId = await openTrace(db, userId, origin);
     try {
-      const summary = await syncCore(db, userId, now);
+      const summary = await syncCore(db, userId, now, startDate);
       await closeTrace(db, runId, traceOf(summary));
       return summary;
     } catch (e) {
@@ -239,9 +245,9 @@ export async function sync(userId: number | null, now = new Date(), origin: Sync
   });
 }
 
-async function syncCore(db: Db, userId: number | null, now: Date): Promise<SyncSummary> {
+async function syncCore(db: Db, userId: number | null, now: Date, startDate: string | null): Promise<SyncSummary> {
   {
-    const s = await ready(db);
+    const s = await ready(db, startDate);
     const [accounts, cats] = await Promise.all([store.accountMap(db), store.categoryAccounts(db)]);
     const read = await readSources(db, { startDate: s.startDate, map: s.map, categoryAccounts: cats });
     const existing = new Map(Array.from(await store.listSources(db)).filter(([k]) => keyInGroups(k, read.groups)));
@@ -314,7 +320,8 @@ export async function syncRuns(limit: number) {
 
 export async function overview(now = new Date()) {
   return run(async (db) => {
-    const s = await current(db, now);
+    const stored = await store.getSettings(db);
+    const s = stored ?? (await current(db, now));
     const year = madridYear(now);
     const [counts, unbalanced, accounts, totals, yearTotals] = await Promise.all([
       store.counts(db),
@@ -326,6 +333,9 @@ export async function overview(now = new Date()) {
     const balanceOf = (code: string) => totals.filter((t) => t.accountCode === code).reduce((a, t) => a + t.debitCents - t.creditCents, 0);
     const pnl = profitAndLoss(yearTotals, names(accounts));
     return {
+      /** false: la empresa aún no ha iniciado la contabilidad (sin acc_settings); la primera sincronización pide la fecha de inicio. */
+      started: stored != null,
+      defaultStartDate: `${year}-01-01`,
       settings: { startDate: s.startDate, lockedUntil: s.lockedUntil, map: s.map },
       lastSyncAt: s.lastSyncAt,
       lastSync: s.lastSync as SyncSummary | null,
