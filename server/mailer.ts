@@ -47,6 +47,11 @@ export interface MailParams {
   attachments?: { name: string; url: string; content?: Buffer }[];
   /** Tipo de aviso (servicio de correo centralizado: trazas y límites). */
   category?: MailCategory;
+  /**
+   * Correo de suscripción (confirmación, bienvenida): durante la prueba solo sale a terceros si la empresa está en
+   * TRIAL_SUBSCRIPTION_MAIL_TENANTS y dentro de su tope diario (server/trialRestrictions.ts). No altera nada más.
+   */
+  trialException?: "subscription";
   /** Clave de idempotencia: el mismo aviso con la misma clave sale una sola vez. */
   idempotencyKey?: string;
 }
