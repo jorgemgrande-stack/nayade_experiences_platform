@@ -199,6 +199,7 @@ import { skiSchoolRouter } from "./skiSchool/router";
 import { careReportsRouter, restaurantReportsRouter, skiReportsRouter, travelReportsRouter } from "./netReports/router";
 import { travelRouter } from "./travelNet/router";
 import { brevoMarketingRouter } from "./brevoMarketing/router";
+import { newsletterRouter } from "./newsletter/router";
 import { geoControlRouter } from "./routers/geoControl";
 import { multichannelRouter } from "./routers/multichannel";
 import { seoControlRouter } from "./routers/seoControl";
@@ -3281,6 +3282,7 @@ export const appRouter = router({
   travelReports: travelReportsRouter,
   travel: travelRouter,
   brevoMarketing: brevoMarketingRouter,
+  newsletter: newsletterRouter,
   geoControl: geoControlRouter,
   multichannel: multichannelRouter,
   seoControl: seoControlRouter,

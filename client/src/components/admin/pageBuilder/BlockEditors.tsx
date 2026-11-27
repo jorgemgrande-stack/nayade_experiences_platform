@@ -93,6 +93,8 @@ export function blockSummary(b: PageBlock, t: (es: string, params?: Record<strin
       return b.data.title || t("Entradas del blog");
     case "upcoming_dates":
       return b.data.title || t("Próximas fechas");
+    case "newsletter":
+      return b.data.title || t("Newsletter");
     case "slideshow":
       return `${t("{n} diapositivas", { n: b.data.slides.length })}${b.data.slides[0]?.title ? ` · ${b.data.slides[0].title}` : ""}`;
     case "carousel":
