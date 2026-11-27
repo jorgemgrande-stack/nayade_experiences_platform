@@ -135,6 +135,7 @@ import { Metrics } from "../_core/metering";
 import { quote, type QuoteRequest } from "../catalog/quote";
 import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
 import type { CapabilityStore } from "../_core/capabilities/store";
+import { TemporaryCapabilities, TempCapError } from "./temporaryCapabilities";
 import { LicensingError, LicensingService } from "../licensing/service";
 import type { TenantLimitStore } from "../_core/limits/store";
 import { TrialService, type TrialLimits } from "../trials/service";
@@ -340,6 +341,8 @@ export interface ControlPlaneDeps {
   termsAcceptance?: { links?: { store: AcceptanceLinkStore; keyring: Keyring } | null; logo?: () => Promise<Uint8Array | null> };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
+  /** Concesión temporal de capacidades (pruebas): entorno y reloj inyectables; por defecto RAILWAY_ENVIRONMENT_NAME y Date.now. */
+  temporaryCapabilities?: { environment?: () => string | null | undefined; now?: () => number };
   /** Límites contratados y uso declarado por cada empresa (registro 0013). */
   limits?: TenantLimitStore;
   /** Excepciones comerciales de cuota con caducidad (registro 0016). Sin ellas, las rutas de excepciones responden 501. */
@@ -1098,6 +1101,84 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
     }),
   );
+
+  // ── Concesión TEMPORAL de capacidades a empresas de prueba (docs/elephant-source/CONCESION_TEMPORAL_CAPACIDADES.md) ──
+  // Cerrada en production; solo roles con `capabilities:grant-temporary` (superadmin y admin), operadores y no tokens de servicio.
+  // Escribe únicamente en el registro de licencias del propio entorno, con source=operator; no toca suscripciones ni módulos.
+  if (d.capabilities) {
+    const tempCaps = new TemporaryCapabilities({
+      store: d.capabilities,
+      now: d.temporaryCapabilities?.now,
+      environment: d.temporaryCapabilities?.environment,
+      audit: (tenantId, actorId, action, details) => d.registry.recordEvent(tenantId, { type: "operator", id: actorId.replace(/^operator:/, "") }, action, details),
+    });
+    const tempErr = (res: Response, e: unknown) => {
+      if (e instanceof TempCapError) return void res.status(e.status).json({ error: e.message });
+      if (e instanceof z.ZodError) return void res.status(400).json({ error: `Datos no válidos: ${e.issues.map((i) => i.path.join(".") || "cuerpo").join(", ")}` });
+      if (e instanceof RegistryError) return void res.status(e.code === "not_found" ? 404 : 400).json({ error: e.message });
+      opsLog("error", "ControlPlane", "temporary_capabilities_failed", { error: e instanceof Error ? e.name : "error" });
+      res.status(500).json({ error: "Error interno" });
+    };
+    const operatorActor = (req: Request) => {
+      const a = getAuth(req)!.actor;
+      if (a.type !== "operator") throw new TempCapError("forbidden", "Solo un operador identificado puede conceder capacidades temporales");
+      return `${a.type}:${a.id}`;
+    };
+    const tempBody = {
+      grant: z.object({ capabilityId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/), reason: z.string().trim().min(10).max(200), expiresAt: z.number().int().positive() }).strict(),
+      suspend: z.object({ reason: z.string().trim().min(10).max(200) }).strict(),
+    };
+    const tenantExists = async (id: string) => {
+      if (!(await d.reader.getTenant(id))) throw new TempCapError("not_found", "Tenant no encontrado");
+    };
+    router.get(
+      "/tenants/:id/temporary-capabilities",
+      requireScope("tenants:read"),
+      async (req, res) => {
+        try {
+          const id = idSchema.parse(req.params.id);
+          await tenantExists(id);
+          res.json(await tempCaps.view(id, getAuth(req)!.scopes.has("capabilities:grant-temporary") && getAuth(req)!.actor.type === "operator"));
+        } catch (e) {
+          tempErr(res, e);
+        }
+      },
+    );
+    router.post(
+      "/tenants/:id/temporary-capabilities",
+      requireScope("capabilities:grant-temporary"),
+      async (req, res) => {
+        try {
+          const who = operatorActor(req);
+          tempCaps.assertOpen();
+          const id = idSchema.parse(req.params.id);
+          const b = tempBody.grant.parse(req.body ?? {});
+          tempCaps.precheck(id, b.capabilityId);
+          await tenantExists(id);
+          res.json({ ok: true, ...(await tempCaps.grant(id, b, who)) });
+        } catch (e) {
+          tempErr(res, e);
+        }
+      },
+    );
+    router.post(
+      "/tenants/:id/temporary-capabilities/:capabilityId/suspend",
+      requireScope("capabilities:grant-temporary"),
+      async (req, res) => {
+        try {
+          const who = operatorActor(req);
+          tempCaps.assertOpen();
+          const id = idSchema.parse(req.params.id);
+          const b = tempBody.suspend.parse(req.body ?? {});
+          tempCaps.precheck(id, req.params.capabilityId);
+          await tenantExists(id);
+          res.json({ ok: true, ...(await tempCaps.suspend(id, req.params.capabilityId, b.reason, who)) });
+        } catch (e) {
+          tempErr(res, e);
+        }
+      },
+    );
+  }
 
   // Retira solo la licencia: los datos de la empresa no se tocan. Sin licencia → sin cambios ni evento.
   router.delete(
