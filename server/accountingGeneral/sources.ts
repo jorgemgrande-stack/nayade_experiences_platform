@@ -280,7 +280,13 @@ export function expenseDocOf(r: any, date: string, bankPaidOn: string | undefine
   };
 }
 
-async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
+/** ¿Falta una tabla (ER_NO_SUCH_TABLE / errno 1146), también envuelta por el ORM en `cause`? Es el único error que se tolera. */
+export function isMissingTableError(e: unknown): boolean {
+  for (let x: any = e, i = 0; x && i < 6; x = x.cause, i++) if (x.code === "ER_NO_SUCH_TABLE" || x.errno === 1146) return true;
+  return false;
+}
+
+export async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
   const since = madridMidnightMs(ctx.startDate);
   const sessions = await db
     .select({ id: cashSessions.id, closedAt: cashSessions.closedAt, diff: cashSessions.cashDifference, register: cashRegisters.name })
@@ -318,8 +324,10 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
       for (const d of dr) {
         if (d.deposit_id != null && Number(d.at) >= since && (firstMove.get(Number(d.deposit_id)) ?? Infinity) < since) depositBeforeStart.add(Number(d.id));
       }
-    } catch {
-      // Sin el alquiler instalado no hay fianzas
+    } catch (e) {
+      // Sin el alquiler instalado no hay fianzas. Cualquier otro fallo se propaga: el grupo cash queda en failedGroups
+      // y no se reemplazan asientos de fianza con el tipo equivocado.
+      if (!isMissingTableError(e)) throw e;
     }
     // Gastos que el TPV creó para salidas anteriores a su enlace (mismo motivo e importe)
     const tx = await db.select({ concept: expenses.concept, amount: expenses.amount }).from(expenses).where(eq(expenses.source, "tpv"));
@@ -348,7 +356,8 @@ async function readCash(db: Db, ctx: SourceContext, out: SourceRead) {
     const [cr] = (await db.execute(sql`SELECT c.id, c.session_id, c.kind, c.amount, c.reason, c.created_at, r.name AS register FROM tpv_session_corrections c
       LEFT JOIN cash_sessions s ON s.id = c.session_id LEFT JOIN cash_registers r ON r.id = s.registerId WHERE c.created_at >= ${since}`)) as unknown as [typeof corrections];
     corrections = cr ?? [];
-  } catch {
+  } catch (e) {
+    if (!isMissingTableError(e)) throw e;
     corrections = [];
   }
   for (const k of corrections) {
