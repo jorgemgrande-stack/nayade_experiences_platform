@@ -37,6 +37,8 @@ import { createNetPublicRouter, netPublicBodyParser } from "../netPublic/router"
 import { createTenantPostmarkWebhookRouter, tenantPostmarkWebhookBodyParser } from "../mail/tenantPostmarkWebhook";
 import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
+import newsletterExportRouter from "../newsletter/exportRoutes";
+import { createNewsletterPublicRouter } from "../newsletter/publicRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
@@ -268,6 +270,9 @@ async function startServer() {
   // Meta Conversions API proxy (recibe eventos del cliente para envío server-side)
   app.use(metaCapiRouter);
   // Settlement Excel export endpoint
+  // Newsletter: confirmación y baja por enlace (sin sesión) y descarga de suscriptores (administración)
+  app.use(createNewsletterPublicRouter());
+  app.use(newsletterExportRouter);
   app.use(settlementExportRouter);
   // Invoice HTML on-demand preview (no storage required)
   app.use(invoicePreviewRouter);

@@ -29,6 +29,7 @@ import { Slideshow } from "@/components/site/Slideshow";
 import { Lightbox } from "@/components/site/Lightbox";
 import { ModalDialog, usePublicModal } from "@/components/site/ModalBlock";
 import { StudioFormFields } from "@/components/site/StudioForm";
+import { NewsletterSignupForm } from "@/components/site/NewsletterSignup";
 import { blockLabel, DEFAULT_BLOCK_STYLE, filterScheduledBlocks, readBlockText, type BlockOf, type BlockStyle, type Device, type GalleryImage, type PageBlock } from "@shared/pageBlocks";
 import { modalHref } from "@shared/studio/modal";
 import { formatEuros, productPath } from "@shared/storefront";
@@ -1385,6 +1386,31 @@ function UpcomingDatesBlock({ b, first, preview }: { b: BlockOf<"upcoming_dates"
   );
 }
 
+const NEWSLETTER_TONE: Record<BlockOf<"newsletter">["data"]["tone"], string> = {
+  soft: "bg-muted/60 text-foreground border border-border",
+  dark: "bg-foreground text-background",
+  brand: "bg-primary text-primary-foreground",
+};
+
+/** Inscripción a la newsletter: panel premium con título, descripción y el formulario (consentimiento + doble confirmación). */
+function NewsletterBlock({ b, first, preview }: { b: BlockOf<"newsletter">; first: boolean; preview?: boolean }) {
+  const d = b.data;
+  const ed = useContext(StudioEditContext);
+  const dark = d.tone !== "soft";
+  return (
+    <section className="container py-10 md:py-16">
+      <div className={cn("mx-auto max-w-3xl rounded-[2rem] px-6 py-10 text-center shadow-sm sm:px-10 md:py-14", NEWSLETTER_TONE[d.tone] ?? NEWSLETTER_TONE.soft)}>
+        <Txt k="eyebrow" value={d.eyebrow} as="p" className={cn("mb-3 text-sm font-semibold uppercase tracking-[0.16em]", dark ? "opacity-80" : "text-primary")} placeholder="Antetítulo (opcional)" />
+        <Txt k="title" value={d.title} as={first ? "h1" : "h2"} className="font-heading text-3xl font-bold leading-tight md:text-4xl" placeholder="Título" />
+        <Txt k="intro" value={d.intro} as="p" multiline className={cn("mx-auto mt-4 max-w-xl text-base md:text-lg", dark ? "opacity-85" : "text-muted-foreground")} placeholder="Descripción" />
+        <div className="mx-auto mt-8 max-w-xl text-left">
+          <NewsletterSignupForm blockId={b.id} data={d} preview={preview || !!ed} editing={!!ed} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const postDate = (ms: number | null | undefined) => (ms ? new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "long", year: "numeric" }).format(new Date(ms)) : "");
 
 /** Últimas entradas publicadas del blog (las mismas que /blog). Sin blog en el plan, la consulta se rechaza y no se pinta nada. */
@@ -2036,6 +2062,8 @@ function renderBlock(b: PageBlock, first: boolean, preview?: boolean, pageTitle?
       return <ProductsBlock b={b} first={first} preview={preview} />;
     case "upcoming_dates":
       return <UpcomingDatesBlock b={b} first={first} preview={preview} />;
+    case "newsletter":
+      return <NewsletterBlock b={b} first={first} preview={preview} />;
     case "slideshow":
       return <SlideshowBlock b={b} first={first} preview={preview} />;
     case "carousel":

@@ -436,6 +436,8 @@ export const TASK_NAV: NavSection[] = [
       { label: "Venta multicanal", href: "/admin/multicanal", key: "x-multicanal", icon: "globe", roles: ADMIN, capabilities: ["multichannel"] },
       { label: "Campañas de correo", href: "/admin/marketing/campanas", key: "x-campanas", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Email marketing (Brevo)", href: "/admin/marketing/brevo", key: "x-brevo", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
+      // Newsletter (opt-in por empresa: solo aparece si el módulo está activado; ver AdminLayout)
+      { label: "Newsletter · Suscriptores", href: "/admin/newsletter/suscriptores", key: "x-newsletter", icon: "mail", roles: ADMIN, capabilities: ["crm-contacts", "crm-leads"], flagKey: "newsletter_enabled" },
       { label: "Visibilidad en IA (GEO)", href: "/admin/marketing/geo", key: "x-geo", icon: "sparkles", roles: ADMIN, capabilities: ["geo-control"] },
       { label: "SEO y reseñas", href: "/admin/marketing/seo", key: "x-seo", icon: "chart", roles: ADMIN, capabilities: ["seo-control"] },
       { label: "Publicidad (Ads Manager)", href: "/admin/marketing/ads", key: "x-ads", icon: "chart", roles: ADMIN, capabilities: ["ads-manager"] },

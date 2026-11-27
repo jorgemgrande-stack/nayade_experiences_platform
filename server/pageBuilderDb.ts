@@ -281,6 +281,37 @@ export async function getPublishedFormBlock(slug: string, blockId: string) {
   return { slug: target, data: block.data, localized };
 }
 
+/** Bloque de newsletter de una página PUBLICADA (texto legal y mensajes que vio la persona), o null. Misma resolución que el formulario. */
+export async function getPublishedNewsletterBlock(slug: string, blockId: string) {
+  const { sqlI18nRepo } = await import("./i18nSqlRepo");
+  const { principalSlugForLocalized } = await import("./i18nService");
+  const principal = await principalSlugForLocalized(sqlI18nRepo(), slug).catch(() => null);
+  const target = await resolvePublicSlug(principal ?? slug);
+  const page = await getPage(target);
+  if (!page?.isPublished) return null;
+  const published = await getPublishedBlocks(target);
+  const block = published ? findBlock(published, blockId)?.block : undefined;
+  if (block?.type !== "newsletter") return null;
+  let localized: typeof block.data | null = null;
+  if (principal) {
+    try {
+      const repo = sqlI18nRepo();
+      for (const t of await repo.listPageTranslations({ onlyValidated: true })) {
+        const mine = t.publishedSlug === slug || t.locale === slug;
+        if (!mine || !t.publishedBlocks) continue;
+        const tb = findBlock(t.publishedBlocks, blockId)?.block;
+        if (tb?.type === "newsletter") {
+          localized = tb.data;
+          break;
+        }
+      }
+    } catch {
+      localized = null;
+    }
+  }
+  return { slug: target, data: block.data, localized };
+}
+
 // ─── Historial de versiones ───────────────────────────────────────────────────
 
 async function versionRows(slug: string) {
