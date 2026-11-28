@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Clases de la rejilla dinámica de tarjetas (shared/cardGrid.ts) y del resumen de convocatorias: fuera de client/, Tailwind no las rastrea solo */
+@source "../../shared/cardGrid.ts";
 @import "tw-animate-css";
 
 /* Tipografías propias (SIL OFL 1.1): Playfair Display, Inter y Montserrat, variables, subconjuntos latino y latino extendido

@@ -74,7 +74,8 @@ describe("eventDurationText y startsAtHasTime: convocatorias sin sesiones", () =
   it("más de un mes (programa de meses) → null: basta el rango de fechas", () => {
     const s = localToUtcMs("2027-04-10T00:00", TZ)!;
     expect(eventDurationText(s, localToUtcMs("2027-09-26T00:00", TZ), TZ, siteUiText("de"))).toBeNull();
-    expect(eventDurationText(s, localToUtcMs("2027-05-10T00:00", TZ), TZ, siteUiText("de"))).toBe("31 Tage");
+    expect(eventDurationText(s, localToUtcMs("2027-04-30T00:00", TZ), TZ, siteUiText("de"))).toBe("21 Tage");
+    expect(eventDurationText(s, localToUtcMs("2027-05-10T00:00", TZ), TZ, siteUiText("de"))).toBeNull();
   });
   it("un solo día o sin fin → null", () => {
     const s = localToUtcMs("2026-12-30T10:00", TZ)!;
