@@ -546,6 +546,9 @@ export interface PublicEdition {
   price: number | null;
   /** Sesiones del paquete (sin nota interna ni canceladas); vacío = convocatoria sin sesiones */
   sessions: PublicEditionSession[];
+  /** Categoría del producto (antetítulo de la tarjeta de la web); null si no tiene */
+  categoryId?: number | null;
+  categoryName?: string | null;
 }
 
 /**
@@ -572,8 +575,9 @@ export async function listPublicEditions(opts: { experienceId?: number; productS
   try {
     r = await rows(
       d,
-      sql`SELECT e.*, x.title AS product_title, x.slug AS product_slug, x.image1 AS product_image, x.coverImageUrl AS product_cover, x.basePrice AS product_price, x.offer_mode AS product_offer_mode
-          FROM product_editions e JOIN experiences x ON x.id = e.experience_id
+      sql`SELECT e.*, x.title AS product_title, x.slug AS product_slug, x.image1 AS product_image, x.coverImageUrl AS product_cover, x.basePrice AS product_price, x.offer_mode AS product_offer_mode,
+                 c.id AS category_id, c.name AS category_name
+          FROM product_editions e JOIN experiences x ON x.id = e.experience_id LEFT JOIN categories c ON c.id = x.categoryId
           WHERE ${sql.join(where, sql` AND `)} ORDER BY e.starts_at ASC, e.sort ASC, e.id ASC LIMIT ${limit}`,
     );
   } catch (err) {
@@ -607,6 +611,8 @@ export async function listPublicEditions(opts: { experienceId?: number; productS
       seatsLeft: e.showAvailability ? seatsLeft(e) : null,
       price: price != null && price > 0 ? price : null,
       sessions: sessionsBy.get(e.id) ?? [],
+      categoryId: x.category_id != null ? Number(x.category_id) : null,
+      categoryName: x.category_name ? String(x.category_name) : null,
     });
   }
   return out;

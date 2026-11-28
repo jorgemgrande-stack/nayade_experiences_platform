@@ -193,6 +193,14 @@ describe("traducciones de opciones y convocatorias", () => {
     expect(await localizeEditions(repo, editions, "de")).toEqual([{ ...editions[0], label: "Frühling", locationNote: "Berlin", productTitle: "Yogakurs", productSlug: "yoga-kurs" }]);
     expect(await localizeEditions(repo, editions, "en")).toEqual(editions);
     expect(await localizeEditions(repo, editions, undefined)).toEqual(editions);
+
+    // Categoría del producto (antetítulo de la tarjeta de la web): solo con traducción validada; sin categoría, tal cual
+    const withCategory = [{ ...editions[0], categoryId: 4, categoryName: "Retiros" }, { ...editions[0], id: 6, categoryId: null, categoryName: null }];
+    await saveContentTranslationDraft(repo, { entityType: "category", entityKey: "4", locale: "de", fields: { name: "Retreats" } });
+    expect((await localizeEditions(repo, withCategory, "de")).map((e) => e.categoryName)).toEqual(["Retiros", null]);
+    await validateContentTranslation(repo, "category", "4", "de", "ana");
+    expect((await localizeEditions(repo, withCategory, "de")).map((e) => e.categoryName)).toEqual(["Retreats", null]);
+    expect((await localizeEditions(repo, withCategory, "en")).map((e) => e.categoryName)).toEqual(["Retiros", null]);
   });
   it("producto: textos superpuestos, listas por líneas; precio e imágenes, del principal", async () => {
     const base = { id: 7, slug: "curso-yoga", title: "Curso de yoga", shortDescription: "Para todos", description: "Largo", basePrice: "90.00", includes: ["Esterilla"], image1: "https://x/y.jpg" };

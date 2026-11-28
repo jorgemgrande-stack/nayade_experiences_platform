@@ -97,7 +97,8 @@ export function isValidTimeZone(tz: string): boolean {
   }
 }
 
-function partsInZone(ms: number, tz: string) {
+/** Año, mes, día, hora y minuto de un instante en la zona `tz` (la zona debe ser válida). */
+export function partsInZone(ms: number, tz: string) {
   const f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   const o: Record<string, string> = {};
   for (const p of f.formatToParts(new Date(ms))) o[p.type] = p.value;
