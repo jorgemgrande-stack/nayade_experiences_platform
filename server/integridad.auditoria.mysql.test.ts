@@ -799,6 +799,116 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
       expect((await listOpen()).some((i) => i.id === id)).toBe(false);
       expect(await counter()).toBe(c0 + 1);
     });
+
+    // ── Regla «dos administradores habilitados»: habilitado = rol admin + isActive (misma definición que companyOwner) ──
+    const adminId2 = async () => Number((await ess.sql("a", "SELECT id FROM users WHERE email = ?", [admin2Email]))[0].id);
+    const setAdmin2 = (active: boolean) => ess.sql("a", "UPDATE users SET isActive = ? WHERE email = ?", [active ? 1 : 0, admin2Email]);
+    const denied = async (q: number) => (await rows(q, "fiscal_reconcile_denied")).map((r: any) => r.details);
+    const proposalsOf = async (q: number) => (await rows(q, "fiscal_reconcile_proposed")).length;
+
+    it("DOS ADMINISTRADORES: con UN solo administrador habilitado (el segundo deshabilitado) no se puede proponer: error claro, auditado y SIN propuesta huérfana", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      await setAdmin2(false);
+      try {
+        const r = await propose(inc, adm);
+        expect(errCode(r)).toBe("PRECONDITION_FAILED");
+        expect(r.text).toContain("No hay otro administrador habilitado");
+        expect(await proposalsOf(q)).toBe(0);
+        const d = await denied(q);
+        expect(d.length).toBe(1);
+        expect(d[0]).toMatchObject({ incidentId: inc, attempt: "propose", reason: "no_second_admin" });
+        expect(await invoicesOfRes(resId)).toBe(0);
+        expect(await counter()).toBe(c0);
+        expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+      } finally { await setAdmin2(true); }
+    });
+
+    it("DOS ADMINISTRADORES: si el segundo administrador se deshabilita DESPUÉS de proponer, el primero no puede aprobar ni aplicar (no_second_admin) y no se emite nada", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc, adm2), "proponer con admin2");
+      await setAdmin2(false);
+      try {
+        expect(errCode(await approve(inc, Number(r.proposalId), r.version, adm))).toBe("PRECONDITION_FAILED");
+        expect((await rows(q, "fiscal_reconcile_approved")).length).toBe(0);
+        expect((await denied(q))[0]).toMatchObject({ incidentId: inc, attempt: "approve", reason: "no_second_admin", proposalId: Number(r.proposalId) });
+        expect(errCode(await applyRec(inc, Number(r.proposalId), adm))).toBe("PRECONDITION_FAILED");
+        expect(await invoicesOfRes(resId)).toBe(0);
+        expect(await counter()).toBe(c0);
+      } finally { await setAdmin2(true); }
+    });
+
+    it("DOS ADMINISTRADORES: un usuario que no es administrador (aunque esté activo) no cuenta como segundo administrador", async () => {
+      const { q } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      await ess.sql("a", "UPDATE users SET role = 'agente' WHERE email = ?", [admin2Email]);
+      try {
+        expect(errCode(await propose(inc, adm))).toBe("PRECONDITION_FAILED");
+        expect(await proposalsOf(q)).toBe(0);
+        expect((await denied(q))[0]).toMatchObject({ attempt: "propose", reason: "no_second_admin" });
+      } finally { await ess.sql("a", "UPDATE users SET role = 'admin' WHERE email = ?", [admin2Email]); }
+    });
+
+    it("DOS ADMINISTRADORES: con dos habilitados el flujo completo funciona (proponer, aprobar por el otro, aplicar)", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      expect(ok(await reconcile(inc), "flujo con dos administradores").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect((await denied(q)).length).toBe(0);
+    });
+
+    it("DOS ADMINISTRADORES: si el aprobador se deshabilita DESPUÉS de aprobar, aplicar se rechaza (approver_not_enabled), no emite nada y una nueva aprobación vigente lo desbloquea", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const id2 = await adminId2();
+      const r = ok(await propose(inc, adm), "proponer");
+      ok(await approve(inc, Number(r.proposalId), r.version, adm2), "aprobar con admin2");
+      // Se habilita un tercer administrador, de modo que siguen existiendo dos habilitados, pero el aprobador ya no es uno de ellos
+      const bcrypt = (await import("bcryptjs")).default;
+      const mail3 = `admin3.${TAG}.${++seq}@ejemplo.invalid`;
+      await ess.sql("a", "INSERT INTO users (openId, name, email, loginMethod, role, isActive, passwordHash, inviteAccepted) VALUES (?, 'Usuario admin3', ?, 'local', 'admin', 1, ?, 1)", [`local_admin3_${TAG}_${seq}`, mail3, await bcrypt.hash("clave-admin3-prueba", 4)]);
+      await setAdmin2(false);
+      try {
+        expect(errCode(await applyRec(inc, Number(r.proposalId), adm))).toBe("PRECONDITION_FAILED");
+        expect(await invoicesOfRes(resId)).toBe(0);
+        expect(await counter()).toBe(c0);
+        expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+        expect((await denied(q))[0]).toMatchObject({ incidentId: inc, attempt: "apply", reason: "approver_not_enabled", approvedBy: id2, proposalId: Number(r.proposalId) });
+        // El tercer administrador habilitado aprueba la misma propuesta: ahora sí se puede aplicar
+        const l3 = await ess.call("a", "POST", "/api/auth/login", { body: { email: mail3, password: "clave-admin3-prueba" } });
+        expect(l3.status).toBe(200);
+        expect(ok(await approve(inc, Number(r.proposalId), r.version, l3.cookie!), "aprobar con admin3").status).toBe("already_approved");
+        // La aprobación vigente sigue siendo la del administrador deshabilitado: hay que proponer de nuevo
+        expect(errCode(await applyRec(inc, Number(r.proposalId), adm))).toBe("PRECONDITION_FAILED");
+        const r2 = ok(await propose(inc, adm), "proponer de nuevo");
+        ok(await approve(inc, Number(r2.proposalId), r2.version, l3.cookie!), "aprobar la nueva con admin3");
+        expect(ok(await applyRec(inc, Number(r2.proposalId), adm), "aplicar la nueva").status).toBe("issued");
+        expect(await invoicesOfRes(resId)).toBe(1);
+      } finally { await setAdmin2(true); }
+    });
+
+    it("AISLAMIENTO POR EMPRESA: la propuesta y la aprobación de la empresa A no son visibles ni aplicables desde la empresa B ", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc, adm), "proponer en A");
+      ok(await approve(inc, Number(r.proposalId), r.version, adm2), "aprobar en A");
+      const admB = await ess.login("b", "admin");
+      // La lista de incidencias de B no incluye la de A y sus filas no existen en B
+      expect(((ok(await ess.q("b", "crm.fiscalIncidents.list", undefined, admB), "lista B") as any[]).some((i) => i.id === inc && i.entityId === q))).toBe(false);
+      expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE action LIKE 'fiscal_reconcile%'"))[0].n).toBe(0);
+      // Aplicar/aprobar en B con los identificadores de A no hace nada
+      expect(ok(await ess.m("b", "crm.fiscalIncidents.applyReconciliation", { incidentId: inc, proposalId: Number(r.proposalId), confirm: true }, admB), "aplicar en B").status).toBe("already_resolved");
+      expect(ok(await ess.m("b", "crm.fiscalIncidents.approveReconciliation", { incidentId: inc, proposalId: Number(r.proposalId), version: r.version }, admB), "aprobar en B").status).toBe("already_resolved");
+      // La sesión de A no sirve en B
+      expect([401, 403]).toContain((await ess.m("b", "crm.fiscalIncidents.applyReconciliation", { incidentId: inc, proposalId: Number(r.proposalId), confirm: true }, adm)).status);
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+    });
   });
 
   // ───────────────────────── 2f. Límites del reuso de reservas y de la reconciliación (revisión independiente) ─────────────────────────

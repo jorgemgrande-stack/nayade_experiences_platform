@@ -4,7 +4,7 @@
  */
 
 
-import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, getOpenFiscalIncident, markFiscalIncidentResolved, recordReconcileProposal, getReconcileProposal, getReconcileApproval, canApproveProposal, FISCAL_RECONCILE_APPROVED, FISCAL_RECONCILE_DENIED, type ReconcileProposalPlan, type ReconcilePreview } from "../fiscalIncidents";
+import { recordFiscalIncident, incidentErrorText, listOpenFiscalIncidents, getOpenFiscalIncident, markFiscalIncidentResolved, recordReconcileProposal, getReconcileProposal, getReconcileApproval, canApproveProposal, listEnabledAdminIds, evaluateAdminGate, FISCAL_RECONCILE_APPROVED, FISCAL_RECONCILE_DENIED, type ReconcileProposalPlan, type ReconcilePreview } from "../fiscalIncidents";
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { brandSetting, companyName, formatLegalAddress } from "../tenantBrand";
@@ -1071,6 +1071,14 @@ async function buildReconcilePreview(plan: ReconcileProposalPlan): Promise<Recon
     documentNumbersConsumed: allPaid ? 1 : 0, historicalDocumentsModified: 0,
     note: "Completa el plan de cuotas: reutiliza la reserva indicada (o crea una) y emite la factura final solo si todas las cuotas están pagadas.",
   };
+}
+
+/** Auditoría de un intento de reconciliación denegado por la regla de administradores habilitados. */
+async function denyReconcile(incident: { id: number; entityType: string; entityId: number }, attempt: "propose" | "approve" | "apply", reason: string, user: { id: number; name?: string | null }, extra: Record<string, unknown>): Promise<void> {
+  await db.insert(crmActivityLog).values({
+    entityType: incident.entityType as any, entityId: incident.entityId, action: FISCAL_RECONCILE_DENIED, actorId: user.id, actorName: user.name ?? null,
+    details: { incidentId: incident.id, attempt, reason, ...extra }, createdAt: new Date(),
+  });
 }
 
 /** ¿Cambió el estado real desde la propuesta (el pago, o la reserva viva del presupuesto)? Entonces hay que proponer de nuevo. */
@@ -7352,6 +7360,11 @@ export const crmRouter = router({
         if (!incident) return { status: "already_resolved" as const };
         if (!incident.reconcilable) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta incidencia no se reconcilia automáticamente: revisa su ficha." });
         const actor = { id: ctx.user.id, name: ctx.user.name ?? null };
+        // Sin otro administrador habilitado nadie podría aprobar: se deniega ANTES de crear nada (sin propuesta huérfana)
+        if (evaluateAdminGate("propose", await listEnabledAdminIds(db), ctx.user.id) !== "ok") {
+          await denyReconcile(incident, "propose", "no_second_admin", ctx.user, {});
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No hay otro administrador habilitado que pueda aprobar: no se crea la propuesta." });
+        }
         let plan: ReconcileProposalPlan;
         if (incident.action === "payment_confirmed_without_invoice") {
           const ppId = Number(incident.details.ppId);
@@ -7384,6 +7397,11 @@ export const crmRouter = router({
           });
           throw new TRPCError({ code: "FORBIDDEN", message: "Separación de funciones: quien propone una reconciliación no puede aprobarla. Debe aprobarla otro administrador." });
         }
+        const gateApprove = evaluateAdminGate("approve", await listEnabledAdminIds(db), ctx.user.id);
+        if (gateApprove !== "ok") {
+          await denyReconcile(incident, "approve", gateApprove, ctx.user, { proposalId: proposal.id, version: proposal.version, proposedBy: proposal.proposedBy });
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: gateApprove === "no_second_admin" ? "No hay dos administradores habilitados: no se puede aprobar." : "El aprobador no es un administrador habilitado: no se puede aprobar." });
+        }
         if (proposal.version !== proposal.currentVersion || input.version !== proposal.currentVersion)
           return { status: "proposal_stale" as const, message: "La propuesta cambió o la versión indicada no es la vigente: revisa la vista previa y vuelve a aprobar." };
         if (await reconcileProposalIsStale(incident, proposal.plan))
@@ -7412,6 +7430,12 @@ export const crmRouter = router({
         const approval = await getReconcileApproval(db, proposal);
         if (!approval || !canApproveProposal(proposal.proposedBy, approval.approvedBy))
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "La propuesta no está aprobada por un administrador distinto del proponente: no se aplica nada." });
+        // El aprobador debe seguir siendo administrador habilitado (si se deshabilitó tras aprobar, no se aplica nada)
+        const gateApply = evaluateAdminGate("apply", await listEnabledAdminIds(db), ctx.user.id, approval.approvedBy);
+        if (gateApply !== "ok") {
+          await denyReconcile(incident, "apply", gateApply, ctx.user, { proposalId: proposal.id, version: proposal.version, approvedBy: approval.approvedBy });
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: gateApply === "no_second_admin" ? "No hay dos administradores habilitados: no se aplica nada." : "El aprobador ya no es un administrador habilitado: la propuesta debe aprobarla otro administrador habilitado." });
+        }
         // Lo aprobado debe ser exactamente lo que se ejecuta: si la propuesta se alteró tras la aprobación, hay que aprobar de nuevo
         if (proposal.version !== proposal.currentVersion || approval.version !== proposal.currentVersion)
           return { status: "proposal_stale" as const, message: "La propuesta cambió después de aprobarse: genera y aprueba una nueva." };

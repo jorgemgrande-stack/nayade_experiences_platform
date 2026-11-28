@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { crmActivityLog, quotes, reservations } from "../drizzle/schema";
+import { crmActivityLog, quotes, reservations, users } from "../drizzle/schema";
 
 export const FISCAL_INCIDENT_ACTIONS = [
   "payment_confirmed_without_invoice",
@@ -200,4 +200,25 @@ export async function getReconcileApproval(runner: Runner, proposal: { id: numbe
 /** Separación de funciones: quien propuso no aprueba. Sin proponente identificable también se deniega. */
 export function canApproveProposal(proposedBy: number | null, approverId: number | null | undefined): boolean {
   return proposedBy != null && approverId != null && proposedBy !== approverId;
+}
+
+/**
+ * Administradores HABILITADOS de la empresa en curso. Misma definición que la protección «la empresa debe conservar al menos
+ * un administrador activo» (server/_core/companyOwner.ts): rol `admin` e `isActive`. Es la fuente de verdad del acceso (un
+ * usuario con isActive=false no inicia sesión: expressAuth/centralAuth). La BD es por empresa, así que solo cuenta la actual.
+ */
+export async function listEnabledAdminIds(runner: Runner): Promise<number[]> {
+  const rows = await runner.select({ id: users.id }).from(users).where(and(eq(users.role, "admin"), eq(users.isActive, true)));
+  return rows.map((r: { id: number }) => Number(r.id));
+}
+
+export type ReconcileAdminGate = "ok" | "no_second_admin" | "approver_not_enabled";
+
+/** Reglas puras: proponer exige otro administrador habilitado distinto del proponente; aprobar exige dos o más y que el aprobador sea uno de ellos. */
+export function evaluateAdminGate(stage: "propose" | "approve" | "apply", enabledAdminIds: number[], actorId: number, approverId?: number | null): ReconcileAdminGate {
+  const enabled = new Set(enabledAdminIds);
+  if (stage === "propose") return enabledAdminIds.some((id) => id !== actorId) ? "ok" : "no_second_admin";
+  if (enabled.size < 2) return "no_second_admin";
+  const approver = stage === "approve" ? actorId : approverId;
+  return approver != null && enabled.has(approver) ? "ok" : "approver_not_enabled";
 }

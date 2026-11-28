@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { incidentErrorText, recordFiscalIncident, reconcileProposalVersion, canApproveProposal } from "./fiscalIncidents";
+import { incidentErrorText, recordFiscalIncident, reconcileProposalVersion, canApproveProposal, evaluateAdminGate, listEnabledAdminIds } from "./fiscalIncidents";
 
 describe("Incidencias fiscales (registro)", () => {
   it("el texto del error es corto, de una línea y sin trazas", () => {
@@ -41,5 +41,31 @@ describe("Reconciliación: separación de funciones (unitarias)", () => {
     expect(canApproveProposal(null, 2)).toBe(false);
     expect(canApproveProposal(1, null)).toBe(false);
     expect(canApproveProposal(1, undefined)).toBe(false);
+  });
+});
+
+describe('Reconciliación: dos administradores habilitados (unitarias)', () => {
+  it('proponer exige otro administrador habilitado distinto del proponente', () => {
+    expect(evaluateAdminGate('propose', [1], 1)).toBe('no_second_admin');
+    expect(evaluateAdminGate('propose', [], 1)).toBe('no_second_admin');
+    expect(evaluateAdminGate('propose', [1, 2], 1)).toBe('ok');
+    expect(evaluateAdminGate('propose', [2], 1)).toBe('ok');
+  });
+  it('aprobar exige dos o más administradores habilitados y que el aprobador sea uno de ellos', () => {
+    expect(evaluateAdminGate('approve', [2], 2)).toBe('no_second_admin');
+    expect(evaluateAdminGate('approve', [1, 2], 2)).toBe('ok');
+    expect(evaluateAdminGate('approve', [1, 3], 2)).toBe('approver_not_enabled');
+  });
+  it('aplicar exige que el aprobador registrado siga habilitado (y siga habiendo dos)', () => {
+    expect(evaluateAdminGate('apply', [1, 3], 1, 2)).toBe('approver_not_enabled');
+    expect(evaluateAdminGate('apply', [1, 2], 1, 2)).toBe('ok');
+    expect(evaluateAdminGate('apply', [1, 2], 1, null)).toBe('approver_not_enabled');
+    expect(evaluateAdminGate('apply', [1], 1, 1)).toBe('no_second_admin');
+  });
+  it('listEnabledAdminIds devuelve los ids numéricos de la consulta', async () => {
+    const where = vi.fn().mockResolvedValue([{ id: 1 }, { id: '2' }]);
+    const runner = { select: () => ({ from: () => ({ where }) }) };
+    expect(await listEnabledAdminIds(runner)).toEqual([1, 2]);
+    expect(where).toHaveBeenCalledTimes(1);
   });
 });
