@@ -46,6 +46,11 @@ export default {
     n4: "Bild 4",
   },
   difficulty: { facil: "Leicht", moderado: "Mittel", dificil: "Schwer", experto: "Experte" },
+  serviceDateMode: {
+    auto: { label: "Automatisch (nach Produktart)", help: "Wie bisher: Die Website fragt bei Aktivitäten und buchbaren Leistungen nach einem Datum, bei allem anderen nicht." },
+    none: { label: "Ohne Datum (Dauerangebot)", help: "Kann jederzeit gekauft werden, ohne Datum oder Durchführung: Online-Programme, Zugang zu Inhalten, Gutscheine. Die Website fragt kein Datum ab." },
+    required: { label: "Pflicht (freies Datum)", help: "Die kaufende Person muss ein Datum wählen; ohne Datum wird die Bestellung abgelehnt." },
+  },
   offerMode: {
     fixed: { label: "Festpreis", help: "Wird auf deiner Website mit Preis verkauft, wie bisher." },
     on_request: {
@@ -153,6 +158,7 @@ export default {
     slugPlaceholder: "Wird aus dem Namen erzeugt",
     slugHint: "Optional. Nur Kleinbuchstaben, Zahlen und Bindestriche.",
     offerMode: "Wie es angeboten wird",
+    serviceDateMode: "Leistungsdatum",
     priceLicensed: "Preis (€, inkl. Steuern)",
     priceOriginal: "Grundpreis (€)",
     ctaLabel: "Text des Buttons auf der Website",

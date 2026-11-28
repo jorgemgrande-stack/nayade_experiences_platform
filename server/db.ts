@@ -1302,16 +1302,20 @@ export function todayMadridISO(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
-/** Por defecto solo las variantes vigentes (web y pedidos); el administrador pasa includeExpired para verlas todas. */
-export async function getVariantsByExperience(experienceId: number, opts: { includeExpired?: boolean; includeSupplements?: boolean } = {}) {
+/**
+ * Por defecto solo las variantes vigentes y activas (web y pedidos); el administrador pasa includeExpired e
+ * includeInactive para verlas todas (0098: una variante retirada no se muestra ni se puede comprar).
+ */
+export async function getVariantsByExperience(experienceId: number, opts: { includeExpired?: boolean; includeInactive?: boolean; includeSupplements?: boolean } = {}) {
   const db = await getDb();
   if (!db) return [];
   // Los suplementos opcionales (supplementGroup, 0090) no son opciones del programa: solo salen si se piden expresamente
   const noSupplements = opts.includeSupplements ? undefined : isNull(experienceVariants.supplementGroup);
+  const onlyActive = opts.includeInactive ? undefined : eq(experienceVariants.isActive, true);
   return db.select().from(experienceVariants)
     .where(opts.includeExpired
-      ? and(eq(experienceVariants.experienceId, experienceId), noSupplements)
-      : and(eq(experienceVariants.experienceId, experienceId), noSupplements, or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)))
+      ? and(eq(experienceVariants.experienceId, experienceId), noSupplements, onlyActive)
+      : and(eq(experienceVariants.experienceId, experienceId), noSupplements, onlyActive, or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)))
     .orderBy(experienceVariants.sortOrder, experienceVariants.id);
 }
 
@@ -1334,11 +1338,13 @@ export async function createVariant(data: {
   minQty?: number | null;
   maxQty?: number | null;
   supplementGroup?: string | null;
+  isActive?: boolean;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(experienceVariants).values({
     supplementGroup: data.supplementGroup?.trim() || null,
+    isActive: data.isActive ?? true,
     validUntil: data.validUntil ?? null,
     minQty: data.minQty ?? null,
     maxQty: data.maxQty ?? null,
@@ -1367,6 +1373,7 @@ export async function updateVariant(
     minQty: number | null;
     maxQty: number | null;
     supplementGroup: string | null;
+    isActive: boolean;
   }>
 ) {
   const db = await getDb();

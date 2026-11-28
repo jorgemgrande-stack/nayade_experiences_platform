@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { formatEuros } from "@shared/storefront";
 import { checkoutErrorMessage, validateBuyer } from "@shared/shopOrders";
+import { onlinePayable } from "@shared/purchaseState";
 import { estimateCartLine, madridToday, type PricingRule } from "@shared/pricingRules";
 import { useStorefront } from "@/components/StorefrontRoute";
 
@@ -114,6 +115,8 @@ export default function Checkout() {
   const payments = storefront?.payments;
   const stripeOffered = !!payments?.stripe;
   const redsysOffered = payments ? payments.redsys : true;
+  // Sin ningún método (la empresa aún no puede cobrar online): aviso y botón de pago desactivado. Sin dato, como siempre.
+  const canPayOnline = onlinePayable(payments);
   const [chosen, setChosen] = useState<"redsys" | "stripe">("redsys");
   const payWith: "redsys" | "stripe" = stripeOffered && (!redsysOffered || chosen === "stripe") ? "stripe" : "redsys";
 
@@ -148,6 +151,7 @@ export default function Checkout() {
 
   async function handlePay() {
     setSubmitError(null);
+    if (!canPayOnline) { setSubmitError(t.coErrPayUnavailable); return; }
     if (!validate()) return;
 
     try {
@@ -622,6 +626,12 @@ export default function Checkout() {
                       </span>
                     </div>
 
+                    {!canPayOnline && (
+                      <p role="status" data-testid="pago-no-disponible" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                        <span>{t.coPayNotYetAvailable}</span>
+                      </p>
+                    )}
                     {stripeOffered && redsysOffered && (
                       <fieldset className="mb-4 space-y-2" aria-label={t.coPayMethod}>
                         {(["redsys", "stripe"] as const).map((m) => (
@@ -661,7 +671,8 @@ export default function Checkout() {
                       size="lg"
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-black text-base rounded-xl transition-all"
                       onClick={handlePay}
-                      disabled={cartCheckout.isPending}
+                      disabled={cartCheckout.isPending || !canPayOnline}
+                      aria-disabled={!canPayOnline || undefined}
                     >
                       {cartCheckout.isPending ? (
                         <span className="flex items-center gap-2">
@@ -674,7 +685,7 @@ export default function Checkout() {
                       ) : (
                         <span className="flex items-center gap-2">
                           <CreditCard className="w-5 h-5" />
-                          {t.coPayCard}
+                          {canPayOnline ? t.coPayCard : t.soonOnline}
                           <Lock className="w-4 h-4 ml-1 opacity-70" />
                         </span>
                       )}

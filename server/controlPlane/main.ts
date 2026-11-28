@@ -49,6 +49,7 @@ import { MysqlTermsBillingStore } from "../commercialTerms/billingStore";
 import { MysqlAcceptanceLinkStore } from "../commercialTerms/acceptanceLinks";
 import { describeTermsBilling } from "../commercialTerms/billing";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
+import { TemporaryCapabilities } from "./temporaryCapabilities";
 import { MysqlTenantLimitStore } from "../_core/limits/store";
 import { MysqlTrialStore } from "../trials/store";
 import { TrialService } from "../trials/service";
@@ -401,6 +402,19 @@ async function main() {
   // Licencias por capacidad (registro): solo si la migración 0008 del registro está aplicada
   const capabilitiesReady = await pool.query("SELECT 1 FROM tenant_capabilities LIMIT 0").then(() => true, () => false);
   const capabilities = capabilitiesReady ? new MysqlCapabilityStore(pool) : undefined;
+  // Caducidad automática de las concesiones temporales de operador (no depende de que alguien abra la pantalla). Idempotente.
+  // El Core las deja de aceptar en cuanto vencen (decide) y lee el registro con una caché de 30 s.
+  if (capabilities) {
+    const temp = new TemporaryCapabilities({ store: capabilities });
+    const every = Math.max(10, Number(process.env.CP_TEMP_CAPABILITY_SWEEP_SECONDS ?? 60) || 60) * 1000;
+    const run = () =>
+      void temp
+        .sweep()
+        .then((n) => n > 0 && console.log(JSON.stringify({ ctx: "Capabilities", event: "temporary_grants_expired", count: n })))
+        .catch((e) => console.error(JSON.stringify({ ctx: "Capabilities", event: "temporary_expiry_sweep_failed", error: e instanceof Error ? e.name : "error" })));
+    run();
+    setInterval(run, every).unref?.();
+  }
   console.log(JSON.stringify({ ctx: "Capabilities", enabled: capabilitiesReady, ...(capabilitiesReady ? {} : { reason: "registry_migration_0008_missing" }) }));
   // Límites contratados y uso declarado (registro 0013): sin la migración, las licencias solo aplican capacidades
   const limitsReady = await pool.query("SELECT 1 FROM tenant_entitlement_limits LIMIT 0").then(() => true, () => false);

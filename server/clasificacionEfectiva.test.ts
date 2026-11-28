@@ -135,6 +135,35 @@ describe("cobros, autorización, seguridad y borrados: protegidos aunque no toqu
     // En un comentario, no
     expect(x(["server/a.ts"], diffOf("server/a.ts", "+  // nunca DELETE FROM: se archiva"))).toEqual([]);
   });
+  it("TRUNCATE, DROP y DELETE reales se detectan (mayúsculas, minúsculas y tabla entrecomillada)", () => {
+    const hit = (line: string) => x(["server/a.ts"], diffOf("server/a.ts", "+" + line));
+    for (const l of [
+      "  await db.execute(sql`TRUNCATE TABLE leads`);",
+      "  await db.execute(sql`truncate table leads`);",
+      "  await db.execute(sql`Truncate Table leads`);",
+      "  await db.execute(sql`TRUNCATE leads`);",
+      "  await db.execute(sql`truncate leads`);",
+      '  await pool.query("truncate users");',
+      '  await pool.query("DROP TABLE leads");',
+      '  await pool.query("drop database es_t1");',
+      '  await pool.query("DROP SCHEMA x");',
+      '  await pool.query("delete from leads where id = 1");',
+    ])
+      expect(hit(l), l).not.toEqual([]);
+  });
+  it("la clase CSS truncate (Tailwind) no es una operación destructiva", () => {
+    const hit = (line: string) => x(["client/src/pages/A.tsx"], diffOf("client/src/pages/A.tsx", "+" + line));
+    for (const l of [
+      '  <div className="truncate text-xs text-muted-foreground">{p.name}</div>',
+      '  <span className="min-w-0 truncate font-medium">{p.name}</span>',
+      '  <p className="truncate">{p.name}</p>',
+      '  <p className={cn("truncate flex-1", extra)}>{p.name}</p>',
+      '  <p className="truncate block">{p.name}</p>',
+      '  <p className="flex items-center gap-2 truncate max-w-[200px]">{p.name}</p>',
+      '  const base = "truncate text-sm";',
+    ])
+      expect(hit(l), l).toEqual([]);
+  });
   it("retirar o cambiar una comprobación de autorización es extraordinario; añadir rutas con permisos existentes, no", () => {
     const f = "server/stripe/purchasesApi.ts";
     expect(x([f], diffOf(f, '+  r.post("/companies/:id/purchases", requireScope("orders:write"), wrap(fn));'))).toEqual([]);

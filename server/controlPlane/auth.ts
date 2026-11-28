@@ -75,6 +75,8 @@ export const SCOPES = [
   "finance:config",
   "finance:export",
   "finance:sensitive",
+  // Concesión TEMPORAL de capacidades a empresas de prueba (herramienta auditada, cerrada en production): solo superadmin y admin
+  "capabilities:grant-temporary",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 

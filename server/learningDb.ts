@@ -15,7 +15,7 @@ import { getDb } from "./db";
 import {
   DAY_MS, DEMO_MS, LearningRuleError, adminKey, assertPaymentConfirmed, assertReason, computeWindow, demoKey, evaluateAny, matchRules,
   courseOpensFor, isTechnicalGrant, mergeModules, activationWindow, matchExactRules, mimeMatchesKind, paymentKey, progressPercent, technicalReason, TECHNICAL_MAX_DAYS, type AccessRule, type EnrollmentView, type PaymentEvidence, type StartMode,
-  MODULE_EXTENSION_DAYS, computeModuleWindows, effectiveEnrollmentStatus, evaluateAccess, extendedEnd, extensionKey, modulesWithoutDuration, moduleWindow, windowsFromRows, type ModuleSchedule, type ModuleWindow,
+  MODULE_EXTENSION_DAYS, computeModuleWindows, effectiveEnrollmentStatus, effectiveStatus, evaluateAccess, extendedEnd, extensionKey, modulesWithoutDuration, moduleWindow, moduleAccessStates, windowsFromRows, type ModuleAccessState, type ModuleSchedule, type ModuleWindow,
 } from "../shared/learning";
 
 export class LearningError extends Error {
@@ -160,12 +160,17 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
     if (s.durationDays === 0) throw new LearningError("BAD_REQUEST", "La duración de un módulo debe ser de al menos 1 día (o vacía para heredar la de la regla).");
     schedule[s.moduleId] = { unlockOffsetDays: s.unlockOffsetDays ?? null, durationDays: s.durationDays ?? null };
   }
-  // Activación segura: no se activa una regla con algún módulo sin duración (ni propia ni heredada) salvo que declare «permanent»
-  if (input.activationRequired) {
+  // Activación voluntaria: se comprueba sobre el valor EFECTIVO de activation_required (el enviado o, si la llamada no lo trae,
+  // el guardado / heredado por la versión nueva) y sobre el calendario efectivo. Nunca se mezcla con fecha fija, desbloqueo
+  // progresivo ni duración propia por módulo (se ignorarían: los días cuentan desde la activación con la duración de la regla).
+  const assertActivation = (activation: boolean, sched: Record<number, ModuleSchedule>) => {
+    if (!activation) return;
     if (input.durationDays == null || input.durationDays < 1) throw new LearningError("BAD_REQUEST", "La activación voluntaria necesita los días de acceso que empezarán al activar.");
     if (input.startMode !== "on_grant") throw new LearningError("BAD_REQUEST", "La activación voluntaria no se combina con una fecha fija de inicio.");
-    if (Object.values(schedule).some((s) => (s.unlockOffsetDays ?? 0) > 0)) throw new LearningError("BAD_REQUEST", "La activación voluntaria no admite desbloqueo progresivo de módulos.");
-  }
+    if (Object.values(sched).some((s) => (s.unlockOffsetDays ?? 0) > 0)) throw new LearningError("BAD_REQUEST", "La activación voluntaria no admite desbloqueo progresivo de módulos.");
+    if (Object.values(sched).some((s) => s.durationDays != null)) throw new LearningError("BAD_REQUEST", "La activación voluntaria no admite duración propia por módulo: los días de la regla cuentan desde que el alumno activa. Deja vacía la duración de cada módulo.");
+  };
+  assertActivation(!!input.activationRequired, schedule);
   if (input.minContractedDays != null && (!Number.isInteger(input.minContractedDays) || input.minContractedDays < 1 || input.minContractedDays > 365)) throw new LearningError("BAD_REQUEST", "Los días mínimos contratados deben ser un entero entre 1 y 365.");
   const assertActivable = (permanent: boolean, sched: Record<number, ModuleSchedule>) => {
     if (!input.active || permanent) return;
@@ -206,6 +211,7 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
         for (const m of stored) if (m.unlock_offset_days != null || m.duration_days != null) effSchedule[n(m.module_id)] = { unlockOffsetDays: m.unlock_offset_days == null ? null : n(m.unlock_offset_days), durationDays: m.duration_days == null ? null : n(m.duration_days) };
       }
       const effPermanent = input.permanent !== undefined ? input.permanent : !!n(cur.permanent);
+      assertActivation(input.activationRequired !== undefined ? input.activationRequired : !!n(cur.activation_required), effSchedule);
       assertActivable(effPermanent, effSchedule);
       await run(tx, sql`UPDATE learning_access_rules SET duration_days = ${input.durationDays}, start_mode = ${input.startMode}, fixed_start = ${input.fixedStart}, active = ${input.active ? 1 : 0}, updated_at = ${now} WHERE id = ${id}`);
       if (input.activationRequired !== undefined) await run(tx, sql`UPDATE learning_access_rules SET activation_required = ${input.activationRequired ? 1 : 0} WHERE id = ${id}`);
@@ -219,9 +225,11 @@ export async function saveRule(input: RuleInput, id?: number): Promise<number> {
     }
     // Cambiar producto, variante, curso o módulos crea una VERSIÓN nueva: la anterior se desactiva y se conserva (las
     // matrículas ya concedidas guardan la regla con la que nacieron; nada se borra)
+    const nextActivation = input.activationRequired ?? !!n(cur.activation_required);
+    assertActivation(nextActivation, schedule);
     assertActivable(!!input.permanent, schedule);
     await run(tx, sql`UPDATE learning_access_rules SET active = 0, updated_at = ${now} WHERE id = ${id}`);
-    return insertRule(input.activationRequired ?? !!n(cur.activation_required), input.minContractedDays !== undefined ? input.minContractedDays : cur.min_contracted_days == null ? null : n(cur.min_contracted_days));
+    return insertRule(nextActivation, input.minContractedDays !== undefined ? input.minContractedDays : cur.min_contracted_days == null ? null : n(cur.min_contracted_days));
   });
 }
 
@@ -319,7 +327,29 @@ export interface PaymentGrantInput {
  * Libera el acceso de una compra con PAGO CONFIRMADO según las reglas de catálogo. Sin pago verificado lanza
  * PAYMENT_NOT_CONFIRMED. Sin regla para la variante (p. ej. RECONNECT LIVE) no crea nada.
  */
-export async function grantFromPayment(input: PaymentGrantInput): Promise<{ granted: Array<{ enrollment: EnrollmentRow; created: boolean }>; rules: number; blockedByTerms: number }> {
+export interface SkippedGrant {
+  ruleId: number;
+  reason: "already_granted";
+  /** Matrícula de activación voluntaria que ya tiene la persona para ese curso (no se toca). */
+  existingEnrollmentId: number;
+}
+
+/**
+ * UNA concesión de activación voluntaria por participante y curso: si la persona ya tiene para ese curso una matrícula activa,
+ * pendiente de activar o programada nacida de una regla de activación voluntaria (otro presupuesto, otro retiro u otra versión
+ * de la regla), la regla no concede otra. Devuelve esa matrícula o null.
+ */
+async function voluntaryGrantOf(exec: Exec, userId: number, courseId: number, now: number): Promise<number | null> {
+  const list = await rows(exec, sql`SELECT id, starts_at, ends_at, pending_activation_days FROM learning_enrollments
+    WHERE user_id = ${userId} AND course_id = ${courseId} AND status = 'active' AND (pending_activation_days IS NOT NULL OR activated_at IS NOT NULL) ORDER BY id FOR UPDATE`);
+  for (const r of list) {
+    const st = effectiveStatus({ status: "active", startsAt: n(r.starts_at), endsAt: r.ends_at == null ? null : n(r.ends_at), pendingActivationDays: r.pending_activation_days == null ? null : n(r.pending_activation_days) }, now);
+    if (st === "active" || st === "pending_activation" || st === "scheduled") return n(r.id);
+  }
+  return null;
+}
+
+export async function grantFromPayment(input: PaymentGrantInput): Promise<{ granted: Array<{ enrollment: EnrollmentRow; created: boolean }>; rules: number; blockedByTerms: number; skipped: SkippedGrant[] }> {
   const pay = assertPaymentConfirmed(input.payment);
   const now = input.now ?? Date.now();
   const d = await db();
@@ -330,7 +360,19 @@ export async function grantFromPayment(input: PaymentGrantInput): Promise<{ gran
     const rules = matched.filter((r) => !r.minContractedDays || (input.contractedDays != null && input.contractedDays >= r.minContractedDays));
     const blockedByTerms = matched.length - rules.length;
     const granted: Array<{ enrollment: EnrollmentRow; created: boolean }> = [];
+    const skipped: SkippedGrant[] = [];
     for (const rule of rules) {
+      const key = paymentKey({ operationKind: input.operation.kind, operationId: input.operation.id, ruleId: rule.id, userId: input.userId });
+      if (rule.activationRequired) {
+        // La misma operación repetida devuelve la matrícula existente (idempotencia de siempre); otra operación no concede una segunda
+        const [own] = await rows(tx, sql`SELECT id FROM learning_enrollments WHERE idempotency_key = ${key} LIMIT 1`);
+        const prior = own ? null : await voluntaryGrantOf(tx, input.userId, rule.courseId, now);
+        if (prior != null) {
+          skipped.push({ ruleId: rule.id, reason: "already_granted", existingEnrollmentId: prior });
+          await event(tx, prior, "grant_skipped", input.actorUserId, { reason: "already_granted", ruleId: rule.id, operation: input.operation, variantId: input.variantId, paymentRef: pay.reference }, now);
+          continue;
+        }
+      }
       // Derecho PENDIENTE DE ACTIVAR: sin ventana ni fecha automática; los días arrancan cuando el alumno lo activa
       const pending = rule.activationRequired && rule.durationDays != null && rule.durationDays > 0 ? Math.round(rule.durationDays) : null;
       const w = pending != null ? { startsAt: now, endsAt: null as number | null } : computeWindow({ startMode: rule.startMode, fixedStart: rule.fixedStart, durationDays: rule.durationDays, grantedAt: now });
@@ -343,11 +385,11 @@ export async function grantFromPayment(input: PaymentGrantInput): Promise<{ gran
           moduleWindows: hasWindows ? mw.windows : undefined, pendingActivationDays: pending,
           experienceId: input.experienceId, variantId: input.variantId, enrollmentId: input.enrollmentId ?? null, orderId: input.orderId ?? null, quoteId: input.quoteId ?? null,
           paymentRef: pay.reference, paymentAmountCents: pay.amountCents, actorUserId: input.actorUserId,
-          idempotencyKey: paymentKey({ operationKind: input.operation.kind, operationId: input.operation.id, ruleId: rule.id, userId: input.userId }),
+          idempotencyKey: key,
         }, now),
       );
     }
-    return { granted, rules: rules.length, blockedByTerms };
+    return { granted, rules: rules.length, blockedByTerms, skipped };
   }));
 }
 
@@ -617,14 +659,43 @@ export async function getEnrollment(id: number, exec?: Exec): Promise<Enrollment
   return mapEnrollment(r, (await modulesOf(e, [id])).get(id) ?? []);
 }
 
-export async function listEnrollments(filter: { userId?: number; courseId?: number } = {}): Promise<Array<EnrollmentRow & { userName: string | null; userEmail: string | null }>> {
+export interface EnrollmentModuleView extends ModuleAccessState {
+  title: string | null;
+  position: number | null;
+}
+
+export type AdminEnrollment = EnrollmentRow & {
+  userName: string | null;
+  userEmail: string | null;
+  /** Días pendientes de activar (activación voluntaria); null = normal o ya activada. */
+  pendingActivationDays: number | null;
+  /** Ventanas propias por módulo (desbloqueo escalonado / duración propia). */
+  moduleWindows?: Record<number, ModuleWindow>;
+  /** Estado de cada módulo (activo / futuro / caducado / pendiente de activar) con sus fechas, evaluado al leer. */
+  modules: EnrollmentModuleView[];
+};
+
+/** Matrículas para la administración, con el estado por módulo (el estado global sigue siendo `effectiveEnrollmentStatus`). */
+export async function listEnrollments(filter: { userId?: number; courseId?: number } = {}, now = Date.now()): Promise<AdminEnrollment[]> {
   const d = await db();
   const where: SQL[] = [];
   if (filter.userId) where.push(sql`e.user_id = ${filter.userId}`);
   if (filter.courseId) where.push(sql`e.course_id = ${filter.courseId}`);
   const list = await rows(d, sql`SELECT e.*, u.name AS user_name, u.email AS user_email FROM learning_enrollments e LEFT JOIN users u ON u.id = e.user_id ${where.length ? sql`WHERE ${sql.join(where, sql` AND `)}` : sql``} ORDER BY e.id DESC LIMIT 500`);
-  const mods = await modulesOf(d, list.map((r) => n(r.id)));
-  return list.map((r) => ({ ...mapEnrollment(r, mods.get(n(r.id)) ?? []), userName: r.user_name ?? null, userEmail: r.user_email ?? null }));
+  const ids = list.map((r) => n(r.id));
+  const mods = await modulesOf(d, ids);
+  const wins = await windowsOf(d, ids);
+  const allModuleIds = Array.from(new Set(Array.from(mods.values()).flat()));
+  const titles = new Map<number, { title: string; position: number }>();
+  if (allModuleIds.length) for (const m of await rows(d, sql`SELECT id, title, position FROM learning_modules WHERE id IN (${sql.join(allModuleIds.map((i) => sql`${i}`), sql`, `)})`)) titles.set(n(m.id), { title: String(m.title), position: n(m.position) });
+  return list.map((r) => {
+    const id = n(r.id);
+    const base = mapEnrollment(r, mods.get(id) ?? []);
+    const pendingActivationDays = r.pending_activation_days == null ? null : n(r.pending_activation_days);
+    const view: EnrollmentView = { id, pendingActivationDays, status: base.status, startsAt: base.startsAt, endsAt: base.endsAt, moduleIds: base.moduleIds, moduleWindows: wins.get(id) };
+    const modules = moduleAccessStates(view, now).map((s) => ({ ...s, title: titles.get(s.moduleId)?.title ?? null, position: titles.get(s.moduleId)?.position ?? null }));
+    return { ...base, userName: r.user_name ?? null, userEmail: r.user_email ?? null, pendingActivationDays, moduleWindows: wins.get(id), modules };
+  });
 }
 
 export async function enrollmentEvents(id: number): Promise<Array<{ id: number; type: string; actorUserId: number | null; detail: unknown; createdAt: number }>> {

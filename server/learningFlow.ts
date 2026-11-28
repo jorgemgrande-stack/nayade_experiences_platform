@@ -295,7 +295,7 @@ export async function grantLearningFromOrder(merchantOrder: string, actor: { id:
 export type QuoteFlowResult =
   | { status: "skipped"; reason: "not_found" | "not_paid" | "no_lead" | "no_rule" | "no_email" | "no_schema" | "via_enrollment" | "via_order" | "no_amount" | "error" }
   | { status: "needs_terms"; quoteId: number; minDays: number }
-  | { status: "granted"; created: number; existing: number; userId: number; blockedByTerms: number };
+  | { status: "granted"; created: number; existing: number; userId: number; blockedByTerms: number; /** Derechos de activación voluntaria NO concedidos porque la persona ya tenía uno para ese curso (una concesión por participante). */ skipped?: number };
 
 /** Duración contratada confirmada de un presupuesto (null si nadie la ha confirmado o si no existe la migración 0093). */
 async function contractedDaysOf(quoteId: number): Promise<number | null> {
@@ -351,6 +351,7 @@ export async function grantLearningFromQuote(quoteId: number, actor: { id: numbe
     let created = 0;
     let existing = 0;
     let blockedByTerms = 0;
+    let skipped = 0;
     let buyerUserId = 0;
     for (const rc of recipients) {
     const [u] = (await d.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${rc.email.toLowerCase()} LIMIT 1`)) as unknown as [Array<Record<string, any>>];
@@ -364,13 +365,14 @@ export async function grantLearningFromQuote(quoteId: number, actor: { id: numbe
     created += made;
     existing += res.granted.length - made;
     blockedByTerms += res.blockedByTerms;
+    skipped += res.skipped?.length ?? 0;
     const auto = String(await Promise.resolve(getSystemSetting("learning_invite_emails", "false"))).toLowerCase() === "true";
     if (made > 0 && auto) {
       if (acc.invite) await sendLearningInvitation(acc.invite);
       else await sendLearningAccessNotice({ userId: acc.userId, name: rc.name, email: rc.email }, `quote:${q.quoteNumber ?? quoteId}`);
     }
     }
-    return { status: "granted", created, existing, userId: buyerUserId, blockedByTerms };
+    return { status: "granted", created, existing, userId: buyerUserId, blockedByTerms, ...(skipped ? { skipped } : {}) };
   } catch (e) {
     if (isMissingLearningSchema(e)) return { status: "skipped", reason: "no_schema" };
     console.error(JSON.stringify({ ctx: "Learning", event: "grant_from_quote_failed", quoteId, error: e instanceof Error ? e.name : "error", detail: e instanceof Error ? e.message.slice(0, 160) : undefined }));

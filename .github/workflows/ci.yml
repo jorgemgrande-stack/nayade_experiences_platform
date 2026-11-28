@@ -215,7 +215,7 @@ jobs:
   core-suites:
     name: Suites del Core multiempresa (bloqueante)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     services:
       mysql:
         image: mysql:8.4
