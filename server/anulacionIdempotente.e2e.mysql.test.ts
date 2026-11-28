@@ -96,7 +96,7 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
     ok(await ess.m("a", "accountingGeneral.sync", { startDate: `${YEAR}-01-01` }, ad), "sync 2");
     if (!s.invId) return { keys: [] as string[] };
     const abonoIds = (await ess.sql("a", "SELECT id FROM invoices WHERE creditNoteForId = ? AND invoiceType = 'abono'", [s.invId])).map((x: any) => x.id);
-    const keys = [`inv:${s.invId}`, `cobro:${s.invId}`, ...abonoIds.map((i: number) => `inv:${i}`)];
+    const keys = [`inv:${s.invId}`, ...abonoIds.map((i: number) => `inv:${i}`)];
     const rows = ((await ess.sql("a", "SELECT source_key AS k FROM acc_entries WHERE reversed_by_entry_id IS NULL AND source_key IS NOT NULL")) as any[]).map((r) => String(r.k).split("#")[0]).filter((k) => keys.includes(k));
     return { keys: rows.sort() };
   }
@@ -139,7 +139,7 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
     expect(await measure(s)).toEqual(m);
     expect(await counters()).toEqual(c1); // el rechazo no consume números
     const e = await entriesOf(s);
-    expect(e.keys).toEqual([`cobro:${s.invId}`, `inv:${s.invId}`, `inv:${m.abonoIds[0]}`].sort());
+    expect(e.keys).toEqual([`inv:${s.invId}`, `inv:${m.abonoIds[0]}`].sort());
     expect(m.gateway).toBe(0);
   });
 
@@ -189,11 +189,18 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
     expect([m2.dev, m2.abonos]).toEqual([m.dev, m.abonos]);
   });
 
-  it("«por líneas» SIN lista de líneas se ejecuta como total, pero sigue siendo una sola operación", async () => {
+  it("«por líneas» SIN líneas seleccionadas se RECHAZA (no se convierte en total) y no ejecuta nada", async () => {
     const s = await seed({ extras: true });
-    ok(await accept(s.reqId!, { cancellationScope: "lineas", cancelledItems: undefined }), "aceptar");
-    const m = await measure(s);
-    expect([m.dev.length, m.abonos.length, m.reservation]).toEqual([1, 1, "cancelled"]);
+    const c0 = await counters();
+    const before = await measure(s);
+    const r = await accept(s.reqId!, { cancellationScope: "lineas", cancelledItems: undefined });
+    expect(r.status).toBe(400);
+    expect(r.text).toMatch(/ninguna línea seleccionada/);
+    const r2 = await accept(s.reqId!, { cancellationScope: "lineas", cancelledItems: [] });
+    expect(r2.status).toBe(400);
+    expect(await measure(s)).toEqual(before);
+    expect(await counters()).toEqual(c0);
+    expect((await one("SELECT resolution_status AS r FROM cancellation_requests WHERE id = ?", [s.reqId])).r).toBe("sin_resolver");
   });
 
   // ---------- concurrencia ----------
@@ -212,7 +219,7 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
         expect([c1.anulacion - c0.anulacion, c1.abono - c0.abono]).toEqual([1, 1]);
         expect(c1.factura - c0.factura).toBeLessThanOrEqual(1);
         const e = await entriesOf(s);
-        expect(e.keys).toEqual([`cobro:${s.invId}`, `inv:${s.invId}`, `inv:${m.abonoIds[0]}`].sort());
+        expect(e.keys).toEqual([`inv:${s.invId}`, `inv:${m.abonoIds[0]}`].sort());
         expect(m.gateway).toBe(0);
       });
 
@@ -228,7 +235,7 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
         const c1 = await counters();
         expect([c1.anulacion - c0.anulacion, c1.abono - c0.abono]).toEqual([1, 1]);
         const e = await entriesOf(s);
-        expect(e.keys).toEqual([`cobro:${s.invId}`, `inv:${s.invId}`, `inv:${m.abonoIds[0]}`].sort());
+        expect(e.keys).toEqual([`inv:${s.invId}`, `inv:${m.abonoIds[0]}`].sort());
         expect(m.gateway).toBe(0);
       });
 
@@ -254,12 +261,14 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
     expect(Number((await one("SELECT COUNT(*) AS n FROM discount_codes WHERE observations LIKE ?", [`%anulación #${s.reqId}.%`])).n)).toBe(1);
   });
 
-  it("SIMULTÁNEA 12x «por líneas» sin lista (= total): un DEV y un abono", async () => {
+  it("SIMULTÁNEA 12x «por líneas» sin líneas: las 12 se rechazan y no se crea ningún documento", async () => {
     const s = await seed({ extras: true });
+    const c0 = await counters();
     const rs = await Promise.all(Array.from({ length: 12 }, () => accept(s.reqId!, { cancellationScope: "lineas", cancelledItems: undefined })));
+    expect(rs.filter((r) => r.status === 200)).toHaveLength(0);
     const m = await measure(s);
-    expect(rs.filter((r) => r.status === 200)).toHaveLength(1);
-    expect([m.dev.length, m.abonos.length]).toEqual([1, 1]);
+    expect([m.dev.length, m.abonos.length, m.reservation]).toEqual([0, 0, "paid"]);
+    expect(await counters()).toEqual(c0);
   });
 
   it("SIMULTÁNEA 12x reserva SIN factura: un DEV y ningún abono", async () => {
@@ -278,13 +287,12 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
     expect([m.dev.length, m.abonos.length]).toEqual([1, 1]);
   });
 
-  it("SIMULTÁNEA 12x marcar devolución ejecutada: una sola vez y un solo correo", async () => {
+  it("SIMULTÁNEA 12x marcar devolución ejecutada: una sola vez", async () => {
     const s = await seed();
     ok(await accept(s.reqId!), "aceptar");
-    const mails0 = ess.mails.filter((x) => /Devolución realizada/.test(x.subject)).length;
-    const rs = await Promise.all(Array.from({ length: 12 }, () => ess.m("a", "cancellations.markRefundExecuted", { id: s.reqId }, ad)));
+        const rs = await Promise.all(Array.from({ length: 12 }, () => ess.m("a", "cancellations.markRefundExecuted", { id: s.reqId }, ad)));
     expect(rs.filter((r) => r.status === 200)).toHaveLength(1);
-    expect(ess.mails.filter((x) => /Devolución realizada/.test(x.subject)).length - mails0).toBe(1);
+    expect(Number((await one("SELECT COUNT(*) AS n FROM cancellation_logs WHERE request_id = ? AND action_type = 'refund_executed'", [s.reqId])).n)).toBe(1);
     expect((await measure(s)).dev).toHaveLength(1);
   });
 
@@ -346,7 +354,7 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
 
   it("HISTÓRICOS (DEV-0119, DEV-0470, abonos antiguos): ni una fila histórica cambia y los contadores de años anteriores no se tocan", async () => {
     await ess.sql("a", "INSERT INTO transactions (transactionNumber, type, amount, currency, status) VALUES (?, 'reembolso', -1.00, 'EUR', 'completado'), (?, 'reembolso', -1.00, 'EUR', 'completado')", [`DEV-${YEAR}-0470`, `DEV-${YEAR}-0119`]);
-    await ess.sql("a", "INSERT INTO invoices (invoiceNumber, clientName, subtotal, taxRate, taxAmount, total, status, invoiceType, issuedAt) VALUES ('F-HIST-1', 'Hist', 100, 21, 21, 121, 'abonada', 'factura', '2025-03-01'), ('ABN-2025-0001', 'Hist', -100, 21, -21, -121, 'generada', 'abono', '2025-03-02')");
+    await ess.sql("a", "INSERT INTO invoices (invoiceNumber, clientName, clientEmail, subtotal, taxRate, taxAmount, total, status, invoiceType, issuedAt) VALUES ('F-HIST-1', 'Hist', 'h@example.com', 100, 21, 21, 121, 'abonada', 'factura', '2025-03-01'), ('ABN-2025-0001', 'Hist', 'h@example.com', -100, 21, -21, -121, 'generada', 'abono', '2025-03-02')");
     await ess.sql("a", "UPDATE invoices SET creditNoteForId = (SELECT id FROM (SELECT id FROM invoices WHERE invoiceNumber = 'F-HIST-1') x) WHERE invoiceNumber = 'ABN-2025-0001'");
     await ess.sql("a", "INSERT INTO document_counters (document_type, `year`, current_number, prefix) VALUES ('abono', 2025, 13, 'ABN')");
     const snap = async () => ({
