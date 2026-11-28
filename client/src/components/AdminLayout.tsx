@@ -215,9 +215,10 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const flagsMap = new Map<string, boolean>((flagsList ?? []).map(f => [f.key, f.enabled]));
   // Entradas opt-in: ocultas salvo que el módulo esté activado en la empresa
   const newsletterStatus = trpc.newsletter.status.useQuery(undefined, { enabled: isAuthenticated, staleTime: 120_000, retry: false });
-  const OPT_IN_FLAGS = new Set(["newsletter_enabled"]);
+  const recurringStatus = trpc.recurringSessions.status.useQuery(undefined, { enabled: isAuthenticated, staleTime: 120_000, retry: false });
+  const OPT_IN_FLAGS = new Set(["newsletter_enabled", "recurring_sessions_enabled"]);
   const isFlagVisible = (flagKey?: string) => {
-    if (flagKey && OPT_IN_FLAGS.has(flagKey)) return newsletterStatus.data?.enabled === true;
+    if (flagKey && OPT_IN_FLAGS.has(flagKey)) return (flagKey === "recurring_sessions_enabled" ? recurringStatus.data?.enabled : newsletterStatus.data?.enabled) === true;
     if (!flagKey || !flagsList) return true;
     return flagsMap.get(flagKey) !== false;
   };
