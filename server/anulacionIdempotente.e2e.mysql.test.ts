@@ -298,8 +298,7 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
 
   // ---------- fallos intermedios ----------
   it("FALLO tras consumir números: la transacción se revierte entera (sin DEV, abono, anulación, estado a medias ni números gastados)", async () => {
-    await ess.sql("a", "DROP TRIGGER IF EXISTS p0_fallo_dev");
-    await ess.sql("a", "CREATE TRIGGER p0_fallo_dev BEFORE INSERT ON transactions FOR EACH ROW BEGIN IF NEW.type = 'reembolso' AND NEW.clientName = 'CLIENTE FALLO' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fallo inyectado'; END IF; END");
+    await ess.sql("a", "ALTER TABLE transactions ADD CONSTRAINT p0_fallo_dev CHECK (NOT (type = 'reembolso' AND clientName = 'CLIENTE FALLO'))");
     try {
       const s = await seed({ fullName: "CLIENTE FALLO" });
       const c0 = await counters();
@@ -321,7 +320,7 @@ describe.skipIf(!URL_)("anulación idempotente: un DEV, un abono, un efecto cont
       expect([m2.requests, m2.dev.length, m2.abonos.length, m2.reservation]).toEqual([0, 0, 0, "paid"]);
       expect(await counters()).toEqual(c0);
     } finally {
-      await ess.sql("a", "DROP TRIGGER IF EXISTS p0_fallo_dev");
+      await ess.sql("a", "ALTER TABLE transactions DROP CHECK p0_fallo_dev");
     }
     // tras quitar el fallo, el reintento funciona y consume exactamente un número de cada serie
     const s3 = await seed();
