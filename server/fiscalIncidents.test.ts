@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { incidentErrorText, recordFiscalIncident } from "./fiscalIncidents";
+import { incidentErrorText, recordFiscalIncident, reconcileProposalVersion, canApproveProposal } from "./fiscalIncidents";
 
 describe("Incidencias fiscales (registro)", () => {
   it("el texto del error es corto, de una línea y sin trazas", () => {
@@ -21,5 +21,25 @@ describe("Incidencias fiscales (registro)", () => {
     const runner = { insert: () => ({ values: () => Promise.reject(new Error("BD caída")) }) };
     await expect(recordFiscalIncident(runner, "quote", 1, "payment_confirmed_without_invoice", { id: 1, name: "x" }, {})).resolves.toBeUndefined();
     spy.mockRestore();
+  });
+});
+
+describe("Reconciliación: separación de funciones (unitarias)", () => {
+  const plan = { kind: "issue_invoice", ppId: 1, reservationId: 2, quoteId: 3, amountCents: 40000, paymentMethod: "efectivo" };
+  const preview = { invoicesToIssue: 1, invoiceAmountCents: 40000, reservationsLinked: 1, reservationsCreated: 0, documentNumbersConsumed: 1, historicalDocumentsModified: 0 };
+  it("la versión es estable (independiente del orden de claves) y cambia si cambia plan, motivo o vista previa", () => {
+    const v = reconcileProposalVersion({ plan, reason: "motivo suficiente", preview });
+    expect(v).toMatch(/^[0-9a-f]{16}$/);
+    expect(reconcileProposalVersion({ preview, reason: "motivo suficiente", plan: { paymentMethod: "efectivo", amountCents: 40000, quoteId: 3, reservationId: 2, ppId: 1, kind: "issue_invoice" } })).toBe(v);
+    expect(reconcileProposalVersion({ plan: { ...plan, amountCents: 40001 }, reason: "motivo suficiente", preview })).not.toBe(v);
+    expect(reconcileProposalVersion({ plan, reason: "otro motivo", preview })).not.toBe(v);
+    expect(reconcileProposalVersion({ plan, reason: "motivo suficiente", preview: { ...preview, invoiceAmountCents: 1 } })).not.toBe(v);
+  });
+  it("solo aprueba un usuario identificado y distinto del proponente", () => {
+    expect(canApproveProposal(1, 2)).toBe(true);
+    expect(canApproveProposal(1, 1)).toBe(false);
+    expect(canApproveProposal(null, 2)).toBe(false);
+    expect(canApproveProposal(1, null)).toBe(false);
+    expect(canApproveProposal(1, undefined)).toBe(false);
   });
 });

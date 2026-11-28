@@ -9,6 +9,7 @@
  * Esta capa NUNCA emite facturas ni cobra: solo registra y lee. La reconciliación (que sí emite, de forma idempotente) vive
  * en el router del CRM, con las mismas garantías atómicas que el cobro.
  */
+import { createHash } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { crmActivityLog, quotes, reservations } from "../drizzle/schema";
 
@@ -124,14 +125,49 @@ export type ReconcileProposalPlan =
   /** `reservationId`: la reserva viva del presupuesto que el cierre del plan completaría (o null si crearía una nueva). */
   | { kind: "confirm_plan"; quoteId: number; reservationId: number | null };
 
-export interface ReconcileProposal { id: number; incidentId: number; plan: ReconcileProposalPlan; proposedBy: number | null; at: Date }
+/** Aprobación de una propuesta concreta (y de su versión) por un administrador DISTINTO del proponente. No aplica nada. */
+export const FISCAL_RECONCILE_APPROVED = "fiscal_reconcile_approved";
+/** Intento denegado (p. ej. autoaprobación): solo auditoría, sin efectos. */
+export const FISCAL_RECONCILE_DENIED = "fiscal_reconcile_denied";
 
-export async function recordReconcileProposal(runner: Runner, incident: { id: number; entityType: Entity; entityId: number }, plan: ReconcileProposalPlan, actor: { id: number | null; name: string | null }): Promise<number> {
+/** Vista previa de efectos económicos: SOLO importes y recuentos agregados, sin datos personales. */
+export interface ReconcilePreview {
+  invoicesToIssue: number;
+  invoiceAmountCents: number;
+  reservationsLinked: number;
+  reservationsCreated: number;
+  documentNumbersConsumed: number;
+  historicalDocumentsModified: 0;
+  note?: string;
+}
+
+/** Versión del contenido de la propuesta: cambia si cambia el plan, el motivo o la vista previa. */
+export function reconcileProposalVersion(content: { plan: unknown; reason: string; preview: unknown }): string {
+  const canon = (v: any): any => Array.isArray(v) ? v.map(canon)
+    : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v;
+  return createHash("sha256").update(JSON.stringify(canon({ plan: content.plan, reason: content.reason, preview: content.preview }))).digest("hex").slice(0, 16);
+}
+
+export interface ReconcileProposal {
+  id: number; incidentId: number; plan: ReconcileProposalPlan; proposedBy: number | null; at: Date;
+  reason: string; preview: ReconcilePreview | null;
+  /** Versión guardada al proponer. */
+  version: string | null;
+  /** Versión recalculada con el contenido ACTUAL de la fila: si difiere de `version`, la propuesta fue alterada. */
+  currentVersion: string;
+  entityType: Entity; entityId: number;
+}
+
+export async function recordReconcileProposal(
+  runner: Runner, incident: { id: number; entityType: Entity; entityId: number }, plan: ReconcileProposalPlan,
+  actor: { id: number | null; name: string | null }, reason: string, preview: ReconcilePreview,
+): Promise<{ id: number; version: string }> {
+  const version = reconcileProposalVersion({ plan, reason, preview });
   const [r] = await runner.insert(crmActivityLog).values({
     entityType: incident.entityType, entityId: incident.entityId, action: FISCAL_RECONCILE_PROPOSED,
-    actorId: actor.id, actorName: actor.name, details: { incidentId: incident.id, plan }, createdAt: new Date(),
+    actorId: actor.id, actorName: actor.name, details: { incidentId: incident.id, plan, reason, preview, version }, createdAt: new Date(),
   });
-  return Number((r as { insertId: number }).insertId);
+  return { id: Number((r as { insertId: number }).insertId), version };
 }
 
 /** Propuesta indicada (si pertenece a esa incidencia) o la más reciente de la incidencia. */
@@ -141,5 +177,27 @@ export async function getReconcileProposal(runner: Runner, incidentId: number, p
     .orderBy(desc(crmActivityLog.id)).limit(proposalId ? 1 : 500);
   const hit = rows.find((r: any) => Number((r.details as Record<string, unknown>)?.incidentId) === incidentId);
   if (!hit) return null;
-  return { id: hit.id, incidentId, plan: (hit.details as any).plan as ReconcileProposalPlan, proposedBy: hit.actorId ?? null, at: hit.createdAt };
+  const d = hit.details as any;
+  const reason = String(d.reason ?? "");
+  return {
+    id: hit.id, incidentId, plan: d.plan as ReconcileProposalPlan, proposedBy: hit.actorId ?? null, at: hit.createdAt,
+    reason, preview: (d.preview ?? null) as ReconcilePreview | null, version: d.version ? String(d.version) : null,
+    currentVersion: reconcileProposalVersion({ plan: d.plan, reason, preview: d.preview ?? null }),
+    entityType: hit.entityType as Entity, entityId: hit.entityId,
+  };
+}
+
+/** Aprobación registrada de esa propuesta (la primera), o null. */
+export async function getReconcileApproval(runner: Runner, proposal: { id: number; entityType: Entity; entityId: number }): Promise<{ id: number; version: string; approvedBy: number | null } | null> {
+  const rows = await runner.select().from(crmActivityLog)
+    .where(and(eq(crmActivityLog.action, FISCAL_RECONCILE_APPROVED), eq(crmActivityLog.entityType, proposal.entityType), eq(crmActivityLog.entityId, proposal.entityId)))
+    .orderBy(crmActivityLog.id);
+  const hit = rows.find((r: any) => Number((r.details as Record<string, unknown>)?.proposalId) === proposal.id);
+  if (!hit) return null;
+  return { id: hit.id, version: String((hit.details as any).version ?? ""), approvedBy: hit.actorId ?? null };
+}
+
+/** Separación de funciones: quien propuso no aprueba. Sin proponente identificable también se deniega. */
+export function canApproveProposal(proposedBy: number | null, approverId: number | null | undefined): boolean {
+  return proposedBy != null && approverId != null && proposedBy !== approverId;
 }
