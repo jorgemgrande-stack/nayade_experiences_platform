@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
-import { CAMPAIGN_STATUS_LABEL, type CampaignBlock, type CampaignStatus } from "@shared/connectCampaigns";
+import { AUDIENCE_KIND_LABEL, CAMPAIGN_STATUS_LABEL, type AudienceKind, type CampaignBlock, type CampaignStatus } from "@shared/connectCampaigns";
 
 const STATUS_VARIANT: Record<CampaignStatus, "default" | "secondary" | "destructive" | "outline"> = {
   draft: "outline",
@@ -43,8 +43,10 @@ interface Draft {
   blocks: CampaignBlock[];
   tagIds: number[];
   tagMode: "any" | "all";
+  audienceKind: AudienceKind;
+  newsletterLocale: string | null;
 }
-const EMPTY: Draft = { name: "", subject: "", previewText: "", senderId: null, replyTo: "", blocks: [{ type: "heading", text: "" }, { type: "text", text: "" }], tagIds: [], tagMode: "any" };
+const EMPTY: Draft = { name: "", subject: "", previewText: "", senderId: null, replyTo: "", blocks: [{ type: "heading", text: "" }, { type: "text", text: "" }], tagIds: [], tagMode: "any", audienceKind: "tags", newsletterLocale: null };
 const newBlock = (type: CampaignBlock["type"]): CampaignBlock =>
   type === "heading" || type === "text" ? { type, text: "" } : type === "button" ? { type, label: "", url: "https://" } : type === "image" ? { type, url: "https://", alt: "" } : { type };
 
@@ -112,11 +114,12 @@ function Editor({ id, onClose, onSaved }: { id: number | null; onClose: () => vo
   useEffect(() => {
     const c = existing.data;
     if (c && !loaded) {
-      setD({ name: c.name, subject: c.subject, previewText: c.previewText ?? "", senderId: c.senderId, replyTo: c.replyTo ?? "", blocks: c.blocks, tagIds: c.tagIds, tagMode: c.tagMode });
+      setD({ name: c.name, subject: c.subject, previewText: c.previewText ?? "", senderId: c.senderId, replyTo: c.replyTo ?? "", blocks: c.blocks, tagIds: c.tagIds, tagMode: c.tagMode, audienceKind: c.audienceKind, newsletterLocale: c.newsletterLocale });
       setLoaded(true);
     }
   }, [existing.data, loaded]);
-  const audience = trpc.brevoMarketing.campaigns.audience.useQuery({ tagIds: d.tagIds, tagMode: d.tagMode });
+  const audience = trpc.brevoMarketing.campaigns.audience.useQuery({ tagIds: d.tagIds, tagMode: d.tagMode, audienceKind: d.audienceKind, newsletterLocale: d.newsletterLocale });
+  const lists = trpc.newsletter.lists.useQuery(undefined, { retry: false, enabled: d.audienceKind === "newsletter" });
   const payload = { ...d, previewText: d.previewText || null, replyTo: d.replyTo || null };
   const done = (c: { id: number } | null | undefined) => {
     toast.success("Campaña guardada");
@@ -169,9 +172,22 @@ function Editor({ id, onClose, onSaved }: { id: number | null; onClose: () => vo
 
       <fieldset className="space-y-2 rounded-lg border border-border p-3">
         <legend className="px-1 text-sm font-medium text-foreground">Destinatarios</legend>
-        <p className="text-xs text-muted-foreground">Solo reciben la campaña los clientes con el consentimiento de marketing concedido. Sin etiquetas: todos ellos.</p>
-        {tags.data && !tags.data.length && <p className="text-xs text-muted-foreground">Aún no hay etiquetas en el CRM.</p>}
-        <div className="flex flex-wrap gap-2">
+        <select className={selectClass} aria-label="Tipo de audiencia" value={d.audienceKind} onChange={(e) => setD({ ...d, audienceKind: e.target.value as AudienceKind, newsletterLocale: null })}>
+          {(Object.keys(AUDIENCE_KIND_LABEL) as AudienceKind[]).map((k) => <option key={k} value={k}>{AUDIENCE_KIND_LABEL[k]}</option>)}
+        </select>
+        {d.audienceKind === "newsletter" && (
+          <>
+            <p className="text-xs text-muted-foreground">Solo suscriptores de la newsletter CONFIRMADOS y con el consentimiento de marketing concedido. Bajas, pendientes y contactos históricos quedan fuera.</p>
+            <select className={selectClass} aria-label="Lista de la newsletter" value={d.newsletterLocale ?? ""} onChange={(e) => setD({ ...d, newsletterLocale: e.target.value || null })}>
+              <option value="">Todas las listas (todos los confirmados)</option>
+              {(lists.data ?? []).map((l) => <option key={l.id} value={l.locale}>{l.label} · {l.active} confirmados</option>)}
+            </select>
+            {lists.error && <p className="text-xs text-destructive">No se han podido leer las listas de la newsletter (¿módulo instalado y activo?).</p>}
+          </>
+        )}
+        {d.audienceKind === "tags" && <p className="text-xs text-muted-foreground">Solo reciben la campaña los clientes con el consentimiento de marketing concedido. Sin etiquetas: todos ellos.</p>}
+        {d.audienceKind === "tags" && tags.data && !tags.data.length && <p className="text-xs text-muted-foreground">Aún no hay etiquetas en el CRM.</p>}
+        <div className={d.audienceKind === "tags" ? "flex flex-wrap gap-2" : "hidden"}>
           {(tags.data ?? []).map((t) => {
             const on = d.tagIds.includes(t.id);
             return (
@@ -236,7 +252,7 @@ function Detail({ id, onEdit, onClose }: { id: number; onEdit: () => void; onClo
   });
   const upd = trpc.brevoMarketing.campaigns.refresh.useMutation({ onSuccess: () => (toast.success("Actualizada con los datos de Brevo"), refresh()), onError: (e) => toastError(e) });
   const dup = trpc.brevoMarketing.campaigns.duplicate.useMutation({ onSuccess: () => (toast.success("Copia creada como borrador"), refresh(), onClose()), onError: (e) => toastError(e) });
-  const audience = trpc.brevoMarketing.campaigns.audience.useQuery({ tagIds: q.data?.tagIds ?? [], tagMode: q.data?.tagMode ?? "any" }, { enabled: !!q.data && (q.data.status === "draft" || q.data.status === "failed") });
+  const audience = trpc.brevoMarketing.campaigns.audience.useQuery({ tagIds: q.data?.tagIds ?? [], tagMode: q.data?.tagMode ?? "any", audienceKind: q.data?.audienceKind ?? "tags", newsletterLocale: q.data?.newsletterLocale ?? null }, { enabled: !!q.data && (q.data.status === "draft" || q.data.status === "failed") });
   if (q.isLoading) return <PanelLoading />;
   if (q.error) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
   const c = q.data!;

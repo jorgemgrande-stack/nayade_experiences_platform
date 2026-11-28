@@ -21,6 +21,7 @@ router.get("/api/newsletter/export", requireAdminRole, async (req: Request, res:
     q: str(req.query.q),
     status: str(req.query.status),
     locale: str(req.query.locale),
+    list: str(req.query.list),
     source: str(req.query.source),
     dateField: str(req.query.dateField),
     from: num(req.query.from),
@@ -31,9 +32,10 @@ router.get("/api/newsletter/export", requireAdminRole, async (req: Request, res:
   try {
     const rows = await newsletterService().exportRows(parsed.data, format, { id: Number(user?.id ?? 0), name: String(user?.name ?? user?.email ?? `user:${user?.id ?? 0}`) });
     const stamp = new Date().toISOString().slice(0, 10);
+    const list = parsed.data.list && /^newsletter-[a-z0-9-]{2,12}$/i.test(parsed.data.list) ? parsed.data.list.toLowerCase() : parsed.data.locale ? `newsletter-${parsed.data.locale.toLowerCase()}` : null;
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Disposition", `attachment; filename="suscriptores-newsletter-${stamp}.${format}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${list ? `${list}` : "suscriptores-newsletter"}-${stamp}.${format}"`);
     if (format === "csv") {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       return void res.send(toCsv(rows));

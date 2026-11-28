@@ -12,8 +12,9 @@ import { brandName } from "../tenantBrand";
 import { tenantLegalIdentity } from "../brand/tenantLegal";
 import { tenantVisualKit } from "../brand/tenantVisualKit";
 import type { MailIdentity } from "./core";
-import { NewsletterService, type CrmPort, type MailPort } from "./service";
-import { mysqlNewsletterStore } from "./store";
+import { NewsletterService, type CrmPort, type MailPort, type TenantLocales } from "./service";
+import { NewsletterImporter } from "./import";
+import { mysqlNewsletterStore, NewsletterNotInstalled } from "./store";
 
 type Row = Record<string, unknown>;
 type Tx = { execute: (q: ReturnType<typeof sql>) => Promise<unknown> };
@@ -103,6 +104,20 @@ export function unsubscribeSecrets(): string[] {
   return Array.from(new Set([own.length >= 32 ? own : "", sessionSecret() ?? ""].filter(Boolean)));
 }
 
+/**
+ * Idiomas públicos reales de la web de la empresa (configuración multidioma del Studio). Sin configuración o sin
+ * idiomas adicionales → solo el principal (`es` en una instalación sin multidioma).
+ */
+export async function tenantLocales(): Promise<TenantLocales> {
+  try {
+    const [{ getI18nConfig }, { sqlI18nRepo }, { publicLocales }] = await Promise.all([import("../i18nService"), import("../i18nSqlRepo"), import("../../shared/i18n")]);
+    const cfg = await getI18nConfig(sqlI18nRepo());
+    return { tenantLocales: publicLocales(cfg), defaultLocale: cfg.defaultLocale };
+  } catch {
+    return { tenantLocales: ["es"], defaultLocale: "es" };
+  }
+}
+
 export function newsletterService(): NewsletterService {
   return new NewsletterService({
     store: mysqlNewsletterStore,
@@ -113,6 +128,28 @@ export function newsletterService(): NewsletterService {
     secrets: unsubscribeSecrets,
     baseUrl: publicBaseUrl,
     identity,
+    locales: tenantLocales,
   });
+}
+export function newsletterImporter(): NewsletterImporter {
+  return new NewsletterImporter(mysqlNewsletterStore, tenantLocales, () => Date.now());
+}
+
+/**
+ * Gancho del CRM: al retirarse el consentimiento de marketing de un cliente (Brevo marketing, baja pública o leída de
+ * Brevo), el suscriptor activo o pendiente con ese cliente o correo queda de baja. Tolerante: sin newsletter instalada o
+ * sin BD no hace nada ni lanza.
+ */
+export async function onCrmConsentWithdrawn(clientId: number): Promise<{ unsubscribed: number }> {
+  try {
+    const db = await getDb();
+    if (!db) return { unsubscribed: 0 };
+    const row = rowsOf(await db.execute(sql`SELECT email FROM clients WHERE id = ${clientId} LIMIT 1`))[0];
+    const email = row?.email == null ? null : String(row.email);
+    return await newsletterService().onCrmWithdrawn(clientId, email);
+  } catch (e) {
+    if (!(e instanceof NewsletterNotInstalled)) console.error(JSON.stringify({ ctx: "Newsletter", event: "crm_withdrawn_hook_error", error: e instanceof Error ? e.message.slice(0, 200) : "error" }));
+    return { unsubscribed: 0 };
+  }
 }
 export const ipSecret = () => ENV.cookieSecret;

@@ -24,8 +24,16 @@ export function brevoMarketingService(): BrevoMarketingService {
       apiKey: async () => (await getVault().resolve(BREVO_PROVIDER)).apiKey || null,
       clear: () => getVault().clear(BREVO_PROVIDER),
     },
-    // Elephant Campaigns: una retirada saca el correo de las listas de las campañas aún no enviadas (import diferido: ciclo)
-    onWithdrawn: async (clientId, o) => (await import("../connectCampaigns/runtime")).campaignService().onWithdrawn(clientId, o),
+    // Elephant Campaigns: una retirada saca el correo de las listas de las campañas aún no enviadas (import diferido: ciclo).
+    // Newsletter: el suscriptor activo con ese cliente/correo queda de baja (tolerante si el módulo no está instalado).
+    onWithdrawn: async (clientId, o) => {
+      const [campaigns, newsletter] = await Promise.allSettled([
+        (await import("../connectCampaigns/runtime")).campaignService().onWithdrawn(clientId, o),
+        (await import("../newsletter/runtime")).onCrmConsentWithdrawn(clientId),
+      ]);
+      if (campaigns.status === "rejected") throw campaigns.reason;
+      return { campaigns: campaigns.value, newsletter: newsletter.status === "fulfilled" ? newsletter.value : { unsubscribed: 0 } };
+    },
     licensed: async () => {
       try {
         return (await getCapabilityAccess().check(BREVO_CAPABILITY, { write: true })).allowed;

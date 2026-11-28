@@ -35,7 +35,7 @@ describe("bloque newsletter", () => {
     expect(src).toContain("useState(false)"); // consent
     expect(src).toContain("if (!consent)");
     expect(src).not.toMatch(/defaultChecked|checked=\{true\}/);
-    expect(src).toContain("newsletter.subscribe");
+    expect(src).toContain("/api/newsletter/subscribe");
     expect(src).toContain('name="website"'); // campo trampa
     expect(src).toContain("elapsedMs");
   });

@@ -19,9 +19,10 @@
 import { BrevoApiError, BrevoBudgetExceeded, BrevoMarketingClient, IMPORT_BATCH, LIST_PAGE, REMOVE_BATCH, type BrevoCampaignInput, type FetchLike } from "../brevoMarketing/client";
 import { chunk } from "../brevoMarketing/plan";
 import type { BrevoMarketingStore } from "../brevoMarketing/store";
-import { checkBlocks, missingForSend, NAME_MAX, PREVIEW_MAX, SUBJECT_MAX, type CampaignBlock } from "../../shared/connectCampaigns";
+import { checkBlocks, missingForSend, NAME_MAX, PREVIEW_MAX, SUBJECT_MAX, type AudienceKind, type CampaignBlock } from "../../shared/connectCampaigns";
+import { normalizeLocale } from "../../shared/i18n";
 import { FOLDER_NAME, MAX_CALLS_PER_STEP, MAX_RECIPIENTS, UNSUB_ATTRIBUTE, UNSUB_TAG, checkSchedule, importsState, planAudience, testErrorMessage } from "./plan";
-import type { Campaign, CampaignStore, DraftInput, TagMode } from "./store";
+import type { AudienceOptions, Campaign, CampaignStore, DraftInput, TagMode } from "./store";
 
 export class CampaignError extends Error {
   constructor(
@@ -59,7 +60,12 @@ export interface DraftPayload {
   blocks: unknown;
   tagIds: number[];
   tagMode: TagMode;
+  /** Por defecto `tags` (las campañas existentes siguen por etiquetas). */
+  audienceKind?: AudienceKind | null;
+  /** Con `newsletter`: idioma de la lista o null = todos los confirmados. */
+  newsletterLocale?: string | null;
 }
+const audienceOf = (c: Pick<Campaign, "audienceKind" | "newsletterLocale">): AudienceOptions => ({ kind: c.audienceKind, newsletterLocale: c.newsletterLocale });
 
 const STATS_EVERY_MS = 60 * 60_000;
 /** Una preparación sin lista de Brevo pasado este plazo se da por interrumpida. */
@@ -116,9 +122,9 @@ export class CampaignService {
     return { ...c, events: await this.d.store.events(id) };
   }
 
-  /** Cuántos recibirían la campaña ahora (segmento ∩ consentimiento), sin llamar a Brevo. */
-  async audience(tagIds: number[], mode: TagMode) {
-    const a = planAudience(await this.d.store.audience(tagIds, mode), await this.d.store.withdrawnEmails());
+  /** Cuántos recibirían la campaña ahora (segmento ∩ consentimiento; por lista de la newsletter si se pide), sin llamar a Brevo. */
+  async audience(tagIds: number[], mode: TagMode, opts: AudienceOptions = {}) {
+    const a = planAudience(await this.d.store.audience(tagIds, mode, opts), await this.d.store.withdrawnEmails());
     return { recipients: a.recipients.length, skipped: a.skipped, withdrawn: a.withdrawn, tooMany: a.recipients.length > MAX_RECIPIENTS, max: MAX_RECIPIENTS };
   }
 
@@ -155,7 +161,15 @@ export class CampaignService {
       senderEmail = s.email;
     }
     const tagIds = Array.from(new Set(p.tagIds.filter((t) => Number.isInteger(t) && t > 0))).slice(0, 20);
+    const audienceKind: AudienceKind = p.audienceKind === "newsletter" ? "newsletter" : "tags";
+    let newsletterLocale: string | null = null;
+    if (audienceKind === "newsletter" && p.newsletterLocale) {
+      newsletterLocale = normalizeLocale(p.newsletterLocale);
+      if (!newsletterLocale) throw new CampaignError("invalid_input", "El idioma de la lista de la newsletter no es válido");
+    }
     return {
+      audienceKind,
+      newsletterLocale,
       name,
       subject: p.subject.replace(/[\r\n]+/g, " ").trim().slice(0, SUBJECT_MAX),
       previewText: (p.previewText ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, PREVIEW_MAX) || null,
@@ -186,7 +200,7 @@ export class CampaignService {
   async duplicate(id: number, actor: string) {
     const c = await this.must(id);
     const nid = await this.d.store.create(
-      { name: `${c.name} (copia)`.slice(0, NAME_MAX), subject: c.subject, previewText: c.previewText, senderId: c.senderId, senderName: c.senderName, senderEmail: c.senderEmail, replyTo: c.replyTo, blocks: c.blocks, tagIds: c.tagIds, tagMode: c.tagMode },
+      { name: `${c.name} (copia)`.slice(0, NAME_MAX), subject: c.subject, previewText: c.previewText, senderId: c.senderId, senderName: c.senderName, senderEmail: c.senderEmail, replyTo: c.replyTo, blocks: c.blocks, tagIds: c.tagIds, tagMode: c.tagMode, audienceKind: c.audienceKind, newsletterLocale: c.newsletterLocale },
       actor,
     );
     await this.d.store.event(nid, "created", `Copia de la campaña ${id}`, actor);
@@ -284,8 +298,8 @@ export class CampaignService {
         throw new CampaignError("invalid_input", (e as Error).message);
       }
     }
-    const aud = planAudience(await this.d.store.audience(c.tagIds, c.tagMode), await this.d.store.withdrawnEmails());
-    if (!aud.recipients.length) throw new CampaignError("invalid_input", "Nadie del segmento tiene el consentimiento de marketing concedido");
+    const aud = planAudience(await this.d.store.audience(c.tagIds, c.tagMode, audienceOf(c)), await this.d.store.withdrawnEmails());
+    if (!aud.recipients.length) throw new CampaignError("invalid_input", c.audienceKind === "newsletter" ? "Ningún suscriptor confirmado de esa lista de la newsletter tiene el consentimiento de marketing concedido" : "Nadie del segmento tiene el consentimiento de marketing concedido");
     if (aud.recipients.length > MAX_RECIPIENTS) throw new CampaignError("invalid_input", `El segmento tiene ${aud.recipients.length} contactos: el máximo por campaña es ${MAX_RECIPIENTS}`);
     const client = await this.client();
     if (!(await this.d.store.claimLaunch(id, when.at, actor))) throw new CampaignError("conflict", "Esta campaña ya se está enviando o se envió");
@@ -330,7 +344,7 @@ export class CampaignService {
   private async reconcile(client: BrevoMarketingClient, c: Campaign, actor: string): Promise<number> {
     const listId = c.brevoListId!;
     const active = await this.d.store.activeRecipients(c.id, listId);
-    const aud = planAudience(await this.d.store.audience(c.tagIds, c.tagMode), await this.d.store.withdrawnEmails());
+    const aud = planAudience(await this.d.store.audience(c.tagIds, c.tagMode, audienceOf(c)), await this.d.store.withdrawnEmails());
     const ok = new Set(aud.recipients.map((r) => `${r.clientId}:${r.email}`));
     const gone = active.filter((r) => !ok.has(`${r.clientId}:${r.email}`));
     for (const batch of chunk(gone, REMOVE_BATCH)) {

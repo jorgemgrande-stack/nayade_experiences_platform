@@ -4,58 +4,9 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import * as XLSX from "xlsx";
-import { CONFIRM_COOLDOWN_MS, CONFIRM_TTL_MS, normalizeEmail, renderMail, resolveTemplate, safeCell, sha256, toCsv, toXlsx, unsubscribeToken, verifyUnsubscribeToken, DEFAULT_WELCOME, type ExportRow, type Locale } from "./newsletter/core";
-import { NewsletterError, NewsletterService, type CrmPort, type ListFilters, type ListQuery, type MailLogEntry, type MailPort, type NewsletterStore, type Settings, type Subscriber, type SubscriberEvent } from "./newsletter/service";
-
-class MemoryStore implements NewsletterStore {
-  settingsRow: Settings = { enabled: true, publicEnabled: true, templates: {} };
-  subs: Subscriber[] = [];
-  evs: Array<SubscriberEvent & { subscriberId: number }> = [];
-  mailRows: Array<MailLogEntry & { subscriberId: number; key: string }> = [];
-  exports: unknown[] = [];
-  private seq = 0;
-  async settings() { return { ...this.settingsRow }; }
-  async saveSettings(p: Partial<Settings>) { this.settingsRow = { ...this.settingsRow, ...p }; }
-  async byEmail(e: string) { return this.subs.find((s) => s.email === e) ?? null; }
-  async byId(id: number) { return this.subs.find((s) => s.id === id) ?? null; }
-  private tokens = new Map<number, string>();
-  async byTokenHash(h: string) { for (const [id, t] of this.tokens) if (t === h) return this.subs.find((s) => s.id === id) ?? null; return null; }
-  async insert(x: Parameters<NewsletterStore["insert"]>[0]) {
-    if (this.subs.some((s) => s.email === x.email)) return null;
-    const id = ++this.seq;
-    this.subs.push({ id, email: x.email, status: "pending", locale: x.locale, source: x.source, page: x.page, clientId: null, consentText: x.consentText, consentVersion: x.consentVersion, consentAt: x.now, confirmExpiresAt: x.expiresAt, confirmSentCount: 0, lastConfirmSentAt: null, confirmedAt: null, unsubscribedAt: null, unsubscribedBy: null, welcomeSentAt: null, crmSyncError: null, createdAt: x.now, updatedAt: x.now });
-    this.tokens.set(id, x.tokenHash);
-    return id;
-  }
-  async restart(id: number, x: Parameters<NewsletterStore["restart"]>[1]) {
-    const s = this.subs.find((r) => r.id === id)!;
-    Object.assign(s, { status: "pending", locale: x.locale, source: x.source, consentText: x.consentText, consentVersion: x.consentVersion, consentAt: x.now, confirmExpiresAt: x.expiresAt, confirmSentCount: 0, lastConfirmSentAt: null, confirmedAt: null, unsubscribedAt: null, unsubscribedBy: null, welcomeSentAt: null });
-    this.tokens.set(id, x.tokenHash);
-  }
-  async refreshToken(id: number, h: string, exp: number) { this.tokens.set(id, h); this.subs.find((s) => s.id === id)!.confirmExpiresAt = exp; }
-  async touchConfirm(id: number, now: number) { const s = this.subs.find((r) => r.id === id)!; s.confirmSentCount++; s.lastConfirmSentAt = now; }
-  async activate(id: number, now: number) { const s = this.subs.find((r) => r.id === id)!; if (s.status !== "pending") return false; s.status = "active"; s.confirmedAt = now; this.tokens.delete(id); return true; }
-  async deactivate(id: number, by: string, now: number) { const s = this.subs.find((r) => r.id === id)!; if (s.status === "unsubscribed") return false; s.status = "unsubscribed"; s.unsubscribedAt = now; s.unsubscribedBy = by; this.tokens.delete(id); return true; }
-  async patch(id: number, p: { locale?: Locale; clientId?: number | null; welcomeSentAt?: number | null; crmSyncError?: string | null }) { Object.assign(this.subs.find((r) => r.id === id)!, p); }
-  async addEvent(id: number, e: { action: string; consentText?: string | null; consentVersion?: string | null; actor: string; detail?: string | null }, now: number) { this.evs.push({ id: this.evs.length + 1, subscriberId: id, action: e.action, consentText: e.consentText ?? null, consentVersion: e.consentVersion ?? null, actor: e.actor, detail: e.detail ?? null, at: now }); }
-  async events(id: number) { return this.evs.filter((e) => e.subscriberId === id); }
-  async reserveMail(id: number, kind: "confirm" | "welcome", key: string, now: number) {
-    if (this.mailRows.some((m) => m.key === key)) return false;
-    this.mailRows.push({ id: this.mailRows.length + 1, subscriberId: id, key, kind, status: "sending", error: null, at: now, finishedAt: null });
-    return true;
-  }
-  async finishMail(key: string, status: "sent" | "failed", error: string | null, now: number) { const m = this.mailRows.find((r) => r.key === key)!; m.status = status; m.error = error; m.finishedAt = now; }
-  async mails(id: number) { return this.mailRows.filter((m) => m.subscriberId === id); }
-  private match(f: ListFilters, s: Subscriber) {
-    return (!f.q || s.email.includes(f.q.toLowerCase())) && (!f.status || s.status === f.status) && (!f.locale || s.locale === f.locale) && (!f.source || s.source === f.source);
-  }
-  async list(q: ListQuery) { const rows = this.subs.filter((s) => this.match(q, s)); return { rows: rows.slice((q.page - 1) * q.pageSize, q.page * q.pageSize), total: rows.length }; }
-  async all(f: ListFilters, limit: number) { return this.subs.filter((s) => this.match(f, s)).slice(0, limit); }
-  async stats() { const c = (st: string) => this.subs.filter((s) => s.status === st).length; return { active: c("active"), pending: c("pending"), unsubscribed: c("unsubscribed"), total: this.subs.length, joined7d: 0, joined30d: 0, left30d: 0 }; }
-  async facets() { return { locales: [...new Set(this.subs.map((s) => s.locale))], sources: [...new Set(this.subs.map((s) => s.source))] }; }
-  async recentSignups(since: number) { return this.subs.filter((s) => s.createdAt >= since).length; }
-  async recordExport(e: unknown) { this.exports.push(e); }
-}
+import { CONFIRM_COOLDOWN_MS, CONFIRM_TTL_MS, normalizeEmail, renderMail, resolveTemplate, safeCell, sha256, toCsv, toXlsx, unsubscribeToken, verifyUnsubscribeToken, DEFAULT_WELCOME, type ExportRow } from "./newsletter/core";
+import { NewsletterError, NewsletterService, type CrmPort, type MailPort } from "./newsletter/service";
+import { MemoryNewsletterStore as MemoryStore } from "./newsletter/memoryStore";
 
 class FakeCrm implements CrmPort {
   clients = new Map<string, number>();
@@ -340,9 +291,9 @@ describe("correos", () => {
 
 describe("exportación", () => {
   const rows: ExportRow[] = [
-    { email: "ana@example.com", status: "active", source: "web:inicio", locale: "es", createdAt: Date.UTC(2026, 10, 1, 10, 0, 0), confirmedAt: Date.UTC(2026, 10, 1, 10, 5, 0), unsubscribedAt: null, consentVersion: "abc123def456" },
-    { email: "=HYPERLINK(\"http://x\")@evil.com", status: "pending", source: "+cmd", locale: "de", createdAt: Date.UTC(2026, 10, 2), confirmedAt: null, unsubscribedAt: null, consentVersion: null },
-    { email: "mártir@ñandú.es", status: "unsubscribed", source: "@web", locale: "es", createdAt: Date.UTC(2026, 10, 3), confirmedAt: Date.UTC(2026, 10, 3), unsubscribedAt: Date.UTC(2026, 10, 4), consentVersion: "z" },
+    { email: "ana@example.com", status: "active", source: "web:inicio", locale: "es", signupLocale: "es", name: "Ana", createdAt: Date.UTC(2026, 10, 1, 10, 0, 0), confirmedAt: Date.UTC(2026, 10, 1, 10, 5, 0), unsubscribedAt: null, consentVersion: "abc123def456" },
+    { email: "=HYPERLINK(\"http://x\")@evil.com", status: "pending", source: "+cmd", locale: "de", signupLocale: "de", name: "=cmd", createdAt: Date.UTC(2026, 10, 2), confirmedAt: null, unsubscribedAt: null, consentVersion: null },
+    { email: "mártir@ñandú.es", status: "unsubscribed", source: "@web", locale: "es", signupLocale: null, name: null, createdAt: Date.UTC(2026, 10, 3), confirmedAt: Date.UTC(2026, 10, 3), unsubscribedAt: Date.UTC(2026, 10, 4), consentVersion: "z" },
   ];
   it("CSV: BOM UTF-8, separador «;», acentos intactos y fórmulas neutralizadas", () => {
     const csv = toCsv(rows);
@@ -359,7 +310,7 @@ describe("exportación", () => {
     const wb = XLSX.read(toXlsx(rows), { type: "buffer" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const data = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1 });
-    expect(data[0]).toEqual(["Email", "Estado", "Origen", "Idioma", "Fecha de inscripción", "Fecha de confirmación", "Fecha de baja", "Versión del texto aceptado"]);
+    expect(data[0]).toEqual(["Email", "Estado", "Origen", "Idioma", "Fecha de inscripción", "Fecha de confirmación", "Fecha de baja", "Versión del texto aceptado", "Idioma de alta", "Nombre"]);
     expect(data[1][0]).toBe("ana@example.com");
     expect(data[2][0]).toBe(`'=HYPERLINK("http://x")@evil.com`);
     expect(data[3][0]).toBe("mártir@ñandú.es");
@@ -383,7 +334,7 @@ describe("exportación", () => {
     expect(out).toHaveLength(15);
     expect(out.every((r) => r.locale === "de")).toBe(true);
     expect(store.exports).toEqual([{ actorId: 5, actor: "Admin", format: "csv", rows: 15, filters: '{"locale":"de"}' }]);
-    expect(Object.keys(out[0]).sort()).toEqual(["confirmedAt", "consentVersion", "createdAt", "email", "locale", "source", "status", "unsubscribedAt"]);
+    expect(Object.keys(out[0]).sort()).toEqual(["confirmedAt", "consentVersion", "createdAt", "email", "locale", "name", "signupLocale", "source", "status", "unsubscribedAt"]);
   });
 });
 

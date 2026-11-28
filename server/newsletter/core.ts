@@ -17,10 +17,25 @@ export const CONFIRM_TTL_MS = 48 * 60 * 60 * 1000;
 /** Mínimo entre dos correos de confirmación al mismo correo, y tope por suscripción. */
 export const CONFIRM_COOLDOWN_MS = 2 * 60 * 1000;
 export const CONFIRM_MAX_SENDS = 5;
+/** Idiomas con PLANTILLA de correo propia (los idiomas de los suscriptores son los públicos de la empresa, sin tope). */
 export const LOCALES = ["de", "es", "en"] as const;
 export type Locale = (typeof LOCALES)[number];
-export type SubscriberStatus = "pending" | "active" | "unsubscribed";
-export const STATUSES: readonly SubscriberStatus[] = ["pending", "active", "unsubscribed"];
+/** `imported`: contacto histórico sin consentimiento comercial acreditado (nunca recibe correos). */
+export type SubscriberStatus = "pending" | "active" | "unsubscribed" | "imported";
+export const STATUSES: readonly SubscriberStatus[] = ["pending", "active", "unsubscribed", "imported"];
+export const STATUS_ES: Record<SubscriberStatus, string> = { pending: "Pendiente", active: "Activo", unsubscribed: "Baja", imported: "Histórico (sin consentimiento)" };
+
+/**
+ * Idioma de plantilla para un idioma de suscriptor: el suyo si tiene plantilla; si no, el principal de la empresa si la
+ * tiene; si no, alemán (plantilla de fábrica de referencia).
+ */
+export function templateLocale(locale: unknown, tenantDefault?: unknown): Locale {
+  const pick = (raw: unknown): Locale | null => {
+    const l = typeof raw === "string" ? raw.trim().toLowerCase().split(/[-_]/)[0] : "";
+    return (LOCALES as readonly string[]).includes(l) ? (l as Locale) : null;
+  };
+  return pick(locale) ?? pick(tenantDefault) ?? "de";
+}
 
 // ── Correo ──
 const EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
@@ -114,9 +129,10 @@ export const BUTTON: Record<Locale, { confirm: string; unsub: string; why: strin
 };
 
 /** Plantilla efectiva: la guardada por la empresa o, en su defecto, la de fábrica (por campo). */
-export function resolveTemplate(kind: "welcome" | "confirm", locale: Locale, json: TemplatesJson | null | undefined): MailTemplate {
-  const base = (kind === "welcome" ? DEFAULT_WELCOME : DEFAULT_CONFIRM)[locale];
-  const mine = json?.[kind]?.[locale];
+export function resolveTemplate(kind: "welcome" | "confirm", locale: string, json: TemplatesJson | null | undefined, tenantDefault?: string): MailTemplate {
+  const l = templateLocale(locale, tenantDefault);
+  const base = (kind === "welcome" ? DEFAULT_WELCOME : DEFAULT_CONFIRM)[l];
+  const mine = json?.[kind]?.[l];
   return { subject: cleanText(mine?.subject, 200) || base.subject, body: (typeof mine?.body === "string" ? mine.body : "").slice(0, 6000).trim() || base.body };
 }
 
@@ -144,8 +160,8 @@ export interface RenderedMail {
 }
 
 /** Correo con la identidad de la empresa. `button`: enlace de acción (confirmación). `unsubscribeUrl`: pie de baja. */
-export function renderMail(t: MailTemplate, locale: Locale, id: MailIdentity, o: { buttonUrl?: string; unsubscribeUrl?: string }): RenderedMail {
-  const L = BUTTON[locale];
+export function renderMail(t: MailTemplate, locale: string, id: MailIdentity, o: { buttonUrl?: string; unsubscribeUrl?: string; tenantDefault?: string }): RenderedMail {
+  const L = BUTTON[templateLocale(locale, o.tenantDefault)];
   const kit = id.kit ?? minimalKit({ brand: id.brand, legalLine: id.legalLine, logoUrl: id.logoUrl });
   const body = paragraphs(t.body);
   const site = kit.links.site(locale);
@@ -173,20 +189,21 @@ export interface ExportRow {
   status: SubscriberStatus;
   source: string;
   locale: string;
+  signupLocale: string | null;
+  name: string | null;
   createdAt: number;
   confirmedAt: number | null;
   unsubscribedAt: number | null;
   consentVersion: string | null;
 }
-export const EXPORT_HEADERS = ["Email", "Estado", "Origen", "Idioma", "Fecha de inscripción", "Fecha de confirmación", "Fecha de baja", "Versión del texto aceptado"] as const;
-const STATUS_ES: Record<SubscriberStatus, string> = { pending: "Pendiente", active: "Activo", unsubscribed: "Baja" };
+export const EXPORT_HEADERS = ["Email", "Estado", "Origen", "Idioma", "Fecha de inscripción", "Fecha de confirmación", "Fecha de baja", "Versión del texto aceptado", "Idioma de alta", "Nombre"] as const;
 const isoDate = (ms: number | null) => (ms ? new Date(ms).toISOString().replace("T", " ").slice(0, 19) : "");
 
 /** Neutraliza la inyección de fórmulas: una celda que empieza por = + - @ tabulador o retorno se antepone con ' */
 export function safeCell(v: string): string {
   return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
 }
-const toCells = (r: ExportRow): string[] => [r.email, STATUS_ES[r.status] ?? r.status, r.source, r.locale, isoDate(r.createdAt), isoDate(r.confirmedAt), isoDate(r.unsubscribedAt), r.consentVersion ?? ""].map((c) => safeCell(c));
+const toCells = (r: ExportRow): string[] => [r.email, STATUS_ES[r.status] ?? r.status, r.source, r.locale, isoDate(r.createdAt), isoDate(r.confirmedAt), isoDate(r.unsubscribedAt), r.consentVersion ?? "", r.signupLocale ?? "", r.name ?? ""].map((c) => safeCell(c));
 
 /** CSV para Excel en español: UTF-8 con BOM, separador «;» y comillas dobles. */
 export function toCsv(rows: ExportRow[]): string {
@@ -205,7 +222,7 @@ export function toXlsx(rows: ExportRow[]): Buffer {
       delete (c as { f?: string }).f;
     }
   }
-  ws["!cols"] = [{ wch: 36 }, { wch: 12 }, { wch: 22 }, { wch: 8 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 18 }];
+  ws["!cols"] = [{ wch: 36 }, { wch: 12 }, { wch: 22 }, { wch: 8 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 12 }, { wch: 28 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Suscriptores");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;

@@ -24,3 +24,8 @@ export const panelTextNow = (es: string): string => panelText(es, getCurrentLoca
 
 /** Etiqueta BCP-47 del idioma publicado (código que no es un hook). */
 export const panelTagNow = (): string => LOCALE_META[getCurrentLocale()].tag;
+
+/** Idioma de la interfaz (`es` | `de`), para nombres de idioma con `Intl.DisplayNames` y etiquetas por idioma. */
+export function usePanelLocale(): "es" | "de" {
+  return useI18n().locale;
+}
