@@ -285,6 +285,7 @@ import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
 import { blogRouter } from "./routers/blog";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs, CounterResetError } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
+import { runNumberingAudit } from "./numberingAudit";
 import { integrationEnv } from "./_core/tenantConfig";
 import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
 import { sampleUrl } from "./_core/productIdentity";
@@ -3622,6 +3623,9 @@ export const appRouter = router({
     getCounters: adminProcedure.query(async () => {
       return getAllCounters();
     }),
+
+    /** Auditoría de numeración de SOLO LECTURA (agregados por serie/año, sin datos personales). Ver docs/elephant-source/AUDITORIA_NUMERACION.md */
+    auditSeries: adminProcedure.query(async () => runNumberingAudit()),
 
     /** Actualizar el prefijo de una serie */
     updatePrefix: adminProcedure
