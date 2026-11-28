@@ -132,6 +132,8 @@ export async function finalizePaidShopOrder(merchantOrder: string, paymentMethod
   if (await (await import("./learningLicense")).learningLicensed()) await (await import("./learningFlow")).grantLearningFromOrder(merchantOrder);
   // Ampliaciones de acceso por módulo compradas desde el aula (idempotente y sin lanzar)
   await (await import("./learningExtensions")).applyExtensionsForOrder(merchantOrder);
+  // Sesiones recurrentes de compra permanente (MORNING IMPULSE): derecho de participación y aviso (idempotente y sin lanzar)
+  await (await import("./recurringSessionsDb")).grantRecurringFromOrder(merchantOrder);
   const existing = rows.find((r) => r.invoiceId);
   if (existing) return { clientId, invoiceId: existing.invoiceId, invoiceNumber: existing.invoiceNumber, created: false };
 

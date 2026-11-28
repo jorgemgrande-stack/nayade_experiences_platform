@@ -288,6 +288,7 @@ const DiscountCodesManager = lazy(() => import("./pages/DiscountCodesManager"));
 const CuponesManager = lazy(() => import("./pages/admin/marketing/CuponesManager"));
 const BrevoMarketing = lazy(() => import("./pages/admin/marketing/BrevoMarketing"));
 const NewsletterSuscriptores = lazy(() => import("./pages/admin/newsletter/Suscriptores"));
+const SesionesRecurrentes = lazy(() => import("./pages/admin/recurring/SesionesRecurrentes"));
 const Campanas = lazy(() => import("./pages/admin/marketing/Campanas"));
 const GeoControl = lazy(() => import("./pages/admin/marketing/GeoControl"));
 const SeoControl = lazy(() => import("./pages/admin/marketing/SeoControl"));
@@ -518,6 +519,7 @@ function Router() {
       <Route path="/admin/marketing/brevo">{() => <Suspense fallback={<AdminLoadingFallback />}><BrevoMarketing /></Suspense>}</Route>
       <Route path="/admin/newsletter">{() => <Suspense fallback={<AdminLoadingFallback />}><NewsletterSuscriptores /></Suspense>}</Route>
       <Route path="/admin/newsletter/suscriptores">{() => <Suspense fallback={<AdminLoadingFallback />}><NewsletterSuscriptores /></Suspense>}</Route>
+      <Route path="/admin/productos/sesiones-recurrentes">{() => <Suspense fallback={<AdminLoadingFallback />}><SesionesRecurrentes /></Suspense>}</Route>
       <Route path="/admin/marketing/campanas">{() => <Suspense fallback={<AdminLoadingFallback />}><Campanas /></Suspense>}</Route>
       <Route path="/admin/marketing/geo">{() => <Suspense fallback={<AdminLoadingFallback />}><GeoControl /></Suspense>}</Route>
       <Route path="/admin/marketing/seo">{() => <Suspense fallback={<AdminLoadingFallback />}><SeoControl /></Suspense>}</Route>
