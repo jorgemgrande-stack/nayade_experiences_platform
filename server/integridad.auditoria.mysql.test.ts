@@ -45,10 +45,33 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
   // Un nombre distinto por prueba: la restricción se valida contra las filas ya existentes
   const failName = () => `Fallo Inyectado ${++seq}`;
 
+  /** Reconciliar = proponer (admin 1) + aprobar (admin 2, distinto) + aplicar con confirmación expresa. */
+  let adm2 = "";
+  const admin2Email = `admin2.${TAG}@ejemplo.invalid`;
+  const propose = (incidentId: number, cookie = adm, reason = "Pago cobrado sin factura: regularizar") => ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId, reason }, cookie);
+  const approve = (incidentId: number, proposalId: number, version: string, cookie = adm2) => ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId, proposalId, version }, cookie);
+  const applyRec = (incidentId: number, proposalId: number, cookie = adm) => ess.m("a", "crm.fiscalIncidents.applyReconciliation", { incidentId, proposalId, confirm: true }, cookie);
+  const rows = async (quoteId: number, action: string) => (await ess.sql("a", "SELECT id, actorId, details FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = ? ORDER BY id", [quoteId, action]))
+    .map((r: any) => ({ ...r, actorId: r.actorId == null ? null : Number(r.actorId), details: typeof r.details === "string" ? JSON.parse(r.details) : r.details }));
+  const reconcile = async (incidentId: number, cookie = adm) => {
+    const p = await propose(incidentId, cookie);
+    if (p.status !== 200 || (data(p) as any).status !== "proposal_pending") return p;
+    const pid = Number((data(p) as any).proposalId);
+    const a = await approve(incidentId, pid, (data(p) as any).version);
+    if (a.status !== 200 || (data(a) as any).status !== "approved") return a;
+    return applyRec(incidentId, pid, cookie);
+  };
+
   beforeAll(async () => {
     ess = await startEssentialApp(URL_!, "integr");
     adm = await ess.login("a", "admin");
     ag = await ess.login("a", "agente");
+    // Segundo administrador (distinto del primero) para la separación de funciones
+    const bcrypt = (await import("bcryptjs")).default;
+    await ess.sql("a", "INSERT INTO users (openId, name, email, loginMethod, role, isActive, passwordHash, inviteAccepted) VALUES (?, 'Usuario admin2', ?, 'local', 'admin', 1, ?, 1)", [`local_admin2_${TAG}`, admin2Email, await bcrypt.hash("clave-admin2-prueba", 4)]);
+    const l2 = await ess.call("a", "POST", "/api/auth/login", { body: { email: admin2Email, password: "clave-admin2-prueba" } });
+    if (l2.status !== 200 || !l2.cookie) throw new Error(`login admin2: ${l2.status}`);
+    adm2 = l2.cookie;
     await ess.markPaid("a");
     ok(await ess.m("a", "products.createCategory", { slug: "servicios", name: "Servicios" }, adm), "categoría");
     ok(await ess.m("a", "products.createLocation", { slug: "online", name: "Online" }, adm), "lugar");
@@ -398,6 +421,570 @@ describe.skipIf(!URL_)("Integridad funcional del circuito presupuesto → cobro 
       expect(await counterOf()).toBe(before);
       const trace = await ess.sql("a", "SELECT action FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'payment_confirmed_without_invoice'", [q]);
       expect(trace.length).toBe(1);
+    });
+  });
+
+  // ───────────────────────── 2d. Una sola reserva por operación comercial ─────────────────────────
+  describe("2d. convertToReservation y cobro: UNA reserva por presupuesto", () => {
+    const live = async (q: number) => ess.sql("a", "SELECT id, status, quote_id AS quoteId, invoiceId, amount_paid AS amountPaid FROM reservations WHERE quote_id = ? AND status <> 'cancelled' ORDER BY id", [q]);
+    const convert = (q: number) => ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm);
+    const counterOfRes = async () => Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM reservations"))[0].n);
+
+    it("REGRESIÓN: convertir a reserva y luego cobrar (efectivo) → la MISMA reserva pasa a pagada, enlazada a la factura; no hay segunda", async () => {
+      const q = await freshQuote();
+      ok(await convert(q), "convertir");
+      const before = await live(q);
+      expect(before.length).toBe(1);
+      expect(before[0].status).toBe("pending_payment");
+      ok(await pay(q), "cobrar");
+      const after = await live(q);
+      expect(after.length).toBe(1);
+      expect(after[0].id).toBe(before[0].id);
+      expect(after[0].status).toBe("paid");
+      const inv = await invoicesOf(q);
+      expect(inv.length).toBe(1);
+      expect(Number(inv[0].reservationId)).toBe(Number(before[0].id));
+      expect(Number(after[0].invoiceId)).toBe(Number(inv[0].id));
+    });
+
+    it("REGRESIÓN: convertir y luego confirmar transferencia → una sola reserva, pagada", async () => {
+      const q = await freshQuote();
+      ok(await convert(q), "convertir");
+      await ess.sql("a", "UPDATE quotes SET transfer_proof_url = ? WHERE id = ?", ["https://ejemplo.invalid/justificante.pdf", q]);
+      ok(await ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q }, adm), "transferencia");
+      const after = await live(q);
+      expect(after.length).toBe(1);
+      expect(after[0].status).toBe("paid");
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("REGRESIÓN (orden inverso): cobrar y luego convertir → no crea otra reserva y devuelve la existente", async () => {
+      const q = await freshQuote();
+      ok(await pay(q), "cobrar");
+      const before = await live(q);
+      expect(before.length).toBe(1);
+      const r = ok(await convert(q), "convertir tras cobrar");
+      expect(Number(r.reservationId)).toBe(Number(before[0].id));
+      expect((await live(q)).length).toBe(1);
+    });
+
+    it("simultáneo: 3 conversiones + 3 cobros a la vez (3 rondas) → UNA reserva viva y UNA factura", async () => {
+      for (let round = 0; round < 3; round++) {
+        const q = await freshQuote();
+        await Promise.all([convert(q), convert(q), convert(q), pay(q), pay(q), pay(q)]);
+        const rs = await live(q);
+        log("convertir+cobrar simultáneo", { reservas: rs.length, estado: rs.map((r: any) => r.status) });
+        expect(rs.length).toBe(1);
+        expect((await invoicesOf(q)).length).toBe(1);
+      }
+    });
+
+    it("CASO LEGÍTIMO: cobrar sin convertir antes sigue creando exactamente una reserva, ya enlazada al presupuesto", async () => {
+      const q = await freshQuote();
+      ok(await pay(q), "cobrar");
+      const rs = await live(q);
+      expect(rs.length).toBe(1);
+      expect(rs[0].status).toBe("paid");
+      expect(Number(rs[0].quoteId)).toBe(q);
+    });
+
+    it("fallo al facturar tras convertir: la reserva pendiente queda intacta, sin número de factura consumido, y el reintento completa con la misma reserva", async () => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await convert(q), "convertir");
+      const before = await live(q);
+      const counter = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
+      const c0 = await counter();
+      await ess.sql("a", `ALTER TABLE invoices ADD CONSTRAINT audit_fail_inv2 CHECK (clientName <> '${nm}')`);
+      let failed: Res;
+      try { failed = await pay(q); } finally { await ess.sql("a", "ALTER TABLE invoices DROP CHECK audit_fail_inv2"); }
+      expect(failed.status).not.toBe(200);
+      const mid = await live(q);
+      expect(mid.length).toBe(1);
+      expect(mid[0].status).toBe("pending_payment");
+      expect(await counter()).toBe(c0);
+      ok(await pay(q), "reintento");
+      const after = await live(q);
+      expect(after.length).toBe(1);
+      expect(after[0].id).toBe(before[0].id);
+      expect(after[0].status).toBe("paid");
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("idempotencia: cobrar dos veces tras convertir no crea reservas ni facturas nuevas", async () => {
+      const q = await freshQuote();
+      ok(await convert(q), "convertir");
+      ok(await pay(q), "cobrar 1");
+      const n = await counterOfRes();
+      ok(await pay(q), "cobrar 2");
+      expect(await counterOfRes()).toBe(n);
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+  });
+
+  // ───────────────────────── 2e. Incidencias fiscales persistentes y reconciliación ─────────────────────────
+  describe("2e. incidencias persistentes: pago sin factura y plan de cuotas sin completar", () => {
+    const counter = async () => Number((await ess.sql("a", "SELECT current_number AS n FROM document_counters WHERE document_type = 'factura' ORDER BY id DESC LIMIT 1"))[0]?.n ?? 0);
+    const failing = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+      await ess.sql("a", `ALTER TABLE invoices ADD CONSTRAINT audit_fail_inv3 CHECK (clientName <> '${name}')`);
+      try { return await fn(); } finally { await ess.sql("a", "ALTER TABLE invoices DROP CHECK audit_fail_inv3"); }
+    };
+    const incidentsOf = async (q: number, action: string) => ess.sql("a", "SELECT id, details FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = ? ORDER BY id", [q, action]);
+    const listOpen = async () => (ok(await ess.q("a", "crm.fiscalIncidents.list", undefined, adm), "lista") as any[]);
+    const invoicesOfRes = async (resId: number) => Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE reservationId = ?", [resId]))[0].n);
+
+    /** Pago pendiente de 400 € sobre una reserva ya convertida, confirmado con la factura rota. */
+    const setupPaidWithoutInvoice = async (breakAtConfirm: boolean) => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const resId = Number((await ess.sql("a", "SELECT id FROM reservations WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: nm, productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pago pendiente");
+      const pp = Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      const confirm = () => ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm);
+      if (breakAtConfirm) await failing(nm, confirm); else ok(await confirm(), "confirmar");
+      return { q, resId, pp, nm };
+    };
+
+    it("pago cobrado sin factura: queda incidencia PERSISTENTE y visible en la lista; reconciliar emite UNA factura y la cierra", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = await incidentsOf(q, "payment_confirmed_without_invoice");
+      expect(inc.length).toBe(1);
+      expect((await listOpen()).some((i) => i.id === Number(inc[0].id))).toBe(true);
+      const c0 = await counter();
+      expect(ok(await reconcile(Number(inc[0].id)), "reconciliar").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect(await counter()).toBe(c0 + 1);
+      expect((await listOpen()).some((i) => i.id === Number(inc[0].id))).toBe(false);
+      // Idempotente: repetir no emite otra
+      expect(ok(await reconcile(Number(inc[0].id)), "repetir").status).toBe("already_resolved");
+      expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("SEGURIDAD: un rol de personal (agente) NO puede proponer, aprobar ni aplicar reconciliaciones (FORBIDDEN) y no cambia nada", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const logs0 = Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log"))[0].n);
+      expect(errCode(await propose(inc, ag))).toBe("FORBIDDEN");
+      expect(errCode(await ess.m("a", "crm.fiscalIncidents.approveReconciliation", { incidentId: inc, proposalId: 1, version: "x" }, ag))).toBe("FORBIDDEN");
+      expect(errCode(await ess.m("a", "crm.fiscalIncidents.applyReconciliation", { incidentId: inc, proposalId: 1, confirm: true }, ag))).toBe("FORBIDDEN");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+      expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log"))[0].n)).toBe(logs0);
+      // La lista de incidencias sigue siendo de consulta para el personal
+      expect((await ess.q("a", "crm.fiscalIncidents.list", undefined, ag)).status).toBe(200);
+    });
+
+    it("SEGURIDAD: proponer exige motivo y NO emite ni vincula: solo queda una propuesta versionada con vista previa; los datos históricos no cambian", async () => {
+      const { q, resId, nm } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const snapInv = async () => JSON.stringify(await ess.sql("a", "SELECT id, invoiceNumber, total, reservationId FROM invoices ORDER BY id"));
+      const snapRes = async () => JSON.stringify(await ess.sql("a", "SELECT id, status, invoiceId, quote_id, people, amount_total, amount_paid FROM reservations ORDER BY id"));
+      const histInv = await snapInv();
+      const histRes = await snapRes();
+      // Sin motivo (o con uno trivial) se rechaza
+      expect(errCode(await ess.m("a", "crm.fiscalIncidents.reconcile", { incidentId: inc }, adm))).toBe("BAD_REQUEST");
+      expect(errCode(await propose(inc, adm, "ok"))).toBe("BAD_REQUEST");
+      const r = ok(await propose(inc), "proponer");
+      expect(r.status).toBe("proposal_pending");
+      expect(r.plan).toMatchObject({ kind: "issue_invoice", reservationId: resId, quoteId: q });
+      expect(r.version).toMatch(/^[0-9a-f]{16}$/);
+      expect(r.preview).toMatchObject({ invoicesToIssue: 1, invoiceAmountCents: 40000, reservationsLinked: 1, reservationsCreated: 0, documentNumbersConsumed: 1, historicalDocumentsModified: 0 });
+      // La vista previa y la propuesta no llevan datos personales (nombre del cliente sintético)
+      expect(JSON.stringify(r)).not.toContain(nm);
+      expect(await counter()).toBe(c0);
+      expect(await snapInv()).toBe(histInv);
+      expect(await snapRes()).toBe(histRes);
+      expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+      // Proponer dos veces no emite nada y una propuesta inexistente se rechaza
+      ok(await propose(inc), "proponer otra vez");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(errCode(await approve(inc, 999999999, r.version))).toBe("BAD_REQUEST");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      // Aprobar tampoco emite: solo aplicar, con aprobación y confirmación
+      expect(ok(await approve(inc, Number(r.proposalId), r.version), "aprobar").status).toBe("approved");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+      expect(ok(await applyRec(inc, Number(r.proposalId)), "aplicar").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("SEPARACIÓN DE FUNCIONES: el proponente NO puede aprobar su propia propuesta (FORBIDDEN), queda auditado como intento denegado y nada se aplica", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc, adm), "proponer");
+      const approvalsBefore = await rows(q, "fiscal_reconcile_approved");
+      const denied = await approve(inc, Number(r.proposalId), r.version, adm);
+      expect(errCode(denied)).toBe("FORBIDDEN");
+      expect(denied.text).toContain("Separación de funciones");
+      expect(await rows(q, "fiscal_reconcile_approved")).toEqual(approvalsBefore);
+      const den = await rows(q, "fiscal_reconcile_denied");
+      expect(den.length).toBe(1);
+      expect(den[0].actorId).toBe(await ess.userId("a", "admin"));
+      expect(den[0].details).toMatchObject({ incidentId: inc, proposalId: Number(r.proposalId), version: r.version, attempt: "approve", reason: "same_actor_as_proposer" });
+      // Sin aprobación válida no se aplica, ni con confirmación
+      expect(errCode(await applyRec(inc, Number(r.proposalId), adm))).toBe("PRECONDITION_FAILED");
+      expect(errCode(await applyRec(inc, Number(r.proposalId), adm2))).toBe("PRECONDITION_FAILED");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+      expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+    });
+
+    it("SEPARACIÓN DE FUNCIONES: un administrador distinto sí aprueba; la aplicación exige confirmación expresa y aplica solo lo aprobado", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc, adm2), "proponer con el segundo admin");
+      // El primer admin (distinto del proponente) aprueba; una versión errónea se rechaza
+      expect(ok(await approve(inc, Number(r.proposalId), "0000000000000000", adm), "versión errónea").status).toBe("proposal_stale");
+      expect((await rows(q, "fiscal_reconcile_approved")).length).toBe(0);
+      expect(ok(await approve(inc, Number(r.proposalId), r.version, adm), "aprobar").status).toBe("approved");
+      // Sin confirmación (ausente o false) no se aplica
+      expect(errCode(await ess.m("a", "crm.fiscalIncidents.applyReconciliation", { incidentId: inc, proposalId: Number(r.proposalId) }, adm))).toBe("BAD_REQUEST");
+      expect(errCode(await ess.m("a", "crm.fiscalIncidents.applyReconciliation", { incidentId: inc, proposalId: Number(r.proposalId), confirm: false }, adm))).toBe("BAD_REQUEST");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(ok(await applyRec(inc, Number(r.proposalId), adm), "aplicar").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect(await counter()).toBe(c0 + 1);
+    });
+
+    it("SEPARACIÓN DE FUNCIONES: si la propuesta se modifica DESPUÉS de aprobarse, aplicar se rechaza (proposal_stale) y exige nueva aprobación", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc), "proponer");
+      ok(await approve(inc, Number(r.proposalId), r.version), "aprobar");
+      await ess.sql("a", "UPDATE crm_activity_log SET details = JSON_SET(details, '$.reason', 'Motivo alterado después de aprobar') WHERE id = ?", [Number(r.proposalId)]);
+      expect(ok(await applyRec(inc, Number(r.proposalId)), "aplicar").status).toBe("proposal_stale");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+      // Tampoco se puede volver a aprobar la propuesta alterada con la versión antigua
+      expect(ok(await approve(inc, Number(r.proposalId), r.version), "reaprobar").status).toBe("proposal_stale");
+      // Una propuesta nueva, aprobada de nuevo, sí se aplica
+      const r2 = ok(await propose(inc), "nueva propuesta");
+      ok(await approve(inc, Number(r2.proposalId), r2.version), "aprobar la nueva");
+      expect(ok(await applyRec(inc, Number(r2.proposalId)), "aplicar la nueva").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("SEPARACIÓN DE FUNCIONES: aplicar es idempotente (la segunda aplicación no duplica factura, número ni auditoría de resolución)", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc), "proponer");
+      ok(await approve(inc, Number(r.proposalId), r.version), "aprobar");
+      expect(ok(await applyRec(inc, Number(r.proposalId)), "aplicar").status).toBe("issued");
+      expect(ok(await applyRec(inc, Number(r.proposalId)), "aplicar otra vez").status).toBe("already_resolved");
+      expect(ok(await approve(inc, Number(r.proposalId), r.version), "aprobar otra vez").status).toBe("already_resolved");
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect(await counter()).toBe(c0 + 1);
+      expect((await rows(q, "fiscal_incident_resolved")).length).toBe(1);
+    });
+
+    it("SEPARACIÓN DE FUNCIONES: la auditoría es completa (propuesta con versión, vista previa y motivo; aprobación; aplicación con proponente, aprobador y aplicador)", async () => {
+      const { q } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const id1 = await ess.userId("a", "admin");
+      const id2 = Number((await ess.sql("a", "SELECT id FROM users WHERE email = ?", [admin2Email]))[0].id);
+      const r = ok(await propose(inc, adm, "Regularizar cobro sin factura (auditoría)"), "proponer");
+      ok(await approve(inc, Number(r.proposalId), r.version, adm2), "aprobar");
+      ok(await applyRec(inc, Number(r.proposalId), adm), "aplicar");
+      const [prop] = await rows(q, "fiscal_reconcile_proposed");
+      expect(prop.actorId).toBe(id1);
+      expect(prop.details).toMatchObject({ incidentId: inc, version: r.version, reason: "Regularizar cobro sin factura (auditoría)", plan: { kind: "issue_invoice" }, preview: { invoicesToIssue: 1, invoiceAmountCents: 40000, historicalDocumentsModified: 0 } });
+      const [apr] = await rows(q, "fiscal_reconcile_approved");
+      expect(apr.actorId).toBe(id2);
+      expect(apr.details).toMatchObject({ incidentId: inc, proposalId: Number(r.proposalId), version: r.version, proposedBy: id1, approvedBy: id2 });
+      const [done] = await rows(q, "fiscal_incident_reconciled");
+      expect(done.actorId).toBe(id1);
+      expect(done.details).toMatchObject({ incidentId: inc, outcome: "issued", proposalId: Number(r.proposalId), version: r.version, proposedBy: id1, approvedBy: id2, appliedBy: id1 });
+    });
+
+    it("SEPARACIÓN DE FUNCIONES: dos aprobaciones simultáneas de la misma propuesta (6 llamadas) → solo UNA se registra; nada se emite", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc, adm), "proponer");
+      const rs = await Promise.all([adm2, adm2, adm2, adm2, adm2, adm2].map((c) => approve(inc, Number(r.proposalId), r.version, c)));
+      const st = rs.map((x) => (x.status === 200 ? (data(x) as any).status : `ERR ${errCode(x)}`));
+      log("aprobar x6", st);
+      expect(st.filter((x) => x === "approved").length).toBe(1);
+      expect(st.filter((x) => x === "already_approved").length).toBe(5);
+      expect((await rows(q, "fiscal_reconcile_approved")).length).toBe(1);
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+    });
+
+    it("SEPARACIÓN DE FUNCIONES: sin aprobación no se aplica nada (aplicar con confirmación pero sin aprobar → PRECONDITION_FAILED); la aprobación de otra propuesta no sirve", async () => {
+      const a = await setupPaidWithoutInvoice(true);
+      const b = await setupPaidWithoutInvoice(true);
+      const incA = Number((await incidentsOf(a.q, "payment_confirmed_without_invoice"))[0].id);
+      const incB = Number((await incidentsOf(b.q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const ra = ok(await propose(incA), "proponer A");
+      const rb = ok(await propose(incB), "proponer B");
+      ok(await approve(incB, Number(rb.proposalId), rb.version), "aprobar solo B");
+      expect(errCode(await applyRec(incA, Number(ra.proposalId)))).toBe("PRECONDITION_FAILED");
+      // Aplicar A usando el id de la propuesta de B no existe para A
+      expect(errCode(await applyRec(incA, Number(rb.proposalId)))).toBe("BAD_REQUEST");
+      expect(await invoicesOfRes(a.resId)).toBe(0);
+      expect(await invoicesOfRes(b.resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+    });
+
+    it("SEGURIDAD: si el pago cambia entre la propuesta y la aprobación (o la aplicación), la propuesta caduca (proposal_stale) y no emite", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const r = ok(await propose(inc), "proponer");
+      await ess.sql("a", "UPDATE pending_payments SET amount_cents = amount_cents + 100 WHERE quote_id = ?", [q]);
+      expect(ok(await approve(inc, Number(r.proposalId), r.version), "aprobar").status).toBe("proposal_stale");
+      expect(await invoicesOfRes(resId)).toBe(0);
+      // Cambio entre la aprobación y la aplicación
+      await ess.sql("a", "UPDATE pending_payments SET amount_cents = amount_cents - 100 WHERE quote_id = ?", [q]);
+      const r2 = ok(await propose(inc), "proponer otra vez");
+      ok(await approve(inc, Number(r2.proposalId), r2.version), "aprobar");
+      await ess.sql("a", "UPDATE pending_payments SET amount_cents = amount_cents + 100 WHERE quote_id = ?", [q]);
+      expect(ok(await applyRec(inc, Number(r2.proposalId)), "aplicar").status).toBe("proposal_stale");
+      expect(await invoicesOfRes(resId)).toBe(0);
+    });
+
+    it("reconciliar ×4 a la vez la misma incidencia → exactamente UNA factura, sin número perdido", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = await incidentsOf(q, "payment_confirmed_without_invoice");
+      const c0 = await counter();
+      const rs = await Promise.all(Array.from({ length: 4 }, () => reconcile(Number(inc[0].id))));
+      log("reconciliar x4", rs.map((r) => r.status));
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect(await counter()).toBe(c0 + 1);
+    });
+
+    it("si la reconciliación vuelve a fallar: sigue abierta, sin factura ni número consumido ni ruido duplicado; un reintento posterior la resuelve", async () => {
+      const { q, resId, nm } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const failed = await failing(nm, () => reconcile(inc));
+      expect(failed.status).not.toBe(200);
+      expect(await counter()).toBe(c0);
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect((await incidentsOf(q, "payment_confirmed_without_invoice")).length).toBe(1);
+      expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+      expect(ok(await reconcile(inc), "reintento").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+    });
+
+    it("cuotas: si falla la factura final al cobrar la última cuota, queda incidencia persistente; reconciliar completa el plan con UNA factura", async () => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await ess.m("a", "crm.paymentPlans.upsert", { quoteId: q, installments: [
+        { installmentNumber: 1, amountCents: 20000, dueDate: "2027-01-10", isRequiredForConfirmation: true },
+        { installmentNumber: 2, amountCents: 20000, dueDate: "2027-02-10", isRequiredForConfirmation: false },
+      ] }, adm), "plan");
+      const ids = (await ess.sql("a", "SELECT id FROM payment_installments WHERE quote_id = ? ORDER BY installment_number", [q])).map((r: any) => Number(r.id));
+      const payInst = (id: number) => ess.m("a", "crm.paymentPlans.confirmInstallment", { installmentId: id, paymentMethod: "efectivo" }, adm);
+      ok(await payInst(ids[0]), "cuota 1");
+      const c0 = await counter();
+      const bad = await failing(nm, () => payInst(ids[1]));
+      expect(bad.status).not.toBe(200);
+      expect(await counter()).toBe(c0);
+      const inc = await incidentsOf(q, "installment_plan_failed");
+      expect(inc.length).toBeGreaterThanOrEqual(1);
+      const id = Number(inc[0].id);
+      expect((await listOpen()).some((i) => i.id === id)).toBe(true);
+      expect(ok(await reconcile(id), "reconciliar plan").status).toBe("plan_reconciled");
+      expect((await invoicesOf(q)).length).toBe(1);
+      expect((await ess.sql("a", "SELECT paidAt FROM quotes WHERE id = ?", [q]))[0].paidAt).not.toBeNull();
+      expect((await listOpen()).some((i) => i.id === id)).toBe(false);
+      expect(await counter()).toBe(c0 + 1);
+    });
+
+    // ── Regla «dos administradores habilitados»: habilitado = rol admin + isActive (misma definición que companyOwner) ──
+    const adminId2 = async () => Number((await ess.sql("a", "SELECT id FROM users WHERE email = ?", [admin2Email]))[0].id);
+    const setAdmin2 = (active: boolean) => ess.sql("a", "UPDATE users SET isActive = ? WHERE email = ?", [active ? 1 : 0, admin2Email]);
+    const denied = async (q: number) => (await rows(q, "fiscal_reconcile_denied")).map((r: any) => r.details);
+    const proposalsOf = async (q: number) => (await rows(q, "fiscal_reconcile_proposed")).length;
+
+    it("DOS ADMINISTRADORES: con UN solo administrador habilitado (el segundo deshabilitado) no se puede proponer: error claro, auditado y SIN propuesta huérfana", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      await setAdmin2(false);
+      try {
+        const r = await propose(inc, adm);
+        expect(errCode(r)).toBe("PRECONDITION_FAILED");
+        expect(r.text).toContain("No hay otro administrador habilitado");
+        expect(await proposalsOf(q)).toBe(0);
+        const d = await denied(q);
+        expect(d.length).toBe(1);
+        expect(d[0]).toMatchObject({ incidentId: inc, attempt: "propose", reason: "no_second_admin" });
+        expect(await invoicesOfRes(resId)).toBe(0);
+        expect(await counter()).toBe(c0);
+        expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+      } finally { await setAdmin2(true); }
+    });
+
+    it("DOS ADMINISTRADORES: si el segundo administrador se deshabilita DESPUÉS de proponer, el primero no puede aprobar ni aplicar (no_second_admin) y no se emite nada", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc, adm2), "proponer con admin2");
+      await setAdmin2(false);
+      try {
+        expect(errCode(await approve(inc, Number(r.proposalId), r.version, adm))).toBe("PRECONDITION_FAILED");
+        expect((await rows(q, "fiscal_reconcile_approved")).length).toBe(0);
+        expect((await denied(q))[0]).toMatchObject({ incidentId: inc, attempt: "approve", reason: "no_second_admin", proposalId: Number(r.proposalId) });
+        expect(errCode(await applyRec(inc, Number(r.proposalId), adm))).toBe("PRECONDITION_FAILED");
+        expect(await invoicesOfRes(resId)).toBe(0);
+        expect(await counter()).toBe(c0);
+      } finally { await setAdmin2(true); }
+    });
+
+    it("DOS ADMINISTRADORES: un usuario que no es administrador (aunque esté activo) no cuenta como segundo administrador", async () => {
+      const { q } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      await ess.sql("a", "UPDATE users SET role = 'agente' WHERE email = ?", [admin2Email]);
+      try {
+        expect(errCode(await propose(inc, adm))).toBe("PRECONDITION_FAILED");
+        expect(await proposalsOf(q)).toBe(0);
+        expect((await denied(q))[0]).toMatchObject({ attempt: "propose", reason: "no_second_admin" });
+      } finally { await ess.sql("a", "UPDATE users SET role = 'admin' WHERE email = ?", [admin2Email]); }
+    });
+
+    it("DOS ADMINISTRADORES: con dos habilitados el flujo completo funciona (proponer, aprobar por el otro, aplicar)", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      expect(ok(await reconcile(inc), "flujo con dos administradores").status).toBe("issued");
+      expect(await invoicesOfRes(resId)).toBe(1);
+      expect((await denied(q)).length).toBe(0);
+    });
+
+    it("DOS ADMINISTRADORES: si el aprobador se deshabilita DESPUÉS de aprobar, aplicar se rechaza (approver_not_enabled), no emite nada y una nueva aprobación vigente lo desbloquea", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const id2 = await adminId2();
+      const r = ok(await propose(inc, adm), "proponer");
+      ok(await approve(inc, Number(r.proposalId), r.version, adm2), "aprobar con admin2");
+      // Se habilita un tercer administrador, de modo que siguen existiendo dos habilitados, pero el aprobador ya no es uno de ellos
+      const bcrypt = (await import("bcryptjs")).default;
+      const mail3 = `admin3.${TAG}.${++seq}@ejemplo.invalid`;
+      await ess.sql("a", "INSERT INTO users (openId, name, email, loginMethod, role, isActive, passwordHash, inviteAccepted) VALUES (?, 'Usuario admin3', ?, 'local', 'admin', 1, ?, 1)", [`local_admin3_${TAG}_${seq}`, mail3, await bcrypt.hash("clave-admin3-prueba", 4)]);
+      await setAdmin2(false);
+      try {
+        expect(errCode(await applyRec(inc, Number(r.proposalId), adm))).toBe("PRECONDITION_FAILED");
+        expect(await invoicesOfRes(resId)).toBe(0);
+        expect(await counter()).toBe(c0);
+        expect((await listOpen()).some((i) => i.id === inc)).toBe(true);
+        expect((await denied(q))[0]).toMatchObject({ incidentId: inc, attempt: "apply", reason: "approver_not_enabled", approvedBy: id2, proposalId: Number(r.proposalId) });
+        // El tercer administrador habilitado aprueba la misma propuesta: ahora sí se puede aplicar
+        const l3 = await ess.call("a", "POST", "/api/auth/login", { body: { email: mail3, password: "clave-admin3-prueba" } });
+        expect(l3.status).toBe(200);
+        expect(ok(await approve(inc, Number(r.proposalId), r.version, l3.cookie!), "aprobar con admin3").status).toBe("already_approved");
+        // La aprobación vigente sigue siendo la del administrador deshabilitado: hay que proponer de nuevo
+        expect(errCode(await applyRec(inc, Number(r.proposalId), adm))).toBe("PRECONDITION_FAILED");
+        const r2 = ok(await propose(inc, adm), "proponer de nuevo");
+        ok(await approve(inc, Number(r2.proposalId), r2.version, l3.cookie!), "aprobar la nueva con admin3");
+        expect(ok(await applyRec(inc, Number(r2.proposalId), adm), "aplicar la nueva").status).toBe("issued");
+        expect(await invoicesOfRes(resId)).toBe(1);
+      } finally { await setAdmin2(true); }
+    });
+
+    it("AISLAMIENTO POR EMPRESA: la propuesta y la aprobación de la empresa A no son visibles ni aplicables desde la empresa B ", async () => {
+      const { q, resId } = await setupPaidWithoutInvoice(true);
+      const inc = Number((await incidentsOf(q, "payment_confirmed_without_invoice"))[0].id);
+      const c0 = await counter();
+      const r = ok(await propose(inc, adm), "proponer en A");
+      ok(await approve(inc, Number(r.proposalId), r.version, adm2), "aprobar en A");
+      const admB = await ess.login("b", "admin");
+      // La lista de incidencias de B no incluye la de A y sus filas no existen en B
+      expect(((ok(await ess.q("b", "crm.fiscalIncidents.list", undefined, admB), "lista B") as any[]).some((i) => i.id === inc && i.entityId === q))).toBe(false);
+      expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE action LIKE 'fiscal_reconcile%'"))[0].n).toBe(0);
+      // Aplicar/aprobar en B con los identificadores de A no hace nada
+      expect(ok(await ess.m("b", "crm.fiscalIncidents.applyReconciliation", { incidentId: inc, proposalId: Number(r.proposalId), confirm: true }, admB), "aplicar en B").status).toBe("already_resolved");
+      expect(ok(await ess.m("b", "crm.fiscalIncidents.approveReconciliation", { incidentId: inc, proposalId: Number(r.proposalId), version: r.version }, admB), "aprobar en B").status).toBe("already_resolved");
+      // La sesión de A no sirve en B
+      expect([401, 403]).toContain((await ess.m("b", "crm.fiscalIncidents.applyReconciliation", { incidentId: inc, proposalId: Number(r.proposalId), confirm: true }, adm)).status);
+      expect(await invoicesOfRes(resId)).toBe(0);
+      expect(await counter()).toBe(c0);
+    });
+  });
+
+  // ───────────────────────── 2f. Límites del reuso de reservas y de la reconciliación (revisión independiente) ─────────────────────────
+  describe("2f. reuso acotado de la reserva y reconciliación prudente", () => {
+    const live = async (q: number) => ess.sql("a", "SELECT id, status, merchant_order AS mo, invoiceId, people FROM reservations WHERE quote_id = ? AND status <> 'cancelled' ORDER BY id", [q]);
+    const insertRes = async (q: number, o: { notes: string; invoiceId?: number; mo: string }) => {
+      const r = await ess.sql("a", "INSERT INTO reservations (product_id, product_name, booking_date, amount_total, customer_name, merchant_order, reservation_number, status, quote_id, quoteSource, notes, invoiceId, people, channel, created_at, updated_at) VALUES (1, 'Servicio sintético', '2027-01-01', 40000, 'Persona Sintética', ?, ?, 'pending_payment', ?, 'presupuesto', ?, ?, 1, 'ONLINE_DIRECTO', 1, 1)", [o.mo, `RES-T-${o.mo}`, q, o.notes, o.invoiceId ?? null]);
+      return r;
+    };
+
+    it("una reserva con pago online en curso (no creada por «convertir») NO se reutiliza ni se oculta: sigue pendiente y el cobro manual crea la suya", async () => {
+      const q = await freshQuote();
+      await insertRes(q, { notes: "Pago con tarjeta iniciado", mo: `ONL${seq++}` });
+      const before = await live(q);
+      expect(before.length).toBe(1);
+      ok(await pay(q), "cobrar");
+      const after = await live(q);
+      const original = after.find((r: any) => r.id === before[0].id);
+      expect(original.status).toBe("pending_payment");
+      expect(original.mo).toBe(before[0].mo);
+      expect(after.length).toBe(2);
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("una reserva de «convertir» que YA tiene factura no se pisa: conserva su factura y el cobro no le cambia el vínculo", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const [orig] = await live(q);
+      await ess.sql("a", "UPDATE reservations SET invoiceId = 987654 WHERE id = ?", [orig.id]);
+      ok(await pay(q), "cobrar");
+      const rows = await live(q);
+      expect(rows.find((r: any) => r.id === orig.id).invoiceId).toBe(987654);
+      const inv = await invoicesOf(q);
+      expect(inv.length).toBe(1);
+      expect(Number(inv[0].reservationId)).not.toBe(Number(orig.id));
+    });
+
+    it("la reserva reutilizada se alinea con lo que se cobra (no guarda datos viejos de cuando se convirtió)", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const [orig] = await live(q);
+      await ess.sql("a", "UPDATE reservations SET people = 9 WHERE id = ?", [orig.id]);
+      ok(await pay(q), "cobrar");
+      const [after] = await live(q);
+      expect(after.id).toBe(orig.id);
+      expect(after.people).not.toBe(9);
+    });
+
+    it("reconciliar un pago sin factura cuyo presupuesto se cobró después por la vía normal no emite una segunda factura (pide revisión)", async () => {
+      const nm = failName();
+      const q = await freshQuote(nm);
+      ok(await ess.m("a", "crm.quotes.convertToReservation", { quoteId: q }, adm), "convertir");
+      const resId = Number((await live(q))[0].id);
+      ok(await ess.m("a", "crm.pendingPayments.create", { quoteId: q, reservationId: resId, clientName: nm, productName: "Servicio sintético", amountCents: 40000, dueDate: "2027-01-01", reason: "prueba" }, adm), "pp");
+      const pp = Number((await ess.sql("a", "SELECT id FROM pending_payments WHERE quote_id = ? LIMIT 1", [q]))[0].id);
+      await ess.sql("a", `ALTER TABLE invoices ADD CONSTRAINT audit_fail_inv4 CHECK (clientName <> '${nm}')`);
+      try { await ess.m("a", "crm.pendingPayments.confirm", { id: pp, paymentMethod: "efectivo" }, adm); } finally { await ess.sql("a", "ALTER TABLE invoices DROP CHECK audit_fail_inv4"); }
+      const inc = Number((await ess.sql("a", "SELECT id FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'payment_confirmed_without_invoice'", [q]))[0].id);
+      ok(await pay(q), "cobro normal posterior");
+      // El presupuesto ya tiene factura por otra vía: no se emite una segunda, se pide revisión humana y la incidencia sigue abierta
+      expect(ok(await reconcile(inc), "reconciliar").status).toBe("needs_review");
+      expect((await invoicesOf(q)).length).toBe(1);
+    });
+
+    it("reconciliar un plan cuyas cuotas obligatorias siguen sin pagar NO lo da por resuelto", async () => {
+      const q = await freshQuote();
+      ok(await ess.m("a", "crm.paymentPlans.upsert", { quoteId: q, installments: [
+        { installmentNumber: 1, amountCents: 20000, dueDate: "2027-01-10", isRequiredForConfirmation: true },
+        { installmentNumber: 2, amountCents: 20000, dueDate: "2027-02-10", isRequiredForConfirmation: false },
+      ] }, adm), "plan");
+      await ess.sql("a", "INSERT INTO crm_activity_log (entityType, entityId, action, details) VALUES ('quote', ?, 'installment_plan_failed', JSON_OBJECT('incident', true, 'source', 'prueba'))", [q]);
+      const id = Number((await ess.sql("a", "SELECT id FROM crm_activity_log WHERE entityType = 'quote' AND entityId = ? AND action = 'installment_plan_failed'", [q]))[0].id);
+      const r = ok(await reconcile(id), "reconciliar");
+      expect(r.status).toBe("plan_not_ready");
+      expect(((await ess.q("a", "crm.fiscalIncidents.list", undefined, adm)).json as any) ?? true).toBeTruthy();
+      expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM crm_activity_log WHERE action = 'fiscal_incident_resolved' AND JSON_EXTRACT(details, '$.incidentId') = ?", [id]))[0].n).toBe(0);
     });
   });
 
