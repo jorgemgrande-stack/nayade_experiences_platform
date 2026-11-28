@@ -8,8 +8,9 @@ import { ENV } from "../_core/env";
 import { sessionSecret } from "../_core/sessionSecret";
 import { getTenantIdOrDefault } from "../_core/tenant";
 import { publicBaseUrl } from "../_core/productIdentity";
-import { brandName, issuerName } from "../tenantBrand";
-import { getSystemSettingSync } from "../config";
+import { brandName } from "../tenantBrand";
+import { tenantLegalIdentity } from "../brand/tenantLegal";
+import { tenantVisualKit } from "../brand/tenantVisualKit";
 import type { MailIdentity } from "./core";
 import { NewsletterService, type CrmPort, type MailPort } from "./service";
 import { mysqlNewsletterStore } from "./store";
@@ -76,23 +77,25 @@ export const mailPort: MailPort = {
   },
 };
 
-export function identity(): MailIdentity {
+/**
+ * Identidad de la empresa para los correos: marca, línea legal (misma composición de siempre: nombre · NIF/CIF ·
+ * dirección · correo) y su kit visual (logotipo, colores, enlaces; caché de 60 s). Si el kit no se puede cargar, el
+ * correo sale igual con un kit mínimo.
+ */
+export async function identity(): Promise<MailIdentity> {
   let brand = "";
   try {
     brand = brandName();
   } catch {
     brand = "";
   }
-  const get = (k: string) => getSystemSettingSync(k, "").trim();
-  let legal = "";
+  const base: MailIdentity = { brand: brand || "Newsletter", legalLine: tenantLegalIdentity().line };
   try {
-    legal = issuerName();
-  } catch {
-    legal = brand;
+    return { ...base, kit: await tenantVisualKit() };
+  } catch (e) {
+    console.warn(JSON.stringify({ ctx: "Newsletter", event: "visual_kit_unavailable", error: e instanceof Error ? e.message.slice(0, 160) : "error" }));
+    return base;
   }
-  const nif = get("brand_nif") || get("site_legal_cif");
-  const legalLine = [legal, nif && `NIF/CIF ${nif}`, get("brand_address") || get("site_legal_address"), get("site_legal_email") || get("email_reservations")].filter(Boolean).join(" · ");
-  return { brand: brand || "Newsletter", legalLine };
 }
 
 export function unsubscribeSecrets(): string[] {
