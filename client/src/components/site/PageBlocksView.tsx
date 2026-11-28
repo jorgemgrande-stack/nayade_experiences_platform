@@ -1307,7 +1307,7 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
             // El botón solo es aspecto: toda la tarjeta ya es el enlace a la ficha. Bajo petición → «Solicitar información»
             const ctaText = mode === "on_request" || mode === "priced_request" ? ui.requestInfo : ui.viewDetails;
             return (
-              <SmartLink key={p.id} href={site.prefix ? `/${site.prefix}${productPath(p.slug)}` : productPath(p.slug)} preview={preview} className={cn(d.layout !== "carousel" && grid.item, "group flex h-full flex-col overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md")}>
+              <SmartLink key={p.id} href={site.prefix ? `/${site.prefix}${productPath(p.slug)}` : productPath(p.slug)} preview={preview} className={cn(d.layout === "carousel" ? "h-full" : grid.item, "group flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md")}>
                 <div className={cn("relative overflow-hidden bg-muted", tall ? "aspect-[16/10] md:aspect-[3/2]" : "aspect-[4/3]")}>
                   {img ? <img src={img} alt={p.title} className={cn("h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]", soldOut && "opacity-60")} loading="lazy" /> : <div className="h-full w-full bg-muted" aria-hidden="true" />}
                   <span className={cn("absolute left-3 top-3 rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm backdrop-blur-sm", badge.cls)}>{badge.text}</span>

@@ -58,21 +58,24 @@ function ctaLabel(t: SiteUiText, s: PublicEditionState): string {
  * hora inventada), lugar y plazas, y un pie con precio, botón de solicitud y enlace a la ficha. La nota de horario solo
  * se pinta cuando no hay sesiones (con sesiones repetiría las fechas). `className`: la medida dentro de la rejilla.
  */
-function EditionCard({ e, onRequest, t, locale, detailHref, preview, className }: { e: PublicEditionItem; onRequest: (e: PublicEditionItem) => void; t: SiteUiText; locale: string; detailHref: string; preview?: boolean; className?: string }) {
+function EditionCard({ e, onRequest, t, locale, detailHref, showProduct, preview, className }: { e: PublicEditionItem; onRequest: (e: PublicEditionItem) => void; t: SiteUiText; locale: string; detailHref: string; showProduct: boolean; preview?: boolean; className?: string }) {
   const sessions = e.sessions ?? [];
   const seats = e.state === "open" && e.seatsLeft != null ? (e.seatsLeft === 1 ? t.oneSeatLeft : fillUiText(t.seatsLeft, { n: e.seatsLeft })) : null;
-  const subtitle = editionSubtitle(e.label, e.productTitle);
+  // En la propia ficha del producto (showProduct=false) el título es la convocatoria y no hay enlace «ver detalles»
+  const subtitleRaw = editionSubtitle(e.label, e.productTitle);
+  const title = showProduct ? e.productTitle : subtitleRaw ?? e.productTitle;
+  const subtitle = showProduct ? subtitleRaw : null;
   const summary = sessions.length ? sessionsSummary(sessions, { locale, t }) : null;
   const summaryLine = summary ? [summary.count, summary.weekday, summary.time, summary.duration].filter((x): x is string => !!x).join(" · ") : null;
   const duration = sessions.length ? null : eventDurationText(e.startsAt, e.endsAt, e.timezone, t);
   // Con sesiones la hora va en el resumen; sin ellas, solo si el inicio tiene hora real (a medianoche no se pinta «00:00 h»)
   const dates = formatEditionDates(e.startsAt, e.endsAt, e.timezone, !sessions.length && startsAtHasTime(e.startsAt, e.timezone), locale);
   return (
-    <li className={cn("flex h-full flex-col rounded-2xl border border-border/50 bg-card p-6 text-card-foreground shadow-sm", className)} data-testid="fecha-convocatoria">
+    <li className={cn("flex flex-col rounded-2xl border border-border/50 bg-card p-6 text-card-foreground shadow-sm", className)} data-testid="fecha-convocatoria">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary">{e.categoryName || editionModeText(t, e.mode)}</p>
-          <h3 className="mt-1 break-words font-heading text-xl font-semibold leading-snug">{e.productTitle}</h3>
+          <h3 className="mt-1 break-words font-heading text-xl font-semibold leading-snug">{title}</h3>
           {subtitle && <p className="mt-0.5 break-words text-sm font-medium text-foreground/80">{subtitle}</p>}
         </div>
         <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", STATE_STYLE[e.state])} data-testid="estado-convocatoria">{editionStateText(t, e.state)}</span>
@@ -93,9 +96,11 @@ function EditionCard({ e, onRequest, t, locale, detailHref, preview, className }
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
         <div className="min-w-0">
           {e.price != null && <p className="text-lg font-semibold leading-tight">{formatEuros(e.price)}</p>}
-          <SmartLink href={detailHref} preview={preview} className="text-sm text-primary underline-offset-4 hover:underline">
-            {t.viewDetails}
-          </SmartLink>
+          {showProduct && (
+            <SmartLink href={detailHref} preview={preview} className="text-sm text-primary underline-offset-4 hover:underline">
+              {t.viewDetails}
+            </SmartLink>
+          )}
         </div>
         <Button size="sm" className="shrink-0" disabled={!canRequestSeat(e.state)} variant={e.state === "open" ? "default" : "outline"} onClick={() => onRequest(e)} data-testid="solicitar-plaza">
           {ctaLabel(t, e.state)}
@@ -148,6 +153,7 @@ export function EditionsList({
             key={e.id}
             e={e}
             className={grid.item}
+            showProduct={showProduct}
             t={t}
             locale={site.locale}
             preview={preview}

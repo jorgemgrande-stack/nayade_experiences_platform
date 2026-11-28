@@ -142,14 +142,17 @@ export function sessionsSummary(sessions: SummarySession[], opts: { locale: stri
 
 const zoneOf = (tz: string) => (isValidTimeZone(tz) ? tz : "Europe/Madrid");
 
-/** Días de calendario (inclusivos, en la zona de la edición) de un evento sin sesiones: «7 días»; un solo día → null. */
+/** Días de calendario máximos para los que «n días» aporta algo; más allá (programas de meses) basta el rango de fechas. */
+export const MAX_DURATION_DAYS = 31;
+
+/** Días de calendario (inclusivos, en la zona de la edición) de un evento sin sesiones: «7 días»; un solo día o más de un mes → null. */
 export function eventDurationText(startsAt: number, endsAt: number | null | undefined, tz: string, t: SiteUiText): string | null {
   if (endsAt == null || endsAt < startsAt) return null;
   const zone = zoneOf(tz);
   const s = partsInZone(startsAt, zone);
   const e = partsInZone(endsAt, zone);
   const days = Math.round((Date.UTC(e.y, e.mo - 1, e.d) - Date.UTC(s.y, s.mo - 1, s.d)) / 86_400_000) + 1;
-  return days >= 2 ? fillUiText(t.daysCount, { n: days }) : null;
+  return days >= 2 && days <= MAX_DURATION_DAYS ? fillUiText(t.daysCount, { n: days }) : null;
 }
 
 /** ¿La hora de inicio es un dato? A medianoche local se considera «solo fecha» y no se pinta «00:00 h». */
