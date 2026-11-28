@@ -169,7 +169,24 @@ export default {
     scheduleLine: "Tag {offset} · {duration}",
     permanentTag: "Dauerhaft",
     activationLabel: "Freiwillige Aktivierung: das Recht wird als ausstehend gewährt und die Tage (die der Regel) beginnen, wenn die Teilnehmerin oder der Teilnehmer aktiviert",
-    activationTag: "Freiwillige Aktivierung "
+    activationTag: "Freiwillige Aktivierung ",
+    staggerPreset: "Gestaffelt 0/30/60 · 30 Tage",
+    staggerHelp: "Füllt den RECONNECT-Kalender aus: M1 ab Tag 0, M2 ab Tag 30 und M3 ab Tag 60, jeweils 30 Tage Zugang (30 × 24 h). Füllt nur das Formular aus: es wird nichts gespeichert.",
+    staggerApplied: "Kalender ausgefüllt. Prüfen und speichern, wenn bestätigt.",
+    extension: {
+      title: "Katalog der Modulverlängerungen",
+      intro: "Produkt und Varianten für +30 und +60 Tage, die Teilnehmende im Kursraum kaufen können. Der Preis kommt aus der jeweiligen Variante; hier wird kein Betrag festgelegt.",
+      product: "Verlängerungsprodukt",
+      variant30: "Variante 30 Tage",
+      variant60: "Variante 60 Tage",
+      chooseVariant: "Variante wählen…",
+      save: "Katalog speichern",
+      saved: "Verlängerungskatalog gespeichert.",
+      none: "Kein Katalog konfiguriert: es wird keine Verlängerung angeboten.",
+      current: "Gültig: {product} · {offers}",
+      offer: "+{days} Tage {price}",
+      noOffers: "keine verkaufbaren Angebote (Gültigkeit und Preis der Varianten prüfen)"
+    }
   },
   progress: {
     noActivity: "Keine Aktivität",

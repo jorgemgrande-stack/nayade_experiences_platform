@@ -80,6 +80,49 @@ export async function loadExtensionCatalog(): Promise<ExtensionCatalog | null> {
   return offers.length ? { experienceId: cfg.experienceId, productName: String(product.title), offers } : null;
 }
 
+export interface ExtensionCatalogAdminView {
+  /** Ajuste guardado tal cual (o null si no hay ninguno válido). */
+  config: { experienceId: number; variants: Array<{ days: 30 | 60; variantId: number }> } | null;
+  /** Catálogo resuelto con precios (null si el ajuste no da ninguna oferta vendible). */
+  catalog: ExtensionCatalog | null;
+}
+
+/** Lectura para la administración: el ajuste guardado y el catálogo resuelto con precios. */
+export async function getExtensionCatalog(): Promise<ExtensionCatalogAdminView> {
+  return { config: parseExtensionConfig(await getSystemSetting(EXTENSION_CATALOG_SETTING, "")), catalog: await loadExtensionCatalog() };
+}
+
+/**
+ * Guarda el catálogo de ampliaciones (ajuste `learning_extension_catalog`) tras comprobar que el producto existe y que las variantes
+ * de 30 y 60 días son suyas, están vigentes y tienen precio > 0. Los precios NO se escriben aquí: siguen saliendo de las variantes
+ * (hoy, 33 € y 55 € en Quantum). No crea productos ni variantes ni cobra nada.
+ */
+export async function setExtensionCatalog(input: { experienceId: number; variants: { 30: number; 60: number } }, actorUserId: number | null): Promise<ExtensionCatalogAdminView> {
+  const { getExperienceById, getVariantsByExperience } = await import("./db");
+  const product = await getExperienceById(input.experienceId);
+  if (!product) throw new LearningError("NOT_FOUND", "El producto de ampliaciones no existe.");
+  if (input.variants[30] === input.variants[60]) throw new LearningError("BAD_REQUEST", "Las variantes de 30 y 60 días deben ser distintas.");
+  const baseCents = eurosToCents(String(product.basePrice ?? "0"));
+  const all = await getVariantsByExperience(input.experienceId, { includeExpired: true, includeSupplements: true });
+  const today = new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
+  for (const days of MODULE_EXTENSION_DAYS) {
+    const v = all.find((x) => x.id === input.variants[days]);
+    if (!v) throw new LearningError("BAD_REQUEST", `La variante de ${days} días no pertenece a ese producto.`);
+    if (v.validUntil && String(v.validUntil) < today) throw new LearningError("BAD_REQUEST", `La variante de ${days} días («${v.name}») está caducada.`);
+    const priceCents = variantUnitCents(Number.isFinite(baseCents) ? baseCents : 0, v as any);
+    if (!Number.isFinite(priceCents) || priceCents <= 0) throw new LearningError("BAD_REQUEST", `La variante de ${days} días («${v.name}») no tiene un precio mayor que cero.`);
+  }
+  const value = JSON.stringify({ experienceId: input.experienceId, variants: { "30": input.variants[30], "60": input.variants[60] } });
+  const d = await getDb();
+  if (!d) throw new Error("Base de datos no disponible");
+  await d.execute(sql`INSERT INTO system_settings (\`key\`, value, value_type, category, label, description)
+    VALUES (${EXTENSION_CATALOG_SETTING}, ${value}, 'json', 'learning', 'Catálogo de ampliaciones de módulo (Elephant Learning)', ${`Guardado desde la administración${actorUserId ? ` por el usuario ${actorUserId}` : ""}`})
+    ON DUPLICATE KEY UPDATE value = VALUES(value)`);
+  const { invalidateConfigCache } = await import("./config");
+  invalidateConfigCache();
+  return getExtensionCatalog();
+}
+
 /** Ofertas visibles para el alumno (solo días y precio). */
 export async function extensionOffers(): Promise<Array<{ days: 30 | 60; priceCents: number }>> {
   const c = await loadExtensionCatalog().catch(() => null);
