@@ -10,6 +10,8 @@
  */
 import crypto from "node:crypto";
 import * as XLSX from "xlsx";
+import { minimalKit, type TenantVisualKit } from "../brand/tenantVisualKit";
+import { renderBrandedEmail } from "../mail/brandedLayout";
 
 export const CONFIRM_TTL_MS = 48 * 60 * 60 * 1000;
 /** Mínimo entre dos correos de confirmación al mismo correo, y tope por suscripción. */
@@ -119,10 +121,11 @@ export const DEFAULT_CONFIRM: Record<Locale, MailTemplate> = {
   de: { subject: "Bitte bestätige deine Anmeldung zum Newsletter", body: "Hallo,\n\ndu hast darum gebeten, unseren wöchentlichen Newsletter zu erhalten. Bitte bestätige mit dem Button unten, dass diese Adresse dir gehört.\n\nWenn du das nicht warst, ignoriere diese E-Mail: Du erhältst nichts." },
   en: { subject: "Please confirm your newsletter subscription", body: "Hello,\n\nYou asked to receive our weekly newsletter. Please confirm with the button below that this address is yours.\n\nIf it wasn't you, just ignore this email: you will receive nothing." },
 };
-const BUTTON: Record<Locale, { confirm: string; unsub: string; why: string; expires: string }> = {
-  es: { confirm: "Confirmar mi inscripción", unsub: "Darme de baja", why: "Recibes este correo porque esta dirección se inscribió a la newsletter.", expires: "El enlace caduca en 48 horas." },
-  de: { confirm: "Anmeldung bestätigen", unsub: "Abmelden", why: "Du erhältst diese E-Mail, weil sich diese Adresse für den Newsletter angemeldet hat.", expires: "Der Link läuft in 48 Stunden ab." },
-  en: { confirm: "Confirm my subscription", unsub: "Unsubscribe", why: "You are receiving this email because this address subscribed to the newsletter.", expires: "The link expires in 48 hours." },
+/** Textos fijos de los correos y páginas de la newsletter por idioma (los genéricos de marca están en shared/brandUiText.ts). */
+export const BUTTON: Record<Locale, { confirm: string; unsub: string; why: string; expires: string; visit: string; resubscribe: string; eyebrow: string }> = {
+  es: { confirm: "Confirmar mi inscripción", unsub: "Darme de baja", why: "Recibes este correo porque esta dirección se inscribió a la newsletter.", expires: "El enlace caduca en 48 horas.", visit: "Visitar la web", resubscribe: "Inscribirme de nuevo", eyebrow: "Newsletter" },
+  de: { confirm: "Anmeldung bestätigen", unsub: "Abmelden", why: "Du erhältst diese E-Mail, weil sich diese Adresse für den Newsletter angemeldet hat.", expires: "Der Link läuft in 48 Stunden ab.", visit: "Website besuchen", resubscribe: "Erneut anmelden", eyebrow: "Newsletter" },
+  en: { confirm: "Confirm my subscription", unsub: "Unsubscribe", why: "You are receiving this email because this address subscribed to the newsletter.", expires: "The link expires in 48 hours.", visit: "Visit the website", resubscribe: "Subscribe again", eyebrow: "Newsletter" },
 };
 
 /** Plantilla efectiva: la guardada por la empresa o, en su defecto, la de fábrica (por campo). */
@@ -134,18 +137,21 @@ export function resolveTemplate(kind: "welcome" | "confirm", locale: string, jso
 }
 
 export const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+/** Párrafos de texto plano del cuerpo (separados por línea en blanco). */
 const paragraphs = (body: string) =>
   body
     .replace(/\r\n/g, "\n")
     .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 16px;font-size:16px;line-height:26px;color:#2b2730">${escapeHtml(p.trim()).replace(/\n/g, "<br>")}</p>`)
-    .join("");
+    .map((p) => p.trim())
+    .filter(Boolean);
 
 export interface MailIdentity {
   brand: string;
   /** Datos de identificación del responsable (razón social, NIF, domicilio, contacto): una línea. */
   legalLine: string;
   logoUrl?: string | null;
+  /** Kit visual de la empresa (marca, colores, enlaces). Sin él, un kit mínimo con `brand`/`legalLine`, colores neutros y sin logotipo. */
+  kit?: TenantVisualKit;
 }
 export interface RenderedMail {
   subject: string;
@@ -156,22 +162,25 @@ export interface RenderedMail {
 /** Correo con la identidad de la empresa. `button`: enlace de acción (confirmación). `unsubscribeUrl`: pie de baja. */
 export function renderMail(t: MailTemplate, locale: string, id: MailIdentity, o: { buttonUrl?: string; unsubscribeUrl?: string; tenantDefault?: string }): RenderedMail {
   const L = BUTTON[templateLocale(locale, o.tenantDefault)];
-  const button = o.buttonUrl
-    ? `<p style="margin:24px 0"><a href="${escapeHtml(o.buttonUrl)}" style="background:#6b4eff;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 26px;border-radius:999px;display:inline-block">${escapeHtml(L.confirm)}</a></p><p style="margin:0 0 16px;font-size:13px;color:#6b6574">${escapeHtml(L.expires)}</p>`
-    : "";
-  const foot = [
-    `<p style="margin:0 0 6px;font-size:12px;line-height:18px;color:#6b6574">${escapeHtml(L.why)}</p>`,
-    id.legalLine ? `<p style="margin:0 0 6px;font-size:12px;line-height:18px;color:#6b6574">${escapeHtml(id.legalLine)}</p>` : "",
-    o.unsubscribeUrl ? `<p style="margin:0;font-size:12px;line-height:18px"><a href="${escapeHtml(o.unsubscribeUrl)}" style="color:#6b6574">${escapeHtml(L.unsub)}</a></p>` : "",
-  ].join("");
-  const html =
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>` +
-    `<body style="margin:0;background:#f4f1fa;font-family:Georgia,'Times New Roman',serif"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">` +
-    `<table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:18px;padding:32px 30px"><tr><td>` +
-    `<p style="margin:0 0 22px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#6b4eff">${escapeHtml(id.brand)}</p>` +
-    `${paragraphs(t.body)}${button}<hr style="border:0;border-top:1px solid #ece8f5;margin:24px 0 16px">${foot}</td></tr></table></td></tr></table></body></html>`;
-  const text = [t.body.trim(), o.buttonUrl ? `\n${L.confirm}: ${o.buttonUrl}\n${L.expires}` : "", `\n--\n${L.why}`, id.legalLine, o.unsubscribeUrl ? `${L.unsub}: ${o.unsubscribeUrl}` : ""].filter(Boolean).join("\n");
-  return { subject: t.subject, html, text };
+  const kit = id.kit ?? minimalKit({ brand: id.brand, legalLine: id.legalLine, logoUrl: id.logoUrl });
+  const body = paragraphs(t.body);
+  const site = kit.links.site(locale);
+  // Confirmación: el botón es el enlace de confirmación y caduca. Bienvenida: sin enlace que consumir; «Visitar la web».
+  const cta = o.buttonUrl ? { label: L.confirm, url: o.buttonUrl } : site ? { label: L.visit, url: site } : undefined;
+  const m = renderBrandedEmail(kit, {
+    locale,
+    subject: t.subject,
+    preheader: body[0]?.replace(/\s+/g, " ").slice(0, 140),
+    eyebrow: L.eyebrow,
+    title: t.subject,
+    paragraphs: body,
+    cta,
+    showLinkFallback: !!o.buttonUrl,
+    note: o.buttonUrl ? L.expires : undefined,
+    footerNotes: [L.why],
+    unsubscribe: o.unsubscribeUrl ? { label: L.unsub, url: o.unsubscribeUrl } : undefined,
+  });
+  return { subject: t.subject, html: m.html, text: m.text };
 }
 
 // ── Exportación ──

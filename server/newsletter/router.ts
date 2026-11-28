@@ -128,7 +128,9 @@ export const newsletterRouter = router({
     handle(async () => {
       const [{ resolveTemplate }, runtime] = await Promise.all([import("./core"), import("./runtime")]);
       const s = await mysqlNewsletterStore.settings();
-      const ident = runtime.identity();
+      // Solo marca y línea legal: el kit visual (con funciones) no viaja al panel
+      const { brand, legalLine } = await runtime.identity();
+      const ident = { brand, legalLine };
       const tenant = await runtime.tenantLocales();
       return {
         enabled: s.enabled,

@@ -93,7 +93,7 @@ function EditionCard({ e, onRequest, t, locale, detailHref, showProduct, preview
         <li className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{editionModeText(t, e.mode)}{e.locationNote ? ` · ${e.locationNote}` : ""}</span></li>
         {seats && <li className="flex items-start gap-2"><Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{seats}</span></li>}
       </ul>
-      <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-4">
         <div className="min-w-0">
           {e.price != null && <p className="text-lg font-semibold leading-tight">{formatEuros(e.price)}</p>}
           {showProduct && (

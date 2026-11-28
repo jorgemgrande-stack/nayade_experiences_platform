@@ -5,44 +5,66 @@
  *  - GET  /newsletter/baja/:token       pide confirmar la baja.
  *  - POST /newsletter/baja/:token       registra la baja; también la baja en un clic de los clientes de correo (RFC 8058).
  * Un enlace que no vale (inexistente, de otra empresa, ya usado o caducado) responde siempre con el mismo mensaje.
+ * Todas las páginas llevan la marca de la empresa (kit visual) en el idioma de la persona; sin kit, un kit mínimo.
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
-import { esc, notice, page } from "../netPublic/html";
-import { normalizeLocale, templateLocale, TOKEN_RE, verifyUnsubscribeToken, type Locale } from "./core";
+import { brandedPage, type BrandedPageKind } from "../netPublic/brandedPage";
+import { minimalKit, tenantVisualKit, type TenantVisualKit } from "../brand/tenantVisualKit";
+import { brandUiText } from "../../shared/brandUiText";
+import { BUTTON, LOCALES, normalizeLocale, templateLocale, TOKEN_RE, verifyUnsubscribeToken, type Locale } from "./core";
 import { newsletterService, unsubscribeSecrets } from "./runtime";
 import { newsletterLang, NEWSLETTER_MESSAGES } from "../../shared/newsletterMessages";
 import { SubscribeFailure, subscribeFromWeb, subscribeInput } from "./subscribe";
 import { NewsletterNotInstalled } from "./store";
-
-const T: Record<Locale, Record<string, string>> = {
-  es: {
-    confirmTitle: "Confirma tu inscripción", confirmText: "Pulsa el botón para confirmar que quieres recibir la newsletter semanal.", confirmBtn: "Confirmar mi inscripción",
-    doneTitle: "¡Inscripción confirmada!", doneText: "Gracias. En unos instantes recibirás un correo de bienvenida.", invalidTitle: "Enlace no válido", invalidText: "Este enlace no es válido, ya se usó o ha caducado. Si quieres recibir la newsletter, vuelve a inscribirte desde la web.",
-    expiredTitle: "Enlace caducado", expiredText: "Este enlace ha caducado. Vuelve a inscribirte desde la web para recibir uno nuevo.",
-    unsubTitle: "Baja de la newsletter", unsubText: "Confirma que no quieres recibir más correos de la newsletter.", unsubBtn: "Confirmar la baja", unsubDone: "Baja registrada", unsubDoneText: "No volverás a recibir la newsletter. Los avisos de tus compras o reservas, si los hay, se siguen enviando.",
-    busy: "No disponible", busyText: "No hemos podido completar la operación. Inténtalo de nuevo en unos minutos.", many: "Demasiadas solicitudes", manyText: "Espera unos minutos y vuelve a intentarlo.",
-  },
-  de: {
-    confirmTitle: "Bestätige deine Anmeldung", confirmText: "Klicke auf den Button, um zu bestätigen, dass du den wöchentlichen Newsletter erhalten möchtest.", confirmBtn: "Anmeldung bestätigen",
-    doneTitle: "Anmeldung bestätigt!", doneText: "Danke. In wenigen Augenblicken erhältst du eine Willkommens-E-Mail.", invalidTitle: "Ungültiger Link", invalidText: "Dieser Link ist ungültig, wurde bereits verwendet oder ist abgelaufen. Wenn du den Newsletter erhalten möchtest, melde dich erneut auf der Website an.",
-    expiredTitle: "Link abgelaufen", expiredText: "Dieser Link ist abgelaufen. Melde dich erneut auf der Website an, um einen neuen zu erhalten.",
-    unsubTitle: "Newsletter abbestellen", unsubText: "Bestätige, dass du keine Newsletter-E-Mails mehr erhalten möchtest.", unsubBtn: "Abmeldung bestätigen", unsubDone: "Abmeldung registriert", unsubDoneText: "Du erhältst den Newsletter nicht mehr. Hinweise zu Käufen oder Buchungen werden weiterhin gesendet.",
-    busy: "Nicht verfügbar", busyText: "Der Vorgang konnte nicht abgeschlossen werden. Bitte versuche es in einigen Minuten erneut.", many: "Zu viele Anfragen", manyText: "Bitte warte einige Minuten und versuche es erneut.",
-  },
-  en: {
-    confirmTitle: "Confirm your subscription", confirmText: "Click the button to confirm that you want to receive the weekly newsletter.", confirmBtn: "Confirm my subscription",
-    doneTitle: "Subscription confirmed!", doneText: "Thank you. You will receive a welcome email in a moment.", invalidTitle: "Invalid link", invalidText: "This link is invalid, was already used or has expired. If you want to receive the newsletter, subscribe again on the website.",
-    expiredTitle: "Link expired", expiredText: "This link has expired. Subscribe again on the website to get a new one.",
-    unsubTitle: "Unsubscribe from the newsletter", unsubText: "Confirm that you no longer want to receive the newsletter emails.", unsubBtn: "Confirm unsubscribe", unsubDone: "Unsubscribed", unsubDoneText: "You will no longer receive the newsletter. Notices about your purchases or bookings, if any, will still be sent.",
-    busy: "Not available", busyText: "We could not complete the operation. Please try again in a few minutes.", many: "Too many requests", manyText: "Please wait a few minutes and try again.",
-  },
-};
+import { PUBLIC_PAGE_TEXT as T } from "./publicPageText";
 
 const tokenOf = (req: Request) => String(req.params.token ?? "").slice(0, 120);
-const fail = (res: Response, l: Locale) => page(res, 503, T[l].busy, `<div class="sheet"><h1>${esc(T[l].busy)}</h1><p>${esc(T[l].busyText)}</p></div>`);
-const bad = (res: Response, l: Locale, expired = false) => page(res, 404, T[l][expired ? "expiredTitle" : "invalidTitle"], `<div class="sheet"><h1>${esc(T[l][expired ? "expiredTitle" : "invalidTitle"])}</h1><p>${esc(T[l][expired ? "expiredText" : "invalidText"])}</p></div>`);
 const log = (event: string, e: unknown) => console.error(JSON.stringify({ ctx: "Newsletter", event, error: e instanceof Error ? e.message.slice(0, 200) : "error" }));
+
+/** Idioma de la persona por `Accept-Language` (solo los soportados); sin uno, alemán, como el resto del módulo. */
+export function acceptLanguageLocale(header: string | undefined, fallback: Locale = "de"): Locale {
+  for (const part of String(header ?? "").split(",")) {
+    const tag = part.split(";")[0].trim().toLowerCase().slice(0, 2);
+    if ((LOCALES as readonly string[]).includes(tag)) return tag as Locale;
+  }
+  return fallback;
+}
+
+/** Kit de la empresa; si no se puede cargar, uno mínimo con su nombre y línea legal (la página sale igual). */
+async function kitSafe(): Promise<TenantVisualKit> {
+  try {
+    return await tenantVisualKit();
+  } catch (e) {
+    log("visual_kit", e);
+    try {
+      const [{ brandName }, { tenantLegalIdentity }, { publicBaseUrl }] = await Promise.all([import("../tenantBrand"), import("../brand/tenantLegal"), import("../_core/productIdentity")]);
+      const legal = tenantLegalIdentity();
+      return minimalKit({ brand: brandName() || legal.name, legalLine: legal.line, legal, siteUrl: publicBaseUrl() });
+    } catch {
+      return minimalKit({ brand: "", legalLine: "" });
+    }
+  }
+}
+
+type Page = { kind: BrandedPageKind; title: string; text: string; cta?: "confirm" | "unsub" | "resubscribe" | "back" };
+
+async function show(res: Response, status: number, l: Locale, p: Page): Promise<void> {
+  const kit = await kitSafe();
+  const site = kit.links.site(l);
+  const back = brandUiText(l).backTo.replace("{brand}", kit.brandName || kit.legal.name || "");
+  let cta: { label: string; url?: string; method?: "GET" | "POST" } | undefined;
+  if (p.cta === "confirm") cta = { label: T[l].confirmBtn, method: "POST" };
+  else if (p.cta === "unsub") cta = { label: T[l].unsubBtn, method: "POST" };
+  else if (p.cta === "resubscribe" && site) cta = { label: BUTTON[l].resubscribe, url: site };
+  else if (p.cta === "back" && site) cta = { label: back, url: site };
+  brandedPage(res, status, kit, { locale: l, kind: p.kind, title: p.title, text: p.text, cta });
+}
+
+const fail = (res: Response, l: Locale) => show(res, 503, l, { kind: "warning", title: T[l].busy, text: T[l].busyText, cta: "back" });
+/** Enlace que no vale: inexistente, de otra empresa, ya usado (confirmado o no: a propósito no se distingue) o caducado. */
+const bad = (res: Response, l: Locale, expired = false) =>
+  show(res, 404, l, { kind: expired ? "warning" : "error", title: T[l][expired ? "expiredTitle" : "invalidTitle"], text: T[l][expired ? "expiredText" : "invalidText"], cta: "resubscribe" });
 
 export function createNewsletterPublicRouter(): Router {
   const r = express.Router();
@@ -53,7 +75,10 @@ export function createNewsletterPublicRouter(): Router {
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => `nl:${ipKeyGenerator(req.ip ?? "")}`,
-    handler: (_req, res) => page(res, 429, T.es.many, `<div class="sheet"><h1>${esc(T.es.many)} · ${esc(T.de.many)}</h1><p>${esc(T.es.manyText)}</p><p>${esc(T.de.manyText)}</p></div>`),
+    handler: (req, res) => {
+      const l = acceptLanguageLocale(req.headers["accept-language"]);
+      void show(res, 429, l, { kind: "warning", title: T[l].many, text: T[l].manyText, cta: "back" });
+    },
   });
   r.use("/newsletter", limiter);
 
@@ -85,38 +110,38 @@ export function createNewsletterPublicRouter(): Router {
 
   r.get("/newsletter/confirmar/:token", async (req, res) => {
     try {
-      if (!TOKEN_RE.test(tokenOf(req))) return bad(res, "de");
+      if (!TOKEN_RE.test(tokenOf(req))) return await bad(res, "de");
       const p = await newsletterService().peekConfirm(tokenOf(req));
       const l = templateLocale(p.locale);
-      if (p.state !== "valid") return bad(res, l, p.state === "expired");
-      page(res, 200, T[l].confirmTitle, `<div class="sheet"><h1>${esc(T[l].confirmTitle)}</h1><p>${esc(T[l].confirmText)}</p><form method="post"><button type="submit">${esc(T[l].confirmBtn)}</button></form></div>`);
+      if (p.state !== "valid") return await bad(res, l, p.state === "expired");
+      await show(res, 200, l, { kind: "info", title: T[l].confirmTitle, text: T[l].confirmText, cta: "confirm" });
     } catch (e) {
       if (!(e instanceof NewsletterNotInstalled)) log("confirm_get", e);
-      fail(res, "de");
+      await fail(res, "de");
     }
   });
   r.post("/newsletter/confirmar/:token", form, async (req, res) => {
     try {
-      if (!TOKEN_RE.test(tokenOf(req))) return bad(res, "de");
+      if (!TOKEN_RE.test(tokenOf(req))) return await bad(res, "de");
       const c = await newsletterService().confirm(tokenOf(req));
       const l = templateLocale(c.locale);
-      if (c.state !== "confirmed") return bad(res, l, c.state === "expired");
-      page(res, 200, T[l].doneTitle, `${notice("ok", T[l].doneTitle)}<div class="sheet"><h1>${esc(T[l].doneTitle)}</h1><p>${esc(T[l].doneText)}</p></div>`);
+      if (c.state !== "confirmed") return await bad(res, l, c.state === "expired");
+      await show(res, 200, l, { kind: "success", title: T[l].doneTitle, text: T[l].doneText, cta: "back" });
     } catch (e) {
       if (!(e instanceof NewsletterNotInstalled)) log("confirm_post", e);
-      fail(res, "de");
+      await fail(res, "de");
     }
   });
 
   r.get("/newsletter/baja/:token", async (req, res) => {
     try {
       const sl = await newsletterService().unsubscribeLocale(tokenOf(req), unsubscribeSecrets(), verifyUnsubscribeToken);
-      if (!sl) return bad(res, "de");
+      if (!sl) return await bad(res, "de");
       const l = templateLocale(sl);
-      page(res, 200, T[l].unsubTitle, `<div class="sheet"><h1>${esc(T[l].unsubTitle)}</h1><p>${esc(T[l].unsubText)}</p><form method="post"><button type="submit">${esc(T[l].unsubBtn)}</button></form></div>`);
+      await show(res, 200, l, { kind: "info", title: T[l].unsubTitle, text: T[l].unsubText, cta: "unsub" });
     } catch (e) {
       if (!(e instanceof NewsletterNotInstalled)) log("unsub_get", e);
-      fail(res, "de");
+      await fail(res, "de");
     }
   });
   r.post("/newsletter/baja/:token", form, async (req, res) => {
@@ -124,16 +149,16 @@ export function createNewsletterPublicRouter(): Router {
       const svc = newsletterService();
       const l = normalizeLocale(await svc.unsubscribeLocale(tokenOf(req), unsubscribeSecrets(), verifyUnsubscribeToken), "de");
       const ok = await svc.unsubscribeByToken(tokenOf(req), unsubscribeSecrets(), verifyUnsubscribeToken);
-      if (!ok) return bad(res, "de");
-      page(res, 200, T[l].unsubDone, `${notice("ok", T[l].unsubDone)}<div class="sheet"><h1>${esc(T[l].unsubDone)}</h1><p>${esc(T[l].unsubDoneText)}</p></div>`);
+      if (!ok) return await bad(res, "de");
+      await show(res, 200, l, { kind: "success", title: T[l].unsubDone, text: T[l].unsubDoneText, cta: "back" });
     } catch (e) {
       if (!(e instanceof NewsletterNotInstalled)) log("unsub_post", e);
-      fail(res, "de");
+      await fail(res, "de");
     }
   });
   r.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err);
-    return fail(res, "de");
+    void fail(res, "de");
   });
   return r;
 }

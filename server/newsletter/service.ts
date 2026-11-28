@@ -218,7 +218,8 @@ export interface NewsletterDeps {
   /** Secretos de firma de los enlaces de baja (el primero firma; todos validan). */
   secrets: () => string[];
   baseUrl: () => string;
-  identity: () => MailIdentity;
+  /** Identidad de la empresa para los correos (marca, línea legal y, si está cargado, su kit visual). Puede ser asíncrona. */
+  identity: () => MailIdentity | Promise<MailIdentity>;
   /** Idiomas reales de la empresa. Sin él: los de las plantillas (de, es, en) con el alemán como principal. */
   locales?: () => Promise<TenantLocales>;
 }
@@ -324,7 +325,7 @@ export class NewsletterService {
     const key = `nl:confirm:${id}:${sha256(token).slice(0, 16)}`;
     if (!(await this.d.store.reserveMail(id, "confirm", key, now))) return false;
     const url = `${this.d.baseUrl().replace(/\/+$/, "")}/newsletter/confirmar/${token}`;
-    const m = renderMail(await this.tpl("confirm", locale, settings), locale, this.d.identity(), { buttonUrl: url, tenantDefault: (await this.tenantLocales()).defaultLocale });
+    const m = renderMail(await this.tpl("confirm", locale, settings), locale, await this.d.identity(), { buttonUrl: url, tenantDefault: (await this.tenantLocales()).defaultLocale });
     const r = await this.d.mail.send({ to: email, subject: m.subject, html: m.html, text: m.text, idempotencyKey: key, category: "operational" }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "error" }));
     await this.d.store.finishMail(key, r.ok ? "sent" : "failed", r.ok ? null : (r.error ?? "El correo no salió").slice(0, 300), this.now);
     // El contador y la fecha cuentan intentos (también los fallidos): frena el reenvío en bucle
@@ -393,7 +394,7 @@ export class NewsletterService {
     // Clave por ciclo de confirmación y por intento manual: dos réplicas o un reintento no duplican la bienvenida
     const key = `nl:welcome:${id}:${sub.confirmedAt}:${mode === "auto" ? 0 : failed + 1}`;
     if (!(await this.d.store.reserveMail(id, "welcome", key, this.now))) return { sent: false, reason: "already_attempted" };
-    const m = renderMail(await this.tpl("welcome", sub.locale, settings), sub.locale, this.d.identity(), { unsubscribeUrl: this.unsubUrl(id), tenantDefault: (await this.tenantLocales()).defaultLocale });
+    const m = renderMail(await this.tpl("welcome", sub.locale, settings), sub.locale, await this.d.identity(), { unsubscribeUrl: this.unsubUrl(id), tenantDefault: (await this.tenantLocales()).defaultLocale });
     const r = await this.d.mail.send({ to: sub.email, subject: m.subject, html: m.html, text: m.text, idempotencyKey: key, category: "operational" }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "error" }));
     await this.d.store.finishMail(key, r.ok ? "sent" : "failed", r.ok ? null : (r.error ?? "El correo no salió").slice(0, 300), this.now);
     if (r.ok) {
