@@ -230,6 +230,20 @@ describe("sin la migración 0077 nada se rompe", () => {
     const list = await listPublicEditions({ now: Date.UTC(2036, 0, 1) });
     expect(list).toHaveLength(1);
     expect(list[0].sessions).toEqual([]);
+    // Sin categoría (LEFT JOIN): la tarjeta de la web usa la modalidad como antetítulo
+    expect(list[0].categoryId).toBeNull();
+    expect(list[0].categoryName).toBeNull();
+  });
+
+  it("la categoría del producto viaja con la convocatoria (antetítulo de la tarjeta)", async () => {
+    state.editionRows = [{ id: 8, experience_id: 3, label: "Invierno", starts_at: Date.UTC(2037, 0, 1), ends_at: null, timezone: "Europe/Madrid", mode: "online", status: "open", capacity: null, reserved: 0, show_availability: 0, product_title: "Curso", product_slug: "curso", product_price: "0", product_offer_mode: "on_request", category_id: 4, category_name: "Retiros" }];
+    const { listPublicEditions } = await import("./editionsDb");
+    state.executed = [];
+    const list = await listPublicEditions({ now: Date.UTC(2036, 0, 1) });
+    expect(list[0].categoryId).toBe(4);
+    expect(list[0].categoryName).toBe("Retiros");
+    const q = state.executed.find((s) => /FROM product_editions e JOIN experiences x/.test(s))!;
+    expect(q).toContain("LEFT JOIN categories c ON c.id = x.categoryId");
   });
 
   it("las convocatorias de un producto por solicitud (no «activo»: no se vende en línea) también son públicas", async () => {

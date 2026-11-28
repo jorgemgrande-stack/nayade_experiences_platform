@@ -18,11 +18,13 @@ import {
   couponRedemptions,
   discountCodes,
   invoices,
+  documentCounters,
   quotes,
   tpvSales,
   type CancellationRequest,
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql, lt, inArray } from "drizzle-orm";
+import { madridYear } from "../utils/timezone";
 import { sendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import {
@@ -34,9 +36,8 @@ import {
   buildCancellationRefundExecutedHtml,
 } from "../emailTemplates";
 import { storagePut } from "../storage";
-import { generateDocumentNumber } from "../documentNumbers";
-import { nextRefundTransactionNumber } from "../refundNumber";
-
+import { ensureDocumentCounter, generateDocumentNumberInTx } from "../documentNumbers";
+import { isDeadlock } from "../creditNoteNumber";
 import { logActivity, getGHLCredentials, voidConfirmedOperation } from "../db";
 import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
@@ -78,215 +79,251 @@ async function addLog(
   });
 }
 
-// --- Propagación transversal al aprobar una anulación -----------------------
+// --- Anulación atómica e idempotente ------------------------------------------
+//
+// P0 fiscal: UNA operación de anulación produce UNA consecuencia fiscal (un DEV, un abono, un efecto contable)
+// aunque lleguen varias llamadas a la vez o se reintente. Reglas:
+//  - Todo (reclamo de la solicitud, bloqueo de reserva y factura, números ANU/ABN/DEV y escrituras) ocurre en UNA
+//    transacción. Los números se emiten DENTRO de ella (`generateDocumentNumberInTx`): si algo falla se deshacen con ella
+//    y no queda ni número gastado ni documento a medias; las llamadas perdedoras no consumen números.
+//  - La solicitud se «reclama» con `UPDATE … WHERE resolution_status = 'sin_resolver'` y se comprueba la fila afectada: solo
+//    una llamada puede ganar; las demás esperan el bloqueo de fila y reciben PRECONDITION_FAILED.
+//  - Orden de bloqueo fijo (solicitud → reserva → factura → contadores ANU, ABN, DEV) para evitar interbloqueos; si MySQL
+//    resolviera alguno, la transacción entera (revertida) se repite.
+//  - Dentro de la transacción no se usa ninguna otra conexión del pool (los efectos externos van después de confirmar).
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 6): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i >= attempts || !isDeadlock(err)) throw err;
+      await sleepMs(10 + Math.random() * 30 * i);
+    }
+  }
+}
+
+/** Las series deben existir ANTES de abrir la transacción (se crean con su propia conexión). */
+async function ensureCancellationCounters(): Promise<void> {
+  await ensureDocumentCounter("anulacion");
+  await ensureDocumentCounter("abono");
+  await ensureDocumentCounter("devolucion");
+}
+
 /**
- * Propaga el impacto de una anulación aprobada a todos los módulos del sistema:
- * 1. Reserva ? status = "cancelled"
- * 2. Contabilidad ? transacción de devolución (importe negativo) si refundAmount > 0
- * 3. Operaciones ? reservation_operational.opStatus = "anulado"
- * 4. REAV ? expediente fiscalStatus = "anulado", operativeStatus = "anulado"
- * 5. Numeración ? genera número ANU- y lo guarda en cancellation_requests
+ * Número de la transacción de devolución (DEV-AAAA-NNNN) de su serie PROPIA «devolucion» (no consume la de facturas), emitido
+ * DENTRO de la transacción con su misma conexión (no se usa `nextRefundTransactionNumber`: pediría otra conexión y con muchas
+ * solicitudes simultáneas podría agotar el pool). Antes de emitir, el contador se adelanta con GREATEST (nunca retrocede) al
+ * mayor DEV del año que ya exista, sin renumerar históricos; `existsCheck` es la red de seguridad.
  */
-async function propagateCancellation(params: {
+async function refundTransactionNumberInTx(tx: Tx, context: string, adminUserId: number): Promise<string> {
+  const year = madridYear();
+  const [top] = await tx
+    .select({ n: sql<number>`MAX(CAST(SUBSTRING(${transactions.transactionNumber}, 10) AS UNSIGNED))` })
+    .from(transactions)
+    .where(sql`${transactions.transactionNumber} REGEXP ${`^DEV-${year}-[0-9]+$`}`);
+  const floor = Number(top?.n ?? 0);
+  if (Number.isSafeInteger(floor) && floor > 0) {
+    await tx
+      .update(documentCounters)
+      .set({ currentNumber: sql`GREATEST(${documentCounters.currentNumber}, ${floor})` })
+      .where(and(eq(documentCounters.documentType, "devolucion"), eq(documentCounters.year, year)));
+  }
+  return generateDocumentNumberInTx(tx, "devolucion", context, String(adminUserId), async (candidate) => {
+    const [hit] = await tx.select({ id: transactions.id }).from(transactions).where(eq(transactions.transactionNumber, candidate)).limit(1);
+    return !!hit;
+  });
+}
+
+async function addLogIn(
+  tx: Tx,
+  requestId: number,
+  actionType: string,
+  payload: Record<string, unknown>,
+  adminUserId?: number,
+  adminUserName?: string,
+  oldStatus?: string,
+  newStatus?: string
+) {
+  await tx.insert(cancellationLogs).values({ requestId, actionType, oldStatus, newStatus, payload, adminUserId, adminUserName });
+}
+
+const ALREADY_RESOLVED = "Esta solicitud ya tiene resolución (o se está resolviendo en otra operación). No se puede aceptar de nuevo.";
+
+/** Reclama la solicitud de forma atómica: solo una llamada pasa de «sin_resolver» a resuelta. */
+async function claimRequestInTx(tx: Tx, requestId: number, fields: Partial<typeof cancellationRequests.$inferInsert>): Promise<CancellationRequest> {
+  const [upd] = await tx.update(cancellationRequests).set(fields)
+    .where(and(eq(cancellationRequests.id, requestId), eq(cancellationRequests.resolutionStatus, "sin_resolver")));
+  if (Number((upd as { affectedRows?: number })?.affectedRows ?? 0) !== 1) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: ALREADY_RESOLVED });
+  }
+  const [row] = await tx.select().from(cancellationRequests).where(eq(cancellationRequests.id, requestId)).limit(1);
+  return row;
+}
+
+type EffectsResult = {
+  cancellationNumber: string;
+  creditNoteNumber?: string;
+  originalInvoiceNumber?: string | null;
+  refundTransactionCreated: boolean;
+  scope: "total" | "lineas";
+};
+
+/**
+ * Propaga una anulación TOTAL a todos los módulos, dentro de la transacción del llamador (ya con la solicitud reclamada):
+ * 1. Reserva → cancelled; 2. transacción de devolución DEV (importe negativo) si hay devolución; 3. Operaciones → anulado;
+ * 4. REAV → anulado; 5. abono de la factura vinculada (si sigue viva); 6. número ANU en la solicitud.
+ */
+async function totalEffectsInTx(tx: Tx, params: {
   requestId: number;
   req: CancellationRequest;
-  refundAmount?: number;       // Solo para devoluciones monetarias
+  refundAmount?: number;
   compensationType: "devolucion" | "bono" | "ninguna";
   adminUserId: number;
   adminUserName: string;
-}): Promise<{ cancellationNumber: string; creditNoteNumber?: string }> {
-  const { requestId, req, refundAmount, compensationType, adminUserId, adminUserName } = params;
-
-  // -- 1. Generar número ANU- (fuera de la tx, no se puede hacer rollback de numeración) --
-  const cancellationNumber = await generateDocumentNumber(
-    "anulacion",
-    `cancellations:acceptRequest:${compensationType}`,
-    String(adminUserId)
-  );
-
-  // Si hay factura vinculada, pre-generar el número de abono también fuera de la tx
-  let creditNoteNumber: string | undefined;
-  let originalInvoice: typeof invoices.$inferSelect | null = null;
-  // Copia del emisor del abono, también fuera de la tx (no ocupa otra conexión con la transacción abierta)
-  let issuerSnapshot: Awaited<ReturnType<typeof issuerSnapshotForNewInvoice>> = null;
-
+  issuerSnapshot: Awaited<ReturnType<typeof issuerSnapshotForNewInvoice>>;
+}): Promise<EffectsResult> {
+  const { requestId, req, refundAmount, compensationType, adminUserId, adminUserName, issuerSnapshot } = params;
   const reservationId = req.linkedReservationId;
-  if (reservationId) {
-    const [res] = await db.select({ invoiceId: reservations.invoiceId, invoiceNumber: reservations.invoiceNumber })
-      .from(reservations)
-      .where(eq(reservations.id, reservationId))
-      .limit(1);
+  const hasRefund = compensationType === "devolucion" && refundAmount != null && refundAmount > 0;
 
-    if (res?.invoiceId) {
-      const [inv] = await db.select().from(invoices).where(eq(invoices.id, res.invoiceId as number)).limit(1);
-      if (inv && inv.status !== "abonada" && inv.status !== "anulada") {
-        originalInvoice = inv;
-        creditNoteNumber = await generateDocumentNumber(
-          "abono",
-          `cancellations:creditNote:${requestId}`,
-          String(adminUserId)
-        );
-        issuerSnapshot = await issuerSnapshotForNewInvoice();
+  // -- Bloqueos (reserva → factura) y comprobaciones con el estado ACTUAL --------
+  let originalInvoice: typeof invoices.$inferSelect | null = null;
+  if (reservationId) {
+    const [resRow] = await tx.select({ id: reservations.id, status: reservations.status, invoiceId: reservations.invoiceId })
+      .from(reservations).where(eq(reservations.id, reservationId)).limit(1).for("update");
+    if (resRow?.invoiceId) {
+      const [inv] = await tx.select().from(invoices).where(eq(invoices.id, resRow.invoiceId as number)).limit(1).for("update");
+      if (inv && inv.status !== "abonada" && inv.status !== "anulada") originalInvoice = inv;
+    }
+    // Una reserva ya anulada con una devolución registrada no admite otra devolución (p. ej. al revertir la resolución y
+    // aceptar de nuevo, o dos solicitudes sobre la misma reserva): sería un segundo DEV de la misma operación.
+    if (resRow?.status === "cancelled" && hasRefund) {
+      const [prev] = await tx.select({ n: transactions.transactionNumber }).from(transactions)
+        .where(and(eq(transactions.reservationId, reservationId), eq(transactions.type, "reembolso"))).limit(1);
+      if (prev) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `La reserva ya está anulada y tiene registrada la devolución ${prev.n}. No se crea otra devolución para la misma operación.`,
+        });
       }
     }
   }
 
-  // -- 2. Todo lo que afecta a otras tablas: dentro de transacción ACID -------
-  await db.transaction(async (tx) => {
-    // Guardar el número ANU en la solicitud
-    await tx.update(cancellationRequests)
-      .set({ cancellationNumber })
-      .where(eq(cancellationRequests.id, requestId));
+  // -- Números, en el orden fijo ANU → ABN → DEV (se deshacen con la transacción) --
+  const cancellationNumber = await generateDocumentNumberInTx(tx, "anulacion", `cancellations:acceptRequest:${compensationType}`, String(adminUserId));
+  let creditNoteNumber: string | undefined;
+  if (originalInvoice) {
+    creditNoteNumber = await generateDocumentNumberInTx(tx, "abono", `cancellations:creditNote:${requestId}`, String(adminUserId));
+  }
 
-    // -- Cancelar la reserva vinculada -------------------------------------
-    if (reservationId) {
-      await tx.update(reservations)
+  await tx.update(cancellationRequests).set({ cancellationNumber }).where(eq(cancellationRequests.id, requestId));
+
+  if (reservationId) {
+    await tx.update(reservations)
+      .set({ status: "cancelled", statusReservation: "ANULADA" })
+      .where(eq(reservations.id, reservationId));
+
+    // Cancelar venta TPV vinculada (si la reserva nació de un TPV); sin esto la venta seguía «paid» e inflaba el control diario.
+    await tx.update(tpvSales).set({ status: "cancelled" }).where(eq(tpvSales.reservationId, reservationId));
+
+    // Ingreso original reversado y estado operativo anulado (misma lógica que las cancelaciones de la Venta multicanal)
+    await voidConfirmedOperation(tx, reservationId, { refunded: hasRefund, updatedBy: adminUserId });
+
+    const [reavExp] = await tx.select({ id: reavExpedients.id }).from(reavExpedients)
+      .where(eq(reavExpedients.reservationId, reservationId)).limit(1);
+    if (reavExp) {
+      await tx.update(reavExpedients)
         .set({
-          status: "cancelled",
-          statusReservation: "ANULADA",
+          fiscalStatus: "anulado",
+          operativeStatus: "anulado",
+          closedAt: new Date(),
+          internalNotes: `Anulado por expediente ${cancellationNumber} el ${new Date().toLocaleDateString("es-ES")}`,
         })
-        .where(eq(reservations.id, reservationId));
-
-      // -- Cancelar venta TPV vinculada (si la reserva nació de un TPV) -----
-      // Sin esto, la venta TPV mantenía status="paid" e inflaba el control diario.
-      // Bug #1 del audit: orphan TPV sales after reservation cancellation.
-      await tx.update(tpvSales)
-        .set({ status: "cancelled" })
-        .where(eq(tpvSales.reservationId, reservationId));
-
-      // -- Ingreso original reversado y estado operativo anulado ------------
-      // (misma lógica que las cancelaciones de la Venta multicanal: voidConfirmedOperation)
-      const hasRefund = compensationType === "devolucion" && refundAmount != null && refundAmount > 0;
-      await voidConfirmedOperation(tx, reservationId, { refunded: hasRefund, updatedBy: adminUserId });
-
-      // -- Cerrar expediente REAV si existe ----------------------------------
-      const [reavExp] = await tx.select({ id: reavExpedients.id })
-        .from(reavExpedients)
-        .where(eq(reavExpedients.reservationId, reservationId))
-        .limit(1);
-      if (reavExp) {
-        await tx.update(reavExpedients)
-          .set({
-            fiscalStatus: "anulado",
-            operativeStatus: "anulado",
-            closedAt: new Date(),
-            internalNotes: `Anulado por expediente ${cancellationNumber} el ${new Date().toLocaleDateString("es-ES")}`,
-          })
-          .where(eq(reavExpedients.id, reavExp.id));
-      }
-
-      // -- Factura rectificativa (abono) -------------------------------------
-      // Se genera siempre que exista factura válida, independientemente del tipo de compensación.
-      // El importe del abono = resolvedAmount (parcial) o total de la factura (total).
-      if (originalInvoice && creditNoteNumber) {
-        const creditAmount = refundAmount && refundAmount > 0
-          ? String(refundAmount.toFixed(2))
-          : String(Math.abs(Number(originalInvoice.total)).toFixed(2));
-
-        const taxRate = Number(originalInvoice.taxRate ?? 0);
-        const creditSubtotal = taxRate > 0
-          ? String((Number(creditAmount) / (1 + taxRate / 100)).toFixed(2))
-          : creditAmount;
-        const creditTax = taxRate > 0
-          ? String((Number(creditAmount) - Number(creditSubtotal)).toFixed(2))
-          : "0";
-
-        // Crear factura de abono (importe negativo en cuenta de resultados)
-        await tx.insert(invoices).values({
-          issuerSnapshot,
-          invoiceNumber: creditNoteNumber,
-          reservationId,
-          clientName: originalInvoice.clientName,
-          clientEmail: originalInvoice.clientEmail,
-          clientPhone: originalInvoice.clientPhone ?? undefined,
-          clientNif: originalInvoice.clientNif ?? undefined,
-          clientAddress: originalInvoice.clientAddress ?? undefined,
-          itemsJson: [{
-            description: `Abono por anulación ${cancellationNumber} — ${originalInvoice.invoiceNumber}`,
-            quantity: 1,
-            unitPrice: -Number(creditAmount),
-            total: -Number(creditAmount),
-          }],
-          subtotal: `-${creditSubtotal}`,
-          taxRate: String(taxRate),
-          taxAmount: `-${creditTax}`,
-          total: `-${creditAmount}`,
-          currency: originalInvoice.currency ?? "EUR",
-          invoiceType: "abono",
-          creditNoteForId: originalInvoice.id,
-          creditNoteReason: `Anulación de reserva. Expediente ${cancellationNumber}.`,
-          isAutomatic: false,
-          status: "generada",
-        } as any);
-
-        // Marcar la factura original como abonada
-        await tx.update(invoices)
-          .set({ status: "abonada" })
-          .where(eq(invoices.id, originalInvoice.id));
-      }
+        .where(eq(reavExpedients.id, reavExp.id));
     }
 
-    // -- Transacción contable de devolución (solo si hay importe a devolver) -
-    if (compensationType === "devolucion" && refundAmount != null && refundAmount > 0) {
-      const refundTxNumber = await nextRefundTransactionNumber(`cancellations:refundTransaction:${requestId}`, adminUserId);
-      await tx.insert(transactions).values({
-        transactionNumber: refundTxNumber,
-        type: "reembolso",
-        amount: String(-Math.abs(refundAmount)),
-        currency: "EUR",
-        paymentMethod: "transferencia",
-        status: "completado",
-        description: `Devolución por anulación ${cancellationNumber} — ${req.fullName}`,
-        processedAt: new Date(),
-        clientName: req.fullName,
-        clientEmail: req.email ?? undefined,
-        clientPhone: req.phone ?? undefined,
-        saleChannel: (req.saleChannel as any) ?? "admin",
-        operationStatus: "anulada",
-        reservationId: req.linkedReservationId ?? undefined,
-        invoiceNumber: creditNoteNumber ?? (req.invoiceRef ?? cancellationNumber),
-        sellerUserId: adminUserId,
-        sellerName: adminUserName,
+    // Factura rectificativa (abono): siempre que exista factura válida, con independencia del tipo de compensación.
+    // Importe = resolvedAmount (parcial) o total de la factura (total).
+    if (originalInvoice && creditNoteNumber) {
+      const creditAmount = refundAmount && refundAmount > 0
+        ? String(refundAmount.toFixed(2))
+        : String(Math.abs(Number(originalInvoice.total)).toFixed(2));
+
+      const taxRate = Number(originalInvoice.taxRate ?? 0);
+      const creditSubtotal = taxRate > 0
+        ? String((Number(creditAmount) / (1 + taxRate / 100)).toFixed(2))
+        : creditAmount;
+      const creditTax = taxRate > 0
+        ? String((Number(creditAmount) - Number(creditSubtotal)).toFixed(2))
+        : "0";
+
+      await tx.insert(invoices).values({
+        issuerSnapshot,
+        invoiceNumber: creditNoteNumber,
+        reservationId,
+        clientName: originalInvoice.clientName,
+        clientEmail: originalInvoice.clientEmail,
+        clientPhone: originalInvoice.clientPhone ?? undefined,
+        clientNif: originalInvoice.clientNif ?? undefined,
+        clientAddress: originalInvoice.clientAddress ?? undefined,
+        itemsJson: [{
+          description: `Abono por anulación ${cancellationNumber} — ${originalInvoice.invoiceNumber}`,
+          quantity: 1,
+          unitPrice: -Number(creditAmount),
+          total: -Number(creditAmount),
+        }],
+        subtotal: `-${creditSubtotal}`,
+        taxRate: String(taxRate),
+        taxAmount: `-${creditTax}`,
+        total: `-${creditAmount}`,
+        currency: originalInvoice.currency ?? "EUR",
+        invoiceType: "abono",
+        creditNoteForId: originalInvoice.id,
+        creditNoteReason: `Anulación de reserva. Expediente ${cancellationNumber}.`,
+        isAutomatic: false,
+        status: "generada",
       } as any);
-    }
-  });
 
-  // -- Liberar la plaza de spa/hotel retenida por la reserva (idempotente; un fallo aquí lo corrige
-  //    la sincronización de retenciones, así que no se revierte la anulación por ello) -------------
-  if (reservationId) {
-    await releaseInventoryHold(reservationId, "cancelada").catch((err) =>
-      console.error(`[Cancellations] Error liberando la plaza de la reserva ${reservationId}:`, err?.message));
-    // Inventario (Business): se reponen las unidades vendidas (pedido online o venta del TPV), una sola vez
-    await restockReservations([reservationId], { id: adminUserId, name: adminUserName }, `Anulación ${cancellationNumber}`);
-    // Tokens internos: se anulan los puntos que generó la compra, una sola vez
-    await reverseReservationPoints([reservationId], { id: adminUserId, name: adminUserName }, `Anulación ${cancellationNumber}`);
+      await tx.update(invoices).set({ status: "abonada" }).where(eq(invoices.id, originalInvoice.id));
+    }
   }
 
-  // -- 3. Log de propagación (fuera de tx — no crítico) ----------------------
-  await addLog(
-    requestId,
-    "system_propagation",
-    {
-      cancellationNumber,
-      reservationCancelled: !!req.linkedReservationId,
-      reavClosed: !!req.linkedReservationId,
-      creditNoteGenerated: !!creditNoteNumber,
-      creditNoteNumber: creditNoteNumber ?? null,
-      originalInvoiceNumber: originalInvoice?.invoiceNumber ?? null,
-      refundTransactionCreated: compensationType === "devolucion" && !!refundAmount,
-    },
-    adminUserId,
-    adminUserName
-  );
+  // Transacción contable de devolución (solo si hay importe a devolver)
+  if (hasRefund) {
+    const refundTxNumber = await refundTransactionNumberInTx(tx, `cancellations:refundTransaction:${requestId}`, adminUserId);
+    await tx.insert(transactions).values({
+      transactionNumber: refundTxNumber,
+      type: "reembolso",
+      amount: String(-Math.abs(refundAmount!)),
+      currency: "EUR",
+      paymentMethod: "transferencia",
+      status: "completado",
+      description: `Devolución por anulación ${cancellationNumber} — ${req.fullName}`,
+      processedAt: new Date(),
+      clientName: req.fullName,
+      clientEmail: req.email ?? undefined,
+      clientPhone: req.phone ?? undefined,
+      saleChannel: (req.saleChannel as any) ?? "admin",
+      operationStatus: "anulada",
+      reservationId: req.linkedReservationId ?? undefined,
+      invoiceNumber: creditNoteNumber ?? (req.invoiceRef ?? cancellationNumber),
+      sellerUserId: adminUserId,
+      sellerName: adminUserName,
+    } as any);
+  }
 
-  return { cancellationNumber, creditNoteNumber };
+  return { cancellationNumber, creditNoteNumber, originalInvoiceNumber: originalInvoice?.invoiceNumber ?? null, refundTransactionCreated: hasRefund, scope: "total" };
 }
-
-// --- Partial line cancellation ------------------------------------------------
 
 type CancelledLineItem = { index: number; name: string; priceCents: number; quantity: number };
 
-async function partialLineCancellation(params: {
+/** Anulación PARCIAL de líneas dentro de la transacción del llamador (solicitud ya reclamada). La reserva NO se anula. */
+async function lineEffectsInTx(tx: Tx, params: {
   requestId: number;
   req: CancellationRequest;
   cancelledItems: CancelledLineItem[];
@@ -294,88 +331,245 @@ async function partialLineCancellation(params: {
   compensationType: "devolucion" | "bono" | "ninguna";
   adminUserId: number;
   adminUserName: string;
-}): Promise<{ cancellationNumber: string }> {
+}): Promise<EffectsResult> {
   const { requestId, req, cancelledItems, refundAmount, compensationType, adminUserId, adminUserName } = params;
+  const hasRefund = compensationType === "devolucion" && refundAmount != null && refundAmount > 0;
 
-  const cancellationNumber = await generateDocumentNumber(
-    "anulacion",
-    `cancellations:partialLine:${requestId}`,
-    String(adminUserId)
-  );
-
+  let resRow: { extrasJson: string | null; amountTotal: number; status: string } | undefined;
   if (req.linkedReservationId) {
-    const [res] = await db
-      .select({ extrasJson: reservations.extrasJson, amountTotal: reservations.amountTotal })
-      .from(reservations)
-      .where(eq(reservations.id, req.linkedReservationId))
-      .limit(1);
+    [resRow] = await tx
+      .select({ extrasJson: reservations.extrasJson, amountTotal: reservations.amountTotal, status: reservations.status })
+      .from(reservations).where(eq(reservations.id, req.linkedReservationId)).limit(1).for("update");
+  }
 
-    if (res) {
-      const extras: any[] = (() => { try { return JSON.parse(res.extrasJson ?? "[]"); } catch { return []; } })();
-      const cancelledByIndex = new Map(cancelledItems.map((i) => [i.index, i.quantity]));
-      const remainingExtras = extras
-        .map((extra, idx) => {
-          const cancelQty = cancelledByIndex.get(idx);
-          if (cancelQty == null) return extra; // not touched
-          const remaining = (extra.quantity ?? 1) - cancelQty;
-          if (remaining <= 0) return null; // fully cancelled
-          return { ...extra, quantity: remaining }; // partially cancelled — reduce quantity
-        })
-        .filter(Boolean);
-      const cancelledCents = cancelledItems.reduce((s, i) => s + i.priceCents * i.quantity, 0);
-      const newAmountTotal = Math.max(0, res.amountTotal - cancelledCents);
+  const parseExtras = (json: string | null): any[] => { try { return JSON.parse(json ?? "[]"); } catch { return []; } };
 
-      await db.transaction(async (tx) => {
-        await tx.update(reservations)
-          .set({ extrasJson: JSON.stringify(remainingExtras), amountTotal: newAmountTotal })
-          .where(eq(reservations.id, req.linkedReservationId!));
-
-        await tx.update(cancellationRequests)
-          .set({ cancellationNumber })
-          .where(eq(cancellationRequests.id, requestId));
-
-        if (compensationType === "devolucion" && refundAmount != null && refundAmount > 0) {
-          const txNum = await nextRefundTransactionNumber(`cancellations:partialLineRefund:${requestId}`, adminUserId);
-          await tx.insert(transactions).values({
-            transactionNumber: txNum,
-            type: "reembolso",
-            amount: String(-Math.abs(refundAmount)),
-            currency: "EUR",
-            paymentMethod: "transferencia",
-            status: "completado",
-            description: `Devolución línea anulada ${cancellationNumber} — ${req.fullName}`,
-            processedAt: new Date(),
-            clientName: req.fullName,
-            clientEmail: req.email ?? undefined,
-            clientPhone: req.phone ?? undefined,
-            saleChannel: (req.saleChannel as any) ?? "admin",
-            operationStatus: "reembolsada",
-            reservationId: req.linkedReservationId ?? undefined,
-            invoiceNumber: req.invoiceRef ?? cancellationNumber,
-            sellerUserId: adminUserId,
-            sellerName: adminUserName,
-          } as any);
-        }
-      });
+  if (resRow) {
+    if (resRow.status === "cancelled") {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "La reserva ya está anulada: no se pueden anular líneas sueltas." });
+    }
+    // Las líneas se validan con el estado ACTUAL de la reserva (ya bloqueada): una línea ya anulada por otra solicitud no
+    // existe o tiene menos unidades, y no se descuenta ni se devuelve dos veces.
+    const extras = parseExtras(resRow.extrasJson);
+    for (const item of cancelledItems) {
+      const extra = extras[item.index];
+      const available = extra ? Number(extra.quantity ?? 1) : 0;
+      if (!extra || item.quantity > available || (typeof extra.name === "string" && item.name && extra.name !== item.name)) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `La línea «${item.name}» ya no está disponible en la reserva (posiblemente ya anulada). Recarga la solicitud.`,
+        });
+      }
     }
   }
 
+  const cancellationNumber = await generateDocumentNumberInTx(tx, "anulacion", `cancellations:partialLine:${requestId}`, String(adminUserId));
+  await tx.update(cancellationRequests).set({ cancellationNumber }).where(eq(cancellationRequests.id, requestId));
+
+  if (resRow) {
+    const extras = parseExtras(resRow.extrasJson);
+    const cancelledByIndex = new Map(cancelledItems.map((i) => [i.index, i.quantity]));
+    const remainingExtras = extras
+      .map((extra, idx) => {
+        const cancelQty = cancelledByIndex.get(idx);
+        if (cancelQty == null) return extra; // no tocada
+        const remaining = (extra.quantity ?? 1) - cancelQty;
+        if (remaining <= 0) return null; // anulada entera
+        return { ...extra, quantity: remaining }; // anulada en parte: baja la cantidad
+      })
+      .filter(Boolean);
+    const cancelledCents = cancelledItems.reduce((s, i) => s + i.priceCents * i.quantity, 0);
+    const newAmountTotal = Math.max(0, resRow.amountTotal - cancelledCents);
+
+    await tx.update(reservations)
+      .set({ extrasJson: JSON.stringify(remainingExtras), amountTotal: newAmountTotal })
+      .where(eq(reservations.id, req.linkedReservationId!));
+
+    if (hasRefund) {
+      const refundTxNumber = await refundTransactionNumberInTx(tx, `cancellations:partialLineRefund:${requestId}`, adminUserId);
+      await tx.insert(transactions).values({
+        transactionNumber: refundTxNumber,
+        type: "reembolso",
+        amount: String(-Math.abs(refundAmount!)),
+        currency: "EUR",
+        paymentMethod: "transferencia",
+        status: "completado",
+        description: `Devolución línea anulada ${cancellationNumber} — ${req.fullName}`,
+        processedAt: new Date(),
+        clientName: req.fullName,
+        clientEmail: req.email ?? undefined,
+        clientPhone: req.phone ?? undefined,
+        saleChannel: (req.saleChannel as any) ?? "admin",
+        operationStatus: "reembolsada",
+        reservationId: req.linkedReservationId ?? undefined,
+        invoiceNumber: req.invoiceRef ?? cancellationNumber,
+        sellerUserId: adminUserId,
+        sellerName: adminUserName,
+      } as any);
+    }
+  }
+
+  return { cancellationNumber, refundTransactionCreated: hasRefund && !!resRow, scope: "lineas" };
+}
+
+/** Efectos posteriores a la confirmación (idempotentes y no críticos): solo los ejecuta la llamada que ganó. */
+async function afterCancellationCommitted(params: {
+  requestId: number;
+  req: CancellationRequest;
+  result: EffectsResult;
+  adminUserId: number;
+  adminUserName: string;
+  cancelledItems?: CancelledLineItem[];
+}) {
+  const { requestId, req, result, adminUserId, adminUserName } = params;
+  const reservationId = req.linkedReservationId;
+  if (result.scope === "total" && reservationId) {
+    // Liberar la plaza de spa/hotel retenida (idempotente; un fallo aquí lo corrige la sincronización de retenciones)
+    await releaseInventoryHold(reservationId, "cancelada").catch((err) =>
+      console.error(`[Cancellations] Error liberando la plaza de la reserva ${reservationId}:`, err?.message));
+    // Inventario (Business): se reponen las unidades vendidas, una sola vez
+    await restockReservations([reservationId], { id: adminUserId, name: adminUserName }, `Anulación ${result.cancellationNumber}`);
+    // Tokens internos: se anulan los puntos que generó la compra, una sola vez
+    await reverseReservationPoints([reservationId], { id: adminUserId, name: adminUserName }, `Anulación ${result.cancellationNumber}`);
+  }
   await addLog(
     requestId,
     "system_propagation",
-    {
-      cancellationNumber,
-      scope: "lineas",
-      cancelledItems,
-      reservationUpdated: !!req.linkedReservationId,
-      refundTransactionCreated: compensationType === "devolucion" && !!refundAmount,
-    },
+    result.scope === "total"
+      ? {
+          cancellationNumber: result.cancellationNumber,
+          reservationCancelled: !!reservationId,
+          reavClosed: !!reservationId,
+          creditNoteGenerated: !!result.creditNoteNumber,
+          creditNoteNumber: result.creditNoteNumber ?? null,
+          originalInvoiceNumber: result.originalInvoiceNumber ?? null,
+          refundTransactionCreated: result.refundTransactionCreated,
+        }
+      : {
+          cancellationNumber: result.cancellationNumber,
+          scope: "lineas",
+          cancelledItems: params.cancelledItems,
+          reservationUpdated: !!reservationId,
+          refundTransactionCreated: result.refundTransactionCreated,
+        },
     adminUserId,
     adminUserName
   );
-
-  return { cancellationNumber };
 }
+
+/**
+ * Aceptación de una solicitud: reclamo atómico + efectos en UNA transacción. `claimFields` son los campos de resolución que
+ * se guardan en la solicitud al reclamarla; `afterClaim` (bono) crea el voucher y el código dentro de la misma transacción.
+ */
+async function acceptWithClaim(params: {
+  requestId: number;
+  claimFields: Partial<typeof cancellationRequests.$inferInsert>;
+  afterClaim?: (tx: Tx, req: CancellationRequest) => Promise<{ voucherId?: number; code?: string } | void>;
+  scope: "total" | "lineas";
+  cancelledItems?: CancelledLineItem[];
+  refundAmount?: number;
+  compensationType: "devolucion" | "bono" | "ninguna";
+  adminUserId: number;
+  adminUserName: string;
+}): Promise<EffectsResult & { req: CancellationRequest; voucherId?: number; voucherCode?: string }> {
+  const { requestId, claimFields, afterClaim, scope, cancelledItems, refundAmount, compensationType, adminUserId, adminUserName } = params;
+  await ensureCancellationCounters();
+  const issuerSnapshot = await issuerSnapshotForNewInvoice();
+
+  const out = await withDeadlockRetry(() => db.transaction(async (tx) => {
+    const req = await claimRequestInTx(tx, requestId, claimFields);
+    const extra = (await afterClaim?.(tx, req)) ?? {};
+    const result = scope === "lineas"
+      ? await lineEffectsInTx(tx, { requestId, req, cancelledItems: cancelledItems!, refundAmount, compensationType, adminUserId, adminUserName })
+      : await totalEffectsInTx(tx, { requestId, req, refundAmount, compensationType, adminUserId, adminUserName, issuerSnapshot });
+    return { req, result, voucherId: extra.voucherId, voucherCode: extra.code };
+  }));
+
+  await afterCancellationCommitted({ requestId, req: out.req, result: out.result, adminUserId, adminUserName, cancelledItems });
+  return { ...out.result, req: out.req, voucherId: out.voucherId, voucherCode: out.voucherCode };
+}
+
+/**
+ * Anulación directa desde el CRM: bloquea la reserva, comprueba que sigue viva y sin expediente, crea la solicitud ya
+ * cerrada y propaga, todo en UNA transacción (antes eran pasos sueltos: dos llamadas simultáneas creaban dos expedientes).
+ */
+async function cancelDirectAtomic(params: {
+  reservationId: number;
+  reason: "meteorologicas" | "accidente" | "enfermedad" | "desistimiento" | "otra";
+  reasonDetail?: string;
+  compensationType: "devolucion" | "bono" | "ninguna";
+  refundAmount?: number;
+  adminNotes?: string;
+  adminUserId: number;
+  adminUserName: string;
+}): Promise<EffectsResult & { requestId: number; customerEmail: string | null; customerName: string }> {
+  const { reservationId, compensationType, refundAmount, adminUserId, adminUserName } = params;
+  await ensureCancellationCounters();
+  const issuerSnapshot = await issuerSnapshotForNewInvoice();
+
+  const out = await withDeadlockRetry(() => db.transaction(async (tx) => {
+    const [res] = await tx.select({
+      id: reservations.id,
+      customerName: reservations.customerName,
+      customerEmail: reservations.customerEmail,
+      customerPhone: reservations.customerPhone,
+      bookingDate: reservations.bookingDate,
+      status: reservations.status,
+      cancellationRequestId: sql<number | null>`${reservations.cancellationRequestId}`,
+    }).from(reservations).where(eq(reservations.id, reservationId)).limit(1).for("update");
+
+    if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+    if (res.status === "cancelled") {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "La reserva ya está anulada" });
+    }
+    if (res.cancellationRequestId) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `La reserva ya tiene el expediente de anulación #${res.cancellationRequestId} abierto. Gestiona la anulación desde el módulo de Anulaciones.`,
+      });
+    }
+
+    const financialStatus = compensationType === "devolucion"
+      ? "pendiente_devolucion"
+      : compensationType === "bono" ? "compensada_bono" : "sin_compensacion";
+
+    const [ins] = await tx.insert(cancellationRequests).values({
+      fullName: res.customerName,
+      email: res.customerEmail ?? undefined,
+      phone: res.customerPhone ?? undefined,
+      activityDate: res.bookingDate,
+      reason: params.reason,
+      reasonDetail: params.reasonDetail,
+      termsChecked: true,
+      source: "admin_crm",
+      locator: undefined,
+      adminNotes: params.adminNotes,
+      operationalStatus: "cerrada",
+      resolutionStatus: "aceptada_total",
+      financialStatus,
+      compensationType: compensationType === "ninguna" ? "ninguna" : compensationType,
+      resolvedAmount: refundAmount ? String(refundAmount) : undefined,
+      linkedReservationId: reservationId,
+      assignedUserId: adminUserId,
+      closedAt: new Date(),
+    });
+    const requestId = (ins as { insertId: number }).insertId;
+
+    await tx.update(reservations).set({ cancellationRequestId: requestId } as any).where(eq(reservations.id, reservationId));
+    await addLogIn(tx, requestId, "created", { source: "admin_crm", adminUserId, reservationId }, adminUserId, adminUserName);
+
+    const [reqRecord] = await tx.select().from(cancellationRequests).where(eq(cancellationRequests.id, requestId)).limit(1);
+    const result = await totalEffectsInTx(tx, {
+      requestId, req: reqRecord, refundAmount: compensationType === "devolucion" ? refundAmount : undefined,
+      compensationType, adminUserId, adminUserName, issuerSnapshot,
+    });
+    return { requestId, reqRecord, result, customerEmail: res.customerEmail ?? null, customerName: res.customerName };
+  }));
+
+  await afterCancellationCommitted({ requestId: out.requestId, req: out.reqRecord, result: out.result, adminUserId, adminUserName });
+  return { ...out.result, requestId: out.requestId, customerEmail: out.customerEmail, customerName: out.customerName };
+}
+
 
 // --- Email templates ----------------------------------------------------------
 
@@ -895,7 +1089,7 @@ export const cancellationsRouter = router({
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // Guard idempotencia: no permitir doble aceptación
+      // Rechazo rápido (informativo): la garantía real es el reclamo atómico dentro de la transacción (acceptWithClaim).
       if (req.resolutionStatus !== "sin_resolver") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -903,30 +1097,44 @@ export const cancellationsRouter = router({
         });
       }
 
-      const resolutionStatus = input.isPartial ? "aceptada_parcial" : "aceptada_total";
-      let financialStatus: "pendiente_devolucion" | "pendiente_bono" | "compensada_bono" = "pendiente_devolucion";
-      let voucherId: number | undefined;
+      // «Por líneas» sin líneas NO se convierte en anulación total: se rechaza sin ejecutar nada.
+      const byLines = input.cancellationScope === "lineas";
+      if (byLines && !input.cancelledItems?.length) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Has elegido anular por líneas pero no hay ninguna línea seleccionada. No se ha ejecutado nada: selecciona al menos una línea o cambia el ámbito a anulación total.",
+        });
+      }
 
+      const resolutionStatus = input.isPartial ? "aceptada_parcial" : "aceptada_total";
+      const common = {
+        operationalStatus: "resuelta" as const,
+        resolutionStatus: resolutionStatus as "aceptada_parcial" | "aceptada_total",
+        cancellationScope: input.cancellationScope,
+        cancelledItemsJson: input.cancelledItems ? JSON.stringify(input.cancelledItems) : null,
+      };
+      const adminUserName = ctx.user.name ?? "Admin";
+
+      let result;
       if (input.compensationType === "devolucion") {
         if (!input.refundAmount || input.refundAmount <= 0) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "El importe de devolución es obligatorio" });
         }
-        financialStatus = "pendiente_devolucion";
-
-        await db.update(cancellationRequests).set({
-          operationalStatus: "resuelta",
-          resolutionStatus,
-          financialStatus,
+        result = await acceptWithClaim({
+          requestId: input.id,
+          claimFields: { ...common, financialStatus: "pendiente_devolucion", compensationType: "devolucion", resolvedAmount: String(input.refundAmount) },
+          scope: byLines ? "lineas" : "total",
+          cancelledItems: input.cancelledItems,
+          refundAmount: input.refundAmount,
           compensationType: "devolucion",
-          resolvedAmount: String(input.refundAmount),
-          cancellationScope: input.cancellationScope,
-          cancelledItemsJson: input.cancelledItems ? JSON.stringify(input.cancelledItems) : null,
-        }).where(eq(cancellationRequests.id, input.id));
+          adminUserId: ctx.user.id,
+          adminUserName,
+        });
 
         await addLog(
           input.id, input.isPartial ? "accepted_partial" : "accepted_total",
           { type: "devolucion", amount: input.refundAmount, note: input.refundNote, date: input.refundDate },
-          ctx.user.id, ctx.user.name ?? "Admin",
+          ctx.user.id, adminUserName,
           req.operationalStatus, "resuelta"
         );
 
@@ -941,7 +1149,7 @@ export const cancellationsRouter = router({
             relatedEntityId: input.id,
             extraCc: await getCopyEmail(),
           });
-          await addLog(input.id, "email_sent", { type: "aceptacion_devolucion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
+          await addLog(input.id, "email_sent", { type: "aceptacion_devolucion", to: req.email }, ctx.user.id, adminUserName);
         }
 
       } else {
@@ -949,73 +1157,69 @@ export const cancellationsRouter = router({
         if (!input.voucherValue || input.voucherValue <= 0) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "El valor del bono es obligatorio" });
         }
-        financialStatus = "compensada_bono";
         const code = generateVoucherCode();
 
-        const [vResult] = await db.insert(compensationVouchers).values({
+        result = await acceptWithClaim({
           requestId: input.id,
-          code,
-          type: "actividad",
-          activityName: input.activityName ?? `Actividad ${companyName()}`,
-          value: String(input.voucherValue),
-          expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
-          conditions: input.voucherConditions,
-          notes: input.voucherNotes,
-          status: "enviado",
-          sentAt: new Date(),
-        });
-        voucherId = (vResult as { insertId: number }).insertId;
+          claimFields: { ...common, financialStatus: "compensada_bono", compensationType: "bono", resolvedAmount: String(input.voucherValue) },
+          // El bono y su código de descuento se crean DENTRO de la misma transacción: una llamada perdedora no los crea.
+          afterClaim: async (tx) => {
+            const [vResult] = await tx.insert(compensationVouchers).values({
+              requestId: input.id,
+              code,
+              type: "actividad",
+              activityName: input.activityName ?? `Actividad ${companyName()}`,
+              value: String(input.voucherValue),
+              expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
+              conditions: input.voucherConditions,
+              notes: input.voucherNotes,
+              status: "enviado",
+              sentAt: new Date(),
+            });
+            const voucherId = (vResult as { insertId: number }).insertId;
 
-        // -- Registrar en discount_codes para que sea canjeable en reservas ------
-        // El bono compensatorio se convierte en un código de descuento de importe
-        // fijo (tipo 'fixed') con uso único, vinculado al cliente y al voucher.
-        try {
-          const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? companyName()}`;
-          const discountDescription = [
-            `Bono emitido como compensación por anulación de reserva.`,
-            input.activityName ? `Actividad: ${input.activityName}.` : null,
-            input.voucherConditions ? `Condiciones: ${input.voucherConditions}` : null,
-          ].filter(Boolean).join(" ");
-          await db.insert(discountCodes).values({
-            code,
-            name: discountName,
-            description: discountDescription,
-            discountType: "fixed",
-            discountPercent: "0",
-            discountAmount: String(input.voucherValue!.toFixed(2)),
-            expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
-            status: "active",
-            maxUses: 1,
-            currentUses: 0,
-            observations: `Generado automáticamente desde anulación #${input.id}. Voucher ID: ${voucherId}.`,
-            origin: "voucher",
-            compensationVoucherId: voucherId,
-            clientEmail: req.email ?? undefined,
-            clientName: req.fullName ?? undefined,
-          } as any);
-          await addLog(input.id, "voucher_generated", { discountCodeCreated: true, code }, ctx.user.id, ctx.user.name ?? "Admin");
-        } catch (e) {
-          console.error("[Cancellations] Error creando discount_code para bono:", e);
-        }
-
-        await db.update(cancellationRequests).set({
-          operationalStatus: "resuelta",
-          resolutionStatus,
-          financialStatus,
+            // Registrar en discount_codes para que sea canjeable en reservas (importe fijo, uso único, vinculado al cliente y al voucher).
+            const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? companyName()}`;
+            const discountDescription = [
+              `Bono emitido como compensación por anulación de reserva.`,
+              input.activityName ? `Actividad: ${input.activityName}.` : null,
+              input.voucherConditions ? `Condiciones: ${input.voucherConditions}` : null,
+            ].filter(Boolean).join(" ");
+            await tx.insert(discountCodes).values({
+              code,
+              name: discountName,
+              description: discountDescription,
+              discountType: "fixed",
+              discountPercent: "0",
+              discountAmount: String(input.voucherValue!.toFixed(2)),
+              expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
+              status: "active",
+              maxUses: 1,
+              currentUses: 0,
+              observations: `Generado automáticamente desde anulación #${input.id}. Voucher ID: ${voucherId}.`,
+              origin: "voucher",
+              compensationVoucherId: voucherId,
+              clientEmail: req.email ?? undefined,
+              clientName: req.fullName ?? undefined,
+            } as any);
+            await tx.update(cancellationRequests).set({ voucherId }).where(eq(cancellationRequests.id, input.id));
+            return { voucherId, code };
+          },
+          scope: byLines ? "lineas" : "total",
+          cancelledItems: input.cancelledItems,
+          refundAmount: undefined,
           compensationType: "bono",
-          resolvedAmount: String(input.voucherValue),
-          voucherId,
-          cancellationScope: input.cancellationScope,
-          cancelledItemsJson: input.cancelledItems ? JSON.stringify(input.cancelledItems) : null,
-        }).where(eq(cancellationRequests.id, input.id));
+          adminUserId: ctx.user.id,
+          adminUserName,
+        });
 
         await addLog(
           input.id, input.isPartial ? "accepted_partial" : "accepted_total",
           { type: "bono", voucherCode: code, value: input.voucherValue, activityName: input.activityName },
-          ctx.user.id, ctx.user.name ?? "Admin",
+          ctx.user.id, adminUserName,
           req.operationalStatus, "resuelta"
         );
-        await addLog(input.id, "voucher_generated", { code, voucherId }, ctx.user.id, ctx.user.name ?? "Admin");
+        await addLog(input.id, "voucher_generated", { code, voucherId: result.voucherId, discountCodeCreated: true }, ctx.user.id, adminUserName);
 
         if (input.sendEmail && req.email) {
           const expiresStr = input.voucherExpiresAt
@@ -1035,7 +1239,7 @@ export const cancellationsRouter = router({
             relatedEntityId: input.id,
             extraCc: await getCopyEmail(),
           });
-          await addLog(input.id, "email_sent", { type: "aceptacion_bono", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
+          await addLog(input.id, "email_sent", { type: "aceptacion_bono", to: req.email }, ctx.user.id, adminUserName);
         }
       }
 
@@ -1058,34 +1262,7 @@ export const cancellationsRouter = router({
         });
       }
 
-      // -- Propagación: bifurca según ámbito ------------------------------------
-      let cancellationNumber: string;
-      let creditNoteNumber: string | undefined;
-
-      if (input.cancellationScope === "lineas" && input.cancelledItems?.length) {
-        // Anulación parcial de líneas — la reserva NO se cancela
-        ({ cancellationNumber } = await partialLineCancellation({
-          requestId: input.id,
-          req,
-          cancelledItems: input.cancelledItems,
-          refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
-          compensationType: input.compensationType,
-          adminUserId: ctx.user.id,
-          adminUserName: ctx.user.name ?? "Admin",
-        }));
-      } else {
-        // Anulación total — reserva pasa a cancelled, REAV, abono contable
-        ({ cancellationNumber, creditNoteNumber } = await propagateCancellation({
-          requestId: input.id,
-          req,
-          refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
-          compensationType: input.compensationType,
-          adminUserId: ctx.user.id,
-          adminUserName: ctx.user.name ?? "Admin",
-        }));
-      }
-
-      return { success: true, voucherId, cancellationNumber, creditNoteNumber };
+      return { success: true, voucherId: result.voucherId, cancellationNumber: result.cancellationNumber, creditNoteNumber: result.creditNoteNumber };
     }),
 
   // -- ACCIÓN: Solicitar documentación --------------------------------------
@@ -1222,11 +1399,15 @@ export const cancellationsRouter = router({
       }
 
       const executedAt = input.executedAt ? new Date(input.executedAt) : new Date();
-      await db.update(cancellationRequests).set({
+      // Transición condicional: dos marcas simultáneas no pueden ganar las dos (ni enviar dos correos).
+      const [marked] = await db.update(cancellationRequests).set({
         financialStatus: "devuelta_economicamente",
         refundExecutedAt: executedAt,
         refundProofUrl: input.proofUrl ?? null,
-      }).where(eq(cancellationRequests.id, input.id));
+      }).where(and(eq(cancellationRequests.id, input.id), eq(cancellationRequests.financialStatus, "pendiente_devolucion")));
+      if (Number((marked as { affectedRows?: number })?.affectedRows ?? 0) !== 1) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "La devolución ya fue marcada como ejecutada anteriormente." });
+      }
 
       await addLog(input.id, "refund_executed", { note: input.note, proofUrl: input.proofUrl, executedAt: executedAt.toISOString(), oldStatus: req.financialStatus }, ctx.user.id, ctx.user.name ?? "Admin");
 
@@ -1697,80 +1878,18 @@ export const cancellationsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // -- Guardia: la reserva no debe tener ya una solicitud activa ---------
-      const [res] = await db.select({
-        id: reservations.id,
-        customerName: reservations.customerName,
-        customerEmail: reservations.customerEmail,
-        customerPhone: reservations.customerPhone,
-        bookingDate: reservations.bookingDate,
-        status: reservations.status,
-        cancellationRequestId: sql<number | null>`${reservations.cancellationRequestId}`,
-      }).from(reservations).where(eq(reservations.id, input.reservationId)).limit(1);
-
-      if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
-      if (res.status === "cancelled") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "La reserva ya está anulada" });
-      }
-      if (res.cancellationRequestId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `La reserva ya tiene el expediente de anulación #${res.cancellationRequestId} abierto. Gestiona la anulación desde el módulo de Anulaciones.`,
-        });
-      }
-
-      // -- Crear solicitud de anulación ya resuelta y cerrada ----------------
-      const resolutionStatus = input.compensationType === "ninguna" ? "aceptada_total" : "aceptada_total";
-      const financialStatus = input.compensationType === "devolucion"
-        ? "pendiente_devolucion"
-        : input.compensationType === "bono"
-          ? "compensada_bono"
-          : "sin_compensacion";
-
-      const [result] = await db.insert(cancellationRequests).values({
-        fullName: res.customerName,
-        email: res.customerEmail ?? undefined,
-        phone: res.customerPhone ?? undefined,
-        activityDate: res.bookingDate,
+      // Todo en UNA transacción (reserva bloqueada, guardias, solicitud, números, abono y DEV): ver cancelDirectAtomic.
+      const done = await cancelDirectAtomic({
+        reservationId: input.reservationId,
         reason: input.reason,
         reasonDetail: input.reasonDetail,
-        termsChecked: true,
-        source: "admin_crm",
-        locator: undefined,
-        adminNotes: input.adminNotes,
-        operationalStatus: "cerrada",
-        resolutionStatus,
-        financialStatus,
-        compensationType: input.compensationType === "ninguna" ? "ninguna" : input.compensationType,
-        resolvedAmount: input.refundAmount ? String(input.refundAmount) : undefined,
-        linkedReservationId: input.reservationId,
-        assignedUserId: ctx.user.id,
-        closedAt: new Date(),
-      });
-      const requestId = (result as { insertId: number }).insertId;
-
-      // Actualizar FK inverso en la reserva
-      await db.update(reservations)
-        .set({ cancellationRequestId: requestId } as any)
-        .where(eq(reservations.id, input.reservationId));
-
-      await addLog(requestId, "created", {
-        source: "admin_crm",
-        adminUserId: ctx.user.id,
-        reservationId: input.reservationId,
-      }, ctx.user.id, ctx.user.name ?? "Admin");
-
-      // -- Propagar cancelación (reserva + factura abono + REAV + operaciones) -
-      const reqRecord = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, requestId)).limit(1).then(r => r[0]);
-
-      const { cancellationNumber, creditNoteNumber } = await propagateCancellation({
-        requestId,
-        req: reqRecord,
-        refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
         compensationType: input.compensationType,
+        refundAmount: input.refundAmount,
+        adminNotes: input.adminNotes,
         adminUserId: ctx.user.id,
         adminUserName: ctx.user.name ?? "Admin",
       });
+      const { requestId, cancellationNumber, creditNoteNumber } = done;
 
       await logActivity(
         "reservation",
@@ -1782,26 +1901,26 @@ export const cancellationsRouter = router({
       ).catch(() => {});
 
       // Email de resolución al cliente (mismo template que acceptRequest)
-      if (res.customerEmail) {
+      if (done.customerEmail) {
         if (input.compensationType === "devolucion" && input.refundAmount) {
           await sendEmail({
-            to: res.customerEmail,
+            to: done.customerEmail,
             cc: await getCopyEmail(),
             subject: `Aceptación de tu solicitud de anulación #${requestId}`,
-            html: emailAceptacionDevolucion(res.customerName, requestId, String(input.refundAmount), false),
+            html: emailAceptacionDevolucion(done.customerName, requestId, String(input.refundAmount), false),
             category: "cancellation",
           }).catch(() => {});
         } else {
           // Sin compensación o bono sin datos de voucher: notificamos la aceptación sin importe
           await sendEmail({
-            to: res.customerEmail,
+            to: done.customerEmail,
             cc: await getCopyEmail(),
             subject: `Aceptación de tu solicitud de anulación #${requestId}`,
-            html: emailAceptacionDevolucion(res.customerName, requestId, "0.00", false),
+            html: emailAceptacionDevolucion(done.customerName, requestId, "0.00", false),
             category: "cancellation",
           }).catch(() => {});
         }
-        await addLog(requestId, "email_sent", { type: "aceptacion", to: res.customerEmail }, ctx.user.id, ctx.user.name ?? "Admin");
+        await addLog(requestId, "email_sent", { type: "aceptacion", to: done.customerEmail }, ctx.user.id, ctx.user.name ?? "Admin");
       }
 
       return { success: true, requestId, cancellationNumber, creditNoteNumber };

@@ -7,9 +7,6 @@
  * edición, un bloque sin diseño propio se pinta exactamente igual que antes de Elephant Studio.
  */
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Link } from "wouter";
-import { scrollToHash } from "@/lib/scrollToHash";
-import { hashQuery } from "@shared/studio/formPrefill";
 import { useLegalHref } from "@/hooks/useLegalHref";
 import { offerBadgeText, siteUiText } from "@shared/siteUiText";
 import { toast } from "sonner";
@@ -36,6 +33,8 @@ import { formatEuros, productPath } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
 import { offerModeOf, publicOfferBadge, showsPrice } from "@shared/offerMode";
 import { EditionsList } from "@/components/site/Editions";
+import { SmartLink } from "@/components/site/SmartLink";
+import { cardGridClasses } from "@shared/cardGrid";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 
 // ─── Contexto de edición (lienzo de Elephant Studio) ──────────────────────────
@@ -70,50 +69,6 @@ const HoverCtx = createContext<{ id: string | null; set: (id: string | null) => 
 
 /** Color de la interfaz del editor sobre la página (independiente de los colores de la empresa). */
 const STUDIO_ACCENT = "#5b5bf6";
-
-const isExternal = (u: string) => /^(https?:|mailto:|tel:)/i.test(u);
-
-function SmartLink({ href, preview, className, children }: { href: string; preview?: boolean; className?: string; children: ReactNode }) {
-  if (preview) {
-    return (
-      <a href={href} className={className} onClick={(e) => e.preventDefault()}>
-        {children}
-      </a>
-    );
-  }
-  if (isExternal(href)) {
-    const web = /^https?:/i.test(href);
-    return (
-      <a href={href} className={className} target={web ? "_blank" : undefined} rel={web ? "noopener noreferrer" : undefined}>
-        {children}
-      </a>
-    );
-  }
-  // Ancla de la misma página (#contacto): enlace normal que desplaza hasta la sección (el enrutador no lo haría)
-  if (href.startsWith("#")) {
-    return (
-      <a
-        href={href}
-        className={className}
-        onClick={(e) => {
-          e.preventDefault();
-          if (window.location.hash !== href) history.pushState(null, "", href);
-          // «#solicitud?experiencia=X»: los formularios de la página reciben la elección antes de llegar a ellos
-          const q = hashQuery(href);
-          if (q) window.dispatchEvent(new CustomEvent("studio:prefill", { detail: q }));
-          scrollToHash(href);
-        }}
-      >
-        {children}
-      </a>
-    );
-  }
-  return (
-    <Link href={href} className={className}>
-      {children}
-    </Link>
-  );
-}
 
 function headingClass(first: boolean) {
   return first ? "font-heading text-3xl md:text-4xl font-bold leading-tight text-primary" : "font-heading text-2xl md:text-3xl font-bold text-foreground";
@@ -1313,11 +1268,17 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
         </div>
       )}
       {products.isLoading ? (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4" aria-hidden>
-          {Array.from({ length: Math.min(limit, 4) }, (_, i) => (
-            <div key={i} className="h-64 animate-pulse rounded-2xl bg-muted" />
-          ))}
-        </div>
+        (() => {
+          const n = Math.min(limit, 4);
+          const g = cardGridClasses(n, 4);
+          return (
+            <div className={g.wrap} aria-hidden>
+              {Array.from({ length: n }, (_, i) => (
+                <div key={i} className={cn(g.item, "h-96 animate-pulse rounded-2xl bg-muted")} />
+              ))}
+            </div>
+          );
+        })()
       ) : !items.length ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-muted/50 px-6 py-12 text-center text-sm text-muted-foreground">
           <ShoppingBag className="h-7 w-7" aria-hidden />
@@ -1325,24 +1286,48 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
         </div>
       ) : (
         (() => {
+          const grid = cardGridClasses(items.length, 4);
+          // Con una o dos fichas la foto es más alta y protagonista; con tres o más, 4:3 para que entren por fila
+          const tall = d.layout !== "carousel" && items.length <= 2;
           const tiles = items.map((p) => {
             const img = p.image1 || p.coverImageUrl;
             const amount = p.fromPrice != null ? p.fromPrice : Number(p.basePrice) > 0 ? Number(p.basePrice) : null;
             const price = amount != null && amount > 0 ? formatEuros(amount) : null;
             // E-6: «Bajo petición» / «Próximamente» (nunca «Agotado»), sin precio
-            const offerBadge = publicOfferBadge(p) ? offerBadgeText(ui, offerModeOf(p)) : null;
+            const mode = offerModeOf(p);
+            const offerBadge = publicOfferBadge(p) ? offerBadgeText(ui, mode) : null;
             const soldOut = !offerBadge && !isPurchasable(p);
+            const showPrice = !!price && (!offerBadge || showsPrice(p));
+            // Estado comercial visible: insignia de oferta, «Agotado» o, con precio fijo a la venta, «Disponible»
+            const badge = offerBadge
+              ? { text: offerBadge, cls: "bg-primary text-primary-foreground" }
+              : soldOut
+                ? { text: ui.soldOut, cls: "bg-foreground/80 text-background" }
+                : { text: ui.available, cls: "bg-background/90 text-foreground" };
+            // El botón solo es aspecto: toda la tarjeta ya es el enlace a la ficha. Bajo petición → «Solicitar información»
+            const ctaText = mode === "on_request" || mode === "priced_request" ? ui.requestInfo : ui.viewDetails;
             return (
-              <SmartLink key={p.id} href={site.prefix ? `/${site.prefix}${productPath(p.slug)}` : productPath(p.slug)} preview={preview} className="group block h-full overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md">
-                <div className="relative">
-                  {img ? <img src={img} alt={p.title} className={cn("h-44 w-full object-cover", soldOut && "opacity-60")} loading="lazy" /> : <div className="h-44 w-full bg-muted" aria-hidden="true" />}
-                  {soldOut && <span className="absolute left-3 top-3 rounded-full bg-foreground/80 px-2.5 py-1 text-xs font-semibold text-background">{ui.soldOut}</span>}
-                  {offerBadge && <span className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">{offerBadge}</span>}
+              <SmartLink key={p.id} href={site.prefix ? `/${site.prefix}${productPath(p.slug)}` : productPath(p.slug)} preview={preview} className={cn(d.layout === "carousel" ? "h-full" : grid.item, "group flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md")}>
+                <div className={cn("relative overflow-hidden bg-muted", tall ? "aspect-[16/10] md:aspect-[3/2]" : "aspect-[4/3]")}>
+                  {img ? <img src={img} alt={p.title} className={cn("h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]", soldOut && "opacity-60")} loading="lazy" /> : <div className="h-full w-full bg-muted" aria-hidden="true" />}
+                  <span className={cn("absolute left-3 top-3 rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm backdrop-blur-sm", badge.cls)}>{badge.text}</span>
                 </div>
-                <div className="space-y-1 p-4">
-                  <h3 className="break-words font-heading font-semibold group-hover:text-primary">{p.title}</h3>
-                  {p.shortDescription && <p className="line-clamp-2 text-sm text-muted-foreground">{p.shortDescription}</p>}
-                  {price && (!offerBadge || showsPrice(p)) && <p className={cn("text-sm font-semibold", soldOut && "text-muted-foreground")}>{p.hasOptions ? `${ui.from} ${price}` : price}</p>}
+                <div className="flex h-full flex-col p-5 md:p-6">
+                  <h3 className="break-words font-heading text-xl font-semibold leading-snug transition-colors group-hover:text-primary">{p.title}</h3>
+                  {p.shortDescription && <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{p.shortDescription}</p>}
+                  <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-4">
+                    <div className="min-w-0">
+                      {showPrice ? (
+                        <p className={cn("whitespace-nowrap text-lg font-semibold leading-tight", soldOut && "text-muted-foreground")}>
+                          {p.hasOptions && <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{ui.from}</span>}
+                          {price}
+                        </p>
+                      ) : mode === "on_request" ? (
+                        <p className="text-sm text-muted-foreground">{ui.priceOnRequest}</p>
+                      ) : null}
+                    </div>
+                    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full border px-4 py-2 text-sm font-semibold transition-colors", soldOut ? "border-border text-muted-foreground group-hover:bg-muted" : "border-primary/40 text-primary group-hover:bg-primary group-hover:text-primary-foreground")}>{ctaText}</span>
+                  </div>
                 </div>
               </SmartLink>
             );
@@ -1352,7 +1337,7 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
               {tiles}
             </Carousel>
           ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">{tiles}</div>
+            <div className={grid.wrap}>{tiles}</div>
           );
         })()
       )}
