@@ -23,6 +23,10 @@ import { usePublicContact } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { offerModeOf, publicOfferBadge } from "@shared/offerMode";
+import { purchaseState } from "@shared/purchaseState";
+import { serviceDateRequirement } from "@shared/storefront";
+import { useStorefront } from "@/components/StorefrontRoute";
+import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
 
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
@@ -52,6 +56,9 @@ export default function ExperienceDetail() {
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<number | null>(null);
   const [selectedTime, setSelectedTime] = useState("");
+  const [requestOpen, setRequestOpen] = useState(false);
+  // Métodos de cobro de la empresa: sin pasarela, el producto se anuncia «Pronto disponible online» en vez de fallar al pagar
+  const { storefront } = useStorefront();
 
   const { data: dbExp, isLoading: isLoadingExp } = trpc.public.getExperienceBySlug.useQuery(
     { slug: slug ?? "" },
@@ -86,6 +93,9 @@ export default function ExperienceDetail() {
   });
 
   const exp = dbExp;
+  // Fecha de servicio (0098): una oferta permanente («sin fecha») no pide fecha; en automático, como siempre en esta ficha
+  const askDate = !exp || serviceDateRequirement(exp, { storefront: { kind: "sector", datedServices: true } }) === "required";
+  const soonOnline = !!exp && purchaseState(exp, variants, storefront?.payments) === "coming_soon_online";
 
   // ViewContent: se dispara cuando la experiencia carga y hay consentimiento
   useEffect(() => {
@@ -550,7 +560,8 @@ export default function ExperienceDetail() {
                   </div>
                 )}
 
-                {/* Selector de fecha para el carrito */}
+                {/* Selector de fecha para el carrito (no se pide en una oferta permanente sin fecha) */}
+                {askDate && (
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-foreground mb-1.5">Fecha preferida</label>
                   <input
@@ -561,12 +572,21 @@ export default function ExperienceDetail() {
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
+                )}
                 </>)}
+                {/* Comprable pero sin pasarela activa: estado honesto, sin dejar que se rellene todo y falle al pagar */}
+                {soonOnline && offerModeOf(exp) === "fixed" && exp.basePrice && parseFloat(String(exp?.basePrice ?? "0")) > 0 ? (
+                  <>
+                    <Button disabled className="w-full font-semibold h-12 text-base mb-2" data-testid="pronto-online">Pronto disponible online</Button>
+                    <p className="text-sm text-muted-foreground mb-3">La compra online de este producto estará disponible muy pronto. Mientras, puedes solicitar información y te atendemos personalmente.</p>
+                    <Button variant="outline" className="w-full h-12 mb-2" onClick={() => setRequestOpen(true)} data-testid="solicitar-informacion">Solicitar información</Button>
+                  </>
+                ) : null}
                 {/* CTA principal: Añadir al carrito (único botón de compra) */}
-                {exp.basePrice && parseFloat(String(exp?.basePrice ?? "0")) > 0 ? (
+                {!soonOnline && exp.basePrice && parseFloat(String(exp?.basePrice ?? "0")) > 0 ? (
                   <Button
                     onClick={() => {
-                      if (!selectedDate) {
+                      if (askDate && !selectedDate) {
                         toast.info("Selecciona una fecha antes de añadir al carrito");
                         return;
                       }
@@ -588,7 +608,7 @@ export default function ExperienceDetail() {
                         productName: exp.title,
                         productSlug: exp.slug,
                         productImage: ((exp as Record<string, unknown>).coverImageUrl as string) ?? "",
-                        bookingDate: selectedDate,
+                        bookingDate: askDate ? selectedDate : "",
                         people: persons,
                         minPersons: exp.minPersons ?? 1,
                         maxPersons: exp.maxPersons ?? 20,
@@ -643,6 +663,9 @@ export default function ExperienceDetail() {
           </div>
         </div>
       </div>
+
+      {/* Solicitud de información mientras la compra online no está disponible */}
+      {soonOnline && <ProductRequestDialog target={{ productId: exp.id, productTitle: exp.title, variantId: selectedVariant?.id }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Booking Modal */}
       <Dialog open={showBookingModal} onOpenChange={setShowBookingModal}>
