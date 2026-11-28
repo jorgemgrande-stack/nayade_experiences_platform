@@ -120,22 +120,33 @@ export interface EditionLikeRow {
   label: string;
   scheduleNote: string;
   locationNote: string;
+  /** Categoría del producto (opcional): su nombre también se traduce */
+  categoryId?: number | null;
+  categoryName?: string | null;
 }
 
 /**
- * Convocatorias públicas con sus textos traducidos y validados (etiqueta, horario, lugar) y el nombre y el slug del
- * producto en ese idioma. Fechas, plazas, estado y precio no cambian. Sin idioma adicional, tal cual.
+ * Convocatorias públicas con sus textos traducidos y validados (etiqueta, horario, lugar), el nombre y el slug del
+ * producto y, si viene, el nombre de su categoría en ese idioma. Fechas, plazas, estado y precio no cambian. Sin
+ * idioma adicional, tal cual.
  */
 export async function localizeEditions<T extends EditionLikeRow>(repo: I18nRepo, rows: T[], rawLocale: string | null | undefined): Promise<T[]> {
   if (!rows.length) return rows;
   const locale = await publicExtraLocale(repo, rawLocale);
   if (!locale) return rows;
-  const [ed, pr] = await Promise.all([repo.listContentTranslations("edition", locale, true), repo.listContentTranslations("product", locale, true)]);
+  const withCategory = rows.some((e) => e.categoryId != null);
+  const [ed, pr, ca] = await Promise.all([
+    repo.listContentTranslations("edition", locale, true),
+    repo.listContentTranslations("product", locale, true),
+    withCategory ? repo.listContentTranslations("category", locale, true) : Promise.resolve([]),
+  ]);
   const edT = byKey(ed);
   const prT = byKey(pr);
+  const caT = byKey(ca);
   return rows.map((e) => {
     const f = edT.get(String(e.id))?.fields;
     const p = prT.get(String(e.experienceId));
+    const categoryName = e.categoryId != null ? caT.get(String(e.categoryId))?.fields.name : undefined;
     return {
       ...e,
       ...(f?.label ? { label: f.label } : {}),
@@ -143,6 +154,7 @@ export async function localizeEditions<T extends EditionLikeRow>(repo: I18nRepo,
       ...(f?.locationNote ? { locationNote: f.locationNote } : {}),
       ...(p?.fields.title ? { productTitle: p.fields.title } : {}),
       ...(p?.slug ? { productSlug: p.slug } : {}),
+      ...(categoryName ? { categoryName } : {}),
     };
   });
 }
