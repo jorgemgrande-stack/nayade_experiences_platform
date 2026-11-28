@@ -22,6 +22,8 @@ export default {
     needsConfirm: "„{title}“ hat offene Hinweise ({list}). Prüfe sie und bestätige die Genehmigung, um auf Festpreis umzustellen.",
   },
   checks: {
+    variants_all_inactive: { label: "Alle Varianten sind zurückgezogen (inaktiv)", fix: "Aktiviere eine Variante unter „Varianten und Preise“ oder lege eine neue an." },
+    permanent_offer_has_editions: { label: "Ein Dauerangebot (ohne Leistungsdatum) sollte keine Durchführungen haben: es hat {n}", fix: "Schließe oder lösche die Durchführungen oder stelle das Leistungsdatum auf „automatisch“." },
     variants_all_expired: { label: "Alle Varianten sind abgelaufen", fix: "Verlängere die Gültigkeit einer Variante oder lege sie neu an." },
     price_ok: { label: "Preis in Ordnung" },
     price_missing: { label: "Preis fehlt", fix: "Gib einen Preis über 0 an (oder Varianten mit Preis)." },

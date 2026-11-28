@@ -20,6 +20,7 @@ import { usePublicContact } from "@/hooks/usePublicPhone";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { isPurchasable } from "@shared/shopOrders";
+import { purchaseState } from "@shared/purchaseState";
 import { ProductRequestDialog } from "@/components/site/ProductRequestForm";
 import { requestDatesOfProduct } from "@shared/requestDates";
 import { ProductEditionsSection, type PublicEditionItem } from "@/components/site/Editions";
@@ -160,10 +161,12 @@ export default function ProductDetail() {
 
   // Publicado pero no a la venta: se enseña como agotado y no se puede añadir (el pago también lo rechaza)
   const soldOut = buyable && !isPurchasable(product);
+  // Comprable pero la empresa aún no puede cobrar online (sin pasarela): estado honesto «Pronto disponible online»
+  const soonOnline = buyable && !soldOut && purchaseState(product, variants, storefront?.payments) === "coming_soon_online";
   const needsEdition = buyable && editions.length > 0;
 
   const add = () => {
-    if (soldOut) return;
+    if (soldOut || soonOnline) return;
     if (needsEdition && !pickedEdition) {
       toast.info(t.chooseDateBeforeCart);
       return;
@@ -360,6 +363,14 @@ export default function ProductDetail() {
                       <Button disabled className="w-full h-12 text-base font-semibold" data-testid="agotado">{t.soldOut}</Button>
                       <p className="text-sm text-muted-foreground">{t.soldOutHelp}</p>
                     </>
+                  ) : soonOnline ? (
+                    <>
+                      <Button disabled className="w-full h-12 text-base font-semibold" data-testid="pronto-online">{t.soonOnline}</Button>
+                      <p className="text-sm text-muted-foreground">{t.soonOnlineHelp}</p>
+                      <Button variant="outline" onClick={() => setRequestOpen(true)} className="w-full h-12 text-base font-semibold" data-testid="solicitar-informacion">
+                        {t.requestInfo}
+                      </Button>
+                    </>
                   ) : (
                     <Button onClick={add} disabled={needsEdition && openEditions.length === 0} className="w-full h-12 text-base font-semibold">
                       <ShoppingCart className="mr-2 w-4 h-4" /> {t.addToCart}
@@ -427,7 +438,7 @@ export default function ProductDetail() {
         )}
       </div>
 
-      {onRequest && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0], supplements: supplements.filter((o) => !o.forVariantIds?.length || (variant != null && o.forVariantIds.includes(variant.id))) }} open={requestOpen} onOpenChange={setRequestOpen} />}
+      {(onRequest || soonOnline) && <ProductRequestDialog target={{ productId: product.id, productTitle: product.title, variantId: variant?.id, requestDates: requestDatesOf(product), minPeople: Math.max(variant?.minQty ?? 1, product.minPersons ?? 1), maxPeople: [variant?.maxQty, product.maxPersons].filter((n): n is number => typeof n === "number" && n > 0).sort((a, b) => a - b)[0], supplements: supplements.filter((o) => !o.forVariantIds?.length || (variant != null && o.forVariantIds.includes(variant.id))) }} open={requestOpen} onOpenChange={setRequestOpen} />}
 
       {/* Opiniones reales del producto (sin cifras fijas) */}
       <section className="py-12 bg-muted border-t border-border">

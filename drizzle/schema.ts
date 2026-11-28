@@ -195,6 +195,11 @@ export const experiences = mysqlTable("experiences", {
   durationDays: int("duration_days"),
   requestDatesFrom: date("request_dates_from", { mode: "string" }),
   requestDatesUntil: date("request_dates_until", { mode: "string" }),
+  /**
+   * Migración 0098: fecha de servicio. 'auto' = según el tipo de producto y la capacidad de reservas (como siempre);
+   * 'none' = oferta permanente, no se pide fecha; 'required' = fecha libre obligatoria al comprar.
+   */
+  serviceDateMode: varchar("service_date_mode", { length: 16 }).default("auto").notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
   metaTitle: varchar("metaTitle", { length: 256 }),
   metaDescription: text("metaDescription"),
@@ -222,6 +227,8 @@ export const experienceVariants = mysqlTable("experience_variants", {
    * marca aparte. Las filas con el mismo grupo son los tramos (minQty/maxQty) de un mismo suplemento. NULL = opción normal.
    */
   supplementGroup: varchar("supplementGroup", { length: 64 }),
+  /** Migración 0098: la empresa retira la opción sin borrarla ni caducarla; inactiva no se muestra ni se puede comprar. */
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
