@@ -1315,10 +1315,10 @@ function ProductsBlock({ b, first, preview }: { b: BlockOf<"products">; first: b
                 <div className="flex h-full flex-col p-5 md:p-6">
                   <h3 className="break-words font-heading text-xl font-semibold leading-snug transition-colors group-hover:text-primary">{p.title}</h3>
                   {p.shortDescription && <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{p.shortDescription}</p>}
-                  <div className="mt-auto flex items-end justify-between gap-3 border-t border-border/60 pt-4">
+                  <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-4">
                     <div className="min-w-0">
                       {showPrice ? (
-                        <p className={cn("text-lg font-semibold leading-tight", soldOut && "text-muted-foreground")}>
+                        <p className={cn("whitespace-nowrap text-lg font-semibold leading-tight", soldOut && "text-muted-foreground")}>
                           {p.hasOptions && <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{ui.from}</span>}
                           {price}
                         </p>

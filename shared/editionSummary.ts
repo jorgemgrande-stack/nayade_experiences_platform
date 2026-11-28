@@ -143,7 +143,7 @@ export function sessionsSummary(sessions: SummarySession[], opts: { locale: stri
 const zoneOf = (tz: string) => (isValidTimeZone(tz) ? tz : "Europe/Madrid");
 
 /** Días de calendario máximos para los que «n días» aporta algo; más allá (programas de meses) basta el rango de fechas. */
-export const MAX_DURATION_DAYS = 31;
+export const MAX_DURATION_DAYS = 21;
 
 /** Días de calendario (inclusivos, en la zona de la edición) de un evento sin sesiones: «7 días»; un solo día o más de un mes → null. */
 export function eventDurationText(startsAt: number, endsAt: number | null | undefined, tz: string, t: SiteUiText): string | null {
