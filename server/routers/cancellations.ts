@@ -18,11 +18,13 @@ import {
   couponRedemptions,
   discountCodes,
   invoices,
+  documentCounters,
   quotes,
   tpvSales,
   type CancellationRequest,
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql, lt, inArray } from "drizzle-orm";
+import { madridYear } from "../utils/timezone";
 import { sendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import {
@@ -109,13 +111,32 @@ async function withDeadlockRetry<T>(fn: () => Promise<T>, attempts = 6): Promise
 async function ensureCancellationCounters(): Promise<void> {
   await ensureDocumentCounter("anulacion");
   await ensureDocumentCounter("abono");
-  await ensureDocumentCounter("factura");
+  await ensureDocumentCounter("devolucion");
 }
 
-/** Número de la transacción de devolución (DEV-): hoy sale de la serie de facturas, como siempre. Dentro de la transacción. */
+/**
+ * Número de la transacción de devolución (DEV-AAAA-NNNN) de su serie PROPIA «devolucion» (no consume la de facturas), emitido
+ * DENTRO de la transacción con su misma conexión (no se usa `nextRefundTransactionNumber`: pediría otra conexión y con muchas
+ * solicitudes simultáneas podría agotar el pool). Antes de emitir, el contador se adelanta con GREATEST (nunca retrocede) al
+ * mayor DEV del año que ya exista, sin renumerar históricos; `existsCheck` es la red de seguridad.
+ */
 async function refundTransactionNumberInTx(tx: Tx, context: string, adminUserId: number): Promise<string> {
-  const txNumber = await generateDocumentNumberInTx(tx, "factura", context, String(adminUserId));
-  return txNumber.replace("FAC-", "DEV-");
+  const year = madridYear();
+  const [top] = await tx
+    .select({ n: sql<number>`MAX(CAST(SUBSTRING(${transactions.transactionNumber}, 10) AS UNSIGNED))` })
+    .from(transactions)
+    .where(sql`${transactions.transactionNumber} REGEXP ${`^DEV-${year}-[0-9]+$`}`);
+  const floor = Number(top?.n ?? 0);
+  if (Number.isSafeInteger(floor) && floor > 0) {
+    await tx
+      .update(documentCounters)
+      .set({ currentNumber: sql`GREATEST(${documentCounters.currentNumber}, ${floor})` })
+      .where(and(eq(documentCounters.documentType, "devolucion"), eq(documentCounters.year, year)));
+  }
+  return generateDocumentNumberInTx(tx, "devolucion", context, String(adminUserId), async (candidate) => {
+    const [hit] = await tx.select({ id: transactions.id }).from(transactions).where(eq(transactions.transactionNumber, candidate)).limit(1);
+    return !!hit;
+  });
 }
 
 async function addLogIn(
