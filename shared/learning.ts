@@ -179,6 +179,50 @@ export function effectiveEnrollmentStatus(e: EnrollmentView, now: number): Enrol
   return "expired";
 }
 
+// ─── Escalonado RECONNECT (decisión de Indira, 27/11/2026) ────────────────────────────────────────────────────────
+//
+// Módulo 1 día 0, Módulo 2 día 30, Módulo 3 día 60; cada módulo con 30 días EXACTOS de acceso desde su desbloqueo.
+// Decisión documentada: «30 días» son 30 × 24 h (30 × DAY_MS en milisegundos), no días naturales ni cambios de hora:
+// las ventanas son contiguas [T0, T0+30d), [T0+30d, T0+60d), [T0+60d, T0+90d) y la frontera final de cada una queda excluida.
+
+/** Días entre desbloqueos consecutivos del escalonado (M1 día 0, M2 día 30, M3 día 60). */
+export const RECONNECT_STAGGER_STEP_DAYS = 30;
+/** Días de acceso de cada módulo escalonado desde su desbloqueo. */
+export const RECONNECT_MODULE_DAYS = 30;
+
+/**
+ * Ajustes por módulo del escalonado RECONNECT para los módulos indicados EN ORDEN (M1, M2, M3…): desbloqueo a los
+ * 0/30/60… días y 30 días de acceso cada uno. Con un solo módulo (+MODUL 1) devuelve solo M1 con 30 días. Es una función
+ * pura: no crea ni activa ninguna regla.
+ */
+export function reconnectStaggeredSettings(moduleIds: number[]): Array<{ moduleId: number; unlockOffsetDays: number; durationDays: number }> {
+  const out: Array<{ moduleId: number; unlockOffsetDays: number; durationDays: number }> = [];
+  for (const m of moduleIds) {
+    if (out.some((x) => x.moduleId === m)) continue;
+    out.push({ moduleId: m, unlockOffsetDays: out.length * RECONNECT_STAGGER_STEP_DAYS, durationDays: RECONNECT_MODULE_DAYS });
+  }
+  return out;
+}
+
+/** Estado de UN módulo dentro de una matrícula, con su ventana efectiva, para la administración. */
+export interface ModuleAccessState {
+  moduleId: number;
+  /** active = abierto ahora; scheduled = se desbloquea más tarde; expired = caducado; pending_activation = falta activar; inactive = matrícula suspendida o revocada. */
+  state: "active" | "scheduled" | "expired" | "pending_activation" | "inactive";
+  startsAt: number;
+  endsAt: number | null;
+}
+
+/** Estado y ventana de cada módulo incluido en la matrícula (la vigencia se evalúa al leer, como siempre). */
+export function moduleAccessStates(e: EnrollmentView, now: number): ModuleAccessState[] {
+  return e.moduleIds.map((m) => {
+    const w = moduleWindow(e, m);
+    const d = evaluateAccess(e, m, now);
+    const state: ModuleAccessState["state"] = d.allowed ? "active" : d.reason === "inactive" ? "inactive" : d.reason === "pending_activation" ? "pending_activation" : d.reason === "not_started" ? "scheduled" : "expired";
+    return { moduleId: m, state, startsAt: w.startsAt, endsAt: w.endsAt };
+  });
+}
+
 /** Normaliza las ventanas leídas de la base de datos: solo las que tienen algún extremo propio. */
 export function windowsFromRows(list: Array<{ moduleId: number; startsAt: number | null; endsAt: number | null }>): Record<number, ModuleWindow> | undefined {
   const out: Record<number, ModuleWindow> = {};
