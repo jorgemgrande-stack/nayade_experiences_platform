@@ -10,9 +10,12 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { ProductRequestDialog, type ProductRequestTarget } from "@/components/site/ProductRequestForm";
+import { SmartLink } from "@/components/site/SmartLink";
 import { canRequestSeat, formatEditionDates, type PublicEditionState } from "@shared/editions";
-import { formatEuros } from "@shared/storefront";
-import { formatSessionLine, type PublicEditionSession } from "@shared/editionSessions";
+import { formatEuros, productPath } from "@shared/storefront";
+import type { PublicEditionSession } from "@shared/editionSessions";
+import { editionSubtitle, eventDurationText, sessionsSummary, startsAtHasTime } from "@shared/editionSummary";
+import { cardGridClasses } from "@shared/cardGrid";
 import { editionModeText, editionStateText, fillUiText, siteUiText, type SiteUiText } from "@shared/siteUiText";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 
@@ -33,6 +36,9 @@ export interface PublicEditionItem {
   price: number | null;
   /** Sesiones del paquete (vacío = convocatoria sin sesiones). Nunca traen notas internas. */
   sessions?: PublicEditionSession[];
+  /** Categoría del producto (antetítulo de la tarjeta), traducida al idioma de la página si hay traducción validada */
+  categoryId?: number | null;
+  categoryName?: string | null;
 }
 
 const STATE_STYLE: Record<PublicEditionState, string> = {
@@ -46,41 +52,52 @@ function ctaLabel(t: SiteUiText, s: PublicEditionState): string {
   return s === "open" ? t.requestSeat : s === "closed" ? t.editionClosed : t.joinWaitlist;
 }
 
-function EditionCard({ e, showProduct, onRequest, t, locale }: { e: PublicEditionItem; showProduct: boolean; onRequest: (e: PublicEditionItem) => void; t: SiteUiText; locale: string }) {
+/**
+ * Tarjeta comercial de una convocatoria: categoría (o modalidad) como antetítulo, el producto como título, la etiqueta
+ * de la convocatoria sin sus fechas como subtítulo, UNA línea de fechas, UNA línea de resumen de sesiones (nunca una
+ * hora inventada), lugar y plazas, y un pie con precio, botón de solicitud y enlace a la ficha. La nota de horario solo
+ * se pinta cuando no hay sesiones (con sesiones repetiría las fechas). `className`: la medida dentro de la rejilla.
+ */
+function EditionCard({ e, onRequest, t, locale, detailHref, preview, className }: { e: PublicEditionItem; onRequest: (e: PublicEditionItem) => void; t: SiteUiText; locale: string; detailHref: string; preview?: boolean; className?: string }) {
   const sessions = e.sessions ?? [];
   const seats = e.state === "open" && e.seatsLeft != null ? (e.seatsLeft === 1 ? t.oneSeatLeft : fillUiText(t.seatsLeft, { n: e.seatsLeft })) : null;
+  const subtitle = editionSubtitle(e.label, e.productTitle);
+  const summary = sessions.length ? sessionsSummary(sessions, { locale, t }) : null;
+  const summaryLine = summary ? [summary.count, summary.weekday, summary.time, summary.duration].filter((x): x is string => !!x).join(" · ") : null;
+  const duration = sessions.length ? null : eventDurationText(e.startsAt, e.endsAt, e.timezone, t);
+  // Con sesiones la hora va en el resumen; sin ellas, solo si el inicio tiene hora real (a medianoche no se pinta «00:00 h»)
+  const dates = formatEditionDates(e.startsAt, e.endsAt, e.timezone, !sessions.length && startsAtHasTime(e.startsAt, e.timezone), locale);
   return (
-    <li className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm" data-testid="fecha-convocatoria">
+    <li className={cn("flex h-full flex-col rounded-2xl border border-border/50 bg-card p-6 text-card-foreground shadow-sm", className)} data-testid="fecha-convocatoria">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {showProduct && <p className="text-xs font-semibold uppercase tracking-wide text-primary">{e.productTitle}</p>}
-          <h3 className="break-words font-heading text-lg font-semibold">{e.label}</h3>
+          <p className="text-xs font-semibold uppercase tracking-widest text-primary">{e.categoryName || editionModeText(t, e.mode)}</p>
+          <h3 className="mt-1 break-words font-heading text-xl font-semibold leading-snug">{e.productTitle}</h3>
+          {subtitle && <p className="mt-0.5 break-words text-sm font-medium text-foreground/80">{subtitle}</p>}
         </div>
         <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", STATE_STYLE[e.state])} data-testid="estado-convocatoria">{editionStateText(t, e.state)}</span>
       </div>
-      <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-        {/* Con sesiones, la hora va en cada sesión (o «hora por confirmar»): el rango solo lleva los días */}
-        <li className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{formatEditionDates(e.startsAt, e.endsAt, e.timezone, !sessions.length, locale)}</span></li>
-        {sessions.length > 0 && (
+      <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+        <li className="flex items-start gap-2"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span className="first-letter:uppercase">{dates}</span></li>
+        {summaryLine && (
           <li className="flex items-start gap-2" data-testid="sesiones-convocatoria">
             <Layers className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-            <div className="min-w-0">
-              <p className="font-medium text-foreground">{t.sessionsHeading} · {fillUiText(t.sessionsCount, { n: sessions.length })}</p>
-              <ol className="mt-1 space-y-0.5">
-                {sessions.map((s, i) => (
-                  <li key={i} className={cn("break-words first-letter:uppercase", s.status === "done" && "opacity-60")}>{formatSessionLine(s, { locale, tbcText: t.timeToBeConfirmed, minutesText: t.sessionMinutes })}</li>
-                ))}
-              </ol>
-            </div>
+            <span className="break-words">{summaryLine}</span>
           </li>
         )}
-        {e.scheduleNote && <li className="flex items-start gap-2"><Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span className="whitespace-pre-line break-words">{e.scheduleNote}</span></li>}
+        {duration && <li className="flex items-start gap-2"><Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{duration}</span></li>}
+        {!sessions.length && e.scheduleNote && <li className="flex items-start gap-2"><Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span className="line-clamp-3 whitespace-pre-line break-words">{e.scheduleNote}</span></li>}
         <li className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{editionModeText(t, e.mode)}{e.locationNote ? ` · ${e.locationNote}` : ""}</span></li>
         {seats && <li className="flex items-start gap-2"><Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{seats}</span></li>}
       </ul>
-      <div className="mt-4 flex flex-1 items-end justify-between gap-3">
-        <p className="text-base font-semibold">{e.price != null ? formatEuros(e.price) : ""}</p>
-        <Button size="sm" disabled={!canRequestSeat(e.state)} variant={e.state === "open" ? "default" : "outline"} onClick={() => onRequest(e)} data-testid="solicitar-plaza">
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+        <div className="min-w-0">
+          {e.price != null && <p className="text-lg font-semibold leading-tight">{formatEuros(e.price)}</p>}
+          <SmartLink href={detailHref} preview={preview} className="text-sm text-primary underline-offset-4 hover:underline">
+            {t.viewDetails}
+          </SmartLink>
+        </div>
+        <Button size="sm" className="shrink-0" disabled={!canRequestSeat(e.state)} variant={e.state === "open" ? "default" : "outline"} onClick={() => onRequest(e)} data-testid="solicitar-plaza">
           {ctaLabel(t, e.state)}
         </Button>
       </div>
@@ -121,16 +138,20 @@ export function EditionsList({
     if (emptyText) return <p className="rounded-2xl border border-dashed border-border bg-muted/40 px-6 py-8 text-center text-muted-foreground">{emptyText}</p>;
     return editing ? <p className="rounded-2xl border-2 border-dashed border-border bg-muted/50 px-6 py-10 text-center text-sm text-muted-foreground">Aquí aparecerán las próximas convocatorias de tus productos. Ahora mismo no hay ninguna abierta o con fecha futura.</p> : null;
   }
+  // Rejilla dinámica: una convocatoria centrada, dos en un contenedor acotado, tres a todo el ancho (ver shared/cardGrid)
+  const grid = cardGridClasses(items.length, columns === 3 ? 3 : 2);
   return (
     <>
-      <ul className={cn("grid grid-cols-1 gap-5", columns === 3 ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-2")}>
+      <ul className={grid.wrap}>
         {items.map((e) => (
           <EditionCard
             key={e.id}
             e={e}
-            showProduct={showProduct}
+            className={grid.item}
             t={t}
             locale={site.locale}
+            preview={preview}
+            detailHref={site.prefix ? `/${site.prefix}${productPath(e.productSlug)}` : productPath(e.productSlug)}
             onRequest={(x) => setTarget({ t: { productId: x.experienceId, productTitle: x.productTitle, editionId: x.id, editionLabel: x.label, withSeats: true, submitLabel: x.state === "open" ? t.requestSeat : t.joinWaitlist }, open: true })}
           />
         ))}
