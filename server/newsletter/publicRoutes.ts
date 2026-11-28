@@ -11,6 +11,8 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { esc, notice, page } from "../netPublic/html";
 import { normalizeLocale, TOKEN_RE, verifyUnsubscribeToken, type Locale } from "./core";
 import { newsletterService, unsubscribeSecrets } from "./runtime";
+import { newsletterLang, NEWSLETTER_MESSAGES } from "../../shared/newsletterMessages";
+import { SubscribeFailure, subscribeFromWeb, subscribeInput } from "./subscribe";
 import { NewsletterNotInstalled } from "./store";
 
 const T: Record<Locale, Record<string, string>> = {
@@ -54,6 +56,32 @@ export function createNewsletterPublicRouter(): Router {
     handler: (_req, res) => page(res, 429, T.es.many, `<div class="sheet"><h1>${esc(T.es.many)} · ${esc(T.de.many)}</h1><p>${esc(T.es.manyText)}</p><p>${esc(T.de.manyText)}</p></div>`),
   });
   r.use("/newsletter", limiter);
+
+  // Alta desde el formulario de la web: pública y sin sesión (los formularios del Studio entran igual por una ruta fuera de /api/trpc)
+  const subLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => `nls:${ipKeyGenerator(req.ip ?? "")}`,
+    handler: (req, res) => {
+      const l = newsletterLang((req.body as { locale?: unknown } | undefined)?.locale);
+      res.status(429).json({ error: NEWSLETTER_MESSAGES[l].rateLimitedMessage });
+    },
+  });
+  r.post("/api/newsletter/subscribe", express.json({ limit: "8kb" }), subLimiter, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const parsed = subscribeInput.safeParse(req.body);
+    const l = newsletterLang((req.body as { locale?: unknown } | undefined)?.locale);
+    if (!parsed.success) return void res.status(400).json({ error: NEWSLETTER_MESSAGES[l].invalidEmailMessage });
+    try {
+      res.json(await subscribeFromWeb(parsed.data, req));
+    } catch (e) {
+      if (e instanceof SubscribeFailure) return void res.status(e.status).json({ error: e.message });
+      log("subscribe_route", e);
+      res.status(500).json({ error: NEWSLETTER_MESSAGES[l].errorMessage });
+    }
+  });
 
   r.get("/newsletter/confirmar/:token", async (req, res) => {
     try {

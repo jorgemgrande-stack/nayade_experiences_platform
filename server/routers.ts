@@ -201,6 +201,7 @@ import { careReportsRouter, restaurantReportsRouter, skiReportsRouter, travelRep
 import { travelRouter } from "./travelNet/router";
 import { brevoMarketingRouter } from "./brevoMarketing/router";
 import { newsletterRouter } from "./newsletter/router";
+import { recurringSessionsRouter } from "./recurringSessionsRouter";
 import { geoControlRouter } from "./routers/geoControl";
 import { multichannelRouter } from "./routers/multichannel";
 import { seoControlRouter } from "./routers/seoControl";
@@ -3299,6 +3300,7 @@ export const appRouter = router({
   travel: travelRouter,
   brevoMarketing: brevoMarketingRouter,
   newsletter: newsletterRouter,
+  recurringSessions: recurringSessionsRouter,
   geoControl: geoControlRouter,
   multichannel: multichannelRouter,
   seoControl: seoControlRouter,

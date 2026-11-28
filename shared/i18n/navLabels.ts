@@ -91,6 +91,7 @@ export const NAV_LABELS_DE: Record<string, string> = {
   "Campañas de correo": "E-Mail-Kampagnen",
   "Email marketing (Brevo)": "E-Mail-Marketing (Brevo)",
   "Newsletter · Suscriptores": "Newsletter · Abonnenten",
+  "Sesiones recurrentes": "Wiederkehrende Sessions",
   "Visibilidad en IA (GEO)": "Sichtbarkeit in KI (GEO)",
   "SEO y reseñas": "SEO und Bewertungen",
   "Publicidad (Ads Manager)": "Werbung (Ads Manager)",

@@ -322,6 +322,8 @@ export const TASK_NAV: NavSection[] = [
       { label: "Descuentos y cupones", href: "/admin/marketing/descuentos", key: "t-descuentos", icon: "tag", roles: ADMIN, capabilities: ["shop-coupons"] },
       { label: "Reglas de precios", href: "/admin/productos/reglas-precios", key: "t-reglas-precios", icon: "tag", roles: ADMIN, capabilities: ["pricing-rules"] },
       // Business: existencias por sede y movimientos (la consulta del equipo va por la API; el menú de catálogo es de administración)
+      // Sesiones recurrentes (MORNING IMPULSE): opt-in, solo sale cuando la empresa ya tiene alguna oferta configurada
+      { label: "Sesiones recurrentes", href: "/admin/productos/sesiones-recurrentes", key: "t-sesiones-recurrentes", icon: "calendar", roles: ADMIN, capabilities: ["shop-catalog"], flagKey: "recurring_sessions_enabled" },
       { label: "Inventario", href: "/admin/productos/inventario", key: "t-inventario", icon: "package", roles: ADMIN, capabilities: ["inventory-basic"] },
       // Elephant Learning: licencia de módulo `learning` (no es una capacidad comercial); sin ella la entrada no sale
       { label: "Formación", href: "/admin/formacion", key: "t-formacion", icon: "briefcase", roles: ADMIN, capabilities: ["admin-panel"], moduleKey: "learning" },
