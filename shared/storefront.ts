@@ -121,17 +121,54 @@ export function clampQuantity(q: unknown, max: number = MAX_QUANTITY): number {
 
 export interface ProductLike {
   productType?: string | null;
+  /** Migración 0098: 'auto' (según tipo y capacidad), 'none' (oferta permanente sin fecha) o 'required' (fecha obligatoria). */
+  serviceDateMode?: string | null;
 }
 
-/** La ficha genérica pide fecha solo a un servicio y solo si la empresa vende servicios con fecha. */
+/** Modos de fecha de servicio de un producto (dato `experiences.service_date_mode`). */
+export const SERVICE_DATE_MODES = ["auto", "none", "required"] as const;
+export type ServiceDateMode = (typeof SERVICE_DATE_MODES)[number];
+
+/** Valor desconocido o ausente (producto anterior a 0098) = automático: el comportamiento de siempre. */
+export function serviceDateModeOf(p: { serviceDateMode?: unknown } | null | undefined): ServiceDateMode {
+  const v = p?.serviceDateMode;
+  return v === "none" || v === "required" ? v : "auto";
+}
+
 /** La cantidad se nombra «participantes» (en vez de «cantidad») en los productos que son una actividad o un retiro. */
 export function isParticipantsProduct(productType: string | null | undefined): boolean {
   return productType === "actividad";
 }
 
+/**
+ * Qué fecha de servicio exige la compra de un producto en esta web. Pura: la usan la ficha, el carrito y el servidor.
+ *  - `none`: oferta permanente (p. ej. un programa online): no se pide fecha y la que llegue se ignora.
+ *  - `required`: hay que elegir una fecha (la ficha sectorial, un servicio con fecha en la tienda de una pyme, o el
+ *    producto la exige expresamente).
+ * El modo explícito del producto manda; en `auto` decide la web (sectorial: siempre; pyme: solo servicios con fecha).
+ */
+export function serviceDateRequirement(product: ProductLike, ctx: { storefront: Storefront }): "none" | "required" {
+  const mode = serviceDateModeOf(product);
+  if (mode !== "auto") return mode;
+  if (ctx.storefront.kind === "sector") return "required";
+  return ctx.storefront.datedServices && product.productType === "actividad" ? "required" : "none";
+}
+
+/** La ficha genérica pide fecha solo a un servicio y solo si la empresa vende servicios con fecha (salvo modo explícito). */
 export function needsServiceDate(product: ProductLike, storefront: Storefront): boolean {
-  if (storefront.kind === "sector") return true;
-  return storefront.datedServices && product.productType === "actividad";
+  return serviceDateRequirement(product, { storefront }) === "required";
+}
+
+/**
+ * Fecha de servicio que se guarda en el pedido, o el problema si falta. Con `none` la fecha se limpia (una oferta
+ * permanente no tiene fecha aunque el carrito traiga una). Solo el modo explícito `required` rechaza una fecha vacía
+ * en el servidor: en `auto` se conserva el comportamiento anterior (la ficha la pide; el servidor la guarda tal cual).
+ */
+export function serviceDateForOrder(product: ProductLike, bookingDate: string | null | undefined, ctx: { storefront: Storefront }): { ok: true; bookingDate: string } | { ok: false; reason: "date_required" } {
+  const date = (bookingDate ?? "").trim();
+  if (serviceDateRequirement(product, ctx) === "none") return { ok: true, bookingDate: "" };
+  if (serviceDateModeOf(product) === "required" && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, reason: "date_required" };
+  return { ok: true, bookingDate: date };
 }
 
 // ─── Línea de carrito ────────────────────────────────────────────────────────
@@ -145,6 +182,7 @@ export interface GenericCartInput {
     coverImageUrl?: string | null;
     image1?: string | null;
     productType?: string | null;
+    serviceDateMode?: string | null;
   };
   variant?: VariantLike | null;
   quantity: number;

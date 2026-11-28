@@ -281,6 +281,7 @@ export const TASK_NAV: NavSection[] = [
     label: "Clientes y ventas",
     items: [
       { label: "Clientes", href: "/admin/crm/clientes", key: "t-clientes", icon: "users", roles: SALES, capabilities: ["crm-contacts", "crm-accounts"] },
+      { label: "Newsletter · Suscriptores", href: "/admin/newsletter/suscriptores", key: "t-newsletter", icon: "mail", roles: ADMIN, capabilities: ["crm-contacts", "crm-leads"], flagKey: "newsletter_enabled" },
       { label: "Oportunidades", href: "/admin/crm?tab=leads", key: "t-oportunidades", icon: "target", roles: SALES, capabilities: ["crm-leads"] },
       { label: "Embudo de ventas", href: "/admin/crm/embudo", key: "t-embudo", icon: "target", roles: SALES, capabilities: ["crm-funnel-advanced"] },
       {
@@ -321,6 +322,8 @@ export const TASK_NAV: NavSection[] = [
       { label: "Descuentos y cupones", href: "/admin/marketing/descuentos", key: "t-descuentos", icon: "tag", roles: ADMIN, capabilities: ["shop-coupons"] },
       { label: "Reglas de precios", href: "/admin/productos/reglas-precios", key: "t-reglas-precios", icon: "tag", roles: ADMIN, capabilities: ["pricing-rules"] },
       // Business: existencias por sede y movimientos (la consulta del equipo va por la API; el menú de catálogo es de administración)
+      // Sesiones recurrentes (MORNING IMPULSE): opt-in, solo sale cuando la empresa ya tiene alguna oferta configurada
+      { label: "Sesiones recurrentes", href: "/admin/productos/sesiones-recurrentes", key: "t-sesiones-recurrentes", icon: "calendar", roles: ADMIN, capabilities: ["shop-catalog"], flagKey: "recurring_sessions_enabled" },
       { label: "Inventario", href: "/admin/productos/inventario", key: "t-inventario", icon: "package", roles: ADMIN, capabilities: ["inventory-basic"] },
       // Elephant Learning: licencia de módulo `learning` (no es una capacidad comercial); sin ella la entrada no sale
       { label: "Formación", href: "/admin/formacion", key: "t-formacion", icon: "briefcase", roles: ADMIN, capabilities: ["admin-panel"], moduleKey: "learning" },
@@ -436,6 +439,7 @@ export const TASK_NAV: NavSection[] = [
       { label: "Venta multicanal", href: "/admin/multicanal", key: "x-multicanal", icon: "globe", roles: ADMIN, capabilities: ["multichannel"] },
       { label: "Campañas de correo", href: "/admin/marketing/campanas", key: "x-campanas", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
       { label: "Email marketing (Brevo)", href: "/admin/marketing/brevo", key: "x-brevo", icon: "mail", roles: ADMIN, capabilities: ["email-campaigns"] },
+      // Newsletter (opt-in por empresa: solo aparece si el módulo está activado; ver AdminLayout)
       { label: "Visibilidad en IA (GEO)", href: "/admin/marketing/geo", key: "x-geo", icon: "sparkles", roles: ADMIN, capabilities: ["geo-control"] },
       { label: "SEO y reseñas", href: "/admin/marketing/seo", key: "x-seo", icon: "chart", roles: ADMIN, capabilities: ["seo-control"] },
       { label: "Publicidad (Ads Manager)", href: "/admin/marketing/ads", key: "x-ads", icon: "chart", roles: ADMIN, capabilities: ["ads-manager"] },

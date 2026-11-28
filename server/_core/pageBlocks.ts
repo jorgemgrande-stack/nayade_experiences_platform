@@ -398,6 +398,9 @@ export function blocksToHtml(blocks: PageBlock[]): string {
       case "upcoming_dates":
         parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
         break;
+      case "newsletter":
+        parts.push(h(2, b.data.title), b.data.intro ? `<p>${esc(b.data.intro)}</p>` : "");
+        break;
       case "slideshow":
         b.data.slides.forEach((s, n) =>
           parts.push(h(n === 0 && i === 0 ? 1 : 2, s.title), s.text ? `<p>${esc(s.text)}</p>` : "", img(s.imageUrl, s.imageAlt), link(s.buttonUrl, s.buttonLabel), link(s.button2Url, s.button2Label)),

@@ -3,7 +3,7 @@ import type es from "../es/learningAdmin";
 
 export default {
   noExpiry: "Unbefristet",
-  status: { active: "Aktiv", scheduled: "Geplant", expired: "Abgelaufen", suspended: "Pausiert", revoked: "Widerrufen" },
+  status: { active: "Aktiv", scheduled: "Geplant", expired: "Abgelaufen", suspended: "Pausiert", revoked: "Widerrufen", pending_activation: "Aktivierung ausstehend" },
   courseStatus: { draft: "Entwurf (privat)", published: "Veröffentlicht", archived: "Archiviert" },
   reason: {
     newEnd: "Neues Enddatum (leer = unbefristet)",
@@ -39,6 +39,11 @@ export default {
     historyTitle: "Verlauf der Einschreibung",
     user: " · Benutzer {id}",
     actions: "Aktionen",
+    moduleState: { active: "aktiv", scheduled: "wird freigeschaltet", expired: "abgelaufen", pending_activation: "Aktivierung ausstehend", inactive: "kein Zugang" },
+    moduleUntil: "bis {date}",
+    moduleFrom: "ab {date}",
+    moduleEnded: "endete {date}",
+    moduleN: "M{n}",
   },
   pending: {
     title: "Bezahlte Bestellungen ohne Zugang ({n})",

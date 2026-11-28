@@ -23,6 +23,7 @@ import { saleReadinessRouter } from "./routers/saleReadiness";
 import { parseIsoDay } from "../shared/requestDates";
 import { assertCanSwitchToFixed } from "./saleReadinessDb";
 import { OFFER_MODES, MAX_REQUEST_CTA_LENGTH, offerModeOf, showsPrice, notForSaleMessage } from "../shared/offerMode";
+import { SERVICE_DATE_MODES, serviceDateForOrder } from "../shared/storefront";
 import { publicProcedure, protectedProcedure, staffProcedure, router, permissionProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -199,6 +200,8 @@ import { skiSchoolRouter } from "./skiSchool/router";
 import { careReportsRouter, restaurantReportsRouter, skiReportsRouter, travelReportsRouter } from "./netReports/router";
 import { travelRouter } from "./travelNet/router";
 import { brevoMarketingRouter } from "./brevoMarketing/router";
+import { newsletterRouter } from "./newsletter/router";
+import { recurringSessionsRouter } from "./recurringSessionsRouter";
 import { geoControlRouter } from "./routers/geoControl";
 import { multichannelRouter } from "./routers/multichannel";
 import { seoControlRouter } from "./routers/seoControl";
@@ -1690,6 +1693,8 @@ export const appRouter = router({
         basePrice: z.string().default(""),
         offerMode: z.enum(OFFER_MODES).default("fixed"),
         requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
+        /** Migración 0098: fecha de servicio (automática, sin fecha = oferta permanente, u obligatoria) */
+        serviceDateMode: z.enum(SERVICE_DATE_MODES).optional(),
         duration: z.string().optional(),
         minPersons: z.number().optional(),
         maxPersons: z.number().optional(),
@@ -1759,6 +1764,8 @@ export const appRouter = router({
         /** El administrador ha revisado los avisos de preparación y autoriza pasar a precio fijo. */
         confirmReadiness: z.boolean().optional(),
         requestCtaLabel: z.string().max(MAX_REQUEST_CTA_LENGTH).optional(),
+        /** Migración 0098: fecha de servicio (automática, sin fecha = oferta permanente, u obligatoria) */
+        serviceDateMode: z.enum(SERVICE_DATE_MODES).optional(),
         /** Migración 0088: duración como dato y periodo de peticiones de fecha de inicio (YYYY-MM-DD; null = sin calendario) */
         durationDays: z.number().int().min(1).max(366).nullable().optional(),
         requestDatesFrom: z.string().refine((v) => parseIsoDay(v) !== null, "Fecha no válida (AAAA-MM-DD)").nullable().optional(),
@@ -2029,7 +2036,7 @@ export const appRouter = router({
       .input(z.object({ experienceId: z.number().optional() }))
       .query(async ({ input }) => {
         if (input.experienceId) {
-          return getVariantsByExperience(input.experienceId, { includeExpired: true, includeSupplements: true });
+          return getVariantsByExperience(input.experienceId, { includeExpired: true, includeInactive: true, includeSupplements: true });
         }
         return getAllVariantsGrouped();
       }),
@@ -2048,6 +2055,8 @@ export const appRouter = router({
         maxQty: z.number().int().min(1).nullable().optional(),
         /** Suplemento opcional (aparte del programa; tramos con el mismo grupo). Solo «por persona» o «fijo». */
         supplementGroup: z.string().trim().max(64).regex(/^[a-z0-9_-]+$/i).nullable().optional(),
+        /** Retirada sin borrar (0098): inactiva no se muestra ni se puede comprar */
+        isActive: z.boolean().optional(),
       }).refine((v) => !v.supplementGroup || v.priceType !== "percentage", { message: "Un suplemento no puede ser un porcentaje." }))
       .mutation(async ({ input }) => {
         return createVariant(input);
@@ -2066,6 +2075,8 @@ export const appRouter = router({
         minQty: z.number().int().min(1).nullable().optional(),
         maxQty: z.number().int().min(1).nullable().optional(),
         supplementGroup: z.string().trim().max(64).regex(/^[a-z0-9_-]+$/i).nullable().optional(),
+        /** Retirada sin borrar (0098): inactiva no se muestra ni se puede comprar */
+        isActive: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -2619,6 +2630,10 @@ export const appRouter = router({
           const pp = productPeopleProblem(product as any, input.people);
           if (pp) throw new TRPCError({ code: "BAD_REQUEST", message: pp });
         }
+        // Fecha de servicio (0098): una oferta permanente no lleva fecha (se limpia); con fecha obligatoria se rechaza una vacía
+        const serviceDate = serviceDateForOrder(product as any, input.bookingDate, { storefront: await (await import("./storefront")).getStorefront() });
+        if (!serviceDate.ok) throw new TRPCError({ code: "BAD_REQUEST", message: `Indica la fecha del servicio de «${product.title}».` });
+        const bookingDate = serviceDate.bookingDate;
 
         // 1b. Validar time slot si el producto lo requiere
         if ((product as any).hasTimeSlots && !input.selectedTimeSlotId && !input.selectedTime) {
@@ -2656,7 +2671,7 @@ export const appRouter = router({
         // Nunca se cobra una línea a 0 € (p. ej. una opción con precio sin configurar)
         assertCheckoutLinePriced(product.title, calcPricing(pricePerPerson, input.people, pricingType, unitCapacity, maxUnits).totalEuros, `#${input.productId}, opción ${input.variantId ?? "-"}`);
         // 2c. Reglas de precios de la empresa (Business): sin reglas, el precio de siempre
-        pricePerPerson = webRulePrice(await activePricingRules(), { productId: input.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: input.people, serviceDate: input.bookingDate }).unitPrice;
+        pricePerPerson = webRulePrice(await activePricingRules(), { productId: input.productId, categoryId: product.categoryId ?? null, unitPrice: pricePerPerson, quantity: input.people, serviceDate: bookingDate }).unitPrice;
         const { totalEuros: baseTotal, unitsBooked } = calcPricing(
           pricePerPerson, input.people, pricingType, unitCapacity, maxUnits
         );
@@ -2681,7 +2696,7 @@ export const appRouter = router({
         const { id: createdReservationId } = await createReservation({
           productId: input.productId,
           productName: product.title + suppNameSuffix(suppLines),
-          bookingDate: input.bookingDate,
+          bookingDate,
           people: input.people,
           extrasJson,
           amountTotal: amountCents,
@@ -2909,6 +2924,9 @@ export const appRouter = router({
           if (offerModeOf(product) !== "fixed") throw new TRPCError({ code: "BAD_REQUEST", message: notForSaleMessage(product.title, offerModeOf(product)) });
           // Agotado, retirado o sin publicar: no se vende aunque siga en un carrito guardado
           if (!isPurchasable(product)) throw new TRPCError({ code: "BAD_REQUEST", message: soldOutMessage(product.title) });
+          // Fecha de servicio (0098): una oferta permanente no lleva fecha (se limpia); con fecha obligatoria se rechaza una vacía
+          const serviceDate = serviceDateForOrder(product as any, item.bookingDate, { storefront });
+          if (!serviceDate.ok) throw new TRPCError({ code: "BAD_REQUEST", message: `Indica la fecha del servicio de «${product.title}».` });
           // Importes en céntimos enteros. El precio base puede ser 0 si el precio vive en las opciones de pago (Basic/Premium…)
           const productBaseCents = eurosToCents(String(product.basePrice ?? "0"));
           if (!Number.isFinite(productBaseCents) || productBaseCents < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido` });
@@ -2940,7 +2958,7 @@ export const appRouter = router({
           // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
           assertCheckoutLinePriced(product.title, lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits).totalCents / 100, `#${item.productId}, opción ${item.variantId ?? "-"}`);
           // Reglas de precios de la empresa (Business), antes del cupón: sin reglas, el precio de siempre
-          unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: editionLine?.bookingDate ?? item.bookingDate }).unitPrice);
+          unitCents = eurosToCents(webRulePrice(cartRules, { productId: item.productId, categoryId: product.categoryId ?? null, unitPrice: unitCents / 100, quantity: item.people, serviceDate: editionLine?.bookingDate ?? serviceDate.bookingDate }).unitPrice);
           const { totalCents: itemBaseCents, unitsBooked: itemUnits } = lineTotalCents(unitCents, item.people, itemPricingType, itemUnitCap, itemMaxUnits);
           // Suplementos opcionales: solo los marcados; importe y tramo (individual / desde 2) los fija el servidor
           const suppLines = await resolveSuppForCheckout(item.productId, item.supplementIds, item.people, item.variantId);
@@ -2950,7 +2968,7 @@ export const appRouter = router({
           itemsWithPrices.push({
             productId: item.productId,
             productName: lineName,
-            bookingDate: editionLine?.bookingDate ?? item.bookingDate,
+            bookingDate: editionLine?.bookingDate ?? serviceDate.bookingDate,
             people: item.people,
             extrasJson: JSON.stringify(item.extras),
             amountTotal: itemAmountCents,
@@ -3282,6 +3300,8 @@ export const appRouter = router({
   travelReports: travelReportsRouter,
   travel: travelRouter,
   brevoMarketing: brevoMarketingRouter,
+  newsletter: newsletterRouter,
+  recurringSessions: recurringSessionsRouter,
   geoControl: geoControlRouter,
   multichannel: multichannelRouter,
   seoControl: seoControlRouter,

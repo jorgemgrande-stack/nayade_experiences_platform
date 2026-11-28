@@ -86,13 +86,22 @@ describe("Contabilidad general (E6): pantalla sin nativos ni residuos", () => {
 });
 
 describe("Contabilidad general (E6): la sincronización y las operaciones no cambian", () => {
-  it("al abrir la pantalla se ejecuta una vez la misma mutación `sync`, en el mismo punto y con el mismo tratamiento de errores", () => {
+  it("abrir la pantalla NO sincroniza: la mutación `sync` solo se lanza desde el botón (con confirmación) y mantiene el tratamiento de errores", () => {
     expect(src).toContain("const sync = trpc.accountingGeneral.sync.useMutation({\n    onSuccess: () => utils.accountingGeneral.invalidate(),");
     expect(src).toContain('if (e.data?.code !== "FORBIDDEN") toastError(e);');
-    expect(src).toContain("const started = useRef(false);\n  useEffect(() => {\n    if (started.current) return;\n    started.current = true;\n    sync.mutate();\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);");
-    // «Actualizar asientos» sigue llamando a la misma mutación
-    expect(src).toContain("onSync={() => sync.mutate()}");
-    expect(src.match(/sync\.mutate\(/g)).toHaveLength(2);
+    // sin efecto al montar que sincronice
+    expect(src).not.toContain("const started = useRef(false)");
+    expect(src).not.toMatch(/useEffect\(\(\) => \{[^}]*sync\.mutate/);
+    expect(src).not.toContain('origin: "pantalla"');
+    // una sola llamada a la mutación, desde el botón y con origen manual; la fecha de inicio solo viaja la primera vez
+    expect(src).toContain('onSync={(startDate) => sync.mutate({ origin: "manual", startDate: startDate ?? null })}');
+    expect(src.match(/sync\.mutate\(/g)).toHaveLength(1);
+    // el botón abre un diálogo de confirmación; la primera vez pide la fecha de inicio
+    expect(src).toContain("onClick={openConfirm}");
+    expect(src).toContain("onSync(d.started ? null : effectiveStart)");
+    expect(src).toContain("if (!d.started && !startValid) return;");
+    // el botón queda deshabilitado mientras hay una ejecución en curso (propia o de otra persona)
+    expect(src).toContain("<Button onClick={openConfirm} disabled={busy}");
   });
 
   it("las mismas consultas y mutaciones que antes (nada nuevo, nada quitado)", () => {
@@ -100,7 +109,7 @@ describe("Contabilidad general (E6): la sincronización y las operaciones no cam
     expect(used).toEqual(
       [
         "accounts", "confirmExpenseTax", "createAccount", "createEntry", "journal", "ledger", "overview", "profitAndLoss",
-        "reverseEntry", "saveCategoryAccount", "saveSettings", "settings", "sync", "trialBalance", "updateAccount",
+        "reverseEntry", "saveCategoryAccount", "saveSettings", "settings", "sync", "syncRuns", "trialBalance", "updateAccount",
       ].map((n) => `trpc.accountingGeneral.${n}`),
     );
     expect(src).toContain("utils.accountingGeneral.export.fetch({ kind, ...period, account: account ?? null })");

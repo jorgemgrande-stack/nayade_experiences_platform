@@ -16,7 +16,7 @@ import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelSt
 import { PanelDataList, PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
 import { useI18n } from "@/i18n/I18nProvider";
-import { effectiveStatus } from "@shared/learning";
+import { effectiveEnrollmentStatus, type ModuleAccessState } from "@shared/learning";
 import { AlertTriangle, BarChart3, BookPlus, Film, FolderOpen, GraduationCap, PenSquare, PlayCircle, ShieldCheck, Users, Wrench, type LucideIcon } from "lucide-react";
 import CourseEditor from "./CourseEditor";
 import Materials from "./Materials";
@@ -29,10 +29,36 @@ function useFmt() {
   const { t, format } = useI18n();
   return (ms: number | null) => (ms ? format.dateTime(ms, { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" }) : t("learningAdmin.noExpiry"));
 }
-const STATUS_KEYS = ["active", "scheduled", "expired", "suspended", "revoked"];
-const STATUS_TONE: Record<string, Tone> = { active: "success", scheduled: "info", expired: "neutral", suspended: "warning", revoked: "danger" };
+const STATUS_KEYS = ["active", "scheduled", "expired", "suspended", "revoked", "pending_activation"];
+const STATUS_TONE: Record<string, Tone> = { active: "success", scheduled: "info", expired: "neutral", suspended: "warning", revoked: "danger", pending_activation: "info" };
 type Tab = "matriculas" | "progreso" | "cursos" | "crear" | "materiales" | "editor" | "reglas" | "demo" | "tecnica";
 const TABS: Tab[] = ["matriculas", "progreso", "cursos", "crear", "materiales", "editor", "reglas", "demo", "tecnica"];
+
+const MODULE_TONE: Record<ModuleAccessState["state"], Tone> = { active: "success", scheduled: "info", expired: "neutral", pending_activation: "info", inactive: "warning" };
+
+/** Vista compacta por módulo: estado (activo / se desbloquea / caducado / pendiente) y la fecha que importa en cada caso. */
+function ModuleStates({ modules }: { modules: Array<ModuleAccessState & { title: string | null; position: number | null }> }) {
+  const { t, format } = useI18n();
+  const day = (ms: number) => format.date(ms, { dateStyle: "medium", timeZone: "Europe/Madrid" });
+  if (!modules.length) return <>0</>;
+  return (
+    <ul className="space-y-0.5 text-xs" data-testid="enrollment-modules">
+      {modules.map((m) => {
+        const when = m.state === "scheduled" ? t("learningAdmin.enrollments.moduleFrom", { date: day(m.startsAt) })
+          : m.state === "active" && m.endsAt != null ? t("learningAdmin.enrollments.moduleUntil", { date: day(m.endsAt) })
+          : m.state === "expired" && m.endsAt != null ? t("learningAdmin.enrollments.moduleEnded", { date: day(m.endsAt) })
+          : "";
+        return (
+          <li key={m.moduleId} className="flex flex-wrap items-center gap-1" title={m.title ?? undefined}>
+            <span className="font-medium">{m.position != null ? t("learningAdmin.enrollments.moduleN", { n: m.position }) : `#${m.moduleId}`}</span>
+            <StatusBadge tone={MODULE_TONE[m.state]}>{t(`learningAdmin.enrollments.moduleState.${m.state}`)}</StatusBadge>
+            {when && <span className="text-muted-foreground">{when}</span>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 function ReasonDialog({ title, withDate, onClose, onSubmit }: { title: string; withDate?: boolean; onClose: () => void; onSubmit: (v: { reason: string; date: string }) => void }) {
   const { t } = useI18n();
@@ -218,8 +244,8 @@ function Enrollments() {
         rowKey={(e) => e.id}
         columns={[
           { key: "person", header: t("learningAdmin.enrollments.person"), cell: (e) => <><span className="font-medium">{e.userName ?? "—"}</span><span className="block break-all text-xs font-normal text-muted-foreground">{e.userEmail}</span></> },
-          { key: "state", header: t("learningAdmin.enrollments.state"), cell: (e) => { const st = effectiveStatus(e, now); return <StatusBadge tone={STATUS_TONE[st] ?? "neutral"}>{STATUS_KEYS.includes(st) ? t(`learningAdmin.status.${st}`) : st}</StatusBadge>; } },
-          { key: "modules", header: t("learningAdmin.enrollments.modules"), cell: (e) => e.moduleIds.length },
+          { key: "state", header: t("learningAdmin.enrollments.state"), cell: (e) => { const st = effectiveEnrollmentStatus(e, now); return <StatusBadge tone={STATUS_TONE[st] ?? "neutral"}>{STATUS_KEYS.includes(st) ? t(`learningAdmin.status.${st}`) : st}</StatusBadge>; } },
+          { key: "modules", header: t("learningAdmin.enrollments.modules"), cell: (e) => <ModuleStates modules={e.modules} /> },
           { key: "end", header: t("learningAdmin.enrollments.end"), cell: (e) => fmt(e.endsAt) },
           { key: "origin", header: t("learningAdmin.enrollments.origin"), className: "text-xs", cell: (e) => e.source === "payment" ? t("learningAdmin.enrollments.payment", { ref: e.paymentRef ?? "" }) : e.source === "demo" ? t("learningAdmin.enrollments.demo") : t("learningAdmin.enrollments.grant", { reason: e.grantReason ?? "" }) },
           { key: "actions", header: t("learningAdmin.enrollments.actions"), cell: (e) => (

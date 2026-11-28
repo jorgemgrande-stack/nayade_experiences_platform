@@ -63,7 +63,7 @@ async function gateWith(changes: CapabilityChange[], o: { tenant?: string; regis
   if (!o.registry) registry.registerAll([mod("rental", { siteScoped: true })]);
   return { gate: new ModuleGate(registry, { capabilities: () => access }), registry, store, access };
 }
-const grant = (status: CapabilityChange["status"], siteId = "", validUntil: number | null = null, capabilityId = "ski-rental"): CapabilityChange => ({ capabilityId, siteId, status, validUntil, source: "operator" });
+const grant = (status: CapabilityChange["status"], siteId = "", validUntil: number | null = null, capabilityId = "ski-rental"): CapabilityChange => ({ capabilityId, siteId, status, validUntil, source: "subscription:1" });
 
 afterEach(() => {
   configureSiteDirectory(null);
