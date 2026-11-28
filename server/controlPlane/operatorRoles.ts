@@ -26,6 +26,8 @@ export const ROLE_SCOPES: Record<OperatorRole, readonly Scope[]> = {
   // Comercial prepara pedidos (cotización, contrato, aceptación, pago de prueba); aprobar sin pago y activar, administración
   // Comercial consulta lo comercial (facturación, cobros, métricas) con billing:read; la contabilidad y la gestoría
   // (finance:*) quedan para administración
+  // Comercial NO gestiona precios ni paquetes personalizados (commercial.subscription.custom_pricing.manage): solo
+  // superadministrador y administrador, que lo reciben por tener SCOPES completo
   sales: ["crm:read", "crm:write", "tenants:read", "billing:read", "usage:read", "tickets:read", "web:read", "web:write", "subscriptions:read", "orders:read", "orders:write"],
   support: ["tickets:read", "tickets:write", "support:write", "tenants:read", "usage:read", "ops:read", "crm:read", "web:read"],
   readonly: READ,
