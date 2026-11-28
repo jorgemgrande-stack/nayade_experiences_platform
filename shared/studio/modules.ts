@@ -403,6 +403,21 @@ export const MODULES: readonly ModuleDef[] = [
     { key: "limit", label: "Cuántas fechas", kind: "select", options: [{ value: "3", label: "3" }, { value: "6", label: "6" }, { value: "9", label: "9" }, { value: "12", label: "12" }] },
     { key: "emptyText", label: "Texto si no hay fechas (opcional)", kind: "text", max: 300, multiline: true, hint: "Si lo dejas vacío, el bloque no se muestra mientras no haya fechas próximas." },
   ], { capability: "shop-catalog", note: "Muestra las próximas convocatorias reales de tus productos (las que creas en Productos › Convocatorias). Cada fecha lleva su botón para solicitar plaza; la solicitud llega a tu CRM y tú la confirmas." }),
+  mod("newsletter", "marketing", "form", "newsletter boletin suscripcion suscribirse correo email inscripcion semanal", [
+    { key: "eyebrow", label: "Antetítulo (opcional)", kind: "text", max: 80, inline: true },
+    { key: "title", label: "Título", kind: "text", max: 200, inline: true },
+    { key: "intro", label: "Descripción", kind: "text", max: 500, multiline: true, inline: true },
+    { key: "emailLabel", label: "Etiqueta del campo de correo", kind: "text", max: 80 },
+    { key: "emailPlaceholder", label: "Texto de ayuda del correo", kind: "text", max: 80 },
+    { key: "buttonLabel", label: "Texto del botón", kind: "text", max: 80 },
+    { key: "consentText", label: "Texto del consentimiento (casilla)", kind: "text", max: 400, multiline: true, hint: "Se guarda con cada inscripción tal como lo vio la persona, con su versión y fecha. La casilla nace desmarcada y es obligatoria." },
+    { key: "privacyLabel", label: "Texto del enlace a la política de privacidad", kind: "text", max: 80 },
+    { key: "successMessage", label: "Mensaje tras inscribirse", kind: "text", max: 300, multiline: true },
+    { key: "invalidEmailMessage", label: "Mensaje si el correo no es válido", kind: "text", max: 200, advanced: true },
+    { key: "noConsentMessage", label: "Mensaje si falta el consentimiento", kind: "text", max: 200, advanced: true },
+    { key: "errorMessage", label: "Mensaje si falla el envío", kind: "text", max: 300, multiline: true, advanced: true },
+    { key: "tone", label: "Aspecto", kind: "select", options: [{ value: "soft", label: "Suave (fondo claro)" }, { value: "dark", label: "Oscuro" }, { value: "brand", label: "Color de la marca" }] },
+  ], { note: "La persona escribe su correo y acepta el consentimiento; recibe un correo de confirmación y, al confirmar, otro de bienvenida. Solo funciona si la newsletter está activada en Newsletter › Suscriptores. Los textos se traducen como el resto de la página." }),
   mod("blog_posts", "contenido", "blog", "blog entradas noticias articulos novedades", [
     { key: "title", label: "Título", kind: "text", max: 200, inline: true },
     { key: "intro", label: "Introducción (opcional)", kind: "text", max: 500, multiline: true, inline: true },
@@ -525,7 +540,7 @@ export const LIBRARY_SECTIONS: readonly LibraryCategory[] = [
   { key: "galerias", label: "Galerías", types: ["gallery", "carousel"], presets: [] },
   { key: "opiniones", label: "Opiniones y confianza", types: ["testimonials", "logos", "stats"], presets: ["opiniones-carrusel", "confianza"] },
   { key: "precios", label: "Precios y tienda", types: ["pricing", "products", "upcoming_dates"], presets: ["tienda"] },
-  { key: "contacto", label: "Contacto", types: ["cta"], presets: ["contacto"] },
+  { key: "contacto", label: "Contacto", types: ["cta", "newsletter"], presets: ["contacto"] },
   { key: "otras", label: "Otras secciones", types: ["faq", "blog_posts"], presets: [] },
 ];
 

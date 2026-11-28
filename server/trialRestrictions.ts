@@ -125,7 +125,25 @@ export async function enforceTrialQuota(metric: string, quantity: number, deps: 
 
 // ── Correo ────────────────────────────────────────────────────────────────────
 
+/** Empresas en prueba a las que la plataforma autoriza el correo de suscripción a terceros (ids separados por comas; vacío = nadie). */
+export const TRIAL_SUBSCRIPTION_MAIL_ENV = "TRIAL_SUBSCRIPTION_MAIL_TENANTS";
+export const TRIAL_SUBSCRIPTION_MAIL_DAILY_ENV = "TRIAL_SUBSCRIPTION_MAIL_DAILY";
+export const SUBSCRIPTION_MAIL_DAILY_DEFAULT = 30;
+
+export function subscriptionMailTenantsFromEnv(env: NodeJS.ProcessEnv = process.env): ReadonlySet<string> {
+  return new Set((env[TRIAL_SUBSCRIPTION_MAIL_ENV] ?? "").split(",").map((x) => x.trim()).filter(Boolean));
+}
+export function subscriptionMailDailyLimit(env: NodeJS.ProcessEnv = process.env): number {
+  const v = Number(env[TRIAL_SUBSCRIPTION_MAIL_DAILY_ENV]);
+  return Number.isFinite(v) && v >= 1 && v <= 500 ? Math.floor(v) : SUBSCRIPTION_MAIL_DAILY_DEFAULT;
+}
+
 export interface TrialMailDeps extends TrialQuotaDeps {
+  /** Empresas autorizadas al correo de suscripción (por defecto, la variable de entorno). */
+  subscriptionTenants?: ReadonlySet<string>;
+  /** Correos de suscripción de las últimas 24 h (null: no se pudo medir → no sale). */
+  subscriptionSent24h?: () => Promise<number | null>;
+  subscriptionDailyLimit?: number;
   /** Buzones propios de la empresa entre los candidatos (usuarios del panel). null: no se pudo consultar. */
   ownMailboxes?: (candidates: string[]) => Promise<Set<string> | null>;
   /** Direcciones de la configuración de correo de la empresa (remitente y responder-a). */
@@ -136,6 +154,7 @@ interface MailLike {
   to: string | string[];
   cc?: string | string[];
   category?: string;
+  trialException?: "subscription";
 }
 
 async function defaultOwnMailboxes(candidates: string[]): Promise<Set<string> | null> {
@@ -157,6 +176,22 @@ export async function applyTrialMailPolicy<T extends MailLike>(params: T, deps: 
   if (params.category && TRIAL_MAIL_ALWAYS_ALLOWED.has(params.category)) return params;
   const s = await (deps.state ?? currentCommercialState)();
   if (!s.restricted) return params;
+  // Correo de suscripción (doble confirmación, bienvenida): excepción acotada por empresa autorizada, un solo
+  // destinatario, remitente configurado y tope propio. Sin autorización de la plataforma cae a la regla general.
+  if (params.trialException === "subscription" && params.category === "operational" && s.tenantId && (deps.subscriptionTenants ?? subscriptionMailTenantsFromEnv()).has(s.tenantId)) {
+    const single = !Array.isArray(params.to) || params.to.length === 1;
+    const configured = (deps.configMailboxes ? deps.configMailboxes() : await defaultConfigMailboxes().catch(() => [])).length > 0;
+    if (!single || params.cc !== undefined || !configured) {
+      opsLog("warn", "TrialRestrictions", "trial_subscription_mail_refused", { tenantId: s.tenantId, single, configured });
+      return null;
+    }
+    const sent = await (deps.subscriptionSent24h ?? (async () => (await import("./newsletter/store")).mailsReservedSince(Date.now() - 86_400_000)))().catch(() => null);
+    if (sent === null || sent >= (deps.subscriptionDailyLimit ?? subscriptionMailDailyLimit())) {
+      opsLog("warn", "TrialRestrictions", "trial_subscription_mail_cap", { tenantId: s.tenantId, sent });
+      return null;
+    }
+    return params;
+  }
   try {
     await enforceTrialQuota("email.sent", 1, { ...deps, state: async () => s });
   } catch (e) {

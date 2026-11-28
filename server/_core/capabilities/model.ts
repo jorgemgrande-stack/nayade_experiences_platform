@@ -52,6 +52,10 @@ export function decide(grants: CapabilityGrant[], capabilityId: string, o: { wri
   // La más favorable: activa > solo lectura > el resto
   const rank = (s: CapabilityStatus) => (s === "active" ? 3 : s === "read_only" ? 2 : 1);
   const best = candidates.slice().sort((a, b) => rank(b.status) - rank(a.status))[0];
+  // Concesión TEMPORAL de un operador (herramienta de pruebas): vencida, ni siquiera se consulta
+  if (best.source === "operator" && best.status === "active" && best.validUntil !== null && best.validUntil <= o.now) {
+    return { allowed: false, status: "expired", reason: `La concesión temporal de ${capabilityId} ha caducado` };
+  }
   if (best.validUntil !== null && best.validUntil <= o.now && best.status === "active") {
     // Caducada (p. ej. fin de prueba sin conversión): se consulta, no se opera
     return o.write ? { allowed: false, status: "expired", reason: `La licencia de ${capabilityId} ha caducado: solo lectura` } : { allowed: true, status: "read_only" };

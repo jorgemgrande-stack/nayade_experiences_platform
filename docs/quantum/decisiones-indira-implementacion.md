@@ -1,6 +1,6 @@
 # Quantum Soulrise: decisiones de Indira y su implementación
 
-Estado: 24/11/2026. La respuesta de Indira (responsable de Quantum) es la referencia comercial autorizada. **No activa cobros LIVE ni cambia modalidades de venta.** Todo sigue «solo por solicitud».
+Estado: 24/11/2026 (sección 6 añadida el 27/11). La respuesta de Indira (responsable de Quantum) es la referencia comercial autorizada. **No activa cobros LIVE ni cambia modalidades de venta.** Todo sigue «solo por solicitud».
 
 ## 1. Catálogo: qué se ha aplicado en datos (verificado en el tenant)
 
@@ -57,3 +57,27 @@ Las reglas de 90 días que existían inactivas eran una suposición y no se usan
 ## 5. Acciones humanas de Stripe y fiscales
 
 Sin cambios: completar datos del titular de la cuenta Real (Indira), añadir `charge.refunded`, `charge.dispute.created` y `charge.dispute.closed` al destino de Connect, conectar la cuenta TEST, y validar IVA, cancelación y URLs legales.
+
+## 6. 27/11: escalonado 0/30/60 · 30 días, ampliaciones 33/55, M1 retiros
+
+Decisión de Indira (27/11/2026) para RECONNECT (producto 1; variantes 13 «+MODUL 1», 9 «ONLINE KOMPLETT», 11 «INTENSIV»; la 8 LIVE no da acceso al LMS). Cierra los puntos 1 y 2 de la sección 3.
+
+### Decisiones tomadas (código, pruebas y documentación; nada creado en ningún tenant)
+
+| Punto | Decisión | Dónde |
+|---|---|---|
+| Escalonado | M1 día 0, M2 día 30, M3 día 60; cada módulo con **30 días exactos** desde su desbloqueo. +MODUL 1: solo M1, 30 días | `reconnectStaggeredSettings()` en `shared/learning.ts`; botón «Escalonado 0/30/60 · 30 días» en Reglas (solo rellena el formulario) |
+| «30 días» | **30 × 24 h (30 × `DAY_MS`), no días naturales ni cambios de hora.** Ventanas contiguas `[T0, T0+30d)`, `[T0+30d, T0+60d)`, `[T0+60d, T0+90d)`; la frontera final queda excluida y el siguiente módulo abre en ese mismo instante | `server/learningEscalonado.test.ts` y `server/learningEscalonado.mysql.test.ts` (c) |
+| Estados visibles | Por módulo: activo / se desbloquea el … / caducado / pendiente de activar, para el alumno (aula) y para la administración (tabla de matrículas). El estado global de la matrícula sigue siendo `effectiveEnrollmentStatus` | `listEnrollments` devuelve `modules[]` con estado y fechas; `LearningAdmin.tsx` |
+| Ampliaciones | +30 días = **33 €**, +60 días = **55 €**. El precio sale SIEMPRE de las variantes del producto de ampliación; el código no fija importes | `learning.admin.setExtensionCatalog` / `getExtensionCatalog` (valida producto, variantes del producto, vigencia y precio > 0) y formulario en Reglas |
+| M1 en retiros ≥ 6 días | Activación voluntaria por la persona; **una sola concesión por participante y curso**: una segunda regla de activación voluntaria (otro retiro, otro presupuesto u otra versión de la regla) no concede otra matrícula mientras exista una activa, pendiente de activar o programada; queda `skipped: already_granted` y un evento `grant_skipped` en la matrícula existente. Caducada o revocada, vuelve a conceder | `grantFromPayment` en `server/learningDb.ts`; prueba (b) |
+| Sin mezclas | La activación voluntaria se rechaza con fecha fija, desbloqueo progresivo o **duración propia por módulo**, también cuando `activation_required` viene guardado o heredado por una versión nueva (no solo cuando la llamada lo envía) | `saveRule`; prueba (a) |
+| Lo ambiguo | No se automatiza: ningún procedimiento crea ni activa reglas; el preset solo rellena el formulario y la administración guarda y activa a mano | — |
+
+### Pendiente humano / operativo (no se hace desde el código)
+
+1. **Reglas en el tenant de Quantum** (crear y activar a mano, previa confirmación): variante 9 y 11 → curso RECONNECT, M1/M2/M3 con el preset 0/30/60 · 30 días; variante 13 → solo M1, 30 días; retiros de ≥ 6 días → M1, 30 días, activación voluntaria y mínimo contratado 6 días. La variante 8 (LIVE) sigue sin regla.
+2. **Producto de ampliación:** en el tenant ya existe el producto **33 «RECONNECT · Modulverlängerung»** con dos variantes de 33 € (30 días) y 55 € (60 días), **no activo**. Falta: activarlo y registrar el catálogo con `learning.admin.setExtensionCatalog` (experienceId 33 + los ids de sus dos variantes, que se consultan en el panel). Sin ese registro no se ofrece ninguna ampliación en el aula.
+3. **Curso RECONNECT publicado** con los tres módulos (hoy sigue en borrador / validación técnica).
+4. **Cobros:** siguen apagados; la venta real exige la ventana de Stripe/cobros y la aprobación del propietario.
+5. Preguntas abiertas a Indira: duración del grupo de Telegram y fechas de Morning Impulse de enero 2027 (sección 3, puntos 3 y 4).

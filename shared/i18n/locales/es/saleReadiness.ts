@@ -20,6 +20,8 @@ export default {
     needsConfirm: "«{title}» tiene avisos sin cerrar ({list}). Revísalos y confirma la autorización para pasarlo a precio fijo.",
   },
   checks: {
+    variants_all_inactive: { label: "Todas las variantes están retiradas (inactivas)", fix: "Activa alguna variante en «Variantes y precios» o crea una nueva." },
+    permanent_offer_has_editions: { label: "Una oferta permanente (sin fecha de servicio) no debe tener convocatorias: tiene {n}", fix: "Cierra o borra las convocatorias, o cambia la fecha de servicio a «automática»." },
     variants_all_expired: { label: "Todas las variantes han caducado", fix: "Renueva la vigencia de alguna variante o créala de nuevo." },
     price_ok: { label: "Precio correcto" },
     price_missing: { label: "Falta el precio", fix: "Indica un precio mayor que 0 (o variantes con precio)." },
