@@ -64,10 +64,12 @@ export async function subscribeFromWeb(input: SubscribeInput, req: RequestLike):
   const consentText = newsletterMessage(input.locale, "consentText", cleanText((found.localized as Record<string, unknown> | null)?.consentText, 600) || cleanText((found.data as Record<string, unknown>).consentText, 600));
   const path = /^\/[^\s<>"']{0,199}$/.test(input.page ?? "") ? input.page! : `/${found.slug}`;
   try {
+    // El idioma lo decide el servidor (shared/newsletterLocalePolicy): ruta → traducción servida → pista → principal. Nunca país ni IP.
     await newsletterService().subscribe({
       email: input.email,
       consent: input.consent,
       locale: input.locale,
+      blockLocale: typeof (found as { localizedLocale?: unknown }).localizedLocale === "string" ? (found as { localizedLocale: string }).localizedLocale : null,
       source: `web:${found.slug}`.slice(0, 64),
       page: path,
       consentText,

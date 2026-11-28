@@ -58,7 +58,10 @@ const draft = z.object({
   blocks: z.array(block).max(40),
   tagIds: z.array(id).max(20).default([]),
   tagMode: tagMode.default("any"),
+  audienceKind: z.enum(["tags", "newsletter"]).default("tags"),
+  newsletterLocale: z.string().trim().min(2).max(8).nullish(),
 });
+const audienceInput = z.object({ tagIds: z.array(id).max(20), tagMode, audienceKind: z.enum(["tags", "newsletter"]).default("tags"), newsletterLocale: z.string().trim().min(2).max(8).nullish() });
 
 export const campaignsRouter = router({
   status: licensed.query(() => handle(() => svc().status())),
@@ -66,7 +69,7 @@ export const campaignsRouter = router({
   tags: licensed.query(() => handle(() => svc().tags())),
   list: licensed.query(() => handle(() => svc().list())),
   get: licensed.input(z.object({ id })).query(({ input }) => handle(() => svc().get(input.id))),
-  audience: licensed.input(z.object({ tagIds: z.array(id).max(20), tagMode })).query(({ input }) => handle(() => svc().audience(input.tagIds, input.tagMode))),
+  audience: licensed.input(audienceInput).query(({ input }) => handle(() => svc().audience(input.tagIds, input.tagMode, { kind: input.audienceKind, newsletterLocale: input.newsletterLocale ?? null }))),
   preview: licensed.input(z.object({ id })).query(({ input }) => handle(() => svc().preview(input.id))),
 
   create: licensed.input(draft).mutation(({ input, ctx }) => handle(() => svc().create(input, actor(ctx)))),

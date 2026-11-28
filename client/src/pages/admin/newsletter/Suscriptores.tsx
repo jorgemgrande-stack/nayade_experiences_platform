@@ -1,10 +1,11 @@
 /**
- * Newsletter · Suscriptores (/admin/newsletter/suscriptores): cifras, listado con filtros, ficha con historial de
- * consentimiento y errores de envío, exportación a Excel/CSV y ajustes de los correos. La autorización real la aplica el
+ * Newsletter · Suscriptores (/admin/newsletter/suscriptores): cifras, listas por idioma (una por idioma público de la web),
+ * listado con filtros, ficha con historial de consentimiento y errores de envío, exportación a Excel/CSV (total o por lista),
+ * importación de contactos históricos (sin enviar correos) y ajustes de los correos. La autorización real la aplica el
  * servidor (rol de administrador). Nadie «activa» a un suscriptor desde aquí: solo la persona, confirmando su correo.
  */
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Mail, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, Languages, Mail, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -21,17 +22,19 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { toastError } from "@/lib/errorMessage";
-import { usePanelTag, usePanelText } from "@/i18n/usePanelText";
+import { usePanelLocale, usePanelTag, usePanelText } from "@/i18n/usePanelText";
 
-type Status = "pending" | "active" | "unsubscribed";
+type Status = "pending" | "active" | "unsubscribed" | "imported";
 type SortKey = "createdAt" | "email" | "confirmedAt" | "status" | "locale" | "source";
 type DateField = "createdAt" | "confirmedAt" | "unsubscribedAt";
-const LOCALES = ["de", "es", "en"] as const;
+/** Idiomas con plantilla de correo editable (los idiomas de las listas son los públicos de la empresa). */
+const TEMPLATE_LOCALES = ["de", "es", "en"] as const;
 const LOCALE_LABEL: Record<string, string> = { de: "Alemán", es: "Español", en: "Inglés" };
 const STATUS: Record<Status, { label: string; variant: "default" | "secondary" | "outline" }> = {
   pending: { label: "Pendiente", variant: "secondary" },
   active: { label: "Activo", variant: "default" },
   unsubscribed: { label: "Baja", variant: "outline" },
+  imported: { label: "Histórico (sin consentimiento)", variant: "outline" },
 };
 const ACTION: Record<string, string> = {
   requested: "Solicitud",
@@ -39,18 +42,55 @@ const ACTION: Record<string, string> = {
   unsubscribed: "Baja (enlace)",
   admin_unsubscribed: "Baja administrativa",
   resubscribe_requested: "Nueva solicitud tras baja",
+  resignup_ignored: "Petición ignorada (ya activo)",
   confirmation_resent: "Confirmación reenviada",
   welcome_sent: "Bienvenida enviada",
   updated: "Datos actualizados",
   crm_resync: "Sincronización CRM",
+  imported: "Importado (histórico)",
+};
+const LOCALE_SOURCE: Record<string, string> = {
+  web: "web (idioma de la web de alta)",
+  subscriber: "la propia persona (nueva petición pendiente)",
+  admin: "panel (cambiado por el equipo)",
+  import: "importación histórica",
+};
+const IMPORT_ACTION: Record<string, string> = {
+  create: "Nuevo (histórico)",
+  match_active: "Ya activo",
+  match_pending: "Ya pendiente",
+  match_unsubscribed: "Baja previa",
+  match_imported: "Ya importado",
+  reject: "Rechazado",
 };
 const MAIL_KIND: Record<string, string> = { confirm: "Confirmación", welcome: "Bienvenida" };
 const MAIL_STATUS: Record<string, string> = { sending: "Enviando", sent: "Enviado", failed: "Fallido" };
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 function useFmt() {
   const tag = usePanelTag();
   return (ms: number | null | undefined) => (ms ? new Intl.DateTimeFormat(tag, { dateStyle: "short", timeStyle: "short" }).format(new Date(ms)) : "—");
 }
 const selectClass = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+type ListInfo = { id: string; locale: string; label: string; labelDe: string; isPublic: boolean; isDefault: boolean; active: number; pending: number; unsubscribed: number; imported: number; total: number };
+/** Nombre de una lista en el idioma del panel. */
+function useListName() {
+  const ui = usePanelLocale();
+  return (l: ListInfo | undefined, locale?: string) => (l ? (ui === "de" ? l.labelDe : l.label) : locale ?? "");
+}
+function useLocaleName() {
+  const ui = usePanelLocale();
+  const px = usePanelText();
+  return (locale: string) => {
+    if (LOCALE_LABEL[locale]) return px(LOCALE_LABEL[locale]);
+    try {
+      const n = new Intl.DisplayNames([ui], { type: "language" }).of(locale);
+      return n ? n.charAt(0).toUpperCase() + n.slice(1) : locale;
+    } catch {
+      return locale;
+    }
+  };
+}
 
 function Stat({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
   return (
@@ -69,18 +109,67 @@ function Stats() {
   const q = trpc.newsletter.stats.useQuery(undefined, { retry: false });
   const s = q.data;
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
       <Stat label={px("Suscriptores activos")} value={s?.active ?? "—"} hint={s ? `${s.total} ${px("en total")}` : undefined} />
       <Stat label={px("Altas recientes")} value={s ? s.joined7d : "—"} hint={s ? `${s.joined30d} ${px("en los últimos 30 días")}` : px("Últimos 7 días")} />
       <Stat label={px("Pendientes de confirmar")} value={s?.pending ?? "—"} />
       <Stat label={px("Bajas")} value={s?.unsubscribed ?? "—"} hint={s ? `${s.left30d} ${px("en los últimos 30 días")}` : undefined} />
+      <Stat label={px("Histórico")} value={s?.imported ?? "—"} hint={px("Sin consentimiento")} />
     </div>
   );
 }
 
-function Detail({ id, onClose }: { id: number | null; onClose: () => void }) {
+const exportHref = (format: "xlsx" | "csv", params: Record<string, string | number | undefined>) => {
+  const p = new URLSearchParams({ format });
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") p.set(k, String(v));
+  return `/api/newsletter/export?${p.toString()}`;
+};
+
+/** Una tarjeta por lista (idioma) con recuentos, «Ver» (aplica el filtro) y exportación por lista. */
+function Lists({ onView }: { onView: (locale: string) => void }) {
+  const px = usePanelText();
+  const name = useListName();
+  const q = trpc.newsletter.lists.useQuery(undefined, { retry: false });
+  if (q.error) return <PanelError error={q.error} onRetry={() => q.refetch()} />;
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div>
+          <h3 className="flex items-center gap-2 font-medium text-foreground"><Languages className="h-4 w-4" />{px("Listas por idioma")}</h3>
+          <p className="text-xs text-muted-foreground">{px("Una lista por idioma público de la web. Cada persona está en una sola lista: la del idioma de la web desde la que se inscribió (nunca por país ni IP).")}</p>
+        </div>
+        {q.isLoading && <PanelLoading />}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(q.data ?? []).map((l) => (
+            <div key={l.id} className="rounded-lg border border-border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium text-foreground">{name(l)}</p>
+                  <p className="text-xs text-muted-foreground">{l.id}{l.isDefault ? ` · ${px("Idioma principal")}` : ""}</p>
+                </div>
+                <span className="text-2xl font-semibold tabular-nums text-foreground">{l.active}</span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {l.active} {px("activos")} · {l.pending} {px("pendientes")} · {l.unsubscribed} {px("bajas")} · {l.imported} {px("históricos")}
+              </p>
+              {!l.isPublic && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{px("Sin página pública en este idioma")}</p>}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => onView(l.locale)}>{px("Ver")}</Button>
+                <Button asChild size="sm" variant="ghost"><a href={exportHref("csv", { list: l.id })} download><Download className="mr-1 h-3.5 w-3.5" />{px("Exportar CSV")}</a></Button>
+                <Button asChild size="sm" variant="ghost"><a href={exportHref("xlsx", { list: l.id })} download><Download className="mr-1 h-3.5 w-3.5" />{px("Exportar Excel")}</a></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Detail({ id, lists, onClose }: { id: number | null; lists: ListInfo[]; onClose: () => void }) {
   const px = usePanelText();
   const fmt = useFmt();
+  const name = useListName();
   const utils = trpc.useUtils();
   const q = trpc.newsletter.get.useQuery({ id: id ?? 0 }, { enabled: id != null, retry: false });
   const [reason, setReason] = useState("");
@@ -89,6 +178,7 @@ function Detail({ id, onClose }: { id: number | null; onClose: () => void }) {
     void utils.newsletter.get.invalidate();
     void utils.newsletter.list.invalidate();
     void utils.newsletter.stats.invalidate();
+    void utils.newsletter.lists.invalidate();
   };
   const ok = (msg: string) => () => (toast.success(msg), refresh());
   const locale = trpc.newsletter.updateLocale.useMutation({ onSuccess: ok(px("Idioma actualizado")), onError: (e) => toastError(e) });
@@ -98,6 +188,11 @@ function Detail({ id, onClose }: { id: number | null; onClose: () => void }) {
   const off = trpc.newsletter.unsubscribe.useMutation({ onSuccess: () => (toast.success(px("Baja registrada")), setConfirmOff(false), setReason(""), refresh()), onError: (e) => toastError(e) });
   const d = q.data;
   const sub = d?.subscriber;
+  const options = useMemo(() => {
+    const ids = lists.map((l) => l.locale);
+    return sub && !ids.includes(sub.locale) ? [...ids, sub.locale] : ids;
+  }, [lists, sub]);
+  const listOf = (l: string) => lists.find((x) => x.locale === l);
   return (
     <>
       <Sheet open={id != null} onOpenChange={(o) => !o && onClose()}>
@@ -114,8 +209,10 @@ function Detail({ id, onClose }: { id: number | null; onClose: () => void }) {
                 <Badge variant={STATUS[sub.status as Status].variant}>{px(STATUS[sub.status as Status].label)}</Badge>
                 <span className="text-muted-foreground">{px("Origen")}: {sub.source}{sub.page ? ` · ${sub.page}` : ""}</span>
               </div>
+              {sub.status === "imported" && <p className="rounded-md border border-amber-400/50 bg-amber-50 p-3 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{px("Contacto histórico sin consentimiento acreditado: no recibe correos hasta que se inscriba desde la web y confirme.")}</p>}
               {sub.crmSyncError && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive">CRM: {sub.crmSyncError}</p>}
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {sub.name && (<><dt className="text-muted-foreground">{px("Nombre")}</dt><dd>{sub.name}</dd></>)}
                 <dt className="text-muted-foreground">{px("Inscripción")}</dt><dd>{fmt(sub.createdAt)}</dd>
                 <dt className="text-muted-foreground">{px("Confirmación")}</dt><dd>{fmt(sub.confirmedAt)}</dd>
                 <dt className="text-muted-foreground">{px("Baja")}</dt><dd>{fmt(sub.unsubscribedAt)}</dd>
@@ -123,10 +220,13 @@ function Detail({ id, onClose }: { id: number | null; onClose: () => void }) {
                 <dt className="text-muted-foreground">{px("Cliente del CRM")}</dt><dd>{sub.clientId ?? "—"}</dd>
                 <dt className="text-muted-foreground">{px("Idioma")}</dt>
                 <dd>
-                  <select className={selectClass} value={sub.locale} disabled={locale.isPending} onChange={(e) => locale.mutate({ id: sub.id, locale: e.target.value as (typeof LOCALES)[number] })} aria-label={px("Idioma")}>
-                    {LOCALES.map((l) => <option key={l} value={l}>{px(LOCALE_LABEL[l])}</option>)}
+                  <select className={selectClass} value={sub.locale} disabled={locale.isPending} onChange={(e) => locale.mutate({ id: sub.id, locale: e.target.value })} aria-label={px("Idioma")}>
+                    {options.map((l) => <option key={l} value={l}>{name(listOf(l), l)}</option>)}
                   </select>
                 </dd>
+                <dt className="text-muted-foreground">{px("Idioma de alta")}</dt><dd>{sub.signupLocale ? name(listOf(sub.signupLocale), sub.signupLocale) : "—"}</dd>
+                <dt className="text-muted-foreground">{px("Origen del idioma")}</dt><dd>{LOCALE_SOURCE[sub.localeSource] ? px(LOCALE_SOURCE[sub.localeSource]) : sub.localeSource}</dd>
+                {sub.importId != null && (<><dt className="text-muted-foreground">{px("Lote de importación")}</dt><dd>#{sub.importId}{sub.importedAt ? ` · ${px("Importado el")} ${fmt(sub.importedAt)}` : ""}</dd></>)}
               </dl>
               <section>
                 <h3 className="mb-1 font-medium text-foreground">{px("Consentimiento aceptado")} {sub.consentVersion ? `(${px("versión")} ${sub.consentVersion})` : ""}</h3>
@@ -184,9 +284,184 @@ function Detail({ id, onClose }: { id: number | null; onClose: () => void }) {
   );
 }
 
-function List() {
+/** Lee un fichero del navegador: CSV como texto, Excel como base64. */
+function readFile(file: File): Promise<{ format: "csv" | "xlsx"; content: string }> {
+  const xlsx = /\.xlsx?$/i.test(file.name) || /spreadsheetml|ms-excel/.test(file.type);
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error("read"));
+    r.onload = () => {
+      const v = String(r.result ?? "");
+      resolve(xlsx ? { format: "xlsx", content: v.replace(/^data:[^,]*,/, "") } : { format: "csv", content: v });
+    };
+    if (xlsx) r.readAsDataURL(file);
+    else r.readAsText(file);
+  });
+}
+
+function ImportDialog({ open, lists, onClose }: { open: boolean; lists: ListInfo[]; onClose: () => void }) {
+  const px = usePanelText();
+  const name = useListName();
+  const utils = trpc.useUtils();
+  const [label, setLabel] = useState("");
+  const [def, setDef] = useState(lists.find((l) => l.isDefault)?.locale ?? lists[0]?.locale ?? "de");
+  const [file, setFile] = useState<{ fileName: string; format: "csv" | "xlsx"; content: string } | null>(null);
+  const [reading, setReading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!lists.length) return;
+    setDef((d) => (lists.some((l) => l.locale === d) ? d : (lists.find((l) => l.isDefault)?.locale ?? lists[0].locale)));
+  }, [lists]);
+  const preview = trpc.newsletter.importPreview.useMutation({ onError: (e) => toastError(e) });
+  const apply = trpc.newsletter.importApply.useMutation({
+    onSuccess: (r) => {
+      toast.success(`${px("Importación registrada")}: ${r.created} ${px("creados")}, ${r.matched} ${px("coincidencias")}, ${r.rejected} ${px("rechazados")}`);
+      void utils.newsletter.invalidate();
+      reset();
+      onClose();
+    },
+    onError: (e) => toastError(e),
+  });
+  const reset = () => {
+    setFile(null);
+    setLabel("");
+    preview.reset();
+  };
+  const canPreview = !!file && label.trim().length >= 2 && !!def;
+  useEffect(() => {
+    // La vista previa se recalcula al cambiar fichero, etiqueta o idioma (y la huella con ella)
+    if (!canPreview || !file) return;
+    const t = setTimeout(() => preview.mutate({ format: file.format, fileName: file.fileName, content: file.content, label: label.trim(), defaultLocale: def }), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, label, def]);
+  const onFile = async (f: File | undefined) => {
+    if (!f) return;
+    if (f.size > MAX_FILE_BYTES) return void toast.error(px("El fichero supera los 5 MB."));
+    setReading(true);
+    try {
+      const r = await readFile(f);
+      setFile({ fileName: f.name, ...r });
+    } finally {
+      setReading(false);
+    }
+  };
+  const p = preview.data;
+  const counts = p?.plan.counts;
+  const actions = ["create", "match_active", "match_pending", "match_unsubscribed", "match_imported", "reject"] as const;
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && (reset(), onClose())}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{px("Importar contactos históricos")}</DialogTitle>
+          <DialogDescription>{px("Sube un CSV o Excel con una columna de correo (y, si quieres, nombre e idioma). Los contactos entran como «Histórico (sin consentimiento)»: no se les envía nada y no entran en ninguna campaña hasta que se inscriban desde la web y confirmen. Un correo que ya existe no se toca; una baja previa prevalece.")}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block space-y-1 text-sm"><span className="text-muted-foreground">{px("Etiqueta del lote")}</span><Input value={label} maxLength={120} onChange={(e) => setLabel(e.target.value)} placeholder="2024-newsletter-de" /></label>
+          <label className="block space-y-1 text-sm"><span className="text-muted-foreground">{px("Lista por defecto (idioma)")}</span>
+            <select className={selectClass} value={def} onChange={(e) => setDef(e.target.value)}>
+              {lists.filter((l) => l.isPublic).map((l) => <option key={l.locale} value={l.locale}>{name(l)}</option>)}
+            </select>
+          </label>
+          <div className="space-y-1 text-sm sm:col-span-2">
+            <span className="text-muted-foreground">{px("Fichero")}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" disabled={reading} onClick={() => inputRef.current?.click()}><Upload className="mr-1 h-4 w-4" />{reading ? px("Leyendo el fichero…") : px("Elegir fichero (CSV o Excel)")}</Button>
+              <input ref={inputRef} type="file" accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }} />
+              {file && <span className="text-foreground">{file.fileName}</span>}
+            </div>
+          </div>
+        </div>
+        {preview.isPending && <PanelLoading />}
+        {p && counts && (
+          <div className="space-y-3 text-sm">
+            <h3 className="font-medium text-foreground">{px("Vista previa")} · {px("Filas leídas")}: {counts.total}</h3>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <Stat label={px("Nuevos (históricos)")} value={counts.create} />
+              <Stat label={px("Ya activos")} value={counts.match_active} />
+              <Stat label={px("Ya pendientes")} value={counts.match_pending} />
+              <Stat label={px("Bajas previas")} value={counts.match_unsubscribed} />
+              <Stat label={px("Ya importados")} value={counts.match_imported} />
+              <Stat label={px("Rechazados")} value={counts.reject} />
+            </div>
+            <p className="text-xs text-muted-foreground">{px("Columnas reconocidas")}: {p.plan.columns.join(", ") || "—"}{p.plan.ignored.length ? ` · ${px("Columnas ignoradas")}: ${p.plan.ignored.join(", ")}` : ""}</p>
+            <div className="max-h-[40vh] overflow-y-auto rounded-md border border-border">
+              <Table>
+                <TableHeader><TableRow><TableHead>{px("Fila")}</TableHead><TableHead>Email</TableHead><TableHead>{px("Nombre")}</TableHead><TableHead>{px("Idioma")}</TableHead><TableHead>{px("Acción")}</TableHead><TableHead>{px("Motivo")}</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {actions.flatMap((a) => p.sample[a].map((r) => (
+                    <TableRow key={`${a}-${r.line}`}>
+                      <TableCell>{r.line}</TableCell>
+                      <TableCell className="max-w-[220px] truncate">{r.email ?? "—"}</TableCell>
+                      <TableCell className="max-w-[160px] truncate">{r.name ?? ""}</TableCell>
+                      <TableCell>{r.locale ?? ""}</TableCell>
+                      <TableCell><Badge variant={a === "create" ? "default" : a === "reject" ? "destructive" : "outline"}>{px(IMPORT_ACTION[a])}</Badge></TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{r.reason ?? ""}</TableCell>
+                    </TableRow>
+                  )))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-muted-foreground">{px("Primeras 50 filas por acción.")} {px("En esta fase no se envía ningún correo a los contactos importados.")}</p>
+          </div>
+        )}
+        {!p && !preview.isPending && <p className="text-xs text-muted-foreground">{px("Elige un fichero y espera la vista previa antes de importar.")}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => (reset(), onClose())}>{px("Cerrar")}</Button>
+          <Button disabled={!p || !file || apply.isPending || preview.isPending} onClick={() => p && file && apply.mutate({ format: file.format, fileName: file.fileName, content: file.content, label: label.trim(), defaultLocale: def, fingerprint: p.fingerprint })}>
+            {apply.isPending ? px("Importando…") : px("Importar sin enviar correos")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Imports({ lists }: { lists: ListInfo[] }) {
   const px = usePanelText();
   const fmt = useFmt();
+  const [open, setOpen] = useState(false);
+  const q = trpc.newsletter.imports.useQuery(undefined, { retry: false });
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <h3 className="font-medium text-foreground">{px("Importar contactos históricos")}</h3>
+            <p className="text-xs text-muted-foreground">{px("En esta fase no se envía ningún correo a los contactos importados.")}</p>
+          </div>
+          <Button onClick={() => setOpen(true)}><Upload className="mr-1 h-4 w-4" />{px("Importar")}</Button>
+        </CardContent>
+      </Card>
+      {q.isLoading ? <PanelLoading /> : q.error ? <PanelError error={q.error} onRetry={() => q.refetch()} /> : !q.data?.length ? (
+        <PanelEmpty icon={<Upload className="h-5 w-5" />} title={px("Lotes importados")} description={px("Aún no se ha importado ningún lote.")} />
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader><TableRow><TableHead>#</TableHead><TableHead>{px("Etiqueta del lote")}</TableHead><TableHead>{px("Fichero")}</TableHead><TableHead>{px("Idioma por defecto")}</TableHead><TableHead>{px("Filas leídas")}</TableHead><TableHead>{px("Nuevos (históricos)")}</TableHead><TableHead>{px("Coincidencia")}</TableHead><TableHead>{px("Rechazados")}</TableHead><TableHead>{px("Importado el")}</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {q.data.map((b) => (
+                  <TableRow key={b.id}>
+                    <TableCell>{b.id}</TableCell><TableCell>{b.label}</TableCell><TableCell className="max-w-[200px] truncate">{b.fileName}</TableCell><TableCell>{b.defaultLocale}</TableCell>
+                    <TableCell>{b.rowCount}</TableCell><TableCell>{b.createdCount}</TableCell><TableCell>{b.matchedCount}</TableCell><TableCell>{b.rejectedCount}</TableCell><TableCell className="whitespace-nowrap">{fmt(b.createdAt)} · {b.actor}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+      <ImportDialog open={open} lists={lists} onClose={() => setOpen(false)} />
+    </div>
+  );
+}
+
+function List({ lists }: { lists: ListInfo[] }) {
+  const px = usePanelText();
+  const fmt = useFmt();
+  const name = useListName();
+  const localeName = useLocaleName();
   const [qText, setQText] = useState("");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"" | Status>("");
@@ -209,11 +484,7 @@ function List() {
   const filters = useMemo(() => ({ q: q || undefined, status: status || undefined, locale: locale || undefined, source: source || undefined, dateField, from: fromMs, to: toMs }), [q, status, locale, source, dateField, fromMs, toMs]);
   const list = trpc.newsletter.list.useQuery({ ...filters, sort, dir, page, pageSize }, { retry: false, placeholderData: (p) => p });
   const d = list.data;
-  const exportUrl = (format: "xlsx" | "csv") => {
-    const p = new URLSearchParams({ format });
-    for (const [k, v] of Object.entries(filters)) if (v !== undefined && v !== "") p.set(k, String(v));
-    return `/api/newsletter/export?${p.toString()}`;
-  };
+  const exportUrl = (format: "xlsx" | "csv") => exportHref(format, { ...filters, list: locale ? `newsletter-${locale}` : undefined });
   const th = (key: SortKey, label: string) => (
     <TableHead>
       <button type="button" className="inline-flex items-center gap-1 font-medium" onClick={() => (sort === key ? setDir(dir === "asc" ? "desc" : "asc") : (setSort(key), setDir("asc")), setPage(1))}>
@@ -226,23 +497,31 @@ function List() {
   const total = d?.total ?? 0;
   const a = total ? (page - 1) * pageSize + 1 : 0;
   const b = Math.min(total, page * pageSize);
+  const localeOptions = useMemo(() => {
+    const out = lists.map((l) => l.locale);
+    for (const l of d?.facets.locales ?? []) if (!out.includes(l)) out.push(l);
+    return out;
+  }, [lists, d?.facets.locales]);
+  const listOf = (l: string) => lists.find((x) => x.locale === l);
+  const localeLabel = (l: string) => (listOf(l) ? name(listOf(l)) : localeName(l));
   return (
     <div className="space-y-4">
       <Stats />
+      <Lists onView={(l) => (setLocale(l), setStatus(""), setPage(1))} />
       <Card>
         <CardContent className="space-y-3 p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="relative sm:col-span-2">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-8" placeholder={px("Buscar por email")} value={qText} onChange={(e) => setQText(e.target.value)} aria-label={px("Buscar por email")} />
+              <Input className="pl-8" placeholder={px("Buscar por email o nombre")} value={qText} onChange={(e) => setQText(e.target.value)} aria-label={px("Buscar por email o nombre")} />
             </div>
             <select className={selectClass} value={status} onChange={(e) => reset(setStatus)(e.target.value as "" | Status)} aria-label={px("Estado")}>
               <option value="">{px("Todos los estados")}</option>
-              <option value="pending">{px("Pendiente")}</option><option value="active">{px("Activo")}</option><option value="unsubscribed">{px("Baja")}</option>
+              <option value="pending">{px("Pendiente")}</option><option value="active">{px("Activo")}</option><option value="unsubscribed">{px("Baja")}</option><option value="imported">{px("Histórico (sin consentimiento)")}</option>
             </select>
             <select className={selectClass} value={locale} onChange={(e) => reset(setLocale)(e.target.value)} aria-label={px("Idioma")}>
-              <option value="">{px("Todos los idiomas")}</option>
-              {(d?.facets.locales ?? []).map((l) => <option key={l} value={l}>{LOCALE_LABEL[l] ? px(LOCALE_LABEL[l]) : l}</option>)}
+              <option value="">{px("Todas las listas")}</option>
+              {localeOptions.map((l) => <option key={l} value={l}>{localeLabel(l)}</option>)}
             </select>
             <select className={selectClass} value={source} onChange={(e) => reset(setSource)(e.target.value)} aria-label={px("Origen")}>
               <option value="">{px("Todos los orígenes")}</option>
@@ -273,7 +552,7 @@ function List() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {th("email", "Email")}{th("status", px("Estado"))}{th("locale", px("Idioma"))}{th("source", px("Origen"))}{th("createdAt", px("Inscripción"))}{th("confirmedAt", px("Confirmación"))}
+                  {th("email", "Email")}<TableHead>{px("Nombre")}</TableHead>{th("status", px("Estado"))}{th("locale", px("Idioma"))}<TableHead>{px("Idioma de alta")}</TableHead>{th("source", px("Origen"))}{th("createdAt", px("Inscripción"))}{th("confirmedAt", px("Confirmación"))}
                   <TableHead>{px("Baja")}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -281,8 +560,10 @@ function List() {
                 {d.rows.map((r) => (
                   <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpen(r.id)}>
                     <TableCell className="max-w-[220px] truncate font-medium">{r.email}</TableCell>
+                    <TableCell className="max-w-[160px] truncate">{r.name ?? ""}</TableCell>
                     <TableCell><Badge variant={STATUS[r.status as Status].variant}>{px(STATUS[r.status as Status].label)}</Badge></TableCell>
-                    <TableCell>{LOCALE_LABEL[r.locale] ? px(LOCALE_LABEL[r.locale]) : r.locale}</TableCell>
+                    <TableCell>{localeLabel(r.locale)}</TableCell>
+                    <TableCell>{r.signupLocale ? localeLabel(r.signupLocale) : "—"}</TableCell>
                     <TableCell className="max-w-[140px] truncate">{r.source}</TableCell>
                     <TableCell className="whitespace-nowrap">{fmt(r.createdAt)}</TableCell>
                     <TableCell className="whitespace-nowrap">{fmt(r.confirmedAt)}</TableCell>
@@ -304,7 +585,7 @@ function List() {
           </CardContent>
         </Card>
       )}
-      <Detail id={open} onClose={() => setOpen(null)} />
+      <Detail id={open} lists={lists} onClose={() => setOpen(null)} />
     </div>
   );
 }
@@ -318,7 +599,7 @@ function Settings() {
   const [pub, setPub] = useState(true);
   const [welcome, setWelcome] = useState<Record<string, Tpl>>({});
   const [confirm, setConfirm] = useState<Record<string, Tpl>>({});
-  const [loc, setLoc] = useState<(typeof LOCALES)[number]>("de");
+  const [loc, setLoc] = useState<(typeof TEMPLATE_LOCALES)[number]>("de");
   useEffect(() => {
     if (!q.data) return;
     setEnabled(q.data.enabled);
@@ -352,7 +633,7 @@ function Settings() {
         </CardContent>
       </Card>
       <div className="flex gap-2">
-        {LOCALES.map((l) => <Button key={l} size="sm" variant={loc === l ? "default" : "outline"} onClick={() => setLoc(l)}>{px(LOCALE_LABEL[l])}</Button>)}
+        {TEMPLATE_LOCALES.map((l) => <Button key={l} size="sm" variant={loc === l ? "default" : "outline"} onClick={() => setLoc(l)}>{px(LOCALE_LABEL[l])}</Button>)}
       </div>
       {editor(px("Correo de bienvenida"), welcome, setWelcome)}
       {editor(px("Correo de confirmación"), confirm, setConfirm)}
@@ -366,9 +647,11 @@ function Body() {
   const px = usePanelText();
   const utils = trpc.useUtils();
   const status = trpc.newsletter.status.useQuery(undefined, { retry: false });
+  const lists = trpc.newsletter.lists.useQuery(undefined, { retry: false, enabled: !!status.data?.enabled });
   const enable = trpc.newsletter.saveConfig.useMutation({ onSuccess: () => (toast.success(px("Módulo activado")), void utils.newsletter.invalidate()), onError: (e) => toastError(e) });
   if (status.isLoading) return <PanelLoading />;
   if (status.error) return <PanelError error={status.error} onRetry={() => status.refetch()} />;
+  const listRows = lists.data ?? [];
   return (
     <div className="space-y-4">
       {!status.data?.enabled && (
@@ -379,9 +662,11 @@ function Body() {
       <Tabs defaultValue="suscriptores">
         <TabsList>
           <TabsTrigger value="suscriptores">{px("Suscriptores")}</TabsTrigger>
+          <TabsTrigger value="importacion">{px("Importar")}</TabsTrigger>
           <TabsTrigger value="ajustes">{px("Ajustes")}</TabsTrigger>
         </TabsList>
-        <TabsContent value="suscriptores" className="mt-4"><List /></TabsContent>
+        <TabsContent value="suscriptores" className="mt-4"><List lists={listRows} /></TabsContent>
+        <TabsContent value="importacion" className="mt-4"><Imports lists={listRows} /></TabsContent>
         <TabsContent value="ajustes" className="mt-4"><Settings /></TabsContent>
       </Tabs>
     </div>

@@ -2,14 +2,15 @@
  * API tRPC de la newsletter (`newsletter.*`).
  *  - Pública: `subscribe` (el formulario del bloque «Newsletter» de la web). Mismo recorrido de seguridad que los
  *    formularios del Studio: origen de la propia web, límite por visitante, campo trampa, tiempo mínimo y límite global.
- *  - Administración (rol de administrador): estado, cifras, listado con filtros, ficha, baja administrativa, reenvíos,
- *    idioma y ajustes. La exportación a Excel/CSV va por una ruta REST de descarga (exportRoutes.ts).
+ *  - Administración (rol de administrador): estado, cifras, listas por idioma, listado con filtros, ficha, baja
+ *    administrativa, reenvíos, idioma, importación histórica (vista previa, aplicación sin correos y lotes) y ajustes.
+ *    La exportación a Excel/CSV va por una ruta REST de descarga (exportRoutes.ts).
  */
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { LOCALES, STATUSES } from "./core";
-import { newsletterService } from "./runtime";
+import { newsletterImporter, newsletterService } from "./runtime";
 import { SubscribeFailure, subscribeFromWeb, subscribeInput } from "./subscribe";
 import { NewsletterError, type ListQuery } from "./service";
 import { mysqlNewsletterStore, NewsletterNotInstalled } from "./store";
@@ -17,8 +18,10 @@ import { mysqlNewsletterStore, NewsletterNotInstalled } from "./store";
 const dateField = z.enum(["createdAt", "confirmedAt", "unsubscribedAt"]);
 const filters = z.object({
   q: z.string().trim().max(100).optional(),
-  status: z.enum(["pending", "active", "unsubscribed"]).optional(),
+  status: z.enum(["pending", "active", "unsubscribed", "imported"]).optional(),
   locale: z.string().trim().max(8).optional(),
+  /** Alias de `locale`: identificador de lista (`newsletter-de`). */
+  list: z.string().trim().max(24).optional(),
   source: z.string().trim().max(64).optional(),
   dateField: dateField.optional(),
   from: z.number().int().nonnegative().optional(),
@@ -26,6 +29,14 @@ const filters = z.object({
 });
 export const filtersSchema = filters;
 const id = z.number().int().positive();
+/** Texto CSV o base64 de un Excel: 5 MB de fichero ≈ 7 MB en base64. */
+const importInput = z.object({
+  format: z.enum(["csv", "xlsx"]),
+  fileName: z.string().trim().min(1).max(200),
+  content: z.string().min(1).max(7 * 1024 * 1024),
+  label: z.string().trim().min(2).max(120),
+  defaultLocale: z.string().trim().min(2).max(8),
+});
 
 async function handle<T>(fn: () => Promise<T>): Promise<T> {
   try {
@@ -72,6 +83,9 @@ export const newsletterRouter = router({
   // ── Administración ──
   stats: adminProcedure.query(() => handle(() => mysqlNewsletterStore.stats(Date.now()))),
 
+  /** Listas por idioma (`newsletter-<idioma>`): idiomas públicos de la empresa ∪ idiomas presentes, con recuentos por estado. */
+  lists: adminProcedure.query(() => handle(() => newsletterService().lists())),
+
   list: adminProcedure
     .input(
       filters.extend({
@@ -90,8 +104,9 @@ export const newsletterRouter = router({
 
   get: adminProcedure.input(z.object({ id })).query(({ input }) => handle(() => newsletterService().detail(input.id))),
 
+  /** Cambio de lista desde el panel: cualquier idioma público de la empresa (lo valida el servicio). */
   updateLocale: adminProcedure
-    .input(z.object({ id, locale: z.enum(LOCALES) }))
+    .input(z.object({ id, locale: z.string().trim().min(2).max(8) }))
     .mutation(({ input, ctx }) => handle(async () => (await newsletterService().updateLocale(input.id, input.locale, actorOf(ctx)), { ok: true as const }))),
 
   unsubscribe: adminProcedure
@@ -102,15 +117,26 @@ export const newsletterRouter = router({
   resendWelcome: adminProcedure.input(z.object({ id })).mutation(({ input, ctx }) => handle(() => newsletterService().sendWelcome(input.id, "manual", actorOf(ctx)))),
   retryCrm: adminProcedure.input(z.object({ id })).mutation(({ input, ctx }) => handle(async () => (await newsletterService().retryCrm(input.id, actorOf(ctx)), { ok: true as const }))),
 
+  // ── Importación histórica (preparada: sin correos, sin consentimientos) ──
+  importPreview: adminProcedure.input(importInput).mutation(({ input }) => handle(() => newsletterImporter().preview(input))),
+  importApply: adminProcedure
+    .input(importInput.extend({ fingerprint: z.string().trim().min(8).max(64), sendMails: z.literal(false).optional() }))
+    .mutation(({ input, ctx }) => handle(() => newsletterImporter().apply({ ...input, sendMails: false }, actorOf(ctx)))),
+  imports: adminProcedure.query(() => handle(() => mysqlNewsletterStore.imports(100))),
+
   getConfig: adminProcedure.query(() =>
     handle(async () => {
       const [{ resolveTemplate }, runtime] = await Promise.all([import("./core"), import("./runtime")]);
       const s = await mysqlNewsletterStore.settings();
       const ident = runtime.identity();
+      const tenant = await runtime.tenantLocales();
       return {
         enabled: s.enabled,
         publicEnabled: s.publicEnabled,
+        /** Idiomas con plantilla de correo editable. */
         locales: LOCALES,
+        tenantLocales: tenant.tenantLocales,
+        defaultLocale: tenant.defaultLocale,
         welcome: Object.fromEntries(LOCALES.map((l) => [l, resolveTemplate("welcome", l, s.templates)])),
         confirm: Object.fromEntries(LOCALES.map((l) => [l, resolveTemplate("confirm", l, s.templates)])),
         identity: ident,

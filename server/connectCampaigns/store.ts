@@ -6,7 +6,7 @@
  */
 import { sql } from "drizzle-orm";
 import { getTenantDatabase } from "../_core/dbRegistry";
-import type { CampaignBlock, CampaignStatus } from "../../shared/connectCampaigns";
+import type { AudienceKind, CampaignBlock, CampaignStatus } from "../../shared/connectCampaigns";
 import type { AudienceRow } from "./plan";
 
 export class CampaignsNotInstalled extends Error {
@@ -37,6 +37,13 @@ export interface DraftInput {
   blocks: CampaignBlock[];
   tagIds: number[];
   tagMode: TagMode;
+  audienceKind: AudienceKind;
+  newsletterLocale: string | null;
+}
+/** Cómo se calcula la audiencia (compatible: sin opciones = etiquetas, como siempre). */
+export interface AudienceOptions {
+  kind?: AudienceKind;
+  newsletterLocale?: string | null;
 }
 export interface Campaign extends DraftInput {
   id: number;
@@ -104,8 +111,11 @@ export interface CampaignStore {
   /** Marca como sacados de la lista y recalcula el número de destinatarios de la campaña. */
   markRemoved(id: number, listId: number, clientIds: number[]): Promise<void>;
 
-  /** Clientes con consentimiento CONCEDIDO del segmento (sin etiquetas: todos los que lo tienen). */
-  audience(tagIds: number[], mode: TagMode): Promise<AudienceRow[]>;
+  /**
+   * Clientes con consentimiento CONCEDIDO del segmento (sin etiquetas: todos los que lo tienen). Con `kind = newsletter`:
+   * los que además tienen una suscripción ACTIVA en la newsletter (y de ese idioma si se indica); sin newsletter instalada, nadie.
+   */
+  audience(tagIds: number[], mode: TagMode, opts?: AudienceOptions): Promise<AudienceRow[]>;
   /** Correos (normalizados) de fichas con el consentimiento retirado. */
   withdrawnEmails(): Promise<Set<string>>;
   tags(): Promise<Array<{ id: number; name: string; color: string | null; consenting: number }>>;
@@ -128,6 +138,8 @@ export class MemoryCampaignStore implements CampaignStore {
   consents = new Map<number, "granted" | "withdrawn">();
   tagLinks: Array<{ tagId: number; clientId: number }> = [];
   tagRows: Array<{ id: number; name: string }> = [];
+  // Newsletter simulada (correo normalizado, estado e idioma)
+  newsletter: Array<{ email: string; status: "pending" | "active" | "unsubscribed" | "imported"; locale: string }> = [];
 
   async settings() {
     return { ...this.set };
@@ -243,9 +255,14 @@ export class MemoryCampaignStore implements CampaignStore {
     for (const r of this.rec.get(id) ?? []) if (r.listId === listId) m.set(r.email, [...(m.get(r.email) ?? []), r.clientId]);
     return m;
   }
-  async audience(tagIds: number[], mode: TagMode) {
+  async audience(tagIds: number[], mode: TagMode, opts: AudienceOptions = {}) {
+    const inNewsletter = (email: string | null) => {
+      const e = (email ?? "").trim().toLowerCase();
+      return this.newsletter.some((n) => n.email === e && n.status === "active" && (!opts.newsletterLocale || n.locale === opts.newsletterLocale));
+    };
     return this.clients
       .filter((c) => this.consents.get(c.id) === "granted")
+      .filter((c) => opts.kind !== "newsletter" || inNewsletter(c.email))
       .filter((c) => {
         if (!tagIds.length) return true;
         const mine = new Set(this.tagLinks.filter((l) => l.clientId === c.id).map((l) => l.tagId));
@@ -311,6 +328,8 @@ const toCampaign = (r: Row): Campaign => ({
   blocks: parseBlocks(r.blocks),
   tagIds: ids(r.tag_ids),
   tagMode: r.tag_mode === "all" ? "all" : "any",
+  audienceKind: r.audience_kind === "newsletter" ? "newsletter" : "tags",
+  newsletterLocale: str(r.newsletter_locale),
   status: r.status as CampaignStatus,
   scheduledAt: ms(r.scheduled_at),
   brevoListId: num(r.brevo_list_id),
@@ -381,8 +400,8 @@ export class TenantDbCampaignStore implements CampaignStore {
   create(d: DraftInput, actor: string) {
     return this.exec(async (db) => {
       const res = await db.execute(sql`
-        INSERT INTO campaign_campaigns (name, subject, preview_text, sender_id, sender_name, sender_email, reply_to, blocks, tag_ids, tag_mode, created_by, updated_by)
-        VALUES (${d.name}, ${d.subject}, ${d.previewText}, ${d.senderId}, ${d.senderName}, ${d.senderEmail}, ${d.replyTo}, ${JSON.stringify(d.blocks)}, ${d.tagIds.join(",") || null}, ${d.tagMode}, ${actor.slice(0, 100)}, ${actor.slice(0, 100)})`);
+        INSERT INTO campaign_campaigns (name, subject, preview_text, sender_id, sender_name, sender_email, reply_to, blocks, tag_ids, tag_mode, audience_kind, newsletter_locale, created_by, updated_by)
+        VALUES (${d.name}, ${d.subject}, ${d.previewText}, ${d.senderId}, ${d.senderName}, ${d.senderEmail}, ${d.replyTo}, ${JSON.stringify(d.blocks)}, ${d.tagIds.join(",") || null}, ${d.tagMode}, ${d.audienceKind}, ${d.newsletterLocale}, ${actor.slice(0, 100)}, ${actor.slice(0, 100)})`);
       return Number((res as unknown as [{ insertId: number }])[0].insertId);
     });
   }
@@ -391,7 +410,7 @@ export class TenantDbCampaignStore implements CampaignStore {
       affected(
         await db.execute(sql`
           UPDATE campaign_campaigns SET name = ${d.name}, subject = ${d.subject}, preview_text = ${d.previewText}, sender_id = ${d.senderId}, sender_name = ${d.senderName},
-            sender_email = ${d.senderEmail}, reply_to = ${d.replyTo}, blocks = ${JSON.stringify(d.blocks)}, tag_ids = ${d.tagIds.join(",") || null}, tag_mode = ${d.tagMode}, updated_by = ${actor.slice(0, 100)}
+            sender_email = ${d.senderEmail}, reply_to = ${d.replyTo}, blocks = ${JSON.stringify(d.blocks)}, tag_ids = ${d.tagIds.join(",") || null}, tag_mode = ${d.tagMode}, audience_kind = ${d.audienceKind}, newsletter_locale = ${d.newsletterLocale}, updated_by = ${actor.slice(0, 100)}
           WHERE id = ${id} AND status = 'draft'`),
       ) > 0,
     );
@@ -517,7 +536,7 @@ export class TenantDbCampaignStore implements CampaignStore {
     });
   }
 
-  audience(tagIds: number[], mode: TagMode) {
+  audience(tagIds: number[], mode: TagMode, opts: AudienceOptions = {}) {
     const tags = tagIds.length
       ? mode === "all"
         ? sql`AND c.id IN (SELECT entity_id FROM crm_tag_links WHERE entity_type = 'client' AND tag_id IN (${sql.join(
@@ -529,13 +548,25 @@ export class TenantDbCampaignStore implements CampaignStore {
             sql`, `,
           )}))`
       : sql``;
-    return this.exec(async (db) =>
-      rowsOf(await db.execute(sql`SELECT c.id, c.email, c.name FROM clients c JOIN customer_marketing_consents m ON m.client_id = c.id AND m.status = 'granted' WHERE 1 = 1 ${tags}`)).map((r) => ({
-        clientId: Number(r.id),
-        email: str(r.email),
-        name: str(r.name),
-      })),
-    );
+    // Lista de la newsletter: solo suscripciones ACTIVAS (confirmadas); bajas, pendientes e históricos quedan fuera
+    const newsletter =
+      opts.kind === "newsletter"
+        ? sql`AND LOWER(TRIM(c.email)) IN (SELECT n.email FROM newsletter_subscribers n WHERE n.status = 'active' ${opts.newsletterLocale ? sql`AND n.locale = ${opts.newsletterLocale.slice(0, 8)}` : sql``})`
+        : sql``;
+    return this.exec(async (db) => {
+      try {
+        return rowsOf(await db.execute(sql`SELECT c.id, c.email, c.name FROM clients c JOIN customer_marketing_consents m ON m.client_id = c.id AND m.status = 'granted' WHERE 1 = 1 ${tags} ${newsletter}`)).map((r) => ({
+          clientId: Number(r.id),
+          email: str(r.email),
+          name: str(r.name),
+        }));
+      } catch (e) {
+        // Sin newsletter instalada en la empresa (falta 0095), una audiencia por lista no tiene a nadie
+        const msg = String((e as { sqlMessage?: string })?.sqlMessage ?? (e as { message?: string })?.message ?? "") + String((e as { cause?: { message?: string } })?.cause?.message ?? "");
+        if (opts.kind === "newsletter" && /newsletter_subscribers/.test(msg)) return [];
+        throw e;
+      }
+    });
   }
   withdrawnEmails() {
     return this.exec(

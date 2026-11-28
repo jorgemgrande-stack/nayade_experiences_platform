@@ -9,7 +9,7 @@
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { esc, notice, page } from "../netPublic/html";
-import { normalizeLocale, TOKEN_RE, verifyUnsubscribeToken, type Locale } from "./core";
+import { normalizeLocale, templateLocale, TOKEN_RE, verifyUnsubscribeToken, type Locale } from "./core";
 import { newsletterService, unsubscribeSecrets } from "./runtime";
 import { newsletterLang, NEWSLETTER_MESSAGES } from "../../shared/newsletterMessages";
 import { SubscribeFailure, subscribeFromWeb, subscribeInput } from "./subscribe";
@@ -87,7 +87,7 @@ export function createNewsletterPublicRouter(): Router {
     try {
       if (!TOKEN_RE.test(tokenOf(req))) return bad(res, "de");
       const p = await newsletterService().peekConfirm(tokenOf(req));
-      const l = p.locale;
+      const l = templateLocale(p.locale);
       if (p.state !== "valid") return bad(res, l, p.state === "expired");
       page(res, 200, T[l].confirmTitle, `<div class="sheet"><h1>${esc(T[l].confirmTitle)}</h1><p>${esc(T[l].confirmText)}</p><form method="post"><button type="submit">${esc(T[l].confirmBtn)}</button></form></div>`);
     } catch (e) {
@@ -99,7 +99,7 @@ export function createNewsletterPublicRouter(): Router {
     try {
       if (!TOKEN_RE.test(tokenOf(req))) return bad(res, "de");
       const c = await newsletterService().confirm(tokenOf(req));
-      const l = c.locale;
+      const l = templateLocale(c.locale);
       if (c.state !== "confirmed") return bad(res, l, c.state === "expired");
       page(res, 200, T[l].doneTitle, `${notice("ok", T[l].doneTitle)}<div class="sheet"><h1>${esc(T[l].doneTitle)}</h1><p>${esc(T[l].doneText)}</p></div>`);
     } catch (e) {
@@ -110,8 +110,9 @@ export function createNewsletterPublicRouter(): Router {
 
   r.get("/newsletter/baja/:token", async (req, res) => {
     try {
-      const l = await newsletterService().unsubscribeLocale(tokenOf(req), unsubscribeSecrets(), verifyUnsubscribeToken);
-      if (!l) return bad(res, "de");
+      const sl = await newsletterService().unsubscribeLocale(tokenOf(req), unsubscribeSecrets(), verifyUnsubscribeToken);
+      if (!sl) return bad(res, "de");
+      const l = templateLocale(sl);
       page(res, 200, T[l].unsubTitle, `<div class="sheet"><h1>${esc(T[l].unsubTitle)}</h1><p>${esc(T[l].unsubText)}</p><form method="post"><button type="submit">${esc(T[l].unsubBtn)}</button></form></div>`);
     } catch (e) {
       if (!(e instanceof NewsletterNotInstalled)) log("unsub_get", e);

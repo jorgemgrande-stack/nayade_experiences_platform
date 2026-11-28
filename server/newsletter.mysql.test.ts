@@ -2,7 +2,8 @@
  * Newsletter sobre MySQL REAL (opt-in: REGISTRY_TEST_DATABASE_URL): aplica las migraciones 0042 (consentimiento de
  * marketing) y 0095 (newsletter) en una base temporal propia, con una tabla `clients` mínima, y ejecuta el almacén, el
  * enlace con el CRM y el servicio completo con un correo simulado: alta, duplicado, confirmación, bienvenida única,
- * consentimiento de marketing, baja, reactivación, listado con filtros, exportación y revertir la migración sin perder datos.
+ * consentimiento de marketing, baja, reactivación, listado con filtros, exportación, listas por idioma e importación histórica (0099)
+ * y revertir las migraciones sin perder datos.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
@@ -29,7 +30,7 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
     await admin.query(`USE \`${DB}\``);
     // Tabla `clients` mínima (la real es de drizzle/schema.ts) y las migraciones reales
     await admin.query(`CREATE TABLE clients (id INT AUTO_INCREMENT PRIMARY KEY, leadId INT NULL, source VARCHAR(64) NOT NULL DEFAULT 'lead', name VARCHAR(256) NOT NULL, email VARCHAR(256) NOT NULL UNIQUE, createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-    for (const f of ["0042_brevo_marketing.sql", "0095_newsletter.sql"]) for (const s of splitStatements(fs.readFileSync(path.join(DIR, f), "utf8"))) await admin.query(s);
+    for (const f of ["0042_brevo_marketing.sql", "0053_connect_campaigns.sql", "0095_newsletter.sql", "0099_newsletter_listas_idioma.sql"]) for (const s of splitStatements(fs.readFileSync(path.join(DIR, f), "utf8"))) await admin.query(s);
     const u = new URL(URL_!);
     u.pathname = `/${DB}`;
     process.env.DATABASE_URL = u.toString();
@@ -54,6 +55,7 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
     await admin?.end().catch(() => undefined);
   });
 
+  const input2 = (email: string, locale = "es") => ({ email, consent: true, locale, source: "web:inicio", page: locale === "es" ? "/es/" : "/", consentText: "Acepto la newsletter y la privacidad.", ipHash: null });
   const input = (email: string, locale = "es") => ({ email, consent: true, locale, source: "web:inicio", page: "/", consentText: "Acepto la newsletter y la privacidad.", ipHash: null });
   const confirmToken = () => /\/newsletter\/confirmar\/([A-Za-z0-9_-]{43})/.exec(sent.filter((m) => m.idempotencyKey.startsWith("nl:confirm")).at(-1)!.text)![1];
   const [one] = [() => admin.query(`SELECT * FROM customer_marketing_consents`)];
@@ -142,6 +144,53 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
     expect(await store.facets()).toEqual({ locales: ["de", "es"], sources: ["web:inicio"] });
   });
 
+  it("0099: idioma de alta inmutable, recuentos por idioma, filtro por lista, importación histórica en transacción, baja desde el CRM y audiencia por lista", async () => {
+    const ana = (await store.byEmail("ana@example.com"))!;
+    expect(ana).toMatchObject({ signupLocale: "es", localeSource: "web" });
+    await svc.updateLocale(ana.id, "de", "user:1");
+    expect(await store.byId(ana.id)).toMatchObject({ locale: "de", signupLocale: "es", localeSource: "admin" });
+    const st = await store.stats(now);
+    expect(st.byLocale.map((b) => b.locale)).toEqual(["de", "es"]);
+    expect(st.byLocale.reduce((n, b) => n + b.total, 0)).toBe(st.total);
+    const de = await store.all({ list: "newsletter-de" }, 1000);
+    expect(de.every((r) => r.locale === "de")).toBe(true);
+    expect(de.length).toBe(st.byLocale.find((b) => b.locale === "de")!.total);
+    // Importación: un histórico nuevo (enlazado al cliente del CRM que ya existe, sin crear consentimiento) y un activo que no se toca
+    await admin.query("INSERT INTO clients (name, email, source) VALUES ('Hist', 'hist@example.com', 'manual')");
+    const { NewsletterImporter } = await import("./newsletter/import");
+    const imp = new NewsletterImporter(store, async () => ({ tenantLocales: ["de", "es"], defaultLocale: "de" }), () => now);
+    const input = { format: "csv" as const, fileName: "h.csv", content: "email;nombre\r\nhist@example.com;Hist Órico\r\nana@example.com;Ana\r\n", label: "lote-mysql", defaultLocale: "de" };
+    const pre = await imp.preview(input);
+    expect(pre.plan.counts).toMatchObject({ create: 1, match_active: 1, total: 2 });
+    sent = [];
+    const r = await imp.apply({ ...input, fingerprint: pre.fingerprint }, "user:1");
+    expect(r).toMatchObject({ created: 1, matched: 1, rejected: 0 });
+    const hist = (await store.byEmail("hist@example.com"))!;
+    expect(hist).toMatchObject({ status: "imported", locale: "de", signupLocale: null, localeSource: "import", name: "Hist Órico", importId: r.importId, source: "import:lote-mysql" });
+    expect(hist.clientId).toBeGreaterThan(0);
+    const [[cons]] = (await admin.query("SELECT COUNT(*) AS c FROM customer_marketing_consents WHERE client_id = ?", [hist.clientId])) as any;
+    expect(Number(cons.c)).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect((await store.events(hist.id)).map((e) => e.action)).toEqual(["imported"]);
+    expect((await store.byId(ana.id))!.name).toBe("Ana"); // coincidencia: solo se rellena el nombre vacío
+    expect((await store.imports(10))[0]).toMatchObject({ label: "lote-mysql", createdCount: 1, matchedCount: 1, sendMails: false });
+    expect(await imp.apply({ ...input, fingerprint: pre.fingerprint }, "user:1")).toMatchObject({ created: 0, matched: 2 }); // repetir: 0 creados
+    // El histórico se inscribe desde la web española: pendiente con consentimiento, conserva nombre y lote, un correo
+    await svc.subscribe({ ...input2("hist@example.com", "es"), page: "/es/inicio" });
+    expect(await store.byId(hist.id)).toMatchObject({ status: "pending", locale: "es", signupLocale: "es", name: "Hist Órico", importId: r.importId });
+    expect(sent).toHaveLength(1);
+    // Baja propagada desde el CRM (consentimiento retirado): el suscriptor activo queda de baja
+    expect(await svc.onCrmWithdrawn(ana.clientId!, null)).toEqual({ unsubscribed: 1 });
+    expect((await store.byId(ana.id))!).toMatchObject({ status: "unsubscribed", unsubscribedBy: "crm:withdrawn" });
+    // Audiencia de Campaigns por lista: clientes con consentimiento ∩ suscriptores ACTIVOS (ana ya no)
+    const { TenantDbCampaignStore } = await import("./connectCampaigns/store");
+    const cs = new TenantDbCampaignStore();
+    const todos = await cs.audience([], "any");
+    const porLista = await cs.audience([], "any", { kind: "newsletter", newsletterLocale: "de" });
+    expect(porLista.every((a) => todos.some((t) => t.clientId === a.clientId))).toBe(true);
+    expect(porLista.some((a) => a.clientId === ana.clientId)).toBe(false);
+  });
+
   it("la clave de idempotencia es única en la base: dos réplicas no reservan el mismo correo", async () => {
     const id = (await store.byEmail("ana@example.com"))!.id;
     const a = await Promise.all([store.reserveMail(id, "welcome", "k-dup", now), store.reserveMail(id, "welcome", "k-dup", now)]);
@@ -156,12 +205,16 @@ describe.skipIf(!URL_)("newsletter (MySQL real, correo simulado)", () => {
   });
 
   it("la reversión conserva los datos (renombra, no borra)", async () => {
-    const down = fs.readFileSync(path.join(DIR, "0095_newsletter.down.sql"), "utf8");
-    for (const s of splitStatements(down)) await admin.query(s);
+    for (const f of ["0099_newsletter_listas_idioma.down.sql", "0095_newsletter.down.sql"]) for (const s of splitStatements(fs.readFileSync(path.join(DIR, f), "utf8"))) await admin.query(s);
     const [[c]] = (await admin.query("SELECT COUNT(*) AS c FROM retired_newsletter_subscribers")) as any;
     expect(Number(c.c)).toBeGreaterThan(5);
-    // Volver a aplicar la 0095 tras revertirla funciona (los CHECK no chocan) y deja las tablas nuevas vacías
-    for (const s of splitStatements(fs.readFileSync(path.join(DIR, "0095_newsletter.sql"), "utf8"))) await admin.query(s);
+    const [[imps]] = (await admin.query("SELECT COUNT(*) AS c FROM retired_newsletter_imports")) as any;
+    expect(Number(imps.c)).toBe(2); // los lotes se conservan (renombrados)
+    const [[cols]] = (await admin.query("SELECT COUNT(*) AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campaign_campaigns' AND COLUMN_NAME IN ('audience_kind', 'newsletter_locale')")) as any;
+    expect(Number(cols.c)).toBe(0);
+    // Volver a aplicar 0095 y 0099 tras revertirlas funciona (los CHECK no chocan) y deja las tablas nuevas vacías
+    await admin.query("RENAME TABLE retired_newsletter_imports TO retired_newsletter_imports_1");
+    for (const f of ["0095_newsletter.sql", "0099_newsletter_listas_idioma.sql"]) for (const s of splitStatements(fs.readFileSync(path.join(DIR, f), "utf8"))) await admin.query(s);
     const [[n]] = (await admin.query("SELECT COUNT(*) AS c FROM newsletter_subscribers")) as any;
     expect(Number(n.c)).toBe(0);
   });

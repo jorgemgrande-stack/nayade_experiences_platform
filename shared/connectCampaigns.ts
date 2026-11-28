@@ -16,6 +16,22 @@ export const CAMPAIGN_STATUS_LABEL: Record<CampaignStatus, string> = {
   failed: "Fallida",
 };
 
+/**
+ * Audiencia de una campaña: `tags` (etiquetas del CRM ∩ consentimiento concedido, como hasta ahora) o `newsletter`
+ * (suscriptores CONFIRMADOS de la newsletter ∩ consentimiento concedido, opcionalmente de una lista/idioma).
+ * Bajas, pendientes e históricos (`imported`) quedan siempre fuera.
+ */
+export const AUDIENCE_KINDS = ["tags", "newsletter"] as const;
+export type AudienceKind = (typeof AUDIENCE_KINDS)[number];
+export const AUDIENCE_KIND_LABEL: Record<AudienceKind, string> = { tags: "Etiquetas del CRM", newsletter: "Lista de la newsletter" };
+export interface AudienceSpec {
+  tagIds: number[];
+  tagMode: "any" | "all";
+  audienceKind: AudienceKind;
+  /** Con `newsletter`: idioma de la lista (`de`, `es`…) o null = todas las listas (todos los confirmados). */
+  newsletterLocale: string | null;
+}
+
 export type CampaignBlock =
   | { type: "heading"; text: string }
   | { type: "text"; text: string }

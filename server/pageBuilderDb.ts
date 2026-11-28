@@ -293,6 +293,8 @@ export async function getPublishedNewsletterBlock(slug: string, blockId: string)
   const block = published ? findBlock(published, blockId)?.block : undefined;
   if (block?.type !== "newsletter") return null;
   let localized: typeof block.data | null = null;
+  /** Idioma de la traducción validada que se sirvió (base de la clasificación del suscriptor por idioma). */
+  let localizedLocale: string | null = null;
   if (principal) {
     try {
       const repo = sqlI18nRepo();
@@ -302,6 +304,7 @@ export async function getPublishedNewsletterBlock(slug: string, blockId: string)
         const tb = findBlock(t.publishedBlocks, blockId)?.block;
         if (tb?.type === "newsletter") {
           localized = tb.data;
+          localizedLocale = t.locale;
           break;
         }
       }
@@ -309,7 +312,7 @@ export async function getPublishedNewsletterBlock(slug: string, blockId: string)
       localized = null;
     }
   }
-  return { slug: target, data: block.data, localized };
+  return { slug: target, data: block.data, localized, localizedLocale };
 }
 
 // ─── Historial de versiones ───────────────────────────────────────────────────
