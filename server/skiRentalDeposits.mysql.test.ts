@@ -377,7 +377,7 @@ describe.skipIf(!URL_)("Ski Net · fianzas del alquiler (routers reales, TPV del
     // Sin la contabilidad en uso, el alquiler no escribe nada de ella (las fianzas se reconocen por ski_deposit_events)
     expect(await count("SELECT COUNT(*) AS n FROM acc_cash_movement_kinds")).toBe(0);
     await license("active", "", "accounting-general");
-    const s = ok(await mutate("accountingGeneral.sync", undefined));
+    const s = ok(await mutate("accountingGeneral.sync", { startDate: `${new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date()).slice(0, 4)}-01-01` }));
     expect(s.errors).toEqual([]);
     const sum = async (code: string) => {
       const [[r]] = (await tenantDb.query<mysql.RowDataPacket[]>(

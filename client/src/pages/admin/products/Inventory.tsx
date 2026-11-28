@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../../../../../server/routers";
-import { AlertTriangle, ArrowLeftRight, Boxes, Download, Minus, PackagePlus, Pencil, Plus, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Boxes, Download, MoreVertical, PackagePlus, Pencil, Plus, Minus, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { FormField, selectClass } from "@/components/admin/crm/CrmParts";
@@ -296,7 +298,7 @@ function History({ data }: { data: Overview }) {
   return (
     <section aria-labelledby="hist-title" className="space-y-3">
       <h2 id="hist-title" className="sr-only">{t("productsInventory.history.title")}</h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <FormField id="h-item" label={t("productsInventory.common.item")}>
           <select id="h-item" className={selectClass} value={itemId} onChange={(e) => { setItemId(e.target.value); reset(); }}>
             <option value="">{t("productsInventory.common.all")}</option>
@@ -323,7 +325,7 @@ function History({ data }: { data: Overview }) {
         <FormField id="h-to" label={t("productsInventory.history.to")}>
           <Input id="h-to" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); reset(); }} />
         </FormField>
-        <div className="flex items-end">
+        <div className="col-span-2 flex items-end lg:col-span-1">
           <Button variant="outline" onClick={exportCsv} disabled={exporting} className="w-full">
             <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("productsInventory.common.exportCsv")}
           </Button>
@@ -378,6 +380,40 @@ function History({ data }: { data: Overview }) {
   );
 }
 
+// ─── Acciones de una fila de existencias ─────────────────────────────────────
+
+const STOCK_PAGE_SIZE = 25;
+
+/** Entrada y ajuste siempre a la vista; traspaso, edición y baja en el menú «Más». */
+function StockActions({ item, canTransfer, onAction, onRemove }: { item: Item; canTransfer: boolean; onAction: (a: Action) => void; onRemove: (i: Item) => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "receive", item })} aria-label={t("productsInventory.page.ariaReceive", { label: item.label })}><PackagePlus className="h-4 w-4" aria-hidden="true" /></Button>
+      <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "adjust", item })} aria-label={t("productsInventory.page.ariaAdjust", { label: item.label })}><Minus className="h-4 w-4" aria-hidden="true" /></Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="ghost" aria-label={t("productsInventory.page.more")}><MoreVertical className="h-4 w-4" aria-hidden="true" /></Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          {canTransfer && (
+            <DropdownMenuItem onClick={() => onAction({ kind: "transfer", item })} aria-label={t("productsInventory.page.ariaTransfer", { label: item.label })}>
+              <ArrowLeftRight className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsInventory.page.menuTransfer")}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => onAction({ kind: "edit", item })} aria-label={t("productsInventory.page.ariaEdit", { label: item.label })}>
+            <Pencil className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsInventory.page.menuEdit")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onRemove(item)} aria-label={t("productsInventory.page.ariaUntrack", { label: item.label })}>
+            <XCircle className="mr-2 h-4 w-4" aria-hidden="true" /> {t("productsInventory.page.menuUntrack")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 // ─── Pantalla ────────────────────────────────────────────────────────────────
 
 export default function Inventory() {
@@ -390,6 +426,7 @@ export default function Inventory() {
   const [search, setSearch] = useState("");
   const [onlyLow, setOnlyLow] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [stockPage, setStockPage] = useState(1);
   const untrack = trpc.inventory.untrack.useMutation({
     onSuccess: () => {
       toast.success(t("productsInventory.page.untracked"));
@@ -403,6 +440,9 @@ export default function Inventory() {
     const q = search.trim().toLowerCase();
     return (data?.items ?? []).filter((i) => (!q || i.label.toLowerCase().includes(q)) && (!onlyLow || i.low));
   }, [data, search, onlyLow]);
+  const stockPages = Math.max(1, Math.ceil(items.length / STOCK_PAGE_SIZE));
+  const currentPage = Math.min(stockPage, stockPages);
+  const pageItems = items.slice((currentPage - 1) * STOCK_PAGE_SIZE, currentPage * STOCK_PAGE_SIZE);
   const lowCount = data?.items.filter((i) => i.low).length ?? 0;
   const exportStock = async () => {
     setExporting(true);
@@ -418,21 +458,22 @@ export default function Inventory() {
 
   return (
     <AdminLayout>
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <PanelPageHeader
+        icon={<Boxes />}
+        title={t("productsInventory.title")}
+        className="mb-4"
+        actions={data?.canManage ? (
+          <Button onClick={() => setAdding(true)}>
+            <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("productsInventory.addProduct")}
+          </Button>
+        ) : undefined}
+      />
+      <details className="mb-4 rounded-xl border border-border bg-card px-3 py-2 text-sm">
+        <summary className="cursor-pointer font-medium text-foreground">{t("productsInventory.page.help")}</summary>
+        <p className="mt-2 max-w-3xl text-muted-foreground">{t("productsInventory.intro")}</p>
+      </details>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("productsInventory.title")}</h1>
-            <p className="max-w-3xl text-sm text-muted-foreground">
-              {t("productsInventory.intro")}
-            </p>
-          </div>
-          {data?.canManage && (
-            <Button onClick={() => setAdding(true)}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("productsInventory.addProduct")}
-            </Button>
-          )}
-        </div>
-
         {overview.isLoading ? <PanelLoading label={t("productsInventory.loading")} /> : overview.isError || !data ? <PanelError error={overview.error} onRetry={() => overview.refetch()} title={t("productsInventory.loadError")} /> : (
           <Tabs defaultValue="existencias">
             <TabsList>
@@ -440,29 +481,57 @@ export default function Inventory() {
               <TabsTrigger value="historial">{t("productsInventory.tabHistory")}</TabsTrigger>
             </TabsList>
             <TabsContent value="existencias" className="space-y-3">
-              {lowCount > 0 && (
-                <div role="status" className="flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
-                  {lowCount === 1 ? t("productsInventory.page.lowOne") : t("productsInventory.page.lowMany", { n: lowCount })}
-                </div>
-              )}
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="w-full max-w-xs">
-                  <FormField id="inv-search" label={t("productsInventory.page.search")}>
-                    <Input id="inv-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("productsInventory.page.searchPlaceholder")} />
-                  </FormField>
-                </div>
-                <label className="flex items-center gap-2 pb-2 text-sm text-foreground">
-                  <input type="checkbox" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} /> {t("productsInventory.page.onlyAlerts")}
-                </label>
-                <Button variant="outline" className="ml-auto" onClick={exportStock} disabled={exporting}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  id="inv-search"
+                  className="min-w-[180px] flex-1 sm:max-w-xs sm:flex-none"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setStockPage(1); }}
+                  placeholder={t("productsInventory.page.searchPlaceholder")}
+                  aria-label={t("productsInventory.page.search")}
+                />
+                {lowCount > 0 && (
+                  <Button size="sm" variant={onlyLow ? "default" : "outline"} aria-pressed={onlyLow} onClick={() => { setOnlyLow((v) => !v); setStockPage(1); }}>
+                    <AlertTriangle className="mr-1.5 h-4 w-4" aria-hidden="true" /> {onlyLow ? t("productsInventory.page.lowFilterOff") : t("productsInventory.page.lowFilter", { n: lowCount })}
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="ml-auto" onClick={exportStock} disabled={exporting}>
                   <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("productsInventory.common.exportCsv")}
                 </Button>
               </div>
               {data.items.length === 0 ? (
                 <PanelEmpty icon={<Boxes className="h-6 w-6" />} title={t("productsInventory.page.emptyTitle")} description={data.canManage ? t("productsInventory.page.emptyManage") : t("productsInventory.page.emptyReadonly")} />
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                <>
+                <ul className="space-y-2 md:hidden" aria-label={t("productsInventory.tabStock")}>
+                  {pageItems.map((i) => (
+                    <li key={i.id} className="rounded-xl border border-border bg-card p-3">
+                      <p className="break-words font-medium text-foreground">{i.label}</p>
+                      <p className="text-xs text-muted-foreground">{i.policy === "block" ? t("productsInventory.page.policyBlock") : t("productsInventory.page.policyAllow")}</p>
+                      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                        {i.levels.map((l) => (
+                          <div key={l.siteId} className={cn("flex items-baseline gap-1", l.low && "font-semibold text-destructive")}>
+                            <dt className="text-xs font-normal text-muted-foreground">{data.sites.length > 1 ? (data.sites.find((x) => x.siteId === l.siteId)?.name ?? l.siteId) : t("productsInventory.page.colStock")}</dt>
+                            <dd className="tabular-nums">
+                              {l.onHand}
+                              {l.effectiveMin > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">{t("productsInventory.page.minShort", { n: l.effectiveMin })}</span>}
+                              {l.low && <span className="sr-only">{t("productsInventory.page.inAlert")}</span>}
+                            </dd>
+                          </div>
+                        ))}
+                        {data.sites.length > 1 && (
+                          <div className="flex items-baseline gap-1">
+                            <dt className="text-xs text-muted-foreground">{t("productsInventory.page.colTotal")}</dt>
+                            <dd className="font-medium tabular-nums">{i.total}</dd>
+                          </div>
+                        )}
+                      </dl>
+                      {data.canManage && <div className="mt-2 border-t border-border pt-2"><StockActions item={i} canTransfer={data.canTransfer} onAction={setAction} onRemove={setRemoving} /></div>}
+                    </li>
+                  ))}
+                  {items.length === 0 && <li className="rounded-xl border border-border bg-card px-3 py-6 text-center text-sm text-muted-foreground">{t("productsInventory.page.noMatch")}</li>}
+                </ul>
+                <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
                   <table className="w-full text-sm">
                     <thead className="text-left text-xs text-muted-foreground">
                       <tr className="border-b border-border">
@@ -474,7 +543,7 @@ export default function Inventory() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {items.map((i) => (
+                      {pageItems.map((i) => (
                         <tr key={i.id}>
                           <td className="px-3 py-2 font-medium text-foreground">{i.label}</td>
                           {i.levels.map((l) => (
@@ -487,15 +556,7 @@ export default function Inventory() {
                           {data.sites.length > 1 && <td className="px-3 py-2 text-right tabular-nums">{i.total}</td>}
                           <td className="px-3 py-2 text-muted-foreground">{i.policy === "block" ? t("productsInventory.page.policyBlock") : t("productsInventory.page.policyAllow")}</td>
                           {data.canManage && (
-                            <td className="px-3 py-2">
-                              <div className="flex justify-end gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "receive", item: i })} aria-label={t("productsInventory.page.ariaReceive", { label: i.label })}><PackagePlus className="h-4 w-4" aria-hidden="true" /></Button>
-                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "adjust", item: i })} aria-label={t("productsInventory.page.ariaAdjust", { label: i.label })}><Minus className="h-4 w-4" aria-hidden="true" /></Button>
-                                {data.canTransfer && <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "transfer", item: i })} aria-label={t("productsInventory.page.ariaTransfer", { label: i.label })}><ArrowLeftRight className="h-4 w-4" aria-hidden="true" /></Button>}
-                                <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "edit", item: i })} aria-label={t("productsInventory.page.ariaEdit", { label: i.label })}><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
-                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setRemoving(i)} aria-label={t("productsInventory.page.ariaUntrack", { label: i.label })}><XCircle className="h-4 w-4" aria-hidden="true" /></Button>
-                              </div>
-                            </td>
+                            <td className="px-3 py-2"><StockActions item={i} canTransfer={data.canTransfer} onAction={setAction} onRemove={setRemoving} /></td>
                           )}
                         </tr>
                       ))}
@@ -505,6 +566,17 @@ export default function Inventory() {
                     </tbody>
                   </table>
                 </div>
+                {items.length > STOCK_PAGE_SIZE && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>{t("productsInventory.page.pageCount", { from: (currentPage - 1) * STOCK_PAGE_SIZE + 1, to: Math.min(currentPage * STOCK_PAGE_SIZE, items.length), n: items.length })}</span>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="ghost" disabled={currentPage <= 1} onClick={() => setStockPage(currentPage - 1)}>{t("productsInventory.history.prev")}</Button>
+                      <span>{t("productsInventory.history.page", { page: currentPage, pages: stockPages })}</span>
+                      <Button size="sm" variant="ghost" disabled={currentPage >= stockPages} onClick={() => setStockPage(currentPage + 1)}>{t("productsInventory.history.next")}</Button>
+                    </div>
+                  </div>
+                )}
+                </>
               )}
             </TabsContent>
             <TabsContent value="historial">
@@ -512,6 +584,7 @@ export default function Inventory() {
             </TabsContent>
           </Tabs>
         )}
+      </div>
       </div>
 
       {adding && <TrackDialog open={adding} onClose={() => setAdding(false)} />}

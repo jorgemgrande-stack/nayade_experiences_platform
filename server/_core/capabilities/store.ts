@@ -17,11 +17,22 @@ export interface CapabilityChange {
   source: string;
 }
 
+/**
+ * Comprobación que se ejecuta DENTRO de la transacción de `apply`, con el tenant ya bloqueado y sus licencias
+ * vigentes leídas: si lanza, no se escribe nada. Permite decisiones atómicas (p. ej. 409 en concesiones simultáneas).
+ */
+export type CapabilityGuard = (current: CapabilityGrant[]) => void;
+export type CapabilityApplyMeta = { actor: string; reason: string | null; now: number; guard?: CapabilityGuard };
+
 export interface CapabilityStore extends CapabilityReader {
   /** Aplica los cambios de forma atómica y devuelve los que de verdad cambiaron algo. */
-  apply(tenantId: string, changes: CapabilityChange[], meta: { actor: string; reason: string | null; now: number }): Promise<CapabilityEvent[]>;
+  apply(tenantId: string, changes: CapabilityChange[], meta: CapabilityApplyMeta): Promise<CapabilityEvent[]>;
+  /** Concesiones de operador activas con caducidad vencida (todas las empresas), para el barrido automático. */
+  expiredOperatorGrants(now: number): Promise<CapabilityGrant[]>;
   events(tenantId: string, limit?: number): Promise<CapabilityEvent[]>;
 }
+
+const isExpiredOperator = (now: number) => (g: CapabilityGrant) => g.source === "operator" && g.status === "active" && g.validUntil !== null && g.validUntil <= now;
 
 const same = (g: CapabilityGrant | undefined, c: CapabilityChange) => !!g && g.status === c.status && g.validUntil === c.validUntil && g.source === c.source;
 
@@ -37,8 +48,11 @@ export class MemoryCapabilityStore implements CapabilityStore {
     return Array.from(this.rows.values()).filter((r) => r.tenantId === tenantId).map((r) => ({ ...r }));
   }
   // Sin `await` intermedios: atómico en memoria
-  async apply(tenantId: string, changes: CapabilityChange[], meta: { actor: string; reason: string | null; now: number }) {
+  async apply(tenantId: string, changes: CapabilityChange[], meta: CapabilityApplyMeta) {
     const out: CapabilityEvent[] = [];
+    if (meta.guard) {
+      meta.guard(Array.from(this.rows.values()).filter((r) => r.tenantId === tenantId).map((r) => ({ ...r })));
+    }
     for (const c of changes) {
       const k = `${tenantId}\u0000${c.capabilityId}\u0000${c.siteId}`;
       const cur = this.rows.get(k);
@@ -49,6 +63,9 @@ export class MemoryCapabilityStore implements CapabilityStore {
       out.push(ev);
     }
     return out;
+  }
+  async expiredOperatorGrants(now: number) {
+    return Array.from(this.rows.values()).filter(isExpiredOperator(now)).map((r) => ({ ...r }));
   }
   async events(tenantId: string, limit = 200) {
     return this.log.filter((e) => e.tenantId === tenantId).slice(-limit).reverse();
@@ -72,7 +89,7 @@ export class MysqlCapabilityStore implements CapabilityStore {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM tenant_capabilities WHERE tenant_id = ?", [tenantId]);
     return rows.map(row);
   }
-  async apply(tenantId: string, changes: CapabilityChange[], meta: { actor: string; reason: string | null; now: number }) {
+  async apply(tenantId: string, changes: CapabilityChange[], meta: CapabilityApplyMeta) {
     // Altas simultáneas de empresas DISTINTAS pueden chocar en los bloqueos de hueco del índice
     // (tablas casi vacías): MySQL aborta una con un interbloqueo. La transacción es atómica e
     // idempotente, así que se repite entera.
@@ -85,7 +102,7 @@ export class MysqlCapabilityStore implements CapabilityStore {
       }
     }
   }
-  private async applyOnce(tenantId: string, changes: CapabilityChange[], meta: { actor: string; reason: string | null; now: number }) {
+  private async applyOnce(tenantId: string, changes: CapabilityChange[], meta: CapabilityApplyMeta) {
     const c = await this.pool.getConnection();
     try {
       await c.beginTransaction();
@@ -96,6 +113,7 @@ export class MysqlCapabilityStore implements CapabilityStore {
       // de hueco que chocaban con las altas de OTRAS empresas (interbloqueos).
       const [rows] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM tenant_capabilities WHERE tenant_id = ?", [tenantId]);
       const current = new Map(rows.map(row).map((g) => [`${g.capabilityId}\u0000${g.siteId}`, g]));
+      meta.guard?.(rows.map(row));
       const out: CapabilityEvent[] = [];
       for (const ch of changes) {
         const cur = current.get(`${ch.capabilityId}\u0000${ch.siteId}`);
@@ -120,6 +138,13 @@ export class MysqlCapabilityStore implements CapabilityStore {
     } finally {
       c.release();
     }
+  }
+  async expiredOperatorGrants(now: number) {
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+      "SELECT * FROM tenant_capabilities WHERE source = 'operator' AND status = 'active' AND valid_until IS NOT NULL AND valid_until <= ?",
+      [now],
+    );
+    return rows.map(row);
   }
   async events(tenantId: string, limit = 200) {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>(

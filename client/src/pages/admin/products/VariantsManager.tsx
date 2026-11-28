@@ -30,6 +30,8 @@ type FormState = {
   isRequired: boolean;
   sortOrder: string;
   validUntil: string;
+  /** Retirada sin borrar (0098): inactiva no se muestra en la web ni se puede comprar */
+  isActive: boolean;
 };
 
 const emptyForm = (): FormState => ({
@@ -41,6 +43,7 @@ const emptyForm = (): FormState => ({
   isRequired: false,
   sortOrder: "0",
   validUntil: "",
+  isActive: true,
 });
 
 export default function VariantsManager() {
@@ -124,6 +127,7 @@ export default function VariantsManager() {
       isRequired: v.isRequired ?? false,
       sortOrder: String(v.sortOrder ?? 0),
       validUntil: (v as { validUntil?: string | null }).validUntil ?? "",
+      isActive: (v as { isActive?: boolean | null }).isActive !== false,
     });
     setOpen(true);
   };
@@ -141,6 +145,7 @@ export default function VariantsManager() {
       isRequired: form.isRequired,
       sortOrder: parseInt(form.sortOrder) || 0,
       validUntil: form.validUntil || null,
+      isActive: form.isActive,
     };
 
     if (editId) {
@@ -252,6 +257,9 @@ export default function VariantsManager() {
                         </div>
                         {v.isRequired && (
                           <StatusBadge tone="brand">{t("productsVariants.required")}</StatusBadge>
+                        )}
+                        {(v as { isActive?: boolean | null }).isActive === false && (
+                          <StatusBadge tone="neutral">{t("productsVariants.inactive")}</StatusBadge>
                         )}
                         <div className="flex gap-1">
                           <DropdownMenu>
@@ -392,6 +400,17 @@ export default function VariantsManager() {
                     id="isRequired"
                   />
                   <Label htmlFor="isRequired" className="cursor-pointer">{t("productsVariants.dialog.mandatory")}</Label>
+                </div>
+              </div>
+              <div className="col-span-2 flex items-center gap-2">
+                <Switch
+                  checked={form.isActive}
+                  onCheckedChange={(v) => setForm(f => ({ ...f, isActive: v }))}
+                  id="variantActive"
+                />
+                <div>
+                  <Label htmlFor="variantActive" className="cursor-pointer">{t("productsVariants.dialog.active")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("productsVariants.dialog.activeHelp")}</p>
                 </div>
               </div>
               <div className="col-span-2">

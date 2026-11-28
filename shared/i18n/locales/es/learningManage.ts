@@ -167,7 +167,24 @@ export default {
     scheduleLine: "Día {offset} · {duration}",
     permanentTag: "Permanente",
     activationLabel: "Activación voluntaria: el derecho se concede pendiente y los días (los de la regla) empiezan cuando el alumno lo activa",
-    activationTag: "Activación voluntaria "
+    activationTag: "Activación voluntaria ",
+    staggerPreset: "Escalonado 0/30/60 · 30 días",
+    staggerHelp: "Rellena el calendario RECONNECT: M1 desde el día 0, M2 a los 30 y M3 a los 60, con 30 días de acceso cada uno (30 × 24 h). Solo rellena el formulario: no guarda nada.",
+    staggerApplied: "Calendario rellenado. Revisa y guarda cuando lo confirmes.",
+    extension: {
+      title: "Catálogo de ampliaciones por módulo",
+      intro: "Producto y variantes de +30 y +60 días que el alumno puede comprar desde el aula. El precio sale de cada variante; aquí no se fija ningún importe.",
+      product: "Producto de ampliación",
+      variant30: "Variante de 30 días",
+      variant60: "Variante de 60 días",
+      chooseVariant: "Elige una variante…",
+      save: "Guardar catálogo",
+      saved: "Catálogo de ampliaciones guardado.",
+      none: "Sin catálogo configurado: no se ofrece ninguna ampliación.",
+      current: "Vigente: {product} · {offers}",
+      offer: "+{days} días {price}",
+      noOffers: "sin ofertas vendibles (revisa vigencia y precio de las variantes)"
+    }
   },
   progress: {
     noActivity: "Sin actividad",

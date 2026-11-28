@@ -19,7 +19,7 @@ import {
 } from "../learningDb";
 import { getDb } from "../db";
 import { addQuoteParticipant, confirmQuoteContractedDays, listQuoteParticipants, listQuoteRefundReviews, removeQuoteParticipant, resolveQuoteRefundReview, grantLearningFromEnrollment, grantLearningFromOrder, grantLearningFromQuote, pendingLearningOrders, pendingLearningQuotes, refundOrderSupplement, sendLearningInvitation, sweepLearningGrants } from "../learningFlow";
-import { applyExtensionsForOrder, extendableModules, extensionOffers, prepareExtensionOrder } from "../learningExtensions";
+import { applyExtensionsForOrder, extendableModules, extensionOffers, getExtensionCatalog, prepareExtensionOrder, setExtensionCatalog } from "../learningExtensions";
 import { ensureAccount } from "../communitiesDb";
 import { InventoryError, planInventory } from "../../shared/learningImport";
 import { applyImportPlan, courseCoverage } from "../learningImport";
@@ -255,6 +255,15 @@ const admin = router({
    * función que ejecuta el cierre automático del pedido). Repetirlo no duplica matrículas ni correos.
    */
   grantForOrder: adminProcedure.input(z.object({ merchantOrder: z.string().trim().min(3).max(30) })).mutation(({ ctx, input }) => guard(() => grantLearningFromOrder(input.merchantOrder, { id: ctx.user.id, name: ctx.user.name ?? ctx.user.email ?? null }))),
+  /** Catálogo de ampliaciones (+30 / +60 días): ajuste guardado y ofertas resueltas con el precio de cada variante. */
+  getExtensionCatalog: adminProcedure.query(() => guard(() => getExtensionCatalog())),
+  /**
+   * Guarda el catálogo de ampliaciones: producto y variantes de 30 y 60 días (deben existir, ser del producto, estar vigentes y tener
+   * precio > 0). No crea productos ni cobra: el precio sigue saliendo de la variante.
+   */
+  setExtensionCatalog: adminProcedure
+    .input(z.object({ experienceId: id, variants: z.object({ 30: id, 60: id }) }))
+    .mutation(({ ctx, input }) => guard(() => setExtensionCatalog(input, ctx.user.id))),
   /** Recuperación manual de las ampliaciones de módulo de un pedido pagado (idempotente; no amplía dos veces). */
   applyExtensionsForOrder: adminProcedure.input(z.object({ merchantOrder: z.string().trim().min(3).max(30) })).mutation(({ input }) => guard(() => applyExtensionsForOrder(input.merchantOrder))),
   /** Acción EXPRESA de la administración: renueva la invitación de la cuenta (enlace de un solo uso) y envía el correo. */

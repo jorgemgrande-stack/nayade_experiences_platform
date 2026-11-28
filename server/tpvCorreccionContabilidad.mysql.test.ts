@@ -20,7 +20,7 @@ describe.skipIf(!URL_)("Corrección de caja cerrada con la contabilidad general:
     return data(r);
   };
   const sync = async () => {
-    const s = ok(await ess.m("a", "accountingGeneral.sync", undefined, adA), "generar asientos");
+    const s = ok(await ess.m("a", "accountingGeneral.sync", { startDate: `${new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date()).slice(0, 4)}-01-01` }, adA), "generar asientos");
     expect(s.errors).toEqual([]);
   };
   const period = () => ({ from: `${today().slice(0, 4)}-01-01`, to: `${today().slice(0, 4)}-12-31` });

@@ -918,7 +918,16 @@ export const CRITICAL_PATHS: Array<{ re: RegExp; why: string }> = [
  *  - RETIRAR una comprobación de autorización (añadir una ruta con un permiso existente es ordinario).
  */
 export const CRITICAL_CODE: Array<{ re: RegExp; why: string; destructive?: boolean }> = [
-  { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA|USER)|TRUNCATE\s+(TABLE\s+)?[`\w]+|DELETE\s+FROM)\b/i, why: "operación destructiva de datos", destructive: true },
+  // Sentencias SQL destructivas. TRUNCATE se reconoce por separado: en minúsculas coincide con la clase CSS `truncate` de Tailwind
+  // (p. ej. `truncate text-xs`), que no borra nada; ver server/clasificacionEfectiva.test.ts.
+  { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA|USER)|DELETE\s+FROM)\b/i, why: "operación destructiva de datos", destructive: true },
+  // TRUNCATE TABLE <tabla>, en cualquier combinación de mayúsculas
+  { re: /\bTRUNCATE\s+TABLE\s+[`"\w]/i, why: "operación destructiva de datos", destructive: true },
+  // TRUNCATE <tabla> en mayúsculas (SQL; la clase CSS es siempre minúscula)
+  { re: /\bTRUNCATE\s+[`"]?[A-Za-z_]\w*/, why: "operación destructiva de datos", destructive: true },
+  // truncate <tabla> en minúsculas: solo si lo que sigue es un identificador simple. Una clase de utilidad (`truncate text-xs`,
+  // `truncate flex-1`, `truncate block`) lleva guion, dos puntos, corchetes o es una palabra de utilidad conocida.
+  { re: /\btruncate\s+(?!(?:block|inline|flex|grid|hidden|relative|absolute|static|fixed|sticky|italic|underline|uppercase|lowercase|capitalize|border|rounded|shadow|container|transition|group|peer|font|text|leading|tracking|min|max|w|h|p|m|px|py|mx|my|gap|space|items|justify|self|overflow|whitespace|break)\b)[`"]?[a-z_]\w*[`"]?(?![\w:\/\[.-])/, why: "operación destructiva de datos", destructive: true },
   { re: /\b(dropDatabase|deleteTenant\w*|purgeTenant\w*)\s*\(|rmSync\s*\([^)]*recursive/, why: "borrado de bases, empresas o ficheros", destructive: true },
   { re: /\b(sk|rk)_live_/, why: "clave live de Stripe en el código" },
 ];

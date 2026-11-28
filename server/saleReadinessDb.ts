@@ -62,10 +62,11 @@ export async function loadSaleReadiness(experienceId: number, override: Record<s
   const exp = await getExperienceById(experienceId);
   if (!exp) return null;
   const merged = { ...exp, ...override } as typeof exp;
-  const [variants, editions, company] = await Promise.all([getVariantsByExperience(experienceId, { includeExpired: true }), editionsOf(experienceId), companyRules()]);
+  const [variants, editions, company] = await Promise.all([getVariantsByExperience(experienceId, { includeExpired: true, includeInactive: true }), editionsOf(experienceId), companyRules()]);
   const result = evaluateSaleReadiness({
     product: {
       offerMode: merged.offerMode,
+      serviceDateMode: merged.serviceDateMode,
       basePrice: merged.basePrice,
       currency: merged.currency,
       fiscalRegime: merged.fiscalRegime,
@@ -76,7 +77,7 @@ export async function loadSaleReadiness(experienceId: number, override: Record<s
       maxPersons: merged.maxPersons,
       locationId: merged.locationId,
     },
-    variants: variants.map((v) => ({ name: v.name, priceModifier: v.priceModifier, priceType: v.priceType, isRequired: v.isRequired, validUntil: v.validUntil })),
+    variants: variants.map((v) => ({ name: v.name, priceModifier: v.priceModifier, priceType: v.priceType, isRequired: v.isRequired, validUntil: v.validUntil, isActive: v.isActive })),
     editions: editions.map((e) => ({ status: e.status, capacity: e.capacity, reserved: e.reserved, startsAt: e.startsAt, endsAt: e.endsAt })),
     company,
     now,

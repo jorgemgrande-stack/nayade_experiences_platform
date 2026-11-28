@@ -26,6 +26,8 @@ export const BLOCK_TYPES = [
   "modal",
   // Convocatorias (E-4): próximas fechas de los productos de la tienda
   "upcoming_dates",
+  // Newsletter: inscripción pública con doble confirmación (server/newsletter)
+  "newsletter",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -98,6 +100,12 @@ export interface BlockDataMap {
   logos: { title: string; logos: GalleryImage[]; grayscale: OnOff };
   /** Próximas fechas (convocatorias) de los productos reales de la tienda: de uno, de una categoría o de todos */
   upcoming_dates: { title: string; intro: string; productSlug: string; categorySlug: string; limit: "3" | "6" | "9" | "12"; emptyText: string };
+  /** Inscripción a la newsletter: correo + consentimiento explícito; doble confirmación por correo (todos los textos, traducibles) */
+  newsletter: {
+    eyebrow: string; title: string; intro: string; emailLabel: string; emailPlaceholder: string; buttonLabel: string;
+    consentText: string; privacyLabel: string; successMessage: string; invalidEmailMessage: string; noConsentMessage: string; errorMessage: string;
+    tone: "soft" | "dark" | "brand";
+  };
   /** Sección con columnas: cada columna lleva sus propios módulos (shared/studio/tree.ts) */
   section: {
     layout: SectionLayout;
@@ -428,6 +436,7 @@ export const BLOCK_CATALOG: ReadonlyArray<{ type: BlockType; label: string; desc
   { type: "logos", label: "Logos de clientes", description: "Las marcas que confían en ti" },
   { type: "section", label: "Sección con columnas", description: "De una a cuatro columnas con módulos dentro" },
   { type: "modal", label: "Ventana emergente", description: "Una ventana con módulos dentro que se abre desde un botón, un enlace o sola" },
+  { type: "newsletter", label: "Newsletter", description: "Formulario de inscripción a tu newsletter con consentimiento y doble confirmación por correo" },
   { type: "upcoming_dates", label: "Próximas fechas", description: "Las próximas convocatorias de tus productos, con sus plazas y un botón para solicitar plaza" },
 ];
 
@@ -539,6 +548,13 @@ export function defaultBlockData<K extends BlockType>(type: K): BlockDataMap[K] 
     },
     logos: { title: "Confían en nosotros", logos: [], grayscale: "on" },
     upcoming_dates: { title: "Próximas fechas", intro: "", productSlug: "", categorySlug: "", limit: "6", emptyText: "" },
+    newsletter: {
+      eyebrow: "Newsletter", title: "Un impulso para tu alma, cada semana.", intro: "Recibe inspiración, reflexiones y novedades de Indira directamente en tu correo.",
+      emailLabel: "Tu correo electrónico", emailPlaceholder: "tu@correo.com", buttonLabel: "Quiero recibir la newsletter",
+      consentText: "Quiero recibir la newsletter semanal y acepto la política de privacidad. Puedo darme de baja en cualquier momento.", privacyLabel: "Política de privacidad",
+      successMessage: "¡Gracias! Te hemos enviado un correo para confirmar tu inscripción.", invalidEmailMessage: "Introduce un correo electrónico válido.",
+      noConsentMessage: "Para inscribirte tienes que aceptar el consentimiento.", errorMessage: "No hemos podido completar la inscripción. Inténtalo de nuevo en unos minutos.", tone: "soft",
+    },
     // Las columnas nacen vacías aquí; createSection (shared/studio/tree.ts) las llena al insertarla
     section: { layout: "1-1", gap: "m", valign: "top", mobile: "stack", tablet: "auto", width: "normal", vspace: "normal", columns: [{ blocks: [] }, { blocks: [] }] },
     modal: {

@@ -20,6 +20,8 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { formatEuros, productPath, SHOP_PATH } from "@shared/storefront";
 import { isPurchasable } from "@shared/shopOrders";
+import { onlinePayable } from "@shared/purchaseState";
+import { useStorefront } from "@/components/StorefrontRoute";
 import { offerModeOf, showsPrice } from "@shared/offerMode";
 import { offerBadgeText, siteUiText } from "@shared/siteUiText";
 import { shopTitleFromMenu } from "@shared/tenantNav";
@@ -46,6 +48,9 @@ export default function Shop() {
   const { data: categories = [] } = trpc.public.getCategories.useQuery(site.prefix ? { locale: site.prefix } : undefined);
   const { data: menu } = trpc.public.getMenuItems.useQuery({ zone: "header", ...localeArg }, { staleTime: 5 * 60 * 1000 });
   const shopHref = site.prefix ? `/${site.prefix}${SHOP_PATH}` : SHOP_PATH;
+  // Sin pasarela de cobro activa, lo comprable se anuncia «Pronto disponible online» (la ficha y el pago lo repiten)
+  const { storefront } = useStorefront();
+  const payable = onlinePayable(storefront?.payments);
   const title = shopTitleFromMenu(menu as Array<{ label?: string | null; url?: string | null; isActive?: boolean | null }> | undefined, shopHref) ?? t.shop;
   useDocumentMeta({ title: brandName ? `${title} · ${brandName}` : title });
 
@@ -118,11 +123,13 @@ export default function Shop() {
                 // E-6: «Por solicitud» / «Bajo petición» / «Próximamente» (nunca «Agotado»)
                 const offerBadge = mode === "fixed" ? null : offerBadgeText(t, mode);
                 const soldOut = !offerBadge && !isPurchasable(p);
+                const soonOnline = !offerBadge && !soldOut && !payable;
                 return (
                   <Link key={p.id} href={href(p.slug)} className="group block rounded-2xl border border-border/50 overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow">
                     <div className="relative">
                       {img ? <img src={img} alt={p.title} className={cn("w-full h-44 object-cover", soldOut && "opacity-60")} loading="lazy" /> : <div className="w-full h-44 bg-muted" aria-hidden="true" />}
                       {soldOut && <span className="absolute left-3 top-3 rounded-full bg-foreground/80 px-2.5 py-1 text-xs font-semibold text-background">{t.soldOut}</span>}
+                      {soonOnline && <span data-testid="insignia-pronto-online" className="absolute left-3 top-3 rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-secondary-foreground">{t.soonOnline}</span>}
                       {offerBadge && <span data-testid="insignia-oferta" className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">{offerBadge}</span>}
                     </div>
                     <div className="p-4 space-y-1">

@@ -26,6 +26,8 @@ export interface ReadinessCheck {
 
 export interface ReadinessProduct {
   offerMode?: string | null;
+  /** Fecha de servicio (0098): 'none' = oferta permanente sin fecha; una oferta así no debe tener convocatorias. */
+  serviceDateMode?: string | null;
   basePrice: string | number | null;
   currency?: string | null;
   fiscalRegime?: string | null;
@@ -44,6 +46,8 @@ export interface ReadinessVariant {
   isRequired?: boolean | null;
   /** Último día de vigencia (YYYY-MM-DD) o null. */
   validUntil?: string | null;
+  /** Retirada por la empresa (0098): no cuenta como opción vigente. Ausente = activa. */
+  isActive?: boolean | null;
 }
 
 export interface ReadinessEdition {
@@ -121,8 +125,11 @@ export function evaluateSaleReadiness(input: ReadinessInput): ReadinessResult {
   // ── Precio y variantes ─────────────────────────────────────────────────────
   const base = num(p.basePrice);
   const baseOk = Number.isFinite(base) && base > 0;
-  const live = input.variants.filter((v) => !v.validUntil || v.validUntil >= input.todayISO);
-  if (input.variants.length > 0 && live.length === 0) add("variants_all_expired", "technical", "blocker");
+  // Vigentes: activas y no caducadas. Todas retiradas o caducadas = no hay nada que elegir (bloqueo)
+  const active = input.variants.filter((v) => v.isActive !== false);
+  const live = active.filter((v) => !v.validUntil || v.validUntil >= input.todayISO);
+  if (input.variants.length > 0 && active.length === 0) add("variants_all_inactive", "technical", "blocker");
+  else if (input.variants.length > 0 && live.length === 0) add("variants_all_expired", "technical", "blocker");
   if (live.length === 0) {
     if (input.variants.length === 0) add(baseOk ? "price_ok" : "price_missing", "technical", baseOk ? "ok" : "blocker");
   } else {
@@ -171,7 +178,10 @@ export function evaluateSaleReadiness(input: ReadinessInput): ReadinessResult {
   add((p.locationId ?? 0) > 0 ? "location_ok" : "location_missing", "technical", (p.locationId ?? 0) > 0 ? "ok" : "blocker");
 
   // ── Fechas, ediciones y plazas ─────────────────────────────────────────────
-  const needsDates = input.needsDates ?? input.editions.length > 0;
+  // Oferta permanente sin fecha (0098): no exige convocatorias; si las tiene, es una incoherencia que la empresa debe resolver
+  const permanentOffer = p.serviceDateMode === "none";
+  if (permanentOffer && input.editions.length > 0) add("permanent_offer_has_editions", "commercial", "warning", { n: input.editions.length });
+  const needsDates = input.needsDates ?? (permanentOffer ? false : input.editions.length > 0);
   if (needsDates) {
     const sellable = input.editions.filter((e) => FUTURE_OPEN.has(e.status) && (e.endsAt ?? e.startsAt + 24 * 3600_000) >= input.now);
     if (input.editions.length === 0) add("dates_missing", "commercial", "blocker");
@@ -233,7 +243,7 @@ export function evaluateSaleReadiness(input: ReadinessInput): ReadinessResult {
 
 /** Todas las claves de comprobación posibles (las usan las pruebas de los catálogos de idiomas). */
 export const READINESS_CHECK_IDS = [
-  "variants_all_expired", "price_ok", "price_missing", "variant_price_zero", "base_zero_variant_not_required",
+  "variants_all_inactive", "permanent_offer_has_editions", "variants_all_expired", "price_ok", "price_missing", "variant_price_zero", "base_zero_variant_not_required",
   "variant_optional_base_default", "price_variants_ok", "currency_ok", "currency_mismatch", "tax_missing", "tax_differs",
   "tax_ok", "tax_special_regime", "unit_capacity_missing", "participants_invalid", "participants_unbounded",
   "participants_ok", "location_ok", "location_missing", "dates_missing", "dates_none_open", "dates_ok", "seats_undefined",
