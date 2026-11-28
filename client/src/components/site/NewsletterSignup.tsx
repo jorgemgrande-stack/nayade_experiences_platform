@@ -1,11 +1,11 @@
 /**
  * Formulario público de inscripción a la newsletter (módulo «Newsletter» del Studio). Correo + casilla de consentimiento
- * (desmarcada y obligatoria) + enlace a la política de privacidad. Envía por `newsletter.subscribe`; el servidor toma el
+ * (desmarcada y obligatoria) + enlace a la política de privacidad. Envía por la ruta pública `/api/newsletter/subscribe`; el servidor toma el
  * texto legal del bloque PUBLICADO (no del navegador), valida, limita las peticiones y manda el correo de confirmación.
+ * El envío va por la ruta REST pública `POST /api/newsletter/subscribe` (un visitante sin sesión no pasa por /api/trpc).
  * Antispam: campo trampa invisible y tiempo mínimo de relleno. En el editor y en la vista previa no se envía nada.
  */
 import { useId, useRef, useState } from "react";
-import { trpc } from "@/lib/trpc";
 import { useSiteLocale } from "@/hooks/useSiteLocale";
 import { useLegalHref } from "@/hooks/useLegalHref";
 import { cn } from "@/lib/utils";
@@ -31,7 +31,7 @@ export function NewsletterSignupForm({ blockId, data, preview, editing }: { bloc
   const id = useId();
   const { locale } = useSiteLocale();
   const privacyHref = useLegalHref("privacidad");
-  const subscribe = trpc.newsletter.subscribe.useMutation();
+  const [pending, setPending] = useState(false);
   const shownAt = useRef(Date.now());
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
@@ -51,13 +51,22 @@ export function NewsletterSignupForm({ blockId, data, preview, editing }: { bloc
     }
     if (!EMAIL_RE.test(email.trim())) return setError(newsletterMessage(locale, "invalidEmailMessage", data.invalidEmailMessage));
     if (!consent) return setError(newsletterMessage(locale, "noConsentMessage", data.noConsentMessage));
+    setPending(true);
     try {
-      const r = await subscribe.mutateAsync({ slug: currentSlug(), blockId, email: email.trim(), consent: true, website: trap, elapsedMs: Date.now() - shownAt.current, locale: locale ?? undefined, page: window.location.pathname });
+      const res = await fetch("/api/newsletter/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: currentSlug(), blockId, email: email.trim(), consent: true, website: trap, elapsedMs: Date.now() - shownAt.current, locale: locale ?? undefined, page: window.location.pathname }),
+      });
+      const r = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+      if (!res.ok) throw new Error(r.error || "");
       setDone(r.message || newsletterMessage(locale, "successMessage", data.successMessage));
       setEmail("");
       setConsent(false);
     } catch (err) {
       setError((err as Error).message || newsletterMessage(locale, "errorMessage", data.errorMessage));
+    } finally {
+      setPending(false);
     }
   };
 
@@ -94,7 +103,7 @@ export function NewsletterSignupForm({ blockId, data, preview, editing }: { bloc
           aria-describedby={error ? `${id}-err` : undefined}
           className={cn("h-12 min-w-0 flex-1 rounded-full border px-5 text-base shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring", tone.input)}
         />
-        <button type="submit" disabled={subscribe.isPending} className={cn("h-12 shrink-0 rounded-full px-7 text-base font-semibold shadow-sm transition disabled:opacity-60", tone.button)}>
+        <button type="submit" disabled={pending} className={cn("h-12 shrink-0 rounded-full px-7 text-base font-semibold shadow-sm transition disabled:opacity-60", tone.button)}>
           {data.buttonLabel || "Suscribirme"}
         </button>
       </div>

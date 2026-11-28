@@ -8,19 +8,11 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { allowFormSubmit } from "../_core/studioForms";
-import { sameSiteRequest } from "../_core/studioFormsSubmit";
-import { peekTenantContext } from "../_core/tenant";
-import { newsletterLang, newsletterMessage, NEWSLETTER_MESSAGES, type NewsletterMsgKey } from "../../shared/newsletterMessages";
-import { cleanText, ipFingerprint, LOCALES, STATUSES } from "./core";
-import { ipSecret, newsletterService } from "./runtime";
+import { LOCALES, STATUSES } from "./core";
+import { newsletterService } from "./runtime";
+import { SubscribeFailure, subscribeFromWeb, subscribeInput } from "./subscribe";
 import { NewsletterError, type ListQuery } from "./service";
 import { mysqlNewsletterStore, NewsletterNotInstalled } from "./store";
-
-const hdr = (req: { headers: Record<string, string | string[] | undefined> }, n: string) => {
-  const v = req.headers[n];
-  return Array.isArray(v) ? v[0] : v;
-};
 
 const dateField = z.enum(["createdAt", "confirmedAt", "unsubscribedAt"]);
 const filters = z.object({
@@ -61,59 +53,21 @@ export const newsletterRouter = router({
   /** ¿Está activo el módulo en esta empresa? (menú del panel). Cualquier usuario con sesión; sin tablas = apagado. */
   status: protectedProcedure.query(async () => safeError(async () => ({ enabled: (await mysqlNewsletterStore.settings()).enabled }), { enabled: false })),
 
-  /** Alta pública desde el bloque de la web. Siempre responde igual exista o no el correo. */
-  subscribe: publicProcedure
-    .input(
-      z.object({
-        slug: z.string().trim().min(1).max(200),
-        blockId: z.string().trim().min(1).max(64),
-        email: z.string().max(320),
-        consent: z.boolean(),
-        website: z.string().max(200).optional(),
-        elapsedMs: z.number().int().nonnegative().max(86_400_000).optional(),
-        locale: z.string().max(8).optional(),
-        page: z.string().max(200).optional(),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
-      const req = ctx.req;
-      if (!sameSiteRequest({ origin: hdr(req, "origin"), referer: hdr(req, "referer"), hosts: [hdr(req, "x-forwarded-host"), hdr(req, "host")] })) {
-        throw new TRPCError({ code: "FORBIDDEN", message: NEWSLETTER_MESSAGES[newsletterLang(input.locale)].forbiddenMessage });
+  /**
+   * Alta pública desde el bloque de la web. NOTA: un visitante sin sesión no pasa por /api/trpc (authGuard); el formulario usa
+   * la ruta REST pública POST /api/newsletter/subscribe (publicRoutes.ts). Esta vía queda para llamadas con sesión.
+   */
+  subscribe: publicProcedure.input(subscribeInput).mutation(async ({ input, ctx }) => {
+    try {
+      return await subscribeFromWeb(input, ctx.req);
+    } catch (e) {
+      if (e instanceof SubscribeFailure) {
+        const code = ({ 400: "BAD_REQUEST", 403: "FORBIDDEN", 404: "NOT_FOUND", 412: "PRECONDITION_FAILED", 429: "TOO_MANY_REQUESTS", 500: "INTERNAL_SERVER_ERROR" } as const)[e.status];
+        throw new TRPCError({ code, message: e.message });
       }
-      const ip = req.ip || req.socket.remoteAddress || "desconocida";
-      const tenantId = peekTenantContext()?.tenantId ?? "single";
-      // Límite por visitante (el mismo que los formularios del Studio) y campo trampa / tiempo mínimo: a un envío automático se le responde igual
-      if (!allowFormSubmit(`newsletter:${tenantId}:${ip}`)) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: NEWSLETTER_MESSAGES[newsletterLang(input.locale)].rateLimitedMessage });
-      const found = await (await import("../pageBuilderDb")).getPublishedNewsletterBlock(input.slug, input.blockId);
-      if (!found) throw new TRPCError({ code: "NOT_FOUND", message: NEWSLETTER_MESSAGES[newsletterLang(input.locale)].unavailableMessage });
-      const msg = (k: NewsletterMsgKey) => newsletterMessage(input.locale, k, cleanText((found.localized as Record<string, unknown> | null)?.[k], 300) || cleanText((found.data as Record<string, unknown>)[k], 300));
-      const okMessage = msg("successMessage");
-      if ((input.website ?? "").trim() !== "" || (input.elapsedMs != null && input.elapsedMs < 1500)) return { ok: true as const, message: okMessage };
-      const consentText = newsletterMessage(input.locale, "consentText", cleanText((found.localized as Record<string, unknown> | null)?.consentText, 600) || cleanText((found.data as Record<string, unknown>).consentText, 600));
-      const path = /^\/[^\s<>"']{0,199}$/.test(input.page ?? "") ? input.page! : `/${found.slug}`;
-      try {
-        await newsletterService().subscribe({
-          email: input.email,
-          consent: input.consent,
-          locale: input.locale,
-          source: `web:${found.slug}`.slice(0, 64),
-          page: path,
-          consentText,
-          ipHash: ipFingerprint(ip, tenantId, ipSecret()),
-        });
-        return { ok: true as const, message: okMessage };
-      } catch (e) {
-        if (e instanceof NewsletterError) {
-          if (e.code === "invalid_input") throw new TRPCError({ code: "BAD_REQUEST", message: msg("invalidEmailMessage") });
-          if (e.code === "no_consent") throw new TRPCError({ code: "BAD_REQUEST", message: msg("noConsentMessage") });
-          if (e.code === "rate_limited") throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: msg("rateLimitedMessage") });
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: msg("errorMessage") });
-        }
-        if (e instanceof NewsletterNotInstalled) throw new TRPCError({ code: "PRECONDITION_FAILED", message: msg("errorMessage") });
-        console.error(JSON.stringify({ ctx: "Newsletter", event: "subscribe_error", error: e instanceof Error ? e.message.slice(0, 200) : "error" }));
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg("errorMessage") });
-      }
-    }),
+      throw e;
+    }
+  }),
 
   // ── Administración ──
   stats: adminProcedure.query(() => handle(() => mysqlNewsletterStore.stats(Date.now()))),
