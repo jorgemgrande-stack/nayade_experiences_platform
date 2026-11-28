@@ -36,6 +36,7 @@ import { isMultilingual } from "@shared/i18n";
 import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
 import { newProductDefaults, presentialSaleAllowed } from "@shared/catalogDefaults";
 import { DEFAULT_REQUEST_CTA, MAX_REQUEST_CTA_LENGTH, OFFER_MODES, offerModeOf, type OfferMode } from "@shared/offerMode";
+import { SERVICE_DATE_MODES, serviceDateModeOf, type ServiceDateMode } from "@shared/storefront";
 
 const difficultyColors: Record<string, string> = {
   facil: TONE_BADGE.success,
@@ -50,6 +51,7 @@ type ExpForm = {
   image1: string; image2: string; image3: string; image4: string;
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
   offerMode: OfferMode; requestCtaLabel: string;
+  serviceDateMode: ServiceDateMode;
   pricingType: string; unitCapacity: string; maxUnits: string;
   difficulty: string; isFeatured: boolean; isActive: boolean; isPublished: boolean; isPresentialSale: boolean;
   includes: string[]; excludes: string[];
@@ -72,6 +74,7 @@ const emptyForm: ExpForm = {
   image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
   offerMode: "fixed", requestCtaLabel: "",
+  serviceDateMode: "auto",
   pricingType: "per_person", unitCapacity: "", maxUnits: "",
   difficulty: "facil", isFeatured: false, isActive: true, isPublished: true, isPresentialSale: false,
   includes: [], excludes: [],
@@ -311,6 +314,7 @@ export default function ExperiencesManager() {
       basePrice: String(exp.basePrice ?? ""),
       offerMode: offerModeOf(exp),
       requestCtaLabel: String((exp as Record<string, unknown>).requestCtaLabel ?? ""),
+      serviceDateMode: serviceDateModeOf(exp as Record<string, unknown>),
       duration: String(exp.duration ?? ""),
       minPersons: String(exp.minPersons ?? "1"),
       maxPersons: String(exp.maxPersons ?? ""),
@@ -389,6 +393,7 @@ export default function ExperiencesManager() {
       basePrice: form.offerMode === "fixed" || form.offerMode === "priced_request" ? form.basePrice : "",
       offerMode: form.offerMode,
       requestCtaLabel: form.offerMode === "fixed" ? "" : form.requestCtaLabel.trim(),
+      serviceDateMode: form.serviceDateMode,
       duration: form.duration || undefined,
       minPersons: form.minPersons ? parseInt(form.minPersons) : undefined,
       maxPersons: form.maxPersons ? parseInt(form.maxPersons) : undefined,
@@ -856,6 +861,17 @@ export default function ExperiencesManager() {
                   <p id="requestCta-hint" className="text-xs text-muted-foreground mt-1">{t("productsCatalog.modal.ctaHint")}</p>
                 </div>
               )}
+              {/* Fecha de servicio (0098): automática, sin fecha (oferta permanente) u obligatoria */}
+              <div className="sm:col-span-2">
+                <Label htmlFor="serviceDateMode">{t("productsCatalog.modal.serviceDateMode")}</Label>
+                <Select value={form.serviceDateMode} onValueChange={(v) => setForm({ ...form, serviceDateMode: v as ServiceDateMode })}>
+                  <SelectTrigger id="serviceDateMode" className="mt-1" aria-describedby="serviceDateMode-hint"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {SERVICE_DATE_MODES.map((m) => <SelectItem key={m} value={m}>{t(`productsCatalog.serviceDateMode.${m}.label`)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p id="serviceDateMode-hint" className="text-xs text-muted-foreground mt-1">{t(`productsCatalog.serviceDateMode.${form.serviceDateMode}.help`)}</p>
+              </div>
               {/* Tipo de Pricing */}
               <div className="sm:col-span-2">
                 <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">

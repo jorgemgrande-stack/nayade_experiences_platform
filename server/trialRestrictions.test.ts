@@ -241,4 +241,30 @@ describe("correo durante la prueba", () => {
     expect(await applyTrialMailPolicy(p, deps(contracted()))).toBe(p);
     expect(await applyTrialMailPolicy(p, deps(inTrial({ tenantId: "t-exenta", exempt: new Set(["t-exenta"]) })))).toBe(p);
   });
+
+  describe("correo de suscripción (excepción acotada)", () => {
+    const sub = { to: "visita@gmail.example", category: "operational", trialException: "subscription" as const };
+    const ok = (extra = {}) => ({ ...deps(inTrial()), subscriptionTenants: new Set(["t-prueba"]), subscriptionSent24h: async () => 3, ...extra });
+
+    it("sin autorización de la plataforma sigue la regla general (a terceros no sale)", async () => {
+      expect(await applyTrialMailPolicy(sub, deps(inTrial()))).toBeNull();
+      expect(await applyTrialMailPolicy(sub, { ...deps(inTrial()), subscriptionTenants: new Set(["t-otra"]) })).toBeNull();
+    });
+    it("empresa autorizada: sale a un solo destinatario dentro del tope", async () => {
+      expect(await applyTrialMailPolicy(sub, ok())).toBe(sub);
+    });
+    it("tope diario propio, medición caída, varios destinatarios, copia o sin remitente: no sale", async () => {
+      expect(await applyTrialMailPolicy(sub, ok({ subscriptionSent24h: async () => 30 }))).toBeNull();
+      expect(await applyTrialMailPolicy(sub, ok({ subscriptionSent24h: async () => null }))).toBeNull();
+      expect(await applyTrialMailPolicy({ ...sub, to: ["a@x.example", "b@x.example"] }, ok())).toBeNull();
+      expect(await applyTrialMailPolicy({ ...sub, cc: "c@x.example" }, ok())).toBeNull();
+      expect(await applyTrialMailPolicy(sub, ok({ configMailboxes: () => [] }))).toBeNull();
+    });
+    it("solo vale para la categoría operational; otra categoría con la marca no abre nada", async () => {
+      expect(await applyTrialMailPolicy({ ...sub, category: "marketing" }, ok())).toBeNull();
+    });
+    it("el resto del correo de una empresa autorizada sigue restringido", async () => {
+      expect(await applyTrialMailPolicy({ to: "cliente@gmail.example", category: "operational" }, ok())).toBeNull();
+    });
+  });
 });

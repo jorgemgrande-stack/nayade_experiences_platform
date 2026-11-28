@@ -45,6 +45,11 @@ export default {
     n4: "Imagen 4",
   },
   difficulty: { facil: "Fácil", moderado: "Moderado", dificil: "Difícil", experto: "Experto" },
+  serviceDateMode: {
+    auto: { label: "Automática (según el tipo de producto)", help: "Como hasta ahora: la web pide fecha a las actividades y servicios con reserva; al resto, no." },
+    none: { label: "Sin fecha (oferta permanente)", help: "Se compra cuando se quiera, sin fecha ni convocatoria: programas online, acceso a contenidos, bonos. La web no pide fecha." },
+    required: { label: "Obligatoria (fecha libre)", help: "Quien compra debe elegir una fecha; sin ella el pedido se rechaza." },
+  },
   offerMode: {
     fixed: { label: "Precio fijo", help: "Se vende en tu web con su precio, como hasta ahora." },
     on_request: {
@@ -152,6 +157,7 @@ export default {
     slugPlaceholder: "Se genera a partir del nombre",
     slugHint: "Opcional. Solo letras minúsculas, números y guiones.",
     offerMode: "Cómo se ofrece",
+    serviceDateMode: "Fecha de servicio",
     priceLicensed: "Precio (€, impuestos incluidos)",
     priceOriginal: "Precio Base (€)",
     ctaLabel: "Texto del botón de la web",

@@ -1,7 +1,7 @@
 /** Elephant Learning (administración): pantalla principal, matrículas, cursos, demostraciones y herramientas técnicas. */
 export default {
   noExpiry: "Sin caducidad",
-  status: { active: "Activa", scheduled: "Programada", expired: "Caducada", suspended: "Suspendida", revoked: "Revocada" },
+  status: { active: "Activa", scheduled: "Programada", expired: "Caducada", suspended: "Suspendida", revoked: "Revocada", pending_activation: "Pendiente de activar" },
   courseStatus: { draft: "Borrador (privado)", published: "Publicado", archived: "Archivado" },
   reason: {
     newEnd: "Nueva fecha de fin (vacío = sin caducidad)",
@@ -37,6 +37,11 @@ export default {
     historyTitle: "Historial de la matrícula",
     user: " · usuario {id}",
     actions: "Acciones",
+    moduleState: { active: "activo", scheduled: "se desbloquea", expired: "caducado", pending_activation: "pendiente de activar", inactive: "sin acceso" },
+    moduleUntil: "hasta {date}",
+    moduleFrom: "desde {date}",
+    moduleEnded: "finalizó {date}",
+    moduleN: "M{n}",
   },
   pending: {
     title: "Pedidos pagados sin acceso ({n})",

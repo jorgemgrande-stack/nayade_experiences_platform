@@ -16,7 +16,11 @@
  *  4. Si no, por frases (los avisos unen frases con un espacio): cada frase se busca por separado.
  */
 import type { Locale } from "./core";
-import { PANEL_TEXT_DE } from "./panelTextDe";
+import { PANEL_TEXT_DE as PANEL_TEXT_DE_BASE } from "./panelTextDe";
+import { PANEL_TEXT_NEWSLETTER_DE } from "./panelTextNewsletterDe";
+import { PANEL_TEXT_RECURRING_DE } from "./panelTextRecurringDe";
+
+const PANEL_TEXT_DE: Record<string, string> = { ...PANEL_TEXT_NEWSLETTER_DE, ...PANEL_TEXT_RECURRING_DE, ...PANEL_TEXT_DE_BASE };
 
 const MONTHS_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
