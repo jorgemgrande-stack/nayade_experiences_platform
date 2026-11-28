@@ -5,6 +5,8 @@ import {
   type RecurringSchedule,
 } from "../shared/recurringSessions";
 import { utcMsToLocal } from "../shared/editions";
+import { invoiceLinesFor } from "./shopOrdersDb";
+import { chargedInvoiceAmounts } from "./invoiceCalc";
 
 const MI: RecurringSchedule = { ...MORNING_IMPULSE_DEFAULTS };
 const utc = (s: string) => Date.parse(s);
@@ -116,5 +118,14 @@ describe("avisos de compra", () => {
   it("solo enlaces https sin credenciales", () => {
     expect(isSafeZoomUrl("https://zoom.us/j/1")).toBe(true);
     for (const u of ["http://zoom.us/j/1", "javascript:alert(1)", "https://user:pw@zoom.us/j/1", "", "zoom.us/j/1", 5, null]) expect(isSafeZoomUrl(u)).toBe(false);
+  });
+});
+
+describe("IVA provisional del 21 % sobre el PVP de Morning Impulse (49 € con IVA incluido)", () => {
+  it("49 € → base 40,50 € + cuota 8,50 €; no se suma el IVA encima", () => {
+    const items = invoiceLinesFor([{ productId: 24, productName: "MORNING IMPULSE", people: 1, amountTotal: 4900 }], new Map([[24, 21]]));
+    expect(items[0]).toMatchObject({ total: 49, taxRate: 21, fiscalRegime: "general" });
+    const a = chargedInvoiceAmounts(items, 49);
+    expect([a.subtotal, a.taxAmount, a.total]).toEqual([40.5, 8.5, 49]);
   });
 });
