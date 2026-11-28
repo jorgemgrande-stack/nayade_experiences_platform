@@ -6,7 +6,7 @@
  * precio base > 0; «Desde» en cuanto tiene alguna opción. Los «bajo petición» y «próximamente», nunca. Las opciones de
  * todos los productos se leen en UNA consulta (la ruta es pública), con el mismo filtro de caducidad que la ficha.
  */
-import { and, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { experienceVariants } from "../drizzle/schema";
 import { showsPrice } from "../shared/offerMode";
 import { fromPrice } from "../shared/storefront";
@@ -14,7 +14,7 @@ import { fromPrice } from "../shared/storefront";
 type Row = { id: number; slug: string; title: string; shortDescription?: string | null; basePrice?: string | number | null; offerMode?: string | null };
 type VariantRow = { experienceId: number; priceModifier: string | null; priceType: "fixed" | "percentage" | "per_person" };
 
-/** Opciones vigentes de varios productos (una consulta), agrupadas por producto. */
+/** Opciones vigentes y activas (0098) de varios productos (una consulta), agrupadas por producto. */
 export async function variantsByProduct(ids: number[]): Promise<Map<number, VariantRow[]>> {
   const out = new Map<number, VariantRow[]>();
   if (!ids.length) return out;
@@ -23,7 +23,7 @@ export async function variantsByProduct(ids: number[]): Promise<Map<number, Vari
   if (!db) return out;
   const rows = await db.select({ experienceId: experienceVariants.experienceId, priceModifier: experienceVariants.priceModifier, priceType: experienceVariants.priceType })
     .from(experienceVariants)
-    .where(and(inArray(experienceVariants.experienceId, ids), isNull(experienceVariants.supplementGroup), or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)));
+    .where(and(inArray(experienceVariants.experienceId, ids), isNull(experienceVariants.supplementGroup), eq(experienceVariants.isActive, true), or(isNull(experienceVariants.validUntil), sql`${experienceVariants.validUntil} >= ${todayMadridISO()}`)));
   for (const r of rows as VariantRow[]) out.set(r.experienceId, [...(out.get(r.experienceId) ?? []), r]);
   return out;
 }

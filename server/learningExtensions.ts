@@ -72,7 +72,8 @@ export async function loadExtensionCatalog(): Promise<ExtensionCatalog | null> {
   const offers: ExtensionOffer[] = [];
   for (const c of cfg.variants) {
     const v = variants.find((x) => x.id === c.variantId);
-    if (!v || (v.validUntil && String(v.validUntil) < today)) continue;
+    // Caducada o retirada (0098) no se ofrece (la consulta ya filtra; se repite por si llega una fila antigua)
+    if (!v || v.isActive === false || (v.validUntil && String(v.validUntil) < today)) continue;
     const priceCents = variantUnitCents(Number.isFinite(baseCents) ? baseCents : 0, v as any);
     if (!Number.isFinite(priceCents) || priceCents < 50) continue;
     offers.push({ days: c.days, variantId: v.id, variantName: v.name, priceCents });
